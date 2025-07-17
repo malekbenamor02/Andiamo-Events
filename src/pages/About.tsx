@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import aboutHero from "@/assets/about-hero.jpg";
+import { useNavigate } from "react-router-dom";
 
 interface AboutProps {
   language: 'en' | 'fr';
@@ -18,6 +19,7 @@ interface AboutContent {
 
 const About = ({ language }: AboutProps) => {
   const [aboutContent, setAboutContent] = useState<AboutContent>({});
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchSiteContent = async () => {
@@ -275,7 +277,7 @@ const About = ({ language }: AboutProps) => {
           <Button 
             size="lg" 
             className="btn-neon text-lg px-8 py-4"
-            onClick={() => window.location.href = '/ambassador'}
+            onClick={() => navigate('/ambassador')}
           >
             {t.cta.button}
           </Button>
