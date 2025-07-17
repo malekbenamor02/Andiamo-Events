@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import hero1 from "@/assets/1.jpg";
 import hero2 from "@/assets/2.jpg";
 import hero3 from "@/assets/3.jpg";
+import { useNavigate } from "react-router-dom";
 
 interface HeroSectionProps {
   language: 'en' | 'fr';
@@ -24,6 +25,7 @@ const HeroSection = ({ language }: HeroSectionProps) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [heroContent, setHeroContent] = useState<any>({});
   const [socialLinks, setSocialLinks] = useState<SocialLinks>({});
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchSiteContent = async () => {
@@ -165,7 +167,7 @@ const HeroSection = ({ language }: HeroSectionProps) => {
               variant="outline"
               size="lg"
               className="btn-neon text-lg px-8 py-4 hover-lift"
-              onClick={() => window.location.href = '/gallery'}
+              onClick={() => navigate('/gallery')}
             >
               <Play className="w-5 h-5 mr-2" />
               {content?.watchVideo || defaultContent[language].watchVideo}
