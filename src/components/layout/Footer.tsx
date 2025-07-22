@@ -102,14 +102,14 @@ const Footer = ({ language }: FooterProps) => {
   const quickLinks = {
     en: [
       { name: "Events", href: "/events" },
-      { name: "Gallery", href: "/gallery" },
+      
       { name: "About", href: "/about" },
       { name: "Ambassador", href: "/ambassador" },
       { name: "Contact", href: "/contact" },
     ],
     fr: [
       { name: "Événements", href: "/events" },
-      { name: "Galerie", href: "/gallery" },
+      
       { name: "À Propos", href: "/about" },
       { name: "Ambassadeur", href: "/ambassador" },
       { name: "Contact", href: "/contact" },
@@ -239,7 +239,7 @@ const Footer = ({ language }: FooterProps) => {
               <h5 className="font-medium mb-3">{content[language].follow}</h5>
               <div className="flex space-x-3">
                   <a 
-                  href={socialLinks?.instagram || "https://instagram.com/andiamo_events"}
+                  href={socialLinks?.instagram || "https://www.instagram.com/andiamo.events/"}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-muted-foreground hover:text-primary transition-colors"
@@ -247,7 +247,7 @@ const Footer = ({ language }: FooterProps) => {
                     <Instagram className="w-5 h-5" />
                   </a>
                   <a 
-                  href={socialLinks?.tiktok || "https://tiktok.com/@andiamo_events"}
+                  href={socialLinks?.tiktok || "https://www.tiktok.com/@andiamo_events"}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-muted-foreground hover:text-primary transition-colors"

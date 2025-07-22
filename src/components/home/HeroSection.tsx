@@ -167,7 +167,7 @@ const HeroSection = ({ language }: HeroSectionProps) => {
               variant="outline"
               size="lg"
               className="btn-neon text-lg px-8 py-4 hover-lift"
-              onClick={() => navigate('/gallery')}
+              onClick={() => navigate('/events')}
             >
               <Play className="w-5 h-5 mr-2" />
               {content?.watchVideo || defaultContent[language].watchVideo}

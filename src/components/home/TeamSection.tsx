@@ -1,4 +1,4 @@
-import placeholder from '/public/placeholder.svg';
+import placeholder from '/placeholder.svg';
 
 interface TeamSectionProps {
   language: 'en' | 'fr';

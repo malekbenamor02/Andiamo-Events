@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, MapPin, ExternalLink } from 'lucide-react';
+import { ExpandableText } from '@/components/ui/expandable-text';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Event {
@@ -14,6 +15,8 @@ interface Event {
   ticket_link?: string;
   featured?: boolean;
   whatsapp_link?: string;
+  standard_price?: number;
+  vip_price?: number;
 }
 
 interface FeaturedEventsSectionProps {
@@ -80,7 +83,23 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                   <MapPin className="w-4 h-4 mr-1" />
                   {event.venue}, {event.city}
                 </div>
-                <p className="text-muted-foreground line-clamp-3 mb-4">{event.description}</p>
+                {(event.standard_price || event.vip_price) && (
+                  <div className="flex items-center text-sm text-muted-foreground mb-2 space-x-4">
+                    {event.standard_price && (
+                      <span>Standard: {event.standard_price} TND</span>
+                    )}
+                    {event.vip_price && (
+                      <span>VIP: {event.vip_price} TND</span>
+                    )}
+                  </div>
+                )}
+                <ExpandableText
+                  text={event.description}
+                  maxLength={100}
+                  className="text-muted-foreground mb-4"
+                  showMoreText={language === 'en' ? 'Show more' : 'Voir plus'}
+                  showLessText={language === 'en' ? 'Show less' : 'Voir moins'}
+                />
                 <div className="flex space-x-2">
                   {event.ticket_link && (
                     <a
@@ -110,7 +129,7 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
         </div>
         <div className="text-center mt-12">
           <button
-            onClick={() => navigate('/gallery')}
+            onClick={() => navigate('/events')}
             className="bg-gradient-primary text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg"
           >
             {language === 'en' ? 'View All Events' : 'Voir Tous les Événements'}

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Calendar, MapPin, ExternalLink } from "lucide-react";
 import HeroSection from "@/components/home/HeroSection";
-import placeholder from "/public/placeholder.svg";
+import placeholder from "/placeholder.svg";
 import { supabase } from "@/integrations/supabase/client";
 import CounterSection from "@/components/home/CounterSection";
 import FeaturedEventsSection from "@/components/home/FeaturedEventsSection";

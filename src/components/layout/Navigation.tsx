@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Menu, X, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +29,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
   const [navigationContent, setNavigationContent] = useState<NavigationContent>({});
   const [contactInfo, setContactInfo] = useState<ContactInfo>({});
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchContent = async () => {
@@ -59,7 +60,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
     en: [
       { name: "Home", href: "/" },
       { name: "Events", href: "/events" },
-      { name: "Gallery", href: "/gallery" },
+  
       { name: "About", href: "/about" },
       { name: "Ambassador", href: "/ambassador" },
       { name: "Contact", href: "/contact" },
@@ -67,14 +68,15 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
     fr: [
       { name: "Accueil", href: "/" },
       { name: "Événements", href: "/events" },
-      { name: "Galerie", href: "/gallery" },
+  
       { name: "À Propos", href: "/about" },
       { name: "Ambassadeur", href: "/ambassador" },
       { name: "Contact", href: "/contact" },
     ]
   };
 
-  const navigation = navigationContent[language] || defaultNavigation[language];
+  // Always use default navigation to ensure no gallery links appear
+  const navigation = defaultNavigation[language];
 
   const whatsappClick = () => {
     const phone = contactInfo?.phone || "216XXXXXXXX";
@@ -88,11 +90,23 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center space-x-2">
+          <button
+            className="flex items-center space-x-2 focus:outline-none"
+            onClick={() => {
+              if (location.pathname === "/") {
+                window.scrollTo(0, 0);
+                window.location.reload();
+              } else {
+                navigate("/");
+              }
+            }}
+            style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer' }}
+            aria-label="Go to home"
+          >
             <div className="text-2xl font-orbitron font-bold text-gradient-neon">
               ANDIAMO
             </div>
-          </Link>
+          </button>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">

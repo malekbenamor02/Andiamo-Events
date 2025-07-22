@@ -205,6 +205,35 @@ All colors MUST be HSL.
     background-image: var(--gradient-neon);
   }
   
+  /* Modal scrollbar hiding */
+  .modal-open {
+    overflow: hidden !important;
+    padding-right: 0 !important;
+  }
+  
+  /* Custom Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: linear-gradient(45deg, #8b5cf6, #ec4899);
+    border-radius: 3px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(45deg, #7c3aed, #db2777);
+  }
+  
+  .modal-open::-webkit-scrollbar {
+    display: none;
+  }
+  
   /* Font Families */
   .font-orbitron {
     font-family: "Orbitron", monospace;
