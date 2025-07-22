@@ -778,11 +778,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">{t.overview}</TabsTrigger>
-            <TabsTrigger value="events">{t.events}</TabsTrigger>
-            <TabsTrigger value="ambassadors">{t.ambassadors}</TabsTrigger>
-            <TabsTrigger value="applications">{t.applications}</TabsTrigger>
+          <TabsList className="flex overflow-x-auto whitespace-nowrap gap-x-2 px-1">
+            <TabsTrigger className="px-4 min-w-[110px]" value="overview">{t.overview}</TabsTrigger>
+            <TabsTrigger className="px-4 min-w-[110px]" value="events">{t.events}</TabsTrigger>
+            <TabsTrigger className="px-4 min-w-[110px]" value="ambassadors">{t.ambassadors}</TabsTrigger>
+            <TabsTrigger className="px-4 min-w-[110px]" value="applications">{t.applications}</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -1694,13 +1694,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {applications.map((application) => (
                 <Card key={application.id}>
                   <CardContent className="p-6">
-                    <div className="flex justify-between items-start">
+                    <div>
                       <div className="space-y-2">
                         <div className="flex items-center space-x-4">
                           <h3 className="text-lg font-semibold">{application.full_name}</h3>
                           {getStatusBadge(application.status)}
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm text-muted-foreground">
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-2 md:gap-4 text-sm text-muted-foreground">
                           <div className="flex items-center space-x-2">
                             <User className="w-4 h-4" />
                             <span>Age: {application.age}</span>
@@ -1709,9 +1709,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             <Phone className="w-4 h-4" />
                             <span>{application.phone_number}</span>
                           </div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center space-x-2 break-all md:break-normal">
                             <Mail className="w-4 h-4" />
-                            <span>{application.email}</span>
+                            <span className="break-all md:truncate max-w-[140px] md:max-w-[180px]">{application.email}</span>
                           </div>
                           <div className="flex items-center space-x-2">
                             <MapPin className="w-4 h-4" />
@@ -1738,7 +1738,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         )}
                       </div>
                       {application.status === 'pending' && (
-                        <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2 sm:gap-0 mt-4 sm:mt-0">
+                        <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2 sm:gap-0 mt-4">
                           <Button
                             size="sm"
                             onClick={() => handleApprove(application)}
