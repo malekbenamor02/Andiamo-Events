@@ -36,9 +36,9 @@ app.post('/api/send-email', async (req, res) => {
       },
       body: JSON.stringify({
         from: 'onboarding@resend.dev',
-        to,
-        subject,
-        html,
+      to,
+      subject,
+      html,
       }),
     });
     if (response.ok) {

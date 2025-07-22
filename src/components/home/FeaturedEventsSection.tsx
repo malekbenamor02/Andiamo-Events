@@ -28,15 +28,15 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
   const [featuredEvents, setFeaturedEvents] = useState<Event[]>([]);
 
   useEffect(() => {
-    const fetchFeaturedEvents = async () => {
+    const fetchUpcomingEvents = async () => {
       const { data, error } = await supabase
         .from('events')
         .select('*')
-        .eq('featured', true)
+        .eq('event_type', 'upcoming')
         .order('date', { ascending: true });
       if (!error && data) setFeaturedEvents(data);
     };
-    fetchFeaturedEvents();
+    fetchUpcomingEvents();
   }, []);
 
   if (featuredEvents.length === 0) return null;
@@ -54,9 +54,9 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
               : "Ne manquez pas nos prochaines expériences nocturnes"}
           </p>
         </div>
-        <div className={featuredEvents.length < 3 ? 'flex flex-wrap justify-center gap-8' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8'}>
+        <div className="flex gap-6 overflow-x-auto pb-4">
           {featuredEvents.map(event => (
-            <div key={event.id} className="bg-card rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:scale-105 hover:shadow-xl cursor-pointer group w-full max-w-md">
+            <div key={event.id} className="bg-card rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:scale-105 hover:shadow-xl cursor-pointer group w-[320px] min-w-[320px] max-w-xs flex-shrink-0">
               <div className="relative">
                 <img
                   src={event.poster_url || '/api/placeholder/400/300'}
@@ -69,7 +69,7 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                   </span>
                 )}
               </div>
-              <div className="p-6">
+              <div className="p-4">
                 <h3 className="text-xl font-bold text-primary mb-2">{event.name}</h3>
                 <div className="flex items-center text-sm text-muted-foreground space-x-4 mb-2">
                   <div className="flex items-center">
@@ -100,7 +100,7 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                   showMoreText={language === 'en' ? 'Show more' : 'Voir plus'}
                   showLessText={language === 'en' ? 'Show less' : 'Voir moins'}
                 />
-                <div className="flex space-x-2">
+                <div className="flex gap-2">
                   {event.ticket_link && (
                     <a
                       href={event.ticket_link}

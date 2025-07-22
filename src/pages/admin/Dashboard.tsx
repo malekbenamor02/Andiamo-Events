@@ -103,8 +103,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [isSponsorDialogOpen, setIsSponsorDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [sponsorToDelete, setSponsorToDelete] = useState(null);
-  const [sponsorEvents, setSponsorEvents] = useState([]);
   const [allEvents, setAllEvents] = useState([]);
+
+  // --- Team Members State ---
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [editingTeamMember, setEditingTeamMember] = useState(null);
+  const [isTeamDialogOpen, setIsTeamDialogOpen] = useState(false);
+  const [isDeleteTeamDialogOpen, setIsDeleteTeamDialogOpen] = useState(false);
+  const [teamMemberToDelete, setTeamMemberToDelete] = useState(null);
 
   const content = {
     en: {
@@ -136,7 +142,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       rejectionSuccess: "Application rejected successfully!",
       eventSaved: "Event saved successfully!",
       ambassadorSaved: "Ambassador saved successfully!",
-
       emailSent: "Email notification sent",
       error: "An error occurred",
       logout: "Logout",
@@ -166,8 +171,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       ambassadorStatus: "Status",
       ambassadorCommission: "Commission Rate (%)",
       ambassadorPassword: "Password",
-      approvedApplications: "Approved Applications",
-      approvedAmbassadors: "Total Ambassadors",
+      approvedAmbassadors: "Total Ambassadors"
     },
     fr: {
       title: "Tableau de Bord Admin",
@@ -198,7 +202,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       rejectionSuccess: "Candidature rejetée avec succès!",
       eventSaved: "Événement enregistré avec succès!",
       ambassadorSaved: "Ambassadeur enregistré avec succès!",
-
       emailSent: "Email de notification envoyé",
       error: "Une erreur s'est produite",
       logout: "Déconnexion",
@@ -228,8 +231,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       ambassadorStatus: "Statut",
       ambassadorCommission: "Taux de Commission (%)",
       ambassadorPassword: "Mot de Passe",
-      approvedApplications: "Candidatures Approuvées",
-      approvedAmbassadors: "Ambassadeurs Totaux",
+      approvedAmbassadors: "Ambassadeurs Totaux"
     }
   };
 
@@ -532,7 +534,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       fetchAllData();
 
     } catch (error) {
-      console.error('Error saving event:', error);
+      console.error('Error saving event:', error, error?.message, error?.details);
       toast({
         title: t.error,
         description: language === 'en' ? "Failed to save event" : "Échec de l'enregistrement",
@@ -680,21 +682,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const openSponsorDialog = (sponsor = null) => {
     setEditingSponsor(
       sponsor
-        ? { ...sponsor }
+        ? { ...sponsor, id: sponsor.id }
         : { name: '', logo_url: '', description: '', website_url: '', category: 'other', is_global: false }
     );
     setIsSponsorDialogOpen(true);
-    if (sponsor) fetchSponsorEvents(sponsor.id);
-    else setSponsorEvents([]);
   };
   const closeSponsorDialog = () => {
     setEditingSponsor(null);
     setIsSponsorDialogOpen(false);
-    setSponsorEvents([]);
-  };
-  const fetchSponsorEvents = async (sponsorId) => {
-    const { data, error } = await supabase.from('event_sponsors').select('event_id').eq('sponsor_id', sponsorId);
-    if (!error && data) setSponsorEvents(data.map(e => e.event_id));
   };
   const handleSponsorSave = async (e) => {
     e.preventDefault();
@@ -707,32 +702,48 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       description: editingSponsor.description,
       website_url: editingSponsor.website_url,
       category: editingSponsor.category,
-      is_global: editingSponsor.is_global || false,
+      is_global: true, // Always global
     };
     let error;
-    if (isNew) {
-      const { data, error: insertError } = await supabase.from('sponsors').insert(sponsorData).select().single();
-      error = insertError;
-      if (data) sponsorId = data.id;
-    } else {
-      ({ error } = await supabase.from('sponsors').update(sponsorData).eq('id', sponsorId));
-      if (error) {
-        console.error('Sponsor update error:', error);
-        alert('Failed to update sponsor: ' + error.message);
+    try {
+      let affectedRows = 0;
+      if (isNew) {
+        const { data, error: insertError } = await supabase.from('sponsors').insert(sponsorData).select().single();
+        error = insertError;
+        if (data && data.id) {
+          sponsorId = data.id;
+          affectedRows = 1;
+        }
+        console.log('Sponsor Save - insert response:', { data, error });
+      } else {
+        const { data: updateData, error: updateError } = await supabase.from('sponsors').update(sponsorData).eq('id', sponsorId).select();
+        error = updateError;
+        affectedRows = Array.isArray(updateData) ? updateData.length : 0;
+        console.log('Sponsor Save - update response:', { updateData, error });
       }
-    }
-    if (!error && sponsorId) {
-      // Update event links
-      await supabase.from('event_sponsors').delete().eq('sponsor_id', sponsorId);
-      if (!editingSponsor.is_global && sponsorEvents.length > 0) {
-        await Promise.all(sponsorEvents.map(eventId =>
-          supabase.from('event_sponsors').insert({ sponsor_id: sponsorId, event_id: eventId })
-        ));
-      }
-      closeSponsorDialog();
       // Refresh sponsors
-      const { data } = await supabase.from('sponsors').select('*').order('created_at', { ascending: true });
-      setSponsors(data);
+      const { data: sponsorsData } = await supabase.from('sponsors').select('*').order('created_at', { ascending: true });
+      setSponsors(sponsorsData);
+      if ((isNew && affectedRows > 0) || (!isNew && affectedRows > 0)) {
+        closeSponsorDialog();
+        toast({
+          title: 'Sponsor saved',
+          description: 'Sponsor details updated successfully.',
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: 'No sponsor was updated. Please check your data.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err) {
+      console.error('Sponsor save error:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to save sponsor. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -842,6 +853,103 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     console.log('Sponsors in admin dashboard:', sponsors);
   }, [sponsors]);
 
+  // Fetch team members on mount
+  useEffect(() => {
+    const fetchTeamMembers = async () => {
+      const { data, error } = await supabase.from('team_members').select('*').order('created_at', { ascending: true });
+      if (!error && data) setTeamMembers(data);
+    };
+    fetchTeamMembers();
+  }, []);
+
+  // --- Team Members CRUD Handlers ---
+  const openTeamDialog = (member = null) => {
+    setEditingTeamMember(member ? { ...member } : { name: '', role: '', photo_url: '', bio: '', social_url: '' });
+    setIsTeamDialogOpen(true);
+  };
+  const closeTeamDialog = () => {
+    setEditingTeamMember(null);
+    setIsTeamDialogOpen(false);
+  };
+  const openDeleteTeamDialog = (member) => {
+    setTeamMemberToDelete(member);
+    setIsDeleteTeamDialogOpen(true);
+  };
+  const closeDeleteTeamDialog = () => {
+    setTeamMemberToDelete(null);
+    setIsDeleteTeamDialogOpen(false);
+  };
+  const handleTeamSave = async (e) => {
+    e.preventDefault();
+    const isNew = !editingTeamMember?.id;
+    let teamMemberId = editingTeamMember?.id;
+    const teamData = {
+      name: editingTeamMember.name,
+      role: editingTeamMember.role,
+      photo_url: editingTeamMember.photo_url || null,
+      bio: editingTeamMember.bio || null,
+      social_url: editingTeamMember.social_url || null,
+    };
+    let error;
+    try {
+      let affectedRows = 0;
+      if (isNew) {
+        const { data, error: insertError } = await supabase.from('team_members').insert(teamData).select().single();
+        error = insertError;
+        if (data && data.id) {
+          teamMemberId = data.id;
+          affectedRows = 1;
+        }
+      } else {
+        const { data: updateData, error: updateError } = await supabase.from('team_members').update(teamData).eq('id', teamMemberId).select();
+        error = updateError;
+        affectedRows = Array.isArray(updateData) ? updateData.length : 0;
+      }
+      // Refresh team members
+      const { data: teamDataList } = await supabase.from('team_members').select('*').order('created_at', { ascending: true });
+      setTeamMembers(teamDataList);
+      if ((isNew && affectedRows > 0) || (!isNew && affectedRows > 0)) {
+        closeTeamDialog();
+        toast({
+          title: 'Team member saved',
+          description: 'Team member details updated successfully.',
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: 'No team member was updated. Please check your data.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err) {
+      console.error('Team member save error:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to save team member. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+  const handleDeleteTeamMember = async () => {
+    if (!teamMemberToDelete) return;
+    try {
+      await supabase.from('team_members').delete().eq('id', teamMemberToDelete.id);
+      setTeamMembers(teamMembers.filter(m => m.id !== teamMemberToDelete.id));
+      closeDeleteTeamDialog();
+      toast({
+        title: 'Team member deleted',
+        description: 'Team member removed successfully.',
+      });
+    } catch (err) {
+      console.error('Delete team member error:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete team member. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="pt-16 min-h-screen bg-background">
@@ -888,6 +996,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <TabsTrigger className="px-4 min-w-[110px]" value="ambassadors">{t.ambassadors}</TabsTrigger>
             <TabsTrigger className="px-4 min-w-[110px]" value="applications">{t.applications}</TabsTrigger>
             <TabsTrigger className="px-4 min-w-[110px]" value="sponsors">Sponsors</TabsTrigger>
+            <TabsTrigger className="px-4 min-w-[110px]" value="team">Team</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -1025,6 +1134,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           id="eventCity"
                           value={editingEvent?.city || ''}
                           onChange={(e) => setEditingEvent(prev => ({ ...prev, city: e.target.value }))}
+                          required
                         />
                       </div>
                     </div>
@@ -1888,7 +1998,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <div className="py-8">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-gradient-neon">Sponsors</h2>
-                <Button variant="gradient" onClick={() => openSponsorDialog()}>Add Sponsor</Button>
+                <Button variant="default" onClick={() => openSponsorDialog()}>Add Sponsor</Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {sponsors.map((sponsor) => (
@@ -1897,8 +2007,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     <h3 className="font-semibold mb-1">{sponsor.name}</h3>
                     <p className="text-xs text-muted-foreground mb-2">{sponsor.description || sponsor.category}</p>
                     <div className="flex gap-2 mb-2">
-                      {sponsor.is_global && <span className="badge bg-primary text-white">Global</span>}
-                      {/* TODO: Show event names for event-specific sponsors */}
+                      <span className="badge bg-primary text-white">Global</span>
                     </div>
                     <div className="flex gap-2 mt-2">
                       <Button size="sm" variant="outline" onClick={() => openSponsorDialog(sponsor)}>Edit</Button>
@@ -1910,82 +2019,106 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             </div>
             {/* Add/Edit Sponsor Dialog */}
             <Dialog open={isSponsorDialogOpen} onOpenChange={setIsSponsorDialogOpen}>
-              <DialogContent>
+              <DialogContent aria-describedby="sponsor-dialog-desc" className="max-w-3xl !w-full !p-6 md:overflow-y-auto md:max-h-[80vh]">
                 <DialogHeader>
                   <DialogTitle>{editingSponsor?.id ? 'Edit Sponsor' : 'Add Sponsor'}</DialogTitle>
+                  <div id="sponsor-dialog-desc" className="text-muted-foreground text-sm mt-1 mb-2">
+                    {editingSponsor?.id ? 'Update sponsor details below.' : 'Fill in the sponsor details below.'}
+                  </div>
                 </DialogHeader>
-                <form onSubmit={handleSponsorSave} className="space-y-4">
-                  <Input
-                    placeholder="Sponsor Name"
-                    value={editingSponsor?.name || ''}
-                    onChange={e => setEditingSponsor(prev => ({ ...prev, name: e.target.value }))}
-                    required
-                  />
-                  <FileUpload
-                    label="Sponsor Logo"
-                    currentUrl={editingSponsor?.logo_url || ''}
-                    onFileSelect={async (file) => {
-                      if (file) {
-                        const result = await uploadImage(file, 'sponsor-logos');
-                        if (!result.error) {
-                          setEditingSponsor(prev => ({ ...prev, logo_url: result.url }));
-                        }
-                      }
-                    }}
-                    onUrlChange={url => setEditingSponsor(prev => ({ ...prev, logo_url: url }))}
-                  />
-                  <Input
-                    placeholder="Description"
-                    value={editingSponsor?.description || ''}
-                    onChange={e => setEditingSponsor(prev => ({ ...prev, description: e.target.value }))}
-                  />
-                  <Input
-                    placeholder="Website URL"
-                    value={editingSponsor?.website_url || ''}
-                    onChange={e => setEditingSponsor(prev => ({ ...prev, website_url: e.target.value }))}
-                  />
-                  <Select
-                    value={editingSponsor?.category || 'other'}
-                    onValueChange={value => setEditingSponsor(prev => ({ ...prev, category: value }))}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="venue">Venue</SelectItem>
-                      <SelectItem value="brand">Brand</SelectItem>
-                      <SelectItem value="tech">Tech</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={!!editingSponsor?.is_global}
-                      onChange={e => setEditingSponsor(prev => ({ ...prev, is_global: e.target.checked }))}
-                    />
-                    Global Sponsor
-                  </label>
-                  {!editingSponsor?.is_global && (
+                <form onSubmit={handleSponsorSave} className="grid grid-cols-2 gap-6 items-start">
+                  <div className="space-y-4">
                     <div>
-                      <label className="block mb-1">Linked Events</label>
+                      <Label htmlFor="sponsorName">Sponsor Name<span className="text-red-500">*</span></Label>
+                      <Input
+                        id="sponsorName"
+                        placeholder="e.g. Coca-Cola"
+                        value={editingSponsor?.name || ''}
+                        onChange={e => setEditingSponsor(prev => ({ ...prev, name: e.target.value }))}
+                        required
+                        aria-required="true"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="sponsorLogo">Sponsor Logo</Label>
+                      <FileUpload
+                        label="Upload Logo"
+                        currentUrl={editingSponsor?.logo_url || ''}
+                        onFileSelect={async (file) => {
+                          if (file) {
+                            const result = await uploadImage(file, 'sponsor-logos');
+                            if (!result.error) {
+                              setEditingSponsor(prev => ({ ...prev, logo_url: result.url }));
+                            }
+                          }
+                        }}
+                        onUrlChange={url => setEditingSponsor(prev => ({ ...prev, logo_url: url }))}
+                      />
+                      {editingSponsor?.logo_url && (
+                        <img src={editingSponsor.logo_url} alt="Logo preview" className="w-24 h-16 object-contain mt-2 rounded border" />
+                      )}
+                      <div className="text-xs text-muted-foreground mt-1">Recommended: Transparent PNG, max 1MB.</div>
+                    </div>
+                    <div>
+                      <Label htmlFor="sponsorDescription">Description</Label>
+                      <Input
+                        id="sponsorDescription"
+                        placeholder="Short description or tagline"
+                        value={editingSponsor?.description || ''}
+                        onChange={e => setEditingSponsor(prev => ({ ...prev, description: e.target.value }))}
+                        maxLength={100}
+                      />
+                      <div className="text-xs text-muted-foreground mt-1">Max 100 characters.</div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="sponsorWebsite">Website URL</Label>
+                      <Input
+                        id="sponsorWebsite"
+                        placeholder="https://example.com"
+                        value={editingSponsor?.website_url || ''}
+                        onChange={e => setEditingSponsor(prev => ({ ...prev, website_url: e.target.value }))}
+                        type="url"
+                        pattern="https?://.+"
+                      />
+                      <div className="text-xs text-muted-foreground mt-1">Must start with http:// or https://</div>
+                    </div>
+                    <div>
+                      <Label htmlFor="sponsorCategory">Category</Label>
                       <Select
-                        multiple
-                        value={sponsorEvents}
-                        onValueChange={setSponsorEvents}
+                        value={editingSponsor?.category || 'other'}
+                        onValueChange={value => setEditingSponsor(prev => ({ ...prev, category: value }))}
                       >
-                        <SelectTrigger><SelectValue placeholder="Select events" /></SelectTrigger>
+                        <SelectTrigger id="sponsorCategory"><SelectValue placeholder="Category" /></SelectTrigger>
                         <SelectContent>
-                          {allEvents.map(event => (
-                            <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
-                          ))}
+                          <SelectItem value="venue">Venue</SelectItem>
+                          <SelectItem value="brand">Brand</SelectItem>
+                          <SelectItem value="tech">Tech</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                  )}
-                  <div className="flex justify-end gap-2">
+                    <div className="flex items-center gap-2 mt-2">
+                      <input
+                        type="checkbox"
+                        id="sponsorGlobal"
+                        checked={true}
+                        disabled
+                      />
+                      <Label htmlFor="sponsorGlobal">Global Sponsor</Label>
+                    </div>
+                  </div>
+                  <div className="col-span-2 flex justify-end gap-2 mt-2">
                     <DialogClose asChild>
                       <Button type="button" variant="outline" onClick={closeSponsorDialog}>Cancel</Button>
                     </DialogClose>
-                    <Button type="submit" variant="gradient">Save</Button>
+                    <Button type="submit" variant="default" disabled={uploadingImage}>
+                      {uploadingImage ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      ) : null}
+                      Save
+                    </Button>
                   </div>
                 </form>
               </DialogContent>
@@ -2002,6 +2135,136 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     <Button type="button" variant="outline" onClick={closeDeleteDialog}>Cancel</Button>
                   </DialogClose>
                   <Button type="button" variant="destructive" onClick={handleDeleteSponsor}>Delete</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          {/* Team Tab */}
+          <TabsContent value="team">
+            <div className="py-8">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gradient-neon">Team Members</h2>
+                <Button variant="default" onClick={() => openTeamDialog()}>Add Team Member</Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {teamMembers.map((member) => (
+                  <div key={member.id} className="rounded-xl bg-card p-6 shadow-lg flex flex-col items-center justify-center">
+                    {member.photo_url && <img src={member.photo_url} alt={member.name} className="w-24 h-24 object-cover mb-3 rounded-full" />}
+                    <h3 className="font-semibold mb-1">{member.name}</h3>
+                    <p className="text-xs text-muted-foreground mb-1">{member.role}</p>
+                    {member.bio && <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{member.bio}</p>}
+                    {member.social_url && (
+                      <a href={member.social_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs mb-2">Social</a>
+                    )}
+                    <div className="flex gap-2 mt-2">
+                      <Button size="sm" variant="outline" onClick={() => openTeamDialog(member)}>Edit</Button>
+                      <Button size="sm" variant="destructive" onClick={() => openDeleteTeamDialog(member)}>Delete</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Add/Edit Team Member Dialog */}
+            <Dialog open={isTeamDialogOpen} onOpenChange={setIsTeamDialogOpen}>
+              <DialogContent aria-describedby="team-dialog-desc" className="max-w-3xl !w-full !p-6 md:overflow-y-auto md:max-h-[80vh]">
+                <DialogHeader>
+                  <DialogTitle>{editingTeamMember?.id ? 'Edit Team Member' : 'Add Team Member'}</DialogTitle>
+                  <div id="team-dialog-desc" className="text-muted-foreground text-sm mt-1 mb-2">
+                    {editingTeamMember?.id ? 'Update team member details below.' : 'Fill in the team member details below.'}
+                  </div>
+                </DialogHeader>
+                <form onSubmit={handleTeamSave} className="grid grid-cols-2 gap-6 items-start">
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="teamName">Name<span className="text-red-500">*</span></Label>
+                      <Input
+                        id="teamName"
+                        placeholder="e.g. John Doe"
+                        value={editingTeamMember?.name || ''}
+                        onChange={e => setEditingTeamMember(prev => ({ ...prev, name: e.target.value }))}
+                        required
+                        aria-required="true"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="teamRole">Role<span className="text-red-500">*</span></Label>
+                      <Input
+                        id="teamRole"
+                        placeholder="e.g. Founder"
+                        value={editingTeamMember?.role || ''}
+                        onChange={e => setEditingTeamMember(prev => ({ ...prev, role: e.target.value }))}
+                        required
+                        aria-required="true"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="teamPhoto">Photo</Label>
+                      <FileUpload
+                        label="Upload Photo"
+                        currentUrl={editingTeamMember?.photo_url || ''}
+                        onFileSelect={async (file) => {
+                          if (file) {
+                            const result = await uploadImage(file, 'team-photos');
+                            if (!result.error) {
+                              setEditingTeamMember(prev => ({ ...prev, photo_url: result.url }));
+                            }
+                          }
+                        }}
+                        onUrlChange={url => setEditingTeamMember(prev => ({ ...prev, photo_url: url }))}
+                      />
+                      {editingTeamMember?.photo_url && (
+                        <img src={editingTeamMember.photo_url} alt="Photo preview" className="w-20 h-20 object-cover mt-2 rounded-full border" />
+                      )}
+                      <div className="text-xs text-muted-foreground mt-1">Recommended: Square, max 1MB.</div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="teamBio">Bio</Label>
+                      <Textarea
+                        id="teamBio"
+                        placeholder="Short bio or description"
+                        value={editingTeamMember?.bio || ''}
+                        onChange={e => setEditingTeamMember(prev => ({ ...prev, bio: e.target.value }))}
+                        maxLength={200}
+                      />
+                      <div className="text-xs text-muted-foreground mt-1">Max 200 characters.</div>
+                    </div>
+                    <div>
+                      <Label htmlFor="teamSocial">Social URL</Label>
+                      <Input
+                        id="teamSocial"
+                        placeholder="https://instagram.com/username"
+                        value={editingTeamMember?.social_url || ''}
+                        onChange={e => setEditingTeamMember(prev => ({ ...prev, social_url: e.target.value }))}
+                        type="url"
+                        pattern="https?://.+"
+                      />
+                      <div className="text-xs text-muted-foreground mt-1">Must start with http:// or https://</div>
+                    </div>
+                  </div>
+                  <div className="col-span-2 flex justify-end gap-2 mt-2">
+                    <DialogClose asChild>
+                      <Button type="button" variant="outline" onClick={closeTeamDialog}>Cancel</Button>
+                    </DialogClose>
+                    <Button type="submit" variant="default">Save</Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={isDeleteTeamDialogOpen} onOpenChange={setIsDeleteTeamDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Delete Team Member</DialogTitle>
+                </DialogHeader>
+                <p>Are you sure you want to delete this team member?</p>
+                <div className="flex justify-end gap-2 mt-4">
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline" onClick={closeDeleteTeamDialog}>Cancel</Button>
+                  </DialogClose>
+                  <Button type="button" variant="destructive" onClick={handleDeleteTeamMember}>Delete</Button>
                 </div>
               </DialogContent>
             </Dialog>

@@ -230,57 +230,50 @@ const Events = ({ language }: EventsProps) => {
               <p className="text-2xl text-muted-foreground">{content[language].noUpcomingEvents}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 justify-items-center">
               {upcomingEvents.map((event) => (
                 <Card 
                   key={event.id} 
-                  className="glass hover-lift overflow-hidden cursor-pointer"
+                  className="glass hover-lift overflow-hidden cursor-pointer w-full max-w-md"
                   onClick={() => openModal(event)}
                 >
-                    <div className="relative">
-                      <img
-                        src={event.poster_url || "/api/placeholder/400/300"}
-                        alt={event.name}
-                        className="w-full h-48 object-cover"
-                      />
-                      
-                      {event.featured && (
-                        <Badge className="absolute top-4 left-4 bg-gradient-primary">
+                  <div className="relative">
+                    <img
+                      src={event.poster_url || "/api/placeholder/400/300"}
+                      alt={event.name}
+                      className="w-full h-48 object-cover"
+                    />
+                    {event.featured && (
+                      <Badge className="absolute top-4 left-4 bg-gradient-primary">
                         {content[language].featured}
                       </Badge>
                     )}
-                      
-                    {/* Click overlay */}
-                      <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center">
-                        <div className="opacity-0 hover:opacity-100 transition-opacity text-white text-center">
+                    <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center">
+                      <div className="opacity-0 hover:opacity-100 transition-opacity text-white text-center">
                         <p className="text-sm font-semibold">{content[language].viewDetails}</p>
                       </div>
                     </div>
                   </div>
-                  
                   <CardHeader className="p-4">
                     <h3 className="text-xl font-bold text-primary line-clamp-2">{event.name}</h3>
-                    
                     <div className="space-y-2 text-sm text-muted-foreground">
                       <div className="flex items-center">
                         <Calendar className="w-4 h-4 mr-2" />
                         <span>{formatDate(event.date)}</span>
                       </div>
-                      
                       <div className="flex items-center">
                         <MapPin className="w-4 h-4 mr-2" />
                         <span>{event.venue}, {event.city}</span>
-                    </div>
-                      
-                    {(event.standard_price || event.vip_price) && (
+                      </div>
+                      {(event.standard_price || event.vip_price) && (
                         <div className="flex items-center justify-between">
                           <span className="font-semibold text-primary">
                             {event.standard_price && formatPrice(event.standard_price)}
                             {event.standard_price && event.vip_price && ' - '}
                             {event.vip_price && formatPrice(event.vip_price)}
                           </span>
-                      </div>
-                    )}
+                        </div>
+                      )}
                     </div>
                   </CardHeader>
                 </Card>
@@ -300,47 +293,52 @@ const Events = ({ language }: EventsProps) => {
               </h2>
             </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {galleryEvents.map((event) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-8 justify-items-center">
+                  {galleryEvents.map((event) => (
                     <Card 
-                  key={event.id} 
-                      className="glass overflow-hidden cursor-pointer hover-lift group"
-                  onClick={() => openModal(event)}
+                      key={event.id} 
+                      className="glass overflow-hidden cursor-pointer hover-lift group w-full max-w-md"
+                      onClick={() => openModal(event)}
                     >
-                      <div className="relative aspect-square">
+                      <div className="relative">
                         <img
-                      src={event.poster_url || "/api/placeholder/400/400"}
-                      alt={event.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          src={event.poster_url || "/api/placeholder/400/400"}
+                          alt={event.name}
+                          className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
                         />
-                    
-                    {/* Media count badge */}
-                    {(event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0) > 0 && (
-                      <Badge className="absolute top-2 right-2 bg-purple-500">
-                        {(event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0)} Media
-                      </Badge>
-                    )}
-                    
-                    {/* Click overlay */}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-center">
-                        <p className="text-sm font-semibold">{content[language].viewDetails}</p>
+                        {(event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0) > 0 && (
+                          <Badge className="absolute top-4 left-4 bg-purple-500">
+                            {(event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0)} Media
+                          </Badge>
+                        )}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-center">
+                            <p className="text-sm font-semibold">{content[language].viewDetails}</p>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  
                       <CardContent className="p-4">
-                    <h3 className="font-semibold text-sm line-clamp-2 mb-2">
-                      {event.name}
+                        <h3 className="font-semibold text-sm line-clamp-2 mb-2">
+                          {event.name}
                         </h3>
-                    <div className="flex items-center text-xs text-muted-foreground">
-                      <Calendar className="w-3 h-3 mr-1" />
-                      {formatDate(event.date)}
-                    </div>
-                    <div className="flex items-center text-xs text-muted-foreground mt-1">
-                      <MapPin className="w-3 h-3 mr-1" />
-                      {event.city}
-                    </div>
+                        <div className="flex items-center text-xs text-muted-foreground">
+                          <Calendar className="w-3 h-3 mr-1" />
+                          {formatDate(event.date)}
+                        </div>
+                        <div className="flex items-center text-xs text-muted-foreground mt-1">
+                          <MapPin className="w-3 h-3 mr-1" />
+                          {event.city}
+                        </div>
+                        {(event.standard_price || event.vip_price) && (
+                          <div className="flex items-center space-x-2 text-xs text-muted-foreground mt-1">
+                            {event.standard_price && (
+                              <span>Standard: {event.standard_price} TND</span>
+                            )}
+                            {event.vip_price && (
+                              <span>VIP: {event.vip_price} TND</span>
+                            )}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   ))}

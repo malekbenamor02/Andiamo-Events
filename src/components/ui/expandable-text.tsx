@@ -17,13 +17,14 @@ export function ExpandableText({
   showMoreText = 'Show more',
   showLessText = 'Show less'
 }: ExpandableTextProps) {
+  const safeText = text || '';
   const [isExpanded, setIsExpanded] = useState(false);
   
-  const shouldTruncate = text.length > maxLength;
-  const displayText = isExpanded ? text : text.slice(0, maxLength) + (shouldTruncate ? '...' : '');
+  const shouldTruncate = safeText.length > maxLength;
+  const displayText = isExpanded ? safeText : safeText.slice(0, maxLength) + (shouldTruncate ? '...' : '');
 
   if (!shouldTruncate) {
-    return <p className={className}>{text}</p>;
+    return <p className={className}>{safeText}</p>;
   }
 
   return (
