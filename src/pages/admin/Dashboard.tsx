@@ -2174,7 +2174,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     {editingTeamMember?.id ? 'Update team member details below.' : 'Fill in the team member details below.'}
                   </div>
                 </DialogHeader>
-                <form onSubmit={handleTeamSave} className="grid grid-cols-2 gap-6 items-start">
+                <form onSubmit={handleTeamSave} className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                   <div className="space-y-4">
                     <div>
                       <Label htmlFor="teamName">Name<span className="text-red-500">*</span></Label>
