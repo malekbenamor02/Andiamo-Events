@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, MessageCircle } from "lucide-react";
+import { Menu, X, MessageCircle, Home, Calendar, Info, Users, Mail, Instagram } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -78,9 +78,8 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
   // Always use default navigation to ensure no gallery links appear
   const navigation = defaultNavigation[language];
 
-  const whatsappClick = () => {
-    const phone = contactInfo?.phone || "216XXXXXXXX";
-    window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, "_blank");
+  const instagramClick = () => {
+    window.open("https://www.instagram.com/andiamo.events/", "_blank");
   };
 
   const isActive = (path: string) => location.pathname === path;
@@ -104,7 +103,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
             aria-label="Go to home"
           >
             <div className="text-2xl font-orbitron font-bold text-gradient-neon">
-              ANDIAMO
+              ANDIAMO EVENTS
             </div>
           </button>
 
@@ -136,11 +135,11 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
               {language.toUpperCase()}
             </Button>
             <Button
-              onClick={whatsappClick}
+              onClick={instagramClick}
               className="btn-gradient"
             >
-              <MessageCircle className="w-4 h-4 mr-2" />
-              WhatsApp
+              <Instagram className="w-4 h-4 mr-2" />
+              Instagram
             </Button>
           </div>
 
@@ -160,20 +159,29 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
         {isOpen && (
           <div className="md:hidden absolute top-16 left-0 right-0 glass border-b border-border/20 p-4">
             <div className="flex flex-col space-y-4">
-              {navigation.map((item) => (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  onClick={() => setIsOpen(false)}
-                  className={`text-sm font-medium transition-colors hover:text-primary ${
-                    isActive(item.href) 
-                      ? "text-primary" 
-                      : "text-foreground/80"
-                  }`}
-                >
-                  {item.name}
-                </Link>
-              ))}
+              {navigation.map((item) => {
+                let Icon = null;
+                if (item.href === "/") Icon = Home;
+                else if (item.href === "/events") Icon = Calendar;
+                else if (item.href === "/about") Icon = Info;
+                else if (item.href === "/ambassador") Icon = Users;
+                else if (item.href === "/contact") Icon = Mail;
+                return (
+                  <Link
+                    key={item.href}
+                    to={item.href}
+                    onClick={() => setIsOpen(false)}
+                    className={`flex items-center gap-2 text-sm font-medium transition-colors hover:text-primary ${
+                      isActive(item.href) 
+                        ? "text-primary" 
+                        : "text-foreground/80"
+                    }`}
+                  >
+                    {Icon && <Icon className="w-5 h-5" />}
+                    {item.name}
+                  </Link>
+                );
+              })}
               <div className="flex items-center space-x-4 pt-4 border-t border-border/20">
                 <Button
                   variant="ghost"
@@ -184,11 +192,11 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
                   {language.toUpperCase()}
                 </Button>
                 <Button
-                  onClick={whatsappClick}
+                  onClick={instagramClick}
                   className="btn-gradient flex-1"
                 >
-                  <MessageCircle className="w-4 h-4 mr-2" />
-                  WhatsApp
+                  <Instagram className="w-4 h-4 mr-2" />
+                  Instagram
                 </Button>
               </div>
             </div>

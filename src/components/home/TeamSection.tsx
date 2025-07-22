@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { Instagram } from 'lucide-react';
 
 interface TeamSectionProps {
   language: 'en' | 'fr';
@@ -32,9 +33,11 @@ const TeamSection = ({ language }: TeamSectionProps) => {
               <img src={member.photo_url || '/placeholder.svg'} alt={member.name} className="w-28 h-28 rounded-full object-cover mb-4 border-4 border-primary/30 transition-all duration-300 group-hover:border-primary group-hover:scale-110" />
               <h3 className="font-bold text-xl text-primary transition-colors duration-300 hover:text-primary/80">{member.name}</h3>
               <p className="text-muted-foreground mb-2 transition-colors duration-300 group-hover:text-foreground/70">{member.role}</p>
-              {member.bio && <p className="text-xs text-muted-foreground mb-2">{member.bio}</p>}
+              {member.bio && <p className="text-xs text-muted-foreground mb-2 text-center">{member.bio}</p>}
               {member.social_url && (
-                <a href={member.social_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs">Social</a>
+                <a href={member.social_url} target="_blank" rel="noopener noreferrer" className="flex justify-center items-center text-primary hover:text-pink-500 mt-1">
+                  <Instagram className="w-5 h-5" />
+                </a>
               )}
             </div>
           ))}

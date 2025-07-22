@@ -45,7 +45,7 @@ const SponsorsSection = ({ language }: SponsorsSectionProps) => {
           </p>
         </div>
         <div className="relative overflow-x-hidden">
-          <div className="flex items-center gap-8 animate-marquee whitespace-nowrap will-change-transform">
+          <div className="flex items-center gap-4 md:gap-8 animate-marquee whitespace-nowrap will-change-transform">
             {sponsors.map((sponsor, idx) => (
               <div
                 key={sponsor.id + '-' + idx}
@@ -55,7 +55,7 @@ const SponsorsSection = ({ language }: SponsorsSectionProps) => {
                   <img
                     src={sponsor.logo_url}
                     alt={sponsor.name}
-                    className="w-24 h-24 object-contain mb-2 rounded-full border"
+                    className="w-24 h-24 object-contain mb-2 rounded-lg border"
                   />
                 )}
                 <h3 className="font-semibold text-center mb-1">{sponsor.name}</h3>
