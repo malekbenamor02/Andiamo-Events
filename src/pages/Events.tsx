@@ -265,13 +265,14 @@ const Events = ({ language }: EventsProps) => {
                         <MapPin className="w-4 h-4 mr-2" />
                         <span>{event.venue}, {event.city}</span>
                       </div>
-                      {(event.standard_price || event.vip_price) && (
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-primary">
-                            {event.standard_price && formatPrice(event.standard_price)}
-                            {event.standard_price && event.vip_price && ' - '}
-                            {event.vip_price && formatPrice(event.vip_price)}
-                          </span>
+                      {(event.standard_price || (event.vip_price && Number(event.vip_price) > 0)) && (
+                        <div className="flex items-center text-sm text-muted-foreground mb-2 space-x-4">
+                          {event.standard_price && (
+                            <span>Standard: {event.standard_price} TND</span>
+                          )}
+                          {event.vip_price && Number(event.vip_price) > 0 && (
+                            <span>VIP: {event.vip_price} TND</span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -329,12 +330,12 @@ const Events = ({ language }: EventsProps) => {
                           <MapPin className="w-3 h-3 mr-1" />
                           {event.city}
                         </div>
-                        {(event.standard_price || event.vip_price) && (
+                        {(event.standard_price || (event.vip_price && Number(event.vip_price) > 0)) && (
                           <div className="flex items-center space-x-2 text-xs text-muted-foreground mt-1">
                             {event.standard_price && (
                               <span>Standard: {event.standard_price} TND</span>
                             )}
-                            {event.vip_price && (
+                            {event.vip_price && Number(event.vip_price) > 0 && (
                               <span>VIP: {event.vip_price} TND</span>
                             )}
                           </div>

@@ -1318,7 +1318,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           step="0.01"
                           min="0"
                           value={editingEvent?.standard_price || ''}
-                          onChange={(e) => setEditingEvent(prev => ({ ...prev, standard_price: parseFloat(e.target.value) || 0 }))}
+                          onChange={(e) => setEditingEvent(prev => ({ ...prev, standard_price: e.target.value === '' ? undefined : parseFloat(e.target.value) }))}
                         />
                       </div>
                       <div>
@@ -1329,7 +1329,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           step="0.01"
                           min="0"
                           value={editingEvent?.vip_price || ''}
-                          onChange={(e) => setEditingEvent(prev => ({ ...prev, vip_price: parseFloat(e.target.value) || 0 }))}
+                          onChange={(e) => setEditingEvent(prev => ({ ...prev, vip_price: e.target.value === '' ? undefined : parseFloat(e.target.value) }))}
                         />
                       </div>
                     </div>
@@ -1610,7 +1610,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     step="0.01"
                                     min="0"
                                     value={editingEvent?.standard_price || ''}
-                                    onChange={(e) => setEditingEvent(prev => ({ ...prev, standard_price: parseFloat(e.target.value) || 0 }))}
+                                    onChange={(e) => setEditingEvent(prev => ({ ...prev, standard_price: e.target.value === '' ? undefined : parseFloat(e.target.value) }))}
                                   />
                                 </div>
                                 <div>
@@ -1621,7 +1621,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     step="0.01"
                                     min="0"
                                     value={editingEvent?.vip_price || ''}
-                                    onChange={(e) => setEditingEvent(prev => ({ ...prev, vip_price: parseFloat(e.target.value) || 0 }))}
+                                    onChange={(e) => setEditingEvent(prev => ({ ...prev, vip_price: e.target.value === '' ? undefined : parseFloat(e.target.value) }))}
                                   />
                                 </div>
                               </div>

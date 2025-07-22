@@ -83,16 +83,12 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                   <MapPin className="w-4 h-4 mr-1" />
                   {event.venue}, {event.city}
                 </div>
-                {(event.standard_price || event.vip_price) && (
-                  <div className="flex items-center text-sm text-muted-foreground mb-2 space-x-4">
-                    {event.standard_price && (
-                      <span>Standard: {event.standard_price} TND</span>
-                    )}
-                    {event.vip_price && (
-                      <span>VIP: {event.vip_price} TND</span>
-                    )}
-                  </div>
-                )}
+                <div className="flex flex-col text-sm text-muted-foreground mb-2">
+                  <span>Standard: {event.standard_price} TND</span>
+                  {event.vip_price && Number(event.vip_price) > 0 && (
+                    <span>VIP: {event.vip_price} TND</span>
+                  )}
+                </div>
                 <ExpandableText
                   text={event.description}
                   maxLength={100}

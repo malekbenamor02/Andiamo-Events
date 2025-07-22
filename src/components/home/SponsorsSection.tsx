@@ -55,7 +55,7 @@ const SponsorsSection = ({ language }: SponsorsSectionProps) => {
                   <img
                     src={sponsor.logo_url}
                     alt={sponsor.name}
-                    className="w-32 h-20 object-contain mb-2 rounded-full"
+                    className="w-24 h-24 object-contain mb-2 rounded-full border"
                   />
                 )}
                 <h3 className="font-semibold text-center mb-1">{sponsor.name}</h3>
@@ -94,7 +94,7 @@ const SponsorsSection = ({ language }: SponsorsSectionProps) => {
           100% { transform: translateX(-100%); }
         }
         .animate-marquee {
-          animation: marquee 60s linear infinite;
+          animation: marquee 10s linear infinite;
         }
       `}</style>
     </section>
