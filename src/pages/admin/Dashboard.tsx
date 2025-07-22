@@ -1002,7 +1002,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 w-full px-2">
               <Card>
                 <CardContent className="p-6">
                   <div className="flex items-center space-x-2">
@@ -1370,7 +1370,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </Dialog>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full px-2">
               {events.map((event) => (
                 <Card key={event.id}>
                   <CardHeader>
@@ -1837,7 +1837,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </Dialog>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full px-2">
               {ambassadors.map((ambassador) => (
                 <Card key={ambassador.id}>
                   <CardHeader>
@@ -2147,7 +2147,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <h2 className="text-2xl font-bold text-gradient-neon">Team Members</h2>
                 <Button variant="default" onClick={() => openTeamDialog()}>Add Team Member</Button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full px-2">
                 {teamMembers.map((member) => (
                   <div key={member.id} className="rounded-xl bg-card p-6 shadow-lg flex flex-col items-center justify-center">
                     {member.photo_url && <img src={member.photo_url} alt={member.name} className="w-24 h-24 object-cover mb-3 rounded-full" />}
@@ -2167,7 +2167,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             </div>
             {/* Add/Edit Team Member Dialog */}
             <Dialog open={isTeamDialogOpen} onOpenChange={setIsTeamDialogOpen}>
-              <DialogContent aria-describedby="team-dialog-desc" className="max-w-3xl !w-full !p-6 md:overflow-y-auto md:max-h-[80vh]">
+              <DialogContent aria-describedby="team-dialog-desc" className="max-w-3xl !w-full !p-6 overflow-y-auto max-h-[80vh]">
                 <DialogHeader>
                   <DialogTitle>{editingTeamMember?.id ? 'Edit Team Member' : 'Add Team Member'}</DialogTitle>
                   <div id="team-dialog-desc" className="text-muted-foreground text-sm mt-1 mb-2">
