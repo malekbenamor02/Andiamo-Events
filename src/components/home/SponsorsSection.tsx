@@ -22,6 +22,7 @@ const SponsorsSection = ({ language }: SponsorsSectionProps) => {
       const { data, error } = await supabase
         .from('sponsors')
         .select('*')
+        .eq('is_global', true)
         .order('created_at', { ascending: true });
       if (!error && data) setSponsors(data);
     };

@@ -6,6 +6,7 @@ import hero1 from "@/assets/1.jpg";
 import hero2 from "@/assets/2.jpg";
 import hero3 from "@/assets/3.jpg";
 import { useNavigate } from "react-router-dom";
+import bcrypt from 'bcryptjs';
 
 interface HeroSectionProps {
   language: 'en' | 'fr';

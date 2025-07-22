@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import bcrypt from 'bcryptjs';
 
 const ChangePassword = ({ language }) => {
   const [ambassador, setAmbassador] = useState(null);
@@ -55,10 +56,13 @@ const ChangePassword = ({ language }) => {
     }
     setIsLoading(true);
 
+    // Hash the new password before saving
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const { error } = await supabase
       .from('ambassadors')
       .update({ 
-        password: password,
+        password: hashedPassword,
         requires_password_change: false 
       })
       .eq('id', ambassador.id);

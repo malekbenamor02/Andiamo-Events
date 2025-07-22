@@ -20,6 +20,7 @@ import {
   Instagram
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import bcrypt from 'bcryptjs';
 
 
 interface AdminDashboardProps {
@@ -96,6 +97,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const navigate = useNavigate();
   const [ambassadorSales, setAmbassadorSales] = useState<Record<string, { standard: number; vip: number }>>({});
   const [ambassadorToDelete, setAmbassadorToDelete] = useState<Ambassador | null>(null);
+
+  const [sponsors, setSponsors] = useState([]);
+  const [editingSponsor, setEditingSponsor] = useState(null);
+  const [isSponsorDialogOpen, setIsSponsorDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [sponsorToDelete, setSponsorToDelete] = useState(null);
+  const [sponsorEvents, setSponsorEvents] = useState([]);
+  const [allEvents, setAllEvents] = useState([]);
 
   const content = {
     en: {
@@ -318,6 +327,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const username = application.phone_number; // Use phone as username
       const password = generatePassword();
 
+      // Hash the password before saving
+      const hashedPassword = await bcrypt.hash(password, 10);
+
       // Check if ambassador already exists
       const { data: existingAmbassador } = await supabase
         .from('ambassadors')
@@ -333,7 +345,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             full_name: application.full_name,
             email: application.email,
             city: application.city,
-            password: password, // Optionally update password
+            password: hashedPassword, // Store hashed password
             status: 'approved',
             commission_rate: 10,
             updated_at: new Date().toISOString()
@@ -349,7 +361,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             phone: application.phone_number,
             email: application.email,
             city: application.city,
-            password: password,
+            password: hashedPassword, // Store hashed password
             status: 'approved',
             commission_rate: 10,
             requires_password_change: true,
@@ -366,14 +378,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (updateError) throw updateError;
 
-      // Send approval email with credentials
+      // Send approval email with credentials (plain password)
       const emailConfig = createApprovalEmail(
         {
           fullName: application.full_name,
           phone: application.phone_number,
           email: application.email,
           city: application.city,
-          password: password
+          password: password // Send plain password
         },
         `${window.location.origin}/ambassador/auth`
       );
@@ -664,6 +676,82 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setAmbassadorToDelete(null);
   };
 
+  // Add/Edit Sponsor Dialog logic
+  const openSponsorDialog = (sponsor = null) => {
+    setEditingSponsor(
+      sponsor
+        ? { ...sponsor }
+        : { name: '', logo_url: '', description: '', website_url: '', category: 'other', is_global: false }
+    );
+    setIsSponsorDialogOpen(true);
+    if (sponsor) fetchSponsorEvents(sponsor.id);
+    else setSponsorEvents([]);
+  };
+  const closeSponsorDialog = () => {
+    setEditingSponsor(null);
+    setIsSponsorDialogOpen(false);
+    setSponsorEvents([]);
+  };
+  const fetchSponsorEvents = async (sponsorId) => {
+    const { data, error } = await supabase.from('event_sponsors').select('event_id').eq('sponsor_id', sponsorId);
+    if (!error && data) setSponsorEvents(data.map(e => e.event_id));
+  };
+  const handleSponsorSave = async (e) => {
+    e.preventDefault();
+    const isNew = !editingSponsor?.id;
+    let sponsorId = editingSponsor?.id;
+    let logo_url = editingSponsor?.logo_url;
+    const sponsorData = {
+      name: editingSponsor.name,
+      logo_url,
+      description: editingSponsor.description,
+      website_url: editingSponsor.website_url,
+      category: editingSponsor.category,
+      is_global: editingSponsor.is_global || false,
+    };
+    let error;
+    if (isNew) {
+      const { data, error: insertError } = await supabase.from('sponsors').insert(sponsorData).select().single();
+      error = insertError;
+      if (data) sponsorId = data.id;
+    } else {
+      ({ error } = await supabase.from('sponsors').update(sponsorData).eq('id', sponsorId));
+      if (error) {
+        console.error('Sponsor update error:', error);
+        alert('Failed to update sponsor: ' + error.message);
+      }
+    }
+    if (!error && sponsorId) {
+      // Update event links
+      await supabase.from('event_sponsors').delete().eq('sponsor_id', sponsorId);
+      if (!editingSponsor.is_global && sponsorEvents.length > 0) {
+        await Promise.all(sponsorEvents.map(eventId =>
+          supabase.from('event_sponsors').insert({ sponsor_id: sponsorId, event_id: eventId })
+        ));
+      }
+      closeSponsorDialog();
+      // Refresh sponsors
+      const { data } = await supabase.from('sponsors').select('*').order('created_at', { ascending: true });
+      setSponsors(data);
+    }
+  };
+
+  // Delete Sponsor logic
+  const openDeleteDialog = (sponsor) => {
+    setSponsorToDelete(sponsor);
+    setIsDeleteDialogOpen(true);
+  };
+  const closeDeleteDialog = () => {
+    setSponsorToDelete(null);
+    setIsDeleteDialogOpen(false);
+  };
+  const handleDeleteSponsor = async () => {
+    if (!sponsorToDelete) return;
+    await supabase.from('sponsors').delete().eq('id', sponsorToDelete.id);
+    await supabase.from('event_sponsors').delete().eq('sponsor_id', sponsorToDelete.id);
+    setSponsors(sponsors.filter(s => s.id !== sponsorToDelete.id));
+    closeDeleteDialog();
+  };
 
 
   const handleLogout = () => {
@@ -738,6 +826,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const approvedCount = applications.filter(app => app.status === 'approved').length;
   const rejectedCount = applications.filter(app => app.status === 'rejected').length;
 
+  useEffect(() => {
+    const fetchSponsors = async () => {
+      const { data, error } = await supabase
+        .from('sponsors')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (!error && data) setSponsors(data);
+    };
+    fetchSponsors();
+  }, []);
+
+  // Debug: log sponsors to console
+  useEffect(() => {
+    console.log('Sponsors in admin dashboard:', sponsors);
+  }, [sponsors]);
+
   if (loading) {
     return (
       <div className="pt-16 min-h-screen bg-background">
@@ -783,6 +887,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <TabsTrigger className="px-4 min-w-[110px]" value="events">{t.events}</TabsTrigger>
             <TabsTrigger className="px-4 min-w-[110px]" value="ambassadors">{t.ambassadors}</TabsTrigger>
             <TabsTrigger className="px-4 min-w-[110px]" value="applications">{t.applications}</TabsTrigger>
+            <TabsTrigger className="px-4 min-w-[110px]" value="sponsors">Sponsors</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -1776,6 +1881,130 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </div>
               )}
             </div>
+          </TabsContent>
+
+          {/* Sponsors Tab */}
+          <TabsContent value="sponsors">
+            <div className="py-8">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gradient-neon">Sponsors</h2>
+                <Button variant="gradient" onClick={() => openSponsorDialog()}>Add Sponsor</Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {sponsors.map((sponsor) => (
+                  <div key={sponsor.id} className="rounded-xl bg-card p-6 shadow-lg flex flex-col items-center justify-center">
+                    {sponsor.logo_url && <img src={sponsor.logo_url} alt={sponsor.name} className="w-32 h-20 object-contain mb-3 rounded-full" />}
+                    <h3 className="font-semibold mb-1">{sponsor.name}</h3>
+                    <p className="text-xs text-muted-foreground mb-2">{sponsor.description || sponsor.category}</p>
+                    <div className="flex gap-2 mb-2">
+                      {sponsor.is_global && <span className="badge bg-primary text-white">Global</span>}
+                      {/* TODO: Show event names for event-specific sponsors */}
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <Button size="sm" variant="outline" onClick={() => openSponsorDialog(sponsor)}>Edit</Button>
+                      <Button size="sm" variant="destructive" onClick={() => openDeleteDialog(sponsor)}>Delete</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Add/Edit Sponsor Dialog */}
+            <Dialog open={isSponsorDialogOpen} onOpenChange={setIsSponsorDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{editingSponsor?.id ? 'Edit Sponsor' : 'Add Sponsor'}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleSponsorSave} className="space-y-4">
+                  <Input
+                    placeholder="Sponsor Name"
+                    value={editingSponsor?.name || ''}
+                    onChange={e => setEditingSponsor(prev => ({ ...prev, name: e.target.value }))}
+                    required
+                  />
+                  <FileUpload
+                    label="Sponsor Logo"
+                    currentUrl={editingSponsor?.logo_url || ''}
+                    onFileSelect={async (file) => {
+                      if (file) {
+                        const result = await uploadImage(file, 'sponsor-logos');
+                        if (!result.error) {
+                          setEditingSponsor(prev => ({ ...prev, logo_url: result.url }));
+                        }
+                      }
+                    }}
+                    onUrlChange={url => setEditingSponsor(prev => ({ ...prev, logo_url: url }))}
+                  />
+                  <Input
+                    placeholder="Description"
+                    value={editingSponsor?.description || ''}
+                    onChange={e => setEditingSponsor(prev => ({ ...prev, description: e.target.value }))}
+                  />
+                  <Input
+                    placeholder="Website URL"
+                    value={editingSponsor?.website_url || ''}
+                    onChange={e => setEditingSponsor(prev => ({ ...prev, website_url: e.target.value }))}
+                  />
+                  <Select
+                    value={editingSponsor?.category || 'other'}
+                    onValueChange={value => setEditingSponsor(prev => ({ ...prev, category: value }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="venue">Venue</SelectItem>
+                      <SelectItem value="brand">Brand</SelectItem>
+                      <SelectItem value="tech">Tech</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!editingSponsor?.is_global}
+                      onChange={e => setEditingSponsor(prev => ({ ...prev, is_global: e.target.checked }))}
+                    />
+                    Global Sponsor
+                  </label>
+                  {!editingSponsor?.is_global && (
+                    <div>
+                      <label className="block mb-1">Linked Events</label>
+                      <Select
+                        multiple
+                        value={sponsorEvents}
+                        onValueChange={setSponsorEvents}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Select events" /></SelectTrigger>
+                        <SelectContent>
+                          {allEvents.map(event => (
+                            <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <DialogClose asChild>
+                      <Button type="button" variant="outline" onClick={closeSponsorDialog}>Cancel</Button>
+                    </DialogClose>
+                    <Button type="submit" variant="gradient">Save</Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Delete Sponsor</DialogTitle>
+                </DialogHeader>
+                <p>Are you sure you want to delete this sponsor?</p>
+                <div className="flex justify-end gap-2 mt-4">
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline" onClick={closeDeleteDialog}>Cancel</Button>
+                  </DialogClose>
+                  <Button type="button" variant="destructive" onClick={handleDeleteSponsor}>Delete</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
         </Tabs>
       </div>
