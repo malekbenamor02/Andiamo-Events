@@ -1738,7 +1738,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         )}
                       </div>
                       {application.status === 'pending' && (
-                        <div className="flex space-x-2">
+                        <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2 sm:gap-0 mt-4 sm:mt-0">
                           <Button
                             size="sm"
                             onClick={() => handleApprove(application)}
