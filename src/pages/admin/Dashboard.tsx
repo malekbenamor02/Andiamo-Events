@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { useState, useEffect } from "react";
+=======
+import { useState, useEffect, useRef } from "react";
+>>>>>>> b305729 (Auto-update: 24/07/2025 16:14:46,23)
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -950,6 +954,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+<<<<<<< HEAD
+=======
+  const tabsListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (tabsListRef.current) {
+      tabsListRef.current.scrollLeft = 0;
+    }
+  }, []);
+
+>>>>>>> b305729 (Auto-update: 24/07/2025 16:14:46,23)
   if (loading) {
     return (
       <div className="pt-16 min-h-screen bg-background">
@@ -966,10 +981,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   
   return (
+<<<<<<< HEAD
     <div className="pt-16 min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8 flex justify-between items-start">
+=======
+    <div className="pt-16 min-h-screen bg-background min-w-0">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 min-w-0">
+        {/* Header */}
+        <div className="mb-8 flex justify-between items-start min-w-0">
+>>>>>>> b305729 (Auto-update: 24/07/2025 16:14:46,23)
           <div>
             <h1 className="text-4xl font-orbitron font-bold text-gradient-neon mb-2">
               {t.title}
@@ -988,6 +1010,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           </Button>
         </div>
 
+<<<<<<< HEAD
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="flex overflow-x-auto whitespace-nowrap gap-x-2 px-1">
@@ -1001,6 +1024,72 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
+=======
+        {/* Tabs - TabsList and TabsTrigger must be inside Tabs for correct functionality */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 min-w-0">
+          <TabsList
+            ref={tabsListRef}
+            className="flex w-full gap-x-1 justify-center bg-muted rounded-lg shadow mb-6 pl-2 pr-2"
+          >
+            <TabsTrigger
+              className="flex-1 flex items-center justify-center rounded text-center text-[10px] truncate py-2 px-3 transition-all duration-200
+                data-[state=active]:shadow-xl data-[state=active]:scale-105 data-[state=active]:z-10 data-[state=active]:border-primary data-[state=active]:rounded-lg
+                hover:bg-accent/60 focus:outline-none focus:ring-2 focus:ring-primary min-w-0"
+              value="overview"
+              title={t.overview}
+            >
+              {t.overview}
+            </TabsTrigger>
+            <TabsTrigger
+              className="flex-1 flex items-center justify-center rounded text-center text-[10px] truncate py-2 px-3 transition-all duration-200
+                data-[state=active]:shadow-xl data-[state=active]:scale-105 data-[state=active]:z-10 data-[state=active]:border-primary data-[state=active]:rounded-lg
+                hover:bg-accent/60 focus:outline-none focus:ring-2 focus:ring-primary min-w-0"
+              value="events"
+              title={t.events}
+            >
+              {t.events}
+            </TabsTrigger>
+            <TabsTrigger
+              className="flex-1 flex items-center justify-center rounded text-center text-[8px] truncate py-2 px-3 transition-all duration-200
+                data-[state=active]:shadow-xl data-[state=active]:scale-105 data-[state=active]:z-10 data-[state=active]:border-primary data-[state=active]:rounded-lg
+                hover:bg-accent/60 focus:outline-none focus:ring-2 focus:ring-primary min-w-0"
+              value="ambassadors"
+              title={t.ambassadors}
+            >
+              {t.ambassadors}
+            </TabsTrigger>
+            <TabsTrigger
+              className="flex-1 flex items-center justify-center rounded text-center text-[8px] truncate py-2 px-3 transition-all duration-200
+                data-[state=active]:shadow-xl data-[state=active]:scale-105 data-[state=active]:z-10 data-[state=active]:border-primary data-[state=active]:rounded-lg
+                hover:bg-accent/60 focus:outline-none focus:ring-2 focus:ring-primary min-w-0"
+              value="applications"
+              title={t.applications}
+            >
+              {t.applications}
+            </TabsTrigger>
+            <TabsTrigger
+              className="flex-1 flex items-center justify-center rounded text-center text-[10px] truncate py-2 px-3 transition-all duration-200
+                data-[state=active]:shadow-xl data-[state=active]:scale-105 data-[state=active]:z-10 data-[state=active]:border-primary data-[state=active]:rounded-lg
+                hover:bg-accent/60 focus:outline-none focus:ring-2 focus:ring-primary min-w-0"
+              value="sponsors"
+              title="Sponsors"
+            >
+              Sponsors
+            </TabsTrigger>
+            <TabsTrigger
+              className="flex-1 flex items-center justify-center rounded text-center text-[10px] truncate py-2 px-3 transition-all duration-200
+                data-[state=active]:shadow-xl data-[state=active]:scale-105 data-[state=active]:z-10 data-[state=active]:border-primary data-[state=active]:rounded-lg
+                hover:bg-accent/60 focus:outline-none focus:ring-2 focus:ring-primary min-w-0"
+              value="team"
+              title="Team"
+            >
+              Team
+            </TabsTrigger>
+          </TabsList>
+          <div className='w-full h-px bg-border my-4'></div>
+          {/* Tabs Content - separated from navigation */}
+          <TabsContent value="overview" className="space-y-6 mt-20 sm:mt-0">
+>>>>>>> b305729 (Auto-update: 24/07/2025 16:14:46,23)
             {/* Stats Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 w-full px-2">
               <Card>
@@ -1081,7 +1170,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
           {/* Events Tab */}
           <TabsContent value="events" className="space-y-6">
+<<<<<<< HEAD
             <div className="flex justify-between items-center">
+=======
+            <div className="flex justify-between items-center mb-4">
+>>>>>>> b305729 (Auto-update: 24/07/2025 16:14:46,23)
               <h2 className="text-2xl font-bold">Events Management</h2>
               <Dialog>
                 <DialogTrigger asChild>
