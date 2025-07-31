@@ -98,7 +98,7 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
   `;
 
   return {
-    from: 'Andiamo Events <fmalekbenamorf@gmail.com>',
+    from: import.meta.env.VITE_GMAIL_FROM || 'Andiamo Events <noreply@andiamo.com>',
     to: ambassador.email || 'noreply@andiamo.com',
     subject,
     html
@@ -151,7 +151,7 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
   `;
 
   return {
-    from: 'Andiamo Events <fmalekbenamorf@gmail.com>',
+    from: import.meta.env.VITE_GMAIL_FROM || 'Andiamo Events <noreply@andiamo.com>',
     to: ambassador.email || 'noreply@andiamo.com',
     subject,
     html
@@ -211,7 +211,7 @@ export const createPasswordResetEmail = (ambassador: AmbassadorData, resetToken:
   `;
 
   return {
-    from: 'Andiamo Events <fmalekbenamorf@gmail.com>',
+    from: import.meta.env.VITE_GMAIL_FROM || 'Andiamo Events <noreply@andiamo.com>',
     to: ambassador.email || 'noreply@andiamo.com',
     subject,
     html

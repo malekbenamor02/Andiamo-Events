@@ -18,7 +18,7 @@ import {
   Plus, Edit, Trash2, Calendar, MapPin, Phone, Mail, User, Settings,
   Eye, EyeOff, Save, X, Image, Video, Upload,
   Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
-  PieChart, Download, RefreshCw
+  PieChart, Download, RefreshCw, Copy
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
@@ -88,7 +88,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [activeTab, setActiveTab] = useState("overview");
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
-  
+  // Add state for email recovery
+  const [emailFailedApplications, setEmailFailedApplications] = useState<Set<string>>(new Set());
+  const [ambassadorCredentials, setAmbassadorCredentials] = useState<Record<string, { username: string; password: string }>>({});
 
   const [editingAmbassador, setEditingAmbassador] = useState<Ambassador | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -683,6 +685,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       const emailSent = await sendEmail(emailConfig);
 
+      // Store credentials for potential resend
+      setAmbassadorCredentials(prev => ({
+        ...prev,
+        [application.id]: {
+          username: username,
+          password: password
+        }
+      }));
+
+      if (!emailSent) {
+        // Track failed email applications
+        setEmailFailedApplications(prev => new Set([...prev, application.id]));
+      }
+
       toast({
         title: t.approvalSuccess,
         description: emailSent 
@@ -701,6 +717,95 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  // Function to resend approval email
+  const resendEmail = async (application: AmbassadorApplication) => {
+    setProcessingId(application.id);
+    
+    try {
+      const credentials = ambassadorCredentials[application.id];
+      if (!credentials) {
+        toast({
+          title: t.error,
+          description: language === 'en' ? "No credentials found for this application" : "Aucune information d'identification trouvée",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const emailConfig = createApprovalEmail(
+        {
+          fullName: application.full_name,
+          phone: application.phone_number,
+          email: application.email,
+          city: application.city,
+          password: credentials.password
+        },
+        `${window.location.origin}/ambassador/auth`
+      );
+
+      const emailSent = await sendEmail(emailConfig);
+
+      if (emailSent) {
+        setEmailFailedApplications(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(application.id);
+          return newSet;
+        });
+        
+        toast({
+          title: language === 'en' ? "Email sent successfully" : "Email envoyé avec succès",
+          description: language === 'en' ? `Credentials sent to ${application.email}` : `Informations d'identification envoyées à ${application.email}`,
+        });
+      } else {
+        toast({
+          title: language === 'en' ? "Email failed to send" : "Échec de l'envoi d'email",
+          description: language === 'en' ? "Please try again or copy credentials manually" : "Veuillez réessayer ou copier les informations manuellement",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error resending email:', error);
+      toast({
+        title: t.error,
+        description: language === 'en' ? "Failed to resend email" : "Échec de la nouvelle tentative d'envoi",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  // Function to copy credentials to clipboard
+  const copyCredentials = async (application: AmbassadorApplication) => {
+    try {
+      const credentials = ambassadorCredentials[application.id];
+      if (!credentials) {
+        toast({
+          title: t.error,
+          description: language === 'en' ? "No credentials found for this application" : "Aucune information d'identification trouvée",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const credentialsText = `Username: ${credentials.username}\nPassword: ${credentials.password}\nLogin URL: ${window.location.origin}/ambassador/auth`;
+      
+      await navigator.clipboard.writeText(credentialsText);
+      
+      toast({
+        title: language === 'en' ? "Credentials copied" : "Informations d'identification copiées",
+        description: language === 'en' ? "Credentials copied to clipboard. You can now paste them in a message." : "Informations copiées dans le presse-papiers. Vous pouvez maintenant les coller dans un message.",
+      });
+    } catch (error) {
+      console.error('Error copying credentials:', error);
+      toast({
+        title: t.error,
+        description: language === 'en' ? "Failed to copy credentials" : "Échec de la copie des informations",
+        variant: "destructive",
+      });
     }
   };
 
@@ -2302,6 +2407,46 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   )}
                                 </Button>
                               </>
+                            )}
+
+                            {/* Email recovery buttons for approved applications with failed emails */}
+                            {application.status === 'approved' && emailFailedApplications.has(application.id) && (
+                              <div className="flex gap-2 mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <div className="flex-1">
+                                  <p className="text-sm text-yellow-800 font-medium mb-2">
+                                    ⚠️ Email failed to send. Use these options:
+                                  </p>
+                                  <div className="flex gap-2">
+                                    <Button 
+                                      onClick={() => resendEmail(application)}
+                                      disabled={processingId === application.id}
+                                      size="sm"
+                                      className="bg-blue-600 hover:bg-blue-700 transform hover:scale-105 transition-all duration-300"
+                                    >
+                                      {processingId === application.id ? (
+                                        <>
+                                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
+                                          Sending...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Mail className="w-3 h-3 mr-1" />
+                                          Resend Email
+                                        </>
+                                      )}
+                                    </Button>
+                                    <Button 
+                                      onClick={() => copyCredentials(application)}
+                                      size="sm"
+                                      variant="outline"
+                                      className="transform hover:scale-105 transition-all duration-300"
+                                    >
+                                      <Copy className="w-3 h-3 mr-1" />
+                                      Copy Credentials
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
                             )}
                           </div>
                         </div>

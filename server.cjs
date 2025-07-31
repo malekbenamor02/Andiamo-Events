@@ -7,11 +7,14 @@ const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 
+// Load environment variables
+require('dotenv').config();
+
 // Initialize Supabase client only if environment variables are available
 let supabase = null;
-if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+if (process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY) {
   const { createClient } = require('@supabase/supabase-js');
-  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+  supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
 } else {
   console.warn('Supabase environment variables not found. Admin login functionality will be disabled.');
 }
@@ -22,12 +25,12 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(cookieParser());
 
-// Configure Gmail SMTP transporter
+// Configure Gmail SMTP transporter using environment variables
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'fmalekbenamorf@gmail.com',
-    pass: 'gdwf jvzu olih ktep',
+    user: process.env.GMAIL_USER || 'fmalekbenamorf@gmail.com',
+    pass: process.env.GMAIL_APP_PASSWORD || 'gdwf jvzu olih ktep',
   },
 });
 
@@ -46,7 +49,7 @@ app.post('/api/send-email', async (req, res) => {
     const { to, subject, html } = req.body;
     
     await transporter.sendMail({
-      from: 'Andiamo Events <fmalekbenamorf@gmail.com>',
+      from: process.env.GMAIL_FROM || 'Andiamo Events <fmalekbenamorf@gmail.com>',
       to,
       subject,
       html,
@@ -105,4 +108,4 @@ function requireAdminAuth(req, res, next) {
   }
 }
 
-app.listen(8081, () => console.log('API server running on http://localhost:8081'));
+app.listen(process.env.PORT || 8081, () => console.log(`API server running on http://localhost:${process.env.PORT || 8081}`));
