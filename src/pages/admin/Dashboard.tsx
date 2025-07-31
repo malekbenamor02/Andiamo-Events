@@ -953,14 +953,39 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const handleDeleteAmbassador = async (ambassadorId: string) => {
     // This will now be called only after confirmation
     try {
-      const { error } = await supabase
+      // First, get the ambassador details to find the corresponding application
+      const { data: ambassador, error: fetchError } = await supabase
+        .from('ambassadors')
+        .select('phone, email')
+        .eq('id', ambassadorId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Delete the ambassador
+      const { error: deleteError } = await supabase
         .from('ambassadors')
         .delete()
         .eq('id', ambassadorId);
-      if (error) throw error;
+
+      if (deleteError) throw deleteError;
+
+      // Delete the corresponding application completely
+      if (ambassador) {
+        const { error: deleteAppError } = await supabase
+          .from('ambassador_applications')
+          .delete()
+          .or(`phone_number.eq.${ambassador.phone},email.eq.${ambassador.email}`);
+
+        if (deleteAppError) {
+          console.error('Error deleting application:', deleteAppError);
+          // Don't throw here as the ambassador was already deleted
+        }
+      }
+
       toast({
         title: language === 'en' ? "Ambassador deleted" : "Ambassadeur supprimé",
-        description: language === 'en' ? "Ambassador deleted successfully" : "Ambassadeur supprimé avec succès",
+        description: language === 'en' ? "Ambassador and application deleted successfully" : "Ambassadeur et candidature supprimés avec succès",
       });
       fetchAllData();
     } catch (error) {

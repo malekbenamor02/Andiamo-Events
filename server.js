@@ -1,5 +1,5 @@
 const express = require('express');
-const fetch = require('node-fetch');
+const nodemailer = require('nodemailer');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const app = express();
@@ -7,26 +7,30 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+// Configure Gmail SMTP transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'fmalekbenamorf@gmail.com',
+    pass: 'gdwf jvzu olih ktep',
+  },
+});
+
 app.post('/api/send-email', async (req, res) => {
   const { to, subject, html } = req.body;
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer re_ecJhwtbD_F9X8NowF2njj2Kt6miabAN9d',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: 'onboarding@resend.dev',
+  
+  try {
+    await transporter.sendMail({
+      from: 'Andiamo Events <fmalekbenamorf@gmail.com>',
       to,
       subject,
       html,
-    }),
-  });
-  if (response.ok) {
+    });
+    
     res.status(200).json({ success: true });
-  } else {
-    const error = await response.text();
-    res.status(500).json({ error: 'Failed to send email', details: error });
+  } catch (error) {
+    console.error('Email sending failed:', error);
+    res.status(500).json({ error: 'Failed to send email', details: error.message });
   }
 });
 
