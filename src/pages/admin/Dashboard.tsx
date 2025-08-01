@@ -1206,8 +1206,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const handleLogout = async () => {
     try {
-      // Call backend logout endpoint to clear JWT cookie
-      await fetch('http://localhost:8081/api/admin-logout', {
+      // Call Vercel API route to clear JWT cookie
+      await fetch('/api/admin-logout', {
         method: 'POST',
         credentials: 'include',
       });

@@ -50,8 +50,8 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     setError("");
 
     try {
-      // Call the backend JWT authentication endpoint
-      const response = await fetch('http://localhost:8081/api/admin-login', {
+      // Call the Vercel API route for admin login
+      const response = await fetch('/api/admin-login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
