@@ -26,6 +26,7 @@ const ChangePassword = ({ language }) => {
     success: "Password updated successfully!",
     error: "Failed to update password.",
     passwordMismatch: "Passwords do not match.",
+    passwordTooShort: "Password must be at least 8 characters long.",
   } : {
     title: "Changez Votre Mot de Passe",
     subtitle: "Pour des raisons de sécurité, vous devez changer votre mot de passe.",
@@ -36,6 +37,7 @@ const ChangePassword = ({ language }) => {
     success: "Mot de passe mis à jour avec succès!",
     error: "Échec de la mise à jour du mot de passe.",
     passwordMismatch: "Les mots de passe ne correspondent pas.",
+    passwordTooShort: "Le mot de passe doit contenir au moins 8 caractères.",
   };
 
   useEffect(() => {
@@ -50,6 +52,13 @@ const ChangePassword = ({ language }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Check password length
+    if (password.length < 8) {
+      toast({ title: t.passwordTooShort, variant: "destructive" });
+      return;
+    }
+    
     if (password !== confirmPassword) {
       toast({ title: t.passwordMismatch, variant: "destructive" });
       return;
@@ -96,6 +105,7 @@ const ChangePassword = ({ language }) => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                placeholder={language === 'en' ? "Minimum 8 characters" : "Minimum 8 caractères"}
               />
             </div>
             <div className="space-y-2">
@@ -106,6 +116,7 @@ const ChangePassword = ({ language }) => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
+                placeholder={language === 'en' ? "Confirm your password" : "Confirmez votre mot de passe"}
               />
             </div>
             <Button type="submit" className="w-full btn-gradient" disabled={isLoading}>

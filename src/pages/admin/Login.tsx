@@ -6,8 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import bcrypt from 'bcryptjs';
+import { useToast } from "@/hooks/use-toast";
 
 interface AdminLoginProps {
   language: 'en' | 'fr';
@@ -20,6 +19,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const t = {
     en: {
@@ -50,38 +50,52 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     setError("");
 
     try {
-      // Check if user exists in admin table (by email only)
-      const { data: adminData, error: adminError } = await supabase
-        .from('admins')
-        .select('*')
-        .eq('email', email)
-        .single();
+      // Call the backend JWT authentication endpoint
+      const response = await fetch('http://localhost:8081/api/admin-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Important: This allows cookies to be set
+        body: JSON.stringify({
+          email,
+          password
+        })
+      });
 
-      if (adminError || !adminData) {
-        setError(t[language].error);
-        return;
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Login successful - JWT token is now stored in httpOnly cookie
+        toast({
+          title: language === 'en' ? "Login Successful!" : "Connexion réussie!",
+          description: language === 'en' 
+            ? "Welcome to the admin dashboard."
+            : "Bienvenue dans le tableau de bord admin.",
+        });
+        
+        // Redirect to admin dashboard
+        navigate('/admin');
+      } else {
+        // Login failed
+        setError(data.error || t[language].error);
+        toast({
+          title: language === 'en' ? "Login Failed" : "Échec de connexion",
+          description: data.error || t[language].error,
+          variant: "destructive",
+        });
       }
-
-      // Use bcrypt to compare passwords
-      const isMatch = await bcrypt.compare(password, adminData.password);
-      if (!isMatch) {
-        setError(t[language].error);
-        return;
-      }
-
-      // Store admin session
-      localStorage.setItem('adminSession', JSON.stringify({
-        id: adminData.id,
-        email: adminData.email,
-        name: adminData.name,
-        loggedInAt: new Date().toISOString()
-      }));
-
-      // Redirect to admin dashboard
-      navigate('/admin');
     } catch (error) {
       console.error('Login error:', error);
-      setError(t[language].error);
+      const errorMessage = language === 'en' 
+        ? "Network error. Please check your connection."
+        : "Erreur réseau. Veuillez vérifier votre connexion.";
+      setError(errorMessage);
+      toast({
+        title: language === 'en' ? "Connection Error" : "Erreur de connexion",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -102,7 +116,6 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
               {t[language].description}
             </CardDescription>
           </CardHeader>
-          
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               {error && (
@@ -112,62 +125,66 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
               )}
               
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium text-gray-700">
+                <Label htmlFor="email" className="flex items-center gap-2">
+                  <User className="w-4 h-4" />
                   {t[language].email}
                 </Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                    placeholder="admin@andiamo.com"
-                    required
-                  />
-                </div>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="admin@andiamo.com"
+                  className="w-full"
+                />
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
+                <Label htmlFor="password" className="flex items-center gap-2">
+                  <Lock className="w-4 h-4" />
                   {t[language].password}
                 </Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10 pr-10 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
-                    placeholder="••••••••"
                     required
+                    placeholder="••••••••"
+                    className="w-full pr-10"
                   />
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
               </div>
               
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105"
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
                 disabled={loading}
               >
                 {loading ? t[language].loading : t[language].login}
               </Button>
             </form>
             
-            <div className="mt-6 text-center">
+            <div className="mt-4 text-center">
               <Button
-                variant="ghost"
+                variant="link"
                 onClick={() => navigate('/')}
-                className="text-gray-600 hover:text-gray-800"
+                className="text-gray-600 hover:text-gray-900"
               >
                 {t[language].backToHome}
               </Button>

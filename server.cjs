@@ -21,7 +21,12 @@ if (process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY) {
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:8080', 'http://localhost:3000', 'http://192.168.1.*', 'http://10.0.*'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(bodyParser.json());
 app.use(cookieParser());
 
@@ -85,7 +90,12 @@ app.post('/api/admin-login', async (req, res) => {
   }
   // Generate JWT
   const token = jwt.sign({ id: admin.id, email: admin.email, role: admin.role }, process.env.JWT_SECRET || 'fallback-secret', { expiresIn: '2h' });
-  res.cookie('adminToken', token, { httpOnly: true, secure: true, sameSite: 'strict', maxAge: 2 * 60 * 60 * 1000 });
+  res.cookie('adminToken', token, { 
+    httpOnly: true, 
+    secure: false, // Allow HTTP for localhost
+    sameSite: 'lax', // More permissive for mobile
+    maxAge: 2 * 60 * 60 * 1000 
+  });
   res.json({ success: true });
 });
 
@@ -108,4 +118,4 @@ function requireAdminAuth(req, res, next) {
   }
 }
 
-app.listen(process.env.PORT || 8081, () => console.log(`API server running on http://localhost:${process.env.PORT || 8081}`));
+app.listen(process.env.PORT || 8080, () => console.log('API server running'));

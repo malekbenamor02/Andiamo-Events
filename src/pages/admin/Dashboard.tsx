@@ -162,6 +162,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               ambassadorPerformance: []
             });
 
+  const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(2 * 60 * 60); // 2 hours in seconds
+
   const content = {
     en: {
       title: "Admin Dashboard",
@@ -537,7 +539,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setLoading(true);
       
       // Fetch applications
-      console.log('Attempting to fetch ambassador applications...');
       const { data: appsData, error: appsError } = await supabase
         .from('ambassador_applications')
         .select('*')
@@ -552,8 +553,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           code: appsError.code
         });
       } else {
-        console.log('Successfully fetched applications:', appsData);
-        console.log('Number of applications:', appsData?.length || 0);
         setApplications(appsData || []);
       }
 
@@ -1003,8 +1002,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (!eventToDelete) return;
 
     try {
-      console.log('Attempting to delete event:', eventToDelete.id);
-      
       const { data, error } = await supabase
         .from('events')
         .delete()
@@ -1015,8 +1012,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         console.error('Delete error:', error);
         throw error;
       }
-
-      console.log('Delete response:', data);
 
       // Verify deletion by checking if the event still exists
       const { data: verifyData, error: verifyError } = await supabase
@@ -1160,12 +1155,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           sponsorId = data.id;
           affectedRows = 1;
         }
-        console.log('Sponsor Save - insert response:', { data, error });
       } else {
         const { data: updateData, error: updateError } = await supabase.from('sponsors').update(sponsorData).eq('id', sponsorId).select();
         error = updateError;
         affectedRows = Array.isArray(updateData) ? updateData.length : 0;
-        console.log('Sponsor Save - update response:', { updateData, error });
       }
       // Refresh sponsors
       const { data: sponsorsData } = await supabase.from('sponsors').select('*').order('created_at', { ascending: true });
@@ -1211,9 +1204,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
 
-  const handleLogout = () => {
-    localStorage.removeItem('adminSession');
-    navigate('/admin/login');
+  const handleLogout = async () => {
+    try {
+      // Call backend logout endpoint to clear JWT cookie
+      await fetch('http://localhost:8081/api/admin-logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      
+      toast({
+        title: language === 'en' ? "Logged Out" : "Déconnecté",
+        description: language === 'en' 
+          ? "You have been successfully logged out."
+          : "Vous avez été déconnecté avec succès.",
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      // Navigate to login page
+      navigate('/admin/login');
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -1326,10 +1336,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     fetchSponsors();
   }, []);
 
-  // Debug: log sponsors to console
-  useEffect(() => {
-    console.log('Sponsors in admin dashboard:', sponsors);
-  }, [sponsors]);
+
 
   // Fetch team members on mount
   useEffect(() => {
@@ -1555,6 +1562,62 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, []);
 
+  // Session timer
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSessionTimeLeft(prev => {
+        if (prev <= 1) {
+          // Session expired
+          toast({
+            title: language === 'en' ? "Session Expired" : "Session expirée",
+            description: language === 'en' 
+              ? "Your session has expired. Please login again."
+              : "Votre session a expiré. Veuillez vous reconnecter.",
+            variant: "destructive",
+          });
+          navigate('/admin/login');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [navigate, toast, language]);
+
+  // Add JWT expiration handling
+  useEffect(() => {
+    const handleApiError = (response: Response) => {
+      if (response.status === 401) {
+        // Token expired - redirect to login
+        toast({
+          title: language === 'en' ? "Session Expired" : "Session expirée",
+          description: language === 'en' 
+            ? "Your session has expired. Please login again."
+            : "Votre session a expiré. Veuillez vous reconnecter.",
+          variant: "destructive",
+        });
+        navigate('/admin/login');
+        return true; // Error handled
+      }
+      return false; // Not a 401 error
+    };
+
+    // Override fetch to handle 401 errors globally
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      if (response.status === 401) {
+        handleApiError(response);
+      }
+      return response;
+    };
+
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, [navigate, toast, language]);
+
   if (loading) {
     return (
       <div className="pt-16 min-h-screen bg-background">
@@ -1695,6 +1758,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   {t.subtitle}
                 </p>
               </div>
+              {/* Session Timer */}
+              <div className="flex items-center gap-2 bg-card/50 px-4 py-2 rounded-lg border border-border/20">
+                <Clock className="w-4 h-4 text-primary animate-pulse" />
+                <span className="text-sm font-medium">
+                  {language === 'en' ? 'Session:' : 'Session:'} {Math.floor(sessionTimeLeft / 3600)}h {Math.floor((sessionTimeLeft % 3600) / 60)}m {sessionTimeLeft % 60}s
+                </span>
+              </div>
             </div>
 
             {/* Tabs Content - keeping all existing content exactly the same */}
@@ -1826,7 +1896,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     <DialogTrigger asChild>
                       <Button 
                         onClick={() => {
-                          console.log('Add button clicked');
                           setEditingEvent({} as Event);
                           setIsEventDialogOpen(true);
                         }}

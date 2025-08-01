@@ -56,7 +56,10 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
         </div>
         <div className="flex flex-wrap justify-center gap-6 pb-4">
           {featuredEvents.map(event => (
-            <div key={event.id} className="bg-card rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:scale-105 hover:shadow-xl cursor-pointer group w-[320px] min-w-[320px] max-w-xs flex-shrink-0">
+            <div 
+              key={event.id} 
+              className="bg-card rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:scale-105 hover:shadow-xl cursor-pointer group w-[320px] min-w-[320px] max-w-xs flex-shrink-0"
+            >
               <div className="relative">
                 <img
                   src={event.poster_url || '/api/placeholder/400/300'}

@@ -29,7 +29,10 @@ const TeamSection = ({ language }: TeamSectionProps) => {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">
           {team.map(member => (
-            <div key={member.id} className="bg-card rounded-xl shadow-lg p-6 flex flex-col items-center transition-all duration-300 hover:scale-105 hover:shadow-xl hover:bg-card/80 cursor-pointer group">
+            <div 
+              key={member.id} 
+              className="bg-card rounded-xl shadow-lg p-6 flex flex-col items-center transition-all duration-300 hover:scale-105 hover:shadow-xl hover:bg-card/80 cursor-pointer group"
+            >
               <img src={member.photo_url || '/placeholder.svg'} alt={member.name} className="w-28 h-28 rounded-full object-cover mb-4 border-4 border-primary/30 transition-all duration-300 group-hover:border-primary group-hover:scale-110" />
               <h3 className="font-bold text-xl text-primary transition-colors duration-300 hover:text-primary/80">{member.name}</h3>
               <p className="text-muted-foreground mb-2 transition-colors duration-300 group-hover:text-foreground/70">{member.role}</p>

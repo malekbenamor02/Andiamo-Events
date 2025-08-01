@@ -197,22 +197,6 @@ const About = ({ language }: AboutProps) => {
             <p className="text-xl md:text-2xl text-foreground/80 max-w-4xl mx-auto animate-in slide-in-from-bottom-4 duration-1000 delay-300">
               {aboutContent?.subtitle || t.hero.subtitle}
             </p>
-            
-            {/* Floating stats */}
-            <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 animate-in slide-in-from-bottom-4 duration-1000 delay-500">
-              <div className="glass p-6 rounded-xl border border-primary/20 transform hover:scale-105 transition-all duration-300">
-                <div className="text-3xl font-bold text-primary mb-2">500+</div>
-                <div className="text-sm text-muted-foreground">Events Organized</div>
-              </div>
-              <div className="glass p-6 rounded-xl border border-primary/20 transform hover:scale-105 transition-all duration-300">
-                <div className="text-3xl font-bold text-primary mb-2">50K+</div>
-                <div className="text-sm text-muted-foreground">Happy Attendees</div>
-              </div>
-              <div className="glass p-6 rounded-xl border border-primary/20 transform hover:scale-105 transition-all duration-300">
-                <div className="text-3xl font-bold text-primary mb-2">5</div>
-                <div className="text-sm text-muted-foreground">Cities Covered</div>
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -326,57 +310,7 @@ const About = ({ language }: AboutProps) => {
         </div>
       </section>
 
-      {/* Cities Section */}
-      <section className="py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className={`text-center mb-16 transform transition-all duration-1000 ${
-            animatedSections.has('cities') 
-              ? 'animate-in slide-in-from-bottom-4 fade-in duration-1000' 
-              : 'opacity-0 translate-y-8'
-          }`}>
-            <h2 className="text-4xl font-orbitron font-bold mb-6 text-gradient-neon animate-in slide-in-from-top-4 duration-700">
-              {t.cities.title}
-            </h2>
-            <p className="text-xl text-foreground/80 animate-in slide-in-from-bottom-4 duration-700 delay-200">
-              {t.cities.subtitle}
-            </p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {t.cities.locations.map((location, index) => (
-              <Card 
-                key={index} 
-                className={`glass hover-lift transform transition-all duration-500 hover:scale-105 hover:shadow-xl ${
-                  animatedSections.has('cities') 
-                    ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                    : 'opacity-0 translate-y-8'
-                }`}
-                style={{ animationDelay: `${index * 150}ms` }}
-              >
-                <CardContent className="p-8">
-                  <div className="flex items-start space-x-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-primary flex items-center justify-center flex-shrink-0 transform hover:scale-110 transition-transform duration-300">
-                      <MapPin className="w-8 h-8 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-xl font-orbitron font-bold mb-3 text-primary">
-                        {location.name}
-                      </h3>
-                      <p className="text-foreground/80 leading-relaxed">
-                        {location.description}
-                      </p>
-                      {/* City stats */}
-                      <div className="mt-4 flex items-center space-x-4 text-sm text-muted-foreground">
-                        <span>🎉 50+ Events</span>
-                        <span>👥 10K+ Attendees</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
+
 
       {/* CTA Section */}
       <section className="py-32 bg-gradient-primary relative overflow-hidden">
@@ -404,22 +338,6 @@ const About = ({ language }: AboutProps) => {
             >
               {t.cta.button}
             </Button>
-          </div>
-          
-          {/* Additional info */}
-          <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 animate-in slide-in-from-bottom-4 duration-700 delay-600">
-            <div className="text-white/80">
-              <div className="text-2xl font-bold mb-2">🎯</div>
-              <div className="text-sm">Join our team</div>
-            </div>
-            <div className="text-white/80">
-              <div className="text-2xl font-bold mb-2">💎</div>
-              <div className="text-sm">Earn commissions</div>
-            </div>
-            <div className="text-white/80">
-              <div className="text-2xl font-bold mb-2">🚀</div>
-              <div className="text-sm">Grow with us</div>
-            </div>
           </div>
         </div>
       </section>

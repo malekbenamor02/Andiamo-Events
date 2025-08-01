@@ -22,6 +22,7 @@ import ProtectedAdminRoute from "./components/auth/ProtectedAdminRoute";
 import AmbassadorDashboard from "./pages/ambassador/Dashboard";
 import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute";
 import ChangePassword from "./pages/ambassador/ChangePassword";
+import ResetPassword from "./pages/ambassador/ResetPassword";
 import AmbassadorApplication from "./pages/ambassador/Application";
 
 const queryClient = new QueryClient();
@@ -50,6 +51,7 @@ const App = () => {
               <Route path="/ambassador" element={<AmbassadorApplication language={language} />} />
               <Route path="/ambassador/auth" element={<Auth language={language} />} />
               <Route path="/ambassador/change-password" element={<ChangePassword language={language} />} />
+              <Route path="/ambassador/reset-password" element={<ResetPassword language={language} />} />
               <Route path="/ambassador/dashboard" element={
                 <ProtectedAmbassadorRoute language={language}>
                   <AmbassadorDashboard language={language} />
