@@ -691,7 +691,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             password: hashedPassword, // Store hashed password
             status: 'approved',
             commission_rate: 10,
-            requires_password_change: true,
             created_at: new Date().toISOString()
           });
         if (createError) throw createError;
