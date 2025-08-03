@@ -16,8 +16,13 @@ interface AmbassadorData {
 }
 
 // Email templates
-export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string): EmailConfig => {
+export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string, ambassadorId?: string): EmailConfig => {
   const subject = "🎉 Your Ambassador Application Approved!";
+  
+  // Create tracking pixel URL
+  const trackingPixel = ambassadorId 
+    ? `<img src="${window.location.origin}/api/track-email?ambassador_id=${ambassadorId}&email_type=approval" width="1" height="1" style="display:none;" />`
+    : '';
   
   const html = `
     <!DOCTYPE html>
@@ -61,10 +66,6 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
             <a href="${loginUrl}" class="button">🚀 Login to Dashboard</a>
           </div>
           
-          <div class="warning">
-            <p><strong>⚠️ Security Notice:</strong> Please change your password immediately after your first login.</p>
-          </div>
-          
           <div class="highlight">
             <h3>🎯 What You Can Do Now:</h3>
             <ul>
@@ -93,6 +94,7 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           <p>© 2024 Andiamo Events. All rights reserved.</p>
         </div>
       </div>
+      ${trackingPixel}
     </body>
     </html>
   `;

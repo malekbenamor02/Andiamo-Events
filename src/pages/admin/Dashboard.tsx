@@ -681,7 +681,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (updateAmbassadorError) throw updateAmbassadorError;
       } else {
         // Create ambassador account
-        const { error: createError } = await supabase
+        const { data: newAmbassador, error: createError } = await supabase
           .from('ambassadors')
           .insert({
             full_name: application.full_name,
@@ -692,7 +692,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             status: 'approved',
             commission_rate: 10,
             created_at: new Date().toISOString()
-          });
+          })
+          .select()
+          .single();
         if (createError) throw createError;
       }
 
@@ -704,6 +706,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (updateError) throw updateError;
 
+      // Get ambassador ID for tracking
+      const ambassadorId = existingAmbassador ? existingAmbassador.id : newAmbassador.id;
+
       // Send approval email with credentials (plain password)
       const emailConfig = createApprovalEmail(
         {
@@ -713,7 +718,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           city: application.city,
           password: password // Send plain password
         },
-        `${window.location.origin}/ambassador/auth`
+        `${window.location.origin}/ambassador/auth`,
+        ambassadorId // Pass ambassador ID for tracking
       );
 
       const emailSent = await sendEmail(emailConfig);
