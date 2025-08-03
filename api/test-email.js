@@ -1,8 +1,4 @@
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
   try {
     // Test if environment variables are available
     const hasGmailUser = !!process.env.GMAIL_USER;
@@ -12,11 +8,13 @@ export default async function handler(req, res) {
     res.status(200).json({ 
       success: true,
       message: 'Email API is working',
+      method: req.method,
       env: {
         hasGmailUser,
         hasGmailPassword,
         hasGmailFrom
-      }
+      },
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error('Test email API error:', error);
