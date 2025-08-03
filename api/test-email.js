@@ -5,6 +5,15 @@ export default async function handler(req, res) {
     const hasGmailPassword = !!process.env.GMAIL_APP_PASSWORD;
     const hasGmailFrom = !!process.env.GMAIL_FROM;
 
+    // Debug: Log all environment variables
+    console.log('Environment variables:', {
+      GMAIL_USER: process.env.GMAIL_USER ? 'SET' : 'NOT SET',
+      GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD ? 'SET' : 'NOT SET',
+      GMAIL_FROM: process.env.GMAIL_FROM ? 'SET' : 'NOT SET',
+      NODE_ENV: process.env.NODE_ENV,
+      VERCEL_ENV: process.env.VERCEL_ENV
+    });
+
     res.status(200).json({ 
       success: true,
       message: 'Email API is working',
@@ -12,7 +21,9 @@ export default async function handler(req, res) {
       env: {
         hasGmailUser,
         hasGmailPassword,
-        hasGmailFrom
+        hasGmailFrom,
+        nodeEnv: process.env.NODE_ENV,
+        vercelEnv: process.env.VERCEL_ENV
       },
       timestamp: new Date().toISOString()
     });
