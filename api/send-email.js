@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     }
 
     // Create transporter only if environment variables are available
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: process.env.GMAIL_USER,
