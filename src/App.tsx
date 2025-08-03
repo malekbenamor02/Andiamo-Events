@@ -24,6 +24,7 @@ import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute
 import ChangePassword from "./pages/ambassador/ChangePassword";
 import ResetPassword from "./pages/ambassador/ResetPassword";
 import AmbassadorApplication from "./pages/ambassador/Application";
+import PassPurchase from "./pages/PassPurchase";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,7 @@ const App = () => {
             <Routes>
               <Route path="/" element={<Index language={language} />} />
               <Route path="/events" element={<Events language={language} />} />
+              <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
       
               <Route path="/about" element={<About language={language} />} />
               <Route path="/ambassador" element={<AmbassadorApplication language={language} />} />

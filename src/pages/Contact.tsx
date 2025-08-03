@@ -223,12 +223,12 @@ const Contact = ({ language }: ContactProps) => {
                 <Heart className="w-3 h-3 text-red-400 animate-pulse" />
               </div>
             </div>
-            <h1 className="text-4xl md:text-5xl font-orbitron font-bold text-gradient-neon mb-4">
-              {content.title}
-            </h1>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              {content.description}
-            </p>
+          <h1 className="text-4xl md:text-5xl font-orbitron font-bold text-gradient-neon mb-4">
+            {content.title}
+          </h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            {content.description}
+          </p>
             
             {/* Hero Stars */}
             <div className="flex gap-2 mt-4">
@@ -381,13 +381,13 @@ const Contact = ({ language }: ContactProps) => {
                     {language === 'en' ? 'Name' : 'Nom'} *
                   </label>
                   <div className="relative">
-                    <Input
-                      value={formData.name}
-                      onChange={(e) => setFormData({...formData, name: e.target.value})}
-                      required
+                  <Input
+                    value={formData.name}
+                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    required
                       className="pl-10"
                       placeholder="Your name"
-                    />
+                  />
                     <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   </div>
                 </div>
@@ -398,14 +398,14 @@ const Contact = ({ language }: ContactProps) => {
                     Email *
                   </label>
                   <div className="relative">
-                    <Input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({...formData, email: e.target.value})}
-                      required
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    required
                       className="pl-10"
                       placeholder="your.email@example.com"
-                    />
+                  />
                     <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   </div>
                 </div>
@@ -417,13 +417,13 @@ const Contact = ({ language }: ContactProps) => {
                   {language === 'en' ? 'Subject' : 'Sujet'} *
                 </label>
                 <div className="relative">
-                  <Input
-                    value={formData.subject}
-                    onChange={(e) => setFormData({...formData, subject: e.target.value})}
-                    required
+                <Input
+                  value={formData.subject}
+                  onChange={(e) => setFormData({...formData, subject: e.target.value})}
+                  required
                     className="pl-10"
                     placeholder="Message subject"
-                  />
+                />
                   <MessageSquare className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 </div>
               </div>
@@ -434,14 +434,14 @@ const Contact = ({ language }: ContactProps) => {
                   Message *
                 </label>
                 <div className="relative">
-                  <Textarea
-                    rows={6}
-                    value={formData.message}
-                    onChange={(e) => setFormData({...formData, message: e.target.value})}
-                    required
+                <Textarea
+                  rows={6}
+                  value={formData.message}
+                  onChange={(e) => setFormData({...formData, message: e.target.value})}
+                  required
                     className="pl-10"
                     placeholder="Your message..."
-                  />
+                />
                   <FileText className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                 </div>
               </div>
@@ -452,10 +452,10 @@ const Contact = ({ language }: ContactProps) => {
                 disabled={isSubmitting}
               >
                 <span className="relative z-10">
-                  {isSubmitting 
-                    ? (language === 'en' ? 'Sending...' : 'Envoi...')
-                    : (language === 'en' ? 'Send Message' : 'Envoyer le Message')
-                  }
+                {isSubmitting 
+                  ? (language === 'en' ? 'Sending...' : 'Envoi...')
+                  : (language === 'en' ? 'Send Message' : 'Envoyer le Message')
+                }
                 </span>
                 <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-secondary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <div className="absolute top-2 right-2">

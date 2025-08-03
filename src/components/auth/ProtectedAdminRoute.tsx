@@ -14,43 +14,44 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Check if admin session exists in localStorage
-        const adminSession = localStorage.getItem('adminSession');
+        console.log('Checking authentication...');
         
-        if (!adminSession) {
-          setIsAuthenticated(false);
-          setLoading(false);
-          return;
-        }
+        // Since the cookie is httpOnly, we can't read it directly
+        // Just make the API call and let the server handle the cookie
+        console.log('Verifying token with server...');
+        const response = await fetch('/api/verify-admin', {
+          method: 'GET',
+          credentials: 'include', // Include cookies
+        });
 
-        const sessionData = JSON.parse(adminSession);
+        console.log('Verify response status:', response.status);
         
-        // Verify admin exists in database
-        const { data: adminData, error } = await supabase
-          .from('admins')
-          .select('id, email, name, is_active')
-          .eq('id', sessionData.id)
-          .eq('email', sessionData.email)
-          .eq('is_active', true)
-          .single();
-
-        if (error || !adminData) {
-          // Clear invalid session
-          localStorage.removeItem('adminSession');
-          setIsAuthenticated(false);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Verify response data:', data);
+          
+          if (data.valid) {
+            console.log('Authentication successful');
+            setIsAuthenticated(true);
+          } else {
+            console.log('Authentication failed - invalid token');
+            setIsAuthenticated(false);
+          }
         } else {
-          setIsAuthenticated(true);
+          console.log('Authentication failed - server error');
+          setIsAuthenticated(false);
         }
       } catch (error) {
         console.error('Auth check error:', error);
-        localStorage.removeItem('adminSession');
         setIsAuthenticated(false);
       } finally {
         setLoading(false);
       }
     };
 
-    checkAuth();
+    // Add a small delay to ensure cookies are set
+    const timer = setTimeout(checkAuth, 100);
+    return () => clearTimeout(timer);
   }, []);
 
   if (loading) {
@@ -65,9 +66,11 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
   }
 
   if (!isAuthenticated) {
+    console.log('Not authenticated, redirecting to login');
     return <Navigate to="/admin/login" replace />;
   }
 
+  console.log('Authenticated, rendering dashboard');
   return <>{children}</>;
 };
 

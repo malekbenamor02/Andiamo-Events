@@ -4,6 +4,32 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Mobile-specific styles for QR scanner */
+@media (max-width: 768px) {
+  /* Prevent zoom on input focus */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+  
+  /* Prevent zoom on double tap */
+  * {
+    touch-action: manipulation;
+  }
+  
+  /* QR Scanner specific styles */
+  #qr-reader {
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  
+  /* Prevent zoom on camera view */
+  #qr-reader video {
+    touch-action: none;
+  }
+}
+
 /* Andiamo Events - Nightlife Design System 
 All colors MUST be HSL.
 */

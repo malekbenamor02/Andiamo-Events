@@ -60,7 +60,7 @@ const Index = ({ language }: IndexProps) => {
               
               // Trigger counter animation when counter section is visible
               if (sectionId === 'counter') {
-                animateCounters();
+            animateCounters();
               }
             }
           }
@@ -85,7 +85,7 @@ const Index = ({ language }: IndexProps) => {
       if (ref.current) {
         ref.current.setAttribute('data-section', id);
         observer.observe(ref.current);
-      }
+    }
     });
 
     return () => observer.disconnect();
@@ -137,7 +137,7 @@ const Index = ({ language }: IndexProps) => {
             : 'opacity-0 translate-y-8 scale-95'
         }`}
       >
-        <HeroSection language={language} />
+      <HeroSection language={language} />
       </div>
 
       {/* Counter Section with Scroll Animation */}
@@ -149,7 +149,7 @@ const Index = ({ language }: IndexProps) => {
             : 'opacity-0 translate-y-8 scale-95'
         }`}
       >
-        <CounterSection language={language} />
+      <CounterSection language={language} />
       </div>
       
       {/* Featured Events Section with Scroll Animation */}
@@ -161,7 +161,7 @@ const Index = ({ language }: IndexProps) => {
             : 'opacity-0 translate-y-8 scale-95'
         }`}
       >
-        <FeaturedEventsSection language={language} />
+      <FeaturedEventsSection language={language} />
       </div>
       
       {/* Team Section with Scroll Animation */}
@@ -173,7 +173,7 @@ const Index = ({ language }: IndexProps) => {
             : 'opacity-0 translate-y-8 scale-95'
         }`}
       >
-        <TeamSection language={language} />
+      <TeamSection language={language} />
       </div>
 
       {/* Sponsors Section with Scroll Animation */}
@@ -185,7 +185,7 @@ const Index = ({ language }: IndexProps) => {
             : 'opacity-0 translate-y-8 scale-95'
         }`}
       >
-        <SponsorsSection language={language} />
+      <SponsorsSection language={language} />
       </div>
       
     </div>

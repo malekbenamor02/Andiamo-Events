@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, MapPin, ExternalLink } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { ExpandableText } from '@/components/ui/expandable-text';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -12,7 +13,6 @@ interface Event {
   venue: string;
   city: string;
   poster_url?: string;
-  ticket_link?: string;
   featured?: boolean;
   whatsapp_link?: string;
   standard_price?: number;
@@ -100,17 +100,13 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                   showLessText={language === 'en' ? 'Show less' : 'Voir moins'}
                 />
                 <div className="flex gap-2">
-                  {event.ticket_link && (
-                    <a
-                      href={event.ticket_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-gradient flex-1 inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold text-white transition-colors duration-300 hover:bg-primary/80"
-                    >
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      {language === 'en' ? 'Book Now' : 'Réserver'}
-                    </a>
-                  )}
+                  <Button
+                    onClick={() => navigate(`/pass-purchase?eventId=${event.id}`)}
+                    className="btn-gradient flex-1 inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold text-white transition-colors duration-300 hover:bg-primary/80"
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    {language === 'en' ? 'Book Now' : 'Réserver'}
+                  </Button>
                   {event.whatsapp_link && (
                     <a
                       href={event.whatsapp_link}

@@ -73,8 +73,9 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
             ? "Welcome to the admin dashboard."
             : "Bienvenue dans le tableau de bord admin.",
         });
-        
+
         // Redirect to admin dashboard
+        console.log('Login successful, redirecting to /admin');
         navigate('/admin');
       } else {
         // Login failed
@@ -129,15 +130,15 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                   <User className="w-4 h-4" />
                   {t[language].email}
                 </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                   required
-                  placeholder="admin@andiamo.com"
+                    placeholder="admin@andiamo.com"
                   className="w-full"
-                />
+                  />
               </div>
               
               <div className="space-y-2">

@@ -139,40 +139,79 @@ const AmbassadorDashboard = ({ language }) => {
 
   const handleSaveSale = async () => {
     if (!formData.event_id || !formData.full_name || !formData.phone) {
-      toast({ title: "Missing Information", description: "Please fill out all required fields.", variant: "destructive" });
+      toast({
+        title: language === 'en' ? 'Missing Information' : 'Informations Manquantes',
+        description: language === 'en' 
+          ? 'Please fill in all required fields.' 
+          : 'Veuillez remplir tous les champs obligatoires.',
+        variant: 'destructive',
+      });
       return;
     }
 
-    const selectedEvent = events.find(e => e.id === formData.event_id);
-    const totalAmount = (formData.standard_tickets * selectedEvent.standard_price) + (formData.vip_tickets * selectedEvent.vip_price);
-
-    const saleData = {
-      full_name: formData.full_name,
-      phone: formData.phone,
-      event_id: formData.event_id,
-      standard_tickets: formData.standard_tickets,
-      vip_tickets: formData.vip_tickets,
-      ambassador_id: ambassador.id,
-      total_amount: totalAmount,
-    };
-
-    let error;
-    if (editingSale) {
-      // Update existing sale
-      ({ error } = await supabase.from('clients').update(saleData).eq('id', editingSale.id));
-    } else {
-      // Insert new sale
-      ({ error } = await supabase.from('clients').insert(saleData));
+    // Validate phone number format
+    const phoneRegex = /^[2594][0-9]{7}$/;
+    if (!phoneRegex.test(formData.phone)) {
+      toast({
+        title: language === 'en' ? 'Invalid Phone Number' : 'Numéro de Téléphone Invalide',
+        description: language === 'en' 
+          ? 'Phone number must be 8 digits starting with 2, 5, 9, or 4.' 
+          : 'Le numéro de téléphone doit être 8 chiffres commençant par 2, 5, 9, ou 4.',
+        variant: 'destructive',
+      });
+      return;
     }
 
-    if (error) {
-      console.error("Error saving sale:", error);
-      toast({ title: "Error", description: `Failed to save sale: ${error.message}`, variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: `Sale ${editingSale ? 'updated' : 'recorded'} successfully.` });
+    try {
+      const selectedEvent = events.find(e => e.id === formData.event_id);
+      const standardPrice = selectedEvent?.standard_price || 0;
+      const vipPrice = selectedEvent?.vip_price || 0;
+      const totalAmount = (formData.standard_tickets * standardPrice) + (formData.vip_tickets * vipPrice);
+
+      const saleData = {
+        ambassador_id: ambassador.id,
+        event_id: formData.event_id,
+        full_name: formData.full_name,
+        phone: formData.phone,
+        standard_tickets: formData.standard_tickets,
+        vip_tickets: formData.vip_tickets,
+        total_amount: totalAmount,
+      };
+
+      if (editingSale) {
+        const { error } = await supabase.from('clients').update(saleData).eq('id', editingSale.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('clients').insert(saleData);
+        if (error) throw error;
+      }
+
+      toast({
+        title: language === 'en' ? 'Sale Saved' : 'Vente Enregistrée',
+        description: language === 'en' 
+          ? 'Sale has been successfully saved.' 
+          : 'La vente a été enregistrée avec succès.',
+      });
+
       setIsDialogOpen(false);
       setEditingSale(null);
+      setFormData({
+        event_id: '',
+        full_name: '',
+        phone: '',
+        standard_tickets: 0,
+        vip_tickets: 0,
+      });
       fetchData(ambassador.id);
+    } catch (error) {
+      console.error('Error saving sale:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Failed to save sale. Please try again.' 
+          : 'Échec de l\'enregistrement de la vente. Veuillez réessayer.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -187,6 +226,7 @@ const AmbassadorDashboard = ({ language }) => {
     }
     setSaleToDelete(null);
   };
+
 
   if (loading || !ambassador) {
     return (
@@ -245,6 +285,7 @@ const AmbassadorDashboard = ({ language }) => {
           </Card>
         </div>
 
+        {/* Sales Section */}
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">{t.mySales}</h2>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -333,6 +374,7 @@ const AmbassadorDashboard = ({ language }) => {
           </Table>
         </Card>
       </div>
+
       {/* Custom Delete Confirmation Dialog */}
       <Dialog open={!!saleToDelete} onOpenChange={open => { if (!open) setSaleToDelete(null); }}>
         <DialogContent>

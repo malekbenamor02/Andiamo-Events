@@ -229,16 +229,12 @@ const Auth = ({ language }: AuthProps) => {
     setIsLoading(true);
 
     try {
-      console.log('Searching for phone:', forgotPasswordData.phone);
-      
       // Check if ambassador exists
       const { data: ambassador, error } = await supabase
         .from('ambassadors')
         .select('*')
         .eq('phone', forgotPasswordData.phone)
         .single();
-
-      console.log('Database response:', { ambassador, error });
 
       if (error) {
         console.error('Database error:', error);
@@ -251,7 +247,6 @@ const Auth = ({ language }: AuthProps) => {
       }
 
       if (!ambassador) {
-        console.log('No ambassador found with phone:', forgotPasswordData.phone);
         toast({
           title: t.forgotPassword.error,
           description: language === 'en' ? "No account found with this phone number" : "Aucun compte trouvé avec ce numéro de téléphone",
@@ -259,8 +254,6 @@ const Auth = ({ language }: AuthProps) => {
         });
         return;
       }
-
-      console.log('Ambassador found:', ambassador);
 
       // Show confirmation with masked email
       const email = ambassador.email || 'noreply@andiamo.com';
@@ -277,9 +270,6 @@ const Auth = ({ language }: AuthProps) => {
       const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       const resetExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour for production
 
-      console.log('Generated token:', resetToken);
-      console.log('Token expiry:', resetExpiry.toISOString());
-
       // Save reset token to database
       const { error: updateError } = await supabase
         .from('ambassadors')
@@ -289,8 +279,6 @@ const Auth = ({ language }: AuthProps) => {
         } as any)
         .eq('id', ambassador.id);
 
-      console.log('Update response:', { updateError });
-
       if (updateError) {
         console.error('Update error:', updateError);
         throw updateError;
@@ -298,7 +286,6 @@ const Auth = ({ language }: AuthProps) => {
 
       // Send reset email
       const resetUrl = `${window.location.origin}/ambassador/reset-password?token=${resetToken}`;
-      console.log('Reset URL:', resetUrl);
       
       const response = await fetch('/api/send-email', {
         method: 'POST',
@@ -359,8 +346,6 @@ const Auth = ({ language }: AuthProps) => {
           `
         }),
       });
-
-      console.log('Email response status:', response.status);
 
       if (!response.ok) {
         const errorData = await response.json();

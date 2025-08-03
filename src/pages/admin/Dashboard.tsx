@@ -49,8 +49,8 @@ interface Event {
   city: string;
   description?: string;
   poster_url?: string;
-  ticket_link?: string;
   whatsapp_link?: string;
+  ticket_link?: string;
   featured?: boolean;
   standard_price?: number;
   vip_price?: number;
@@ -78,11 +78,36 @@ interface Ambassador {
   updated_at: string;
 }
 
+interface PassPurchase {
+  id: string;
+  event_id: string;
+  pass_type: 'standard' | 'vip';
+  quantity: number;
+  total_price: number;
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string;
+  customer_city?: string;
+  status: 'pending' | 'confirmed' | 'cancelled' | 'refunded';
+  payment_method?: string;
+  payment_reference?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  event?: {
+    name: string;
+    date: string;
+    venue: string;
+    city: string;
+  };
+}
+
 const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [applications, setApplications] = useState<AmbassadorApplication[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
 
   const [ambassadors, setAmbassadors] = useState<Ambassador[]>([]);
+  const [passPurchases, setPassPurchases] = useState<PassPurchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
@@ -203,7 +228,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       eventCity: "City",
       eventDescription: "Description",
       eventPoster: "Poster URL",
-      eventTicketLink: "Ticket Link",
       eventWhatsappLink: "WhatsApp Link",
       eventFeatured: "Featured Event",
       eventStandardPrice: "Standard Price (TND)",
@@ -223,7 +247,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       ambassadorStatus: "Status",
       ambassadorCommission: "Commission Rate (%)",
       ambassadorPassword: "Password",
-      approvedAmbassadors: "Total Ambassadors"
+      approvedAmbassadors: "Total Ambassadors",
+      passPurchases: "Pass Purchases",
+      totalPurchases: "Total Purchases",
+      purchaseDetails: "Purchase Details",
+      customerInfo: "Customer Information",
+      purchaseStatus: "Purchase Status",
+      noPurchases: "No purchases found"
     },
     fr: {
       title: "Tableau de Bord Admin",
@@ -263,7 +293,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       eventCity: "Ville",
       eventDescription: "Description",
       eventPoster: "URL de l'Affiche",
-      eventTicketLink: "Lien des Billets",
       eventWhatsappLink: "Lien WhatsApp",
       eventFeatured: "Événement en Vedette",
       eventStandardPrice: "Prix Standard (TND)",
@@ -283,7 +312,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       ambassadorStatus: "Statut",
       ambassadorCommission: "Taux de Commission (%)",
       ambassadorPassword: "Mot de Passe",
-      approvedAmbassadors: "Ambassadeurs Totaux"
+      approvedAmbassadors: "Ambassadeurs Totaux",
+      passPurchases: "Achats de Passes",
+      totalPurchases: "Total des Achats",
+      purchaseDetails: "Détails de l'Achat",
+      customerInfo: "Informations Client",
+      purchaseStatus: "Statut de l'Achat",
+      noPurchases: "Aucun achat trouvé"
     }
   };
 
@@ -442,13 +477,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (activeTab === "contact" && !hasContactMessagesAnimated) {
       const timer = setTimeout(() => {
         setHasContactMessagesAnimated(true);
-        // Animate contact messages one by one
+        // Enhanced staggered animation for contact messages
         filteredContactMessages.forEach((message, index) => {
           setTimeout(() => {
             setAnimatedContactMessages(prev => new Set([...prev, message.id]));
-          }, index * 150); // 150ms delay between each message
+          }, index * 200); // Increased delay for more dramatic effect
         });
-      }, 300);
+      }, 500); // Increased initial delay
       return () => clearTimeout(timer);
     }
     
@@ -470,18 +505,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     );
   });
 
-    // Animation effect for tickets
+  // Enhanced animation effect for tickets
   useEffect(() => {
     if (activeTab === "tickets" && !hasTicketsAnimated) {
       const timer = setTimeout(() => {
         setHasTicketsAnimated(true);
-        // Animate tickets one by one
+        // Enhanced staggered animation for tickets with different timing
         tickets.forEach((ticket, index) => {
           setTimeout(() => {
             setAnimatedTickets(prev => new Set([...prev, ticket.id]));
-          }, index * 150); // 150ms delay between each ticket
+          }, index * 250); // Increased delay for more dramatic effect
         });
-      }, 300);
+      }, 600); // Increased initial delay for more impact
       return () => clearTimeout(timer);
     }
 
@@ -1642,10 +1677,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <h2 className="text-lg font-semibold">Navigation</h2>
           </div>
           <div className="p-2 flex-1">
-            <div className="space-y-1">
+            <div className="space-y-1 animate-in slide-in-from-left-4 duration-700">
               <button
                 onClick={() => setActiveTab("overview")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 ${
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-100 ${
                   activeTab === "overview" 
                     ? "bg-primary text-primary-foreground shadow-lg" 
                     : "hover:bg-accent hover:shadow-md"
@@ -1656,7 +1691,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </button>
               <button
                 onClick={() => setActiveTab("events")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 ${
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-200 ${
                   activeTab === "events" 
                     ? "bg-primary text-primary-foreground shadow-lg" 
                     : "hover:bg-accent hover:shadow-md"
@@ -1667,51 +1702,51 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </button>
               <button
                 onClick={() => setActiveTab("ambassadors")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-300 ${
                   activeTab === "ambassadors" 
-                    ? "bg-primary text-primary-foreground" 
-                    : "hover:bg-accent"
+                    ? "bg-primary text-primary-foreground shadow-lg" 
+                    : "hover:bg-accent hover:shadow-md"
                 }`}
               >
-                <Users className="w-4 h-4" />
+                <Users className={`w-4 h-4 transition-transform duration-300 ${activeTab === "ambassadors" ? "animate-pulse" : ""}`} />
                 <span>{t.ambassadors}</span>
               </button>
               <button
                 onClick={() => setActiveTab("applications")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-400 ${
                   activeTab === "applications" 
-                    ? "bg-primary text-primary-foreground" 
-                    : "hover:bg-accent"
+                    ? "bg-primary text-primary-foreground shadow-lg" 
+                    : "hover:bg-accent hover:shadow-md"
                 }`}
               >
-                <FileText className="w-4 h-4" />
+                <FileText className={`w-4 h-4 transition-transform duration-300 ${activeTab === "applications" ? "animate-pulse" : ""}`} />
                 <span>{t.applications}</span>
               </button>
               <button
                 onClick={() => setActiveTab("sponsors")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-500 ${
                   activeTab === "sponsors" 
-                    ? "bg-primary text-primary-foreground" 
-                    : "hover:bg-accent"
+                    ? "bg-primary text-primary-foreground shadow-lg" 
+                    : "hover:bg-accent hover:shadow-md"
                 }`}
               >
-                <Building2 className="w-4 h-4" />
+                <Building2 className={`w-4 h-4 transition-transform duration-300 ${activeTab === "sponsors" ? "animate-pulse" : ""}`} />
                 <span>Sponsors</span>
               </button>
               <button
                 onClick={() => setActiveTab("team")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-600 ${
                   activeTab === "team" 
-                    ? "bg-primary text-primary-foreground" 
-                    : "hover:bg-accent"
+                    ? "bg-primary text-primary-foreground shadow-lg" 
+                    : "hover:bg-accent hover:shadow-md"
                 }`}
               >
-                <Users2 className="w-4 h-4" />
+                <Users2 className={`w-4 h-4 transition-transform duration-300 ${activeTab === "team" ? "animate-pulse" : ""}`} />
                 <span>Team</span>
               </button>
               <button
                 onClick={() => setActiveTab("contact")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 ${
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-700 ${
                   activeTab === "contact" 
                     ? "bg-primary text-primary-foreground shadow-lg" 
                     : "hover:bg-accent hover:shadow-md"
@@ -1722,7 +1757,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </button>
               <button
                 onClick={() => setActiveTab("tickets")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 ${
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-800 ${
                   activeTab === "tickets" 
                     ? "bg-primary text-primary-foreground shadow-lg" 
                     : "hover:bg-accent hover:shadow-md"
@@ -1737,9 +1772,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <Button
               variant="outline"
               onClick={handleLogout}
-              className="w-full flex items-center space-x-2 transition-all duration-300 transform hover:scale-105 hover:shadow-md"
+              className="w-full flex items-center space-x-2 transition-all duration-300 transform hover:scale-105 hover:shadow-md hover:bg-destructive hover:text-destructive-foreground animate-in slide-in-from-left-4 duration-500 delay-900"
             >
-              <LogOut className="w-4 h-4 transition-transform duration-300" />
+              <LogOut className="w-4 h-4 transition-transform duration-300 hover:animate-pulse" />
               <span>{t.logout}</span>
             </Button>
           </div>
@@ -1855,11 +1890,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </div>
 
                 {/* Recent Activity */}
-                <Card className="animate-in slide-in-from-bottom-4 fade-in duration-1000 delay-800">
+                <Card className="animate-in slide-in-from-bottom-4 fade-in duration-1000 delay-800 hover:shadow-lg transition-all duration-300">
                   <CardHeader>
-                    <CardTitle className="flex items-center space-x-2">
-                      <TrendingUp className="w-5 h-5 animate-pulse" />
-                      <span>Recent Activity</span>
+                    <CardTitle className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-700 delay-900">
+                      <TrendingUp className="w-5 h-5 animate-pulse transition-transform duration-300 hover:scale-110" />
+                      <span className="animate-in slide-in-from-left-4 duration-700 delay-1000">Recent Activity</span>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -1867,21 +1902,29 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       {applications.slice(0, 5).map((app, index) => (
                         <div 
                           key={app.id} 
-                          className={`flex items-center justify-between p-3 bg-muted rounded-lg transform transition-all duration-300 hover:scale-105 hover:shadow-md animate-in slide-in-from-left-4 fade-in duration-500 delay-${1000 + index * 100}`}
+                          className={`flex items-center justify-between p-3 bg-muted rounded-lg transform transition-all duration-300 hover:scale-105 hover:shadow-md animate-in slide-in-from-left-4 fade-in duration-500 ${
+                            index === 0 ? 'delay-1100' :
+                            index === 1 ? 'delay-1200' :
+                            index === 2 ? 'delay-1300' :
+                            index === 3 ? 'delay-1400' :
+                            'delay-1500'
+                          }`}
                         >
-                          <div>
-                            <p className="font-medium">{app.full_name}</p>
-                            <p className="text-sm text-muted-foreground">{app.city} • {app.phone_number}</p>
+                          <div className="animate-in slide-in-from-left-4 duration-500 delay-200">
+                            <p className="font-medium transition-colors duration-300">{app.full_name}</p>
+                            <p className="text-sm text-muted-foreground transition-colors duration-300">{app.city} • {app.phone_number}</p>
                           </div>
-                          <div className="animate-in zoom-in-95 duration-300 delay-500">
+                          <div className="animate-in zoom-in-95 duration-300 delay-300 hover:scale-110 transition-transform duration-300">
                             {getStatusBadge(app.status)}
                           </div>
                         </div>
                       ))}
                       {applications.length === 0 && (
-                        <p className="text-center text-muted-foreground py-8 animate-in fade-in duration-500">
-                          {t.noApplications}
-                        </p>
+                        <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-1100">
+                          <p className="text-center text-muted-foreground py-8 animate-in fade-in duration-500">
+                            {t.noApplications}
+                          </p>
+                        </div>
                       )}
                     </div>
                   </CardContent>
@@ -1959,23 +2002,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             onChange={(e) => setEditingEvent(prev => ({ ...prev, description: e.target.value }))}
                           />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="eventTicketLink">{t.eventTicketLink}</Label>
-                            <Input
-                              id="eventTicketLink"
-                              value={editingEvent?.ticket_link || ''}
-                              onChange={(e) => setEditingEvent(prev => ({ ...prev, ticket_link: e.target.value }))}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="eventWhatsappLink">{t.eventWhatsappLink}</Label>
-                            <Input
-                              id="eventWhatsappLink"
-                              value={editingEvent?.whatsapp_link || ''}
-                              onChange={(e) => setEditingEvent(prev => ({ ...prev, whatsapp_link: e.target.value }))}
-                            />
-                          </div>
+                        <div>
+                          <Label htmlFor="eventWhatsappLink">{t.eventWhatsappLink}</Label>
+                          <Input
+                            id="eventWhatsappLink"
+                            value={editingEvent?.whatsapp_link || ''}
+                            onChange={(e) => setEditingEvent(prev => ({ ...prev, whatsapp_link: e.target.value }))}
+                          />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
@@ -2981,15 +3014,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   </div>
                 </div>
 
-                {/* Search Bar */}
+                {/* Enhanced Search Bar with Animation */}
                 <div className="animate-in slide-in-from-bottom-4 duration-500 delay-400">
-                  <div className="relative">
-                    <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                  <div className="relative group">
+                    <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 transition-transform duration-300 group-hover:rotate-90" />
                     <Input
                       placeholder="Search messages by name, email, subject, or content..."
                       value={contactMessageSearchTerm}
                       onChange={(e) => setContactMessageSearchTerm(e.target.value)}
-                      className="pl-10 transition-all duration-300 focus:scale-105"
+                      className="pl-10 transition-all duration-300 focus:scale-105 focus:shadow-lg focus:shadow-primary/20"
                     />
                   </div>
                 </div>
@@ -2998,25 +3031,34 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   {filteredContactMessages.map((message, index) => (
                     <div 
                       key={message.id} 
-                      className={`bg-card rounded-xl p-6 shadow-lg transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                      className={`bg-card rounded-xl p-6 shadow-lg transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl hover:shadow-primary/10 ${
                         animatedContactMessages.has(message.id) 
                           ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
                           : 'opacity-0 translate-y-8'
                       }`}
+                      style={{
+                        animationDelay: `${index * 200}ms`,
+                        transform: animatedContactMessages.has(message.id) ? 'translateY(0) scale(1)' : 'translateY(20px) scale(0.95)'
+                      }}
                     >
                       <div className="flex justify-between items-start mb-4 animate-in slide-in-from-left-4 duration-500 delay-200">
-                        <div>
-                          <h3 className="font-semibold text-lg animate-in slide-in-from-left-4 duration-500 delay-300">
-                            {message.name}
-                          </h3>
-                          <p className="text-muted-foreground animate-in slide-in-from-left-4 duration-500 delay-400">
-                            {message.email}
-                          </p>
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center animate-in zoom-in-95 duration-500 delay-300">
+                            <User className="w-5 h-5 text-primary" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-lg animate-in slide-in-from-left-4 duration-500 delay-300">
+                              {message.name}
+                            </h3>
+                            <p className="text-muted-foreground animate-in slide-in-from-left-4 duration-500 delay-400">
+                              {message.email}
+                            </p>
+                          </div>
                         </div>
                         <div className="text-right animate-in slide-in-from-right-4 duration-500 delay-500">
-                          <p className="text-sm text-muted-foreground">
+                          <Badge variant="outline" className="mb-2 animate-in fade-in duration-500 delay-600">
                             {new Date(message.created_at).toLocaleDateString()}
-                          </p>
+                          </Badge>
                           <p className="text-xs text-muted-foreground">
                             {new Date(message.created_at).toLocaleTimeString()}
                           </p>
@@ -3025,12 +3067,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
                       <div className="space-y-3 animate-in slide-in-from-bottom-4 duration-500 delay-600">
                         <div>
-                          <h4 className="font-medium text-primary mb-2 animate-in slide-in-from-left-4 duration-500 delay-700">
+                          <h4 className="font-medium text-primary mb-2 animate-in slide-in-from-left-4 duration-500 delay-700 flex items-center">
+                            <FileText className="w-4 h-4 mr-2 animate-pulse" />
                             Subject: {message.subject}
                           </h4>
                         </div>
                         
-                        <div className="bg-muted/50 rounded-lg p-4 animate-in slide-in-from-bottom-4 duration-500 delay-800">
+                        <div className="bg-muted/50 rounded-lg p-4 animate-in slide-in-from-bottom-4 duration-500 delay-800 border-l-4 border-primary/20">
                           <p className="text-sm leading-relaxed whitespace-pre-wrap">
                             {message.message}
                           </p>
@@ -3050,9 +3093,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               description: "Message details copied successfully.",
                             });
                           }}
-                          className="transform hover:scale-105 transition-all duration-300"
+                          className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group"
                         >
-                          <FileText className="w-4 h-4 mr-2" />
+                          <FileText className="w-4 h-4 mr-2 transition-transform duration-300 group-hover:rotate-12" />
                           Copy Details
                         </Button>
                         <Button 
@@ -3061,18 +3104,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           onClick={() => {
                             window.open(`mailto:${message.email}?subject=Re: ${message.subject}`, '_blank');
                           }}
-                          className="transform hover:scale-105 transition-all duration-300"
+                          className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group"
                         >
-                          <Mail className="w-4 h-4 mr-2" />
+                          <Mail className="w-4 h-4 mr-2 transition-transform duration-300 group-hover:scale-110" />
                           Reply
                         </Button>
                         <Button 
                           size="sm" 
                           variant="destructive"
                           onClick={() => openDeleteMessageDialog(message)}
-                          className="transform hover:scale-105 transition-all duration-300"
+                          className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group"
                         >
-                          <Trash2 className="w-4 h-4 mr-2" />
+                          <Trash2 className="w-4 h-4 mr-2 transition-transform duration-300 group-hover:rotate-12" />
                           Delete
                         </Button>
                       </div>
@@ -3165,7 +3208,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     <div className="flex items-center gap-2">
                       <Label htmlFor="eventSelect" className="text-sm font-medium">Select Event:</Label>
                       <Select value={selectedEventId} onValueChange={setSelectedEventId}>
-                        <SelectTrigger className="w-64">
+                        <SelectTrigger className="w-64 transition-all duration-300 hover:shadow-md">
                           <SelectValue placeholder="Select an event" />
                         </SelectTrigger>
                         <SelectContent>
@@ -3221,9 +3264,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           }))
                         }));
                       }}
-                      className="transform hover:scale-105 transition-all duration-300"
+                      className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group"
                     >
-                      <RefreshCw className="w-4 h-4 mr-2" />
+                      <RefreshCw className="w-4 h-4 mr-2 transition-transform duration-300 group-hover:rotate-180" />
                       Refresh
                     </Button>
                   </div>
@@ -3270,66 +3313,66 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   ) : null;
                 })()}
 
-                {/* Analytics Overview Cards */}
+                {/* Enhanced Analytics Overview Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in slide-in-from-bottom-4 duration-700 delay-200">
-                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-300">
+                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-300 group">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">Total Tickets</p>
-                        <p className="text-2xl font-bold text-primary">{ticketStats.totalTickets}</p>
+                        <p className="text-2xl font-bold text-primary group-hover:scale-110 transition-transform duration-300">{ticketStats.totalTickets}</p>
                       </div>
-                      <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                        <DollarSign className="w-6 h-6 text-primary" />
+                      <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center group-hover:bg-primary/20 transition-colors duration-300">
+                        <DollarSign className="w-6 h-6 text-primary group-hover:scale-110 transition-transform duration-300" />
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-400">
+                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-400 group">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">Tickets Sold</p>
-                        <p className="text-2xl font-bold text-green-500">{ticketStats.soldTickets}</p>
+                        <p className="text-2xl font-bold text-green-500 group-hover:scale-110 transition-transform duration-300">{ticketStats.soldTickets}</p>
                       </div>
-                      <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
-                        <TrendingUp className="w-6 h-6 text-green-500" />
+                      <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center group-hover:bg-green-500/20 transition-colors duration-300">
+                        <TrendingUp className="w-6 h-6 text-green-500 group-hover:scale-110 transition-transform duration-300" />
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-500">
+                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-500 group">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">Available Tickets</p>
-                        <p className="text-2xl font-bold text-blue-500">{ticketStats.availableTickets}</p>
+                        <p className="text-2xl font-bold text-blue-500 group-hover:scale-110 transition-transform duration-300">{ticketStats.availableTickets}</p>
                       </div>
-                      <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                        <BarChart3 className="w-6 h-6 text-blue-500" />
+                      <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center group-hover:bg-blue-500/20 transition-colors duration-300">
+                        <BarChart3 className="w-6 h-6 text-blue-500 group-hover:scale-110 transition-transform duration-300" />
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-600">
+                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-600 group">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">Total Revenue</p>
-                        <p className="text-2xl font-bold text-orange-500">{ticketStats.revenue.toLocaleString()} TND</p>
+                        <p className="text-2xl font-bold text-orange-500 group-hover:scale-110 transition-transform duration-300">{ticketStats.revenue.toLocaleString()} TND</p>
                       </div>
-                      <div className="w-12 h-12 bg-orange-500/10 rounded-lg flex items-center justify-center">
-                        <CheckCircle className="w-6 h-6 text-orange-500" />
+                      <div className="w-12 h-12 bg-orange-500/10 rounded-lg flex items-center justify-center group-hover:bg-orange-500/20 transition-colors duration-300">
+                        <CheckCircle className="w-6 h-6 text-orange-500 group-hover:scale-110 transition-transform duration-300" />
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Charts and Analytics Section */}
+                {/* Enhanced Charts and Analytics Section */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-bottom-4 duration-700 delay-400">
-                  {/* Sales by Event Chart */}
-                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-left-4 duration-500 delay-500">
+                  {/* Enhanced Sales by Event Chart */}
+                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-left-4 duration-500 delay-500 hover:shadow-xl transition-all duration-300 group">
                     <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <TrendingUp className="w-5 h-5 mr-2 text-primary" />
+                      <TrendingUp className="w-5 h-5 mr-2 text-primary group-hover:scale-110 transition-transform duration-300" />
                       Ticket Sales by Type
                     </h3>
-                    <div className="h-64 bg-muted/20 rounded-lg p-4">
+                    <div className="h-64 bg-muted/20 rounded-lg p-4 transition-all duration-300 group-hover:bg-muted/30">
                       <div className="relative h-full">
                         {/* Y-axis labels */}
                         <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs text-muted-foreground">
@@ -3345,7 +3388,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           {/* Grid lines */}
                           <div className="absolute inset-0 flex flex-col justify-between">
                             {[0, 1, 2, 3, 4].map((i) => (
-                              <div key={i} className="border-b border-muted/20 h-0"></div>
+                              <div key={i} className="border-b border-muted/20 h-0 transition-all duration-300 group-hover:border-muted/30"></div>
                             ))}
                           </div>
                           
@@ -3381,6 +3424,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               strokeLinejoin="round"
                               filter="url(#glow)"
                               opacity="0.8"
+                              className="transition-all duration-300 group-hover:stroke-width-4"
                             />
                             
                             {/* Area fill */}
@@ -3394,6 +3438,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               }).join(' ') + ' L 100 100 L 0 100 Z'}
                               fill="url(#lineGradient)"
                               opacity="0.4"
+                              className="transition-all duration-300 group-hover:opacity-60"
                             />
                             
                             {/* Data points with glow */}
@@ -3421,6 +3466,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     fill="hsl(var(--primary))"
                                     stroke="white"
                                     strokeWidth="1"
+                                    className="transition-all duration-300 group-hover:r-5"
                                   />
                                 </g>
                               );
@@ -3431,7 +3477,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-muted-foreground px-2">
                             {tickets.filter(t => t.event_id === selectedEventId).slice(0, 5).map((ticket, index) => {
                               return (
-                                <span key={index} className="truncate max-w-[50px] text-center font-medium">
+                                <span key={index} className="truncate max-w-[50px] text-center font-medium transition-all duration-300 group-hover:text-primary">
                                   {ticket.ticket_type}
                                 </span>
                               );
@@ -3442,17 +3488,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </div>
                   </div>
 
-                  {/* Top Ambassadors Performance */}
-                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-right-4 duration-500 delay-600">
+                  {/* Enhanced Top Ambassadors Performance */}
+                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-right-4 duration-500 delay-600 hover:shadow-xl transition-all duration-300 group">
                     <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <Users className="w-5 h-5 mr-2 text-primary" />
+                      <Users className="w-5 h-5 mr-2 text-primary group-hover:scale-110 transition-transform duration-300" />
                       Top Performing Ambassadors
                     </h3>
                     <div className="space-y-3">
                       {ticketStats.topAmbassadors.map((ambassador, index) => (
-                        <div key={ambassador.id} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg animate-in slide-in-from-right-4 duration-500 delay-700">
+                        <div key={ambassador.id} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg animate-in slide-in-from-right-4 duration-500 delay-700 hover:bg-muted/30 transition-all duration-300 transform hover:scale-105">
                           <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                            <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-primary/20">
                               <span className="text-sm font-semibold text-primary">{index + 1}</span>
                             </div>
                             <div>
@@ -3461,7 +3507,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="font-semibold text-primary">{ambassador.ticketsSold}</p>
+                            <p className="font-semibold text-primary transition-all duration-300 hover:scale-110">{ambassador.ticketsSold}</p>
                             <p className="text-xs text-muted-foreground">Tickets Sold</p>
                           </div>
                         </div>
@@ -3541,43 +3587,47 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   </div>
                 </div>
 
-                {/* Quick Actions & Recent Activity */}
+                {/* Enhanced Quick Actions & Recent Activity */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-bottom-4 duration-700 delay-800">
-                  {/* Quick Actions */}
-                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-left-4 duration-500 delay-900">
+                  {/* Enhanced Quick Actions */}
+                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-left-4 duration-500 delay-900 hover:shadow-xl transition-all duration-300 group">
                     <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <Settings className="w-5 h-5 mr-2 text-primary" />
+                      <Settings className="w-5 h-5 mr-2 text-primary group-hover:scale-110 transition-transform duration-300" />
                       Quick Actions
                     </h3>
                     <div className="grid grid-cols-2 gap-3">
                       
-                      <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 transform hover:scale-105 transition-all duration-300">
-                        <Download className="w-5 h-5" />
+                      <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 transform hover:scale-105 hover:shadow-md transition-all duration-300 group">
+                        <Download className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
                         <span className="text-xs">Export Report</span>
                       </Button>
-                      <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 transform hover:scale-105 transition-all duration-300">
-                        <Mail className="w-5 h-5" />
+                      <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 transform hover:scale-105 hover:shadow-md transition-all duration-300 group">
+                        <Mail className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
                         <span className="text-xs">Send Notifications</span>
                       </Button>
-                      <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 transform hover:scale-105 transition-all duration-300">
-                        <BarChart3 className="w-5 h-5" />
+                      <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 transform hover:scale-105 hover:shadow-md transition-all duration-300 group">
+                        <BarChart3 className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
                         <span className="text-xs">View Analytics</span>
+                      </Button>
+                      <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 transform hover:scale-105 hover:shadow-md transition-all duration-300 group">
+                        <RefreshCw className="w-5 h-5 transition-transform duration-300 group-hover:rotate-180" />
+                        <span className="text-xs">Refresh Data</span>
                       </Button>
                     </div>
                   </div>
 
-                  {/* Recent Ticket Sales */}
-                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-right-4 duration-500 delay-1000">
+                  {/* Enhanced Recent Ticket Sales */}
+                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-right-4 duration-500 delay-1000 hover:shadow-xl transition-all duration-300 group">
                     <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <Clock className="w-5 h-5 mr-2 text-primary" />
+                      <Clock className="w-5 h-5 mr-2 text-primary group-hover:scale-110 transition-transform duration-300" />
                       Recent Ticket Sales
                     </h3>
                     <div className="space-y-3">
                       {Array.from({ length: 5 }, (_, i) => (
-                        <div key={i} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg animate-in slide-in-from-right-4 duration-500 delay-1100">
+                        <div key={i} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg animate-in slide-in-from-right-4 duration-500 delay-1100 hover:bg-muted/30 transition-all duration-300 transform hover:scale-105">
                           <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-green-500/10 rounded-full flex items-center justify-center">
-                              <CheckCircle className="w-4 h-4 text-green-500" />
+                            <div className="w-8 h-8 bg-green-500/10 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-green-500/20">
+                              <CheckCircle className="w-4 h-4 text-green-500 transition-transform duration-300 hover:scale-110" />
                             </div>
                             <div>
                               <p className="font-medium">VIP Ticket Sold</p>
@@ -3585,7 +3635,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="font-semibold text-green-500">$150</p>
+                            <p className="font-semibold text-green-500 transition-all duration-300 hover:scale-110">$150</p>
                             <p className="text-xs text-muted-foreground">Revenue</p>
                           </div>
                         </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, Users, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -13,7 +14,6 @@ interface Event {
   venue: string;
   city: string;
   poster_url: string;
-  ticket_link: string;
   whatsapp_link: string;
   featured: boolean;
   standard_price?: number;
@@ -35,6 +35,7 @@ interface EventsProps {
 }
 
 const Events = ({ language }: EventsProps) => {
+  const navigate = useNavigate();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -658,15 +659,16 @@ const Events = ({ language }: EventsProps) => {
               {/* Action Buttons - Modern Design */}
               {selectedEvent.event_type === 'upcoming' && (
                 <div className="flex flex-col sm:flex-row gap-4">
-                  {selectedEvent.ticket_link && (
-                    <Button 
-                      className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 flex-1 py-6 text-lg font-semibold rounded-xl"
-                      onClick={() => window.open(selectedEvent.ticket_link, '_blank')}
-                    >
-                      <ExternalLink className="w-5 h-5 mr-2" />
-                      {content[language].bookNow}
-                    </Button>
-                  )}
+                  <Button 
+                    className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 flex-1 py-6 text-lg font-semibold rounded-xl"
+                    onClick={() => {
+                      closeModal();
+                      navigate(`/pass-purchase?eventId=${selectedEvent.id}`);
+                    }}
+                  >
+                    <ExternalLink className="w-5 h-5 mr-2" />
+                    {content[language].bookNow}
+                  </Button>
                   {selectedEvent.whatsapp_link && (
               <Button
                       variant="outline"

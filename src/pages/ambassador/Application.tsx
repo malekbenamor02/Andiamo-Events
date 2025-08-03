@@ -123,6 +123,20 @@ const Application = ({ language }: ApplicationProps) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      // Validate phone number format
+      const phoneRegex = /^[2594][0-9]{7}$/;
+      if (!phoneRegex.test(formData.phoneNumber)) {
+        toast({
+          title: language === 'en' ? 'Invalid Phone Number' : 'Numéro de Téléphone Invalide',
+          description: language === 'en' 
+            ? 'Phone number must be 8 digits starting with 2, 5, 9, or 4.' 
+            : 'Le numéro de téléphone doit être 8 chiffres commençant par 2, 5, 9, ou 4.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
       // Sanitize all fields
       const sanitizedFullName = DOMPurify.sanitize(formData.fullName);
       const sanitizedEmail = DOMPurify.sanitize(formData.email);
@@ -143,7 +157,7 @@ const Application = ({ language }: ApplicationProps) => {
         .maybeSingle();
 
       if (existingAmb || existingApp) {
-        toast({ 
+        toast({
           title: 'Already Applied', 
           description: 'You have already applied or are already an ambassador.', 
           variant: 'destructive' 
@@ -235,7 +249,7 @@ const Application = ({ language }: ApplicationProps) => {
       >
         <div className="flex flex-col items-center gap-4">
           <div className="relative">
-            <Sparkles className="w-12 h-12 text-primary animate-pulse" />
+          <Sparkles className="w-12 h-12 text-primary animate-pulse" />
             <div className="absolute -top-2 -right-2">
               <Star className="w-4 h-4 text-yellow-300 animate-spin" />
             </div>
@@ -460,7 +474,7 @@ const Application = ({ language }: ApplicationProps) => {
           
           <div className="flex flex-col items-center gap-2">
             <div className="relative">
-              <Users className="w-10 h-10 text-white/80" />
+            <Users className="w-10 h-10 text-white/80" />
               <div className="absolute -top-1 -right-1">
                 <Star className="w-3 h-3 text-yellow-300 animate-spin" />
               </div>
@@ -483,7 +497,7 @@ const Application = ({ language }: ApplicationProps) => {
                   <li key={i} className="flex items-center gap-3 group">
                     {icons[i] || <Star className="w-4 h-4 text-yellow-300 group-hover:animate-pulse" />}
                     <span className="group-hover:text-yellow-200 transition-colors duration-300">{benefit}</span>
-                  </li>
+                </li>
                 );
               })}
             </ul>
