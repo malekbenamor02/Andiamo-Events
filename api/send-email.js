@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     }
 
     await transporter.sendMail({
-      from: process.env.GMAIL_FROM || 'Andiamo Events <fmalekbenamorf@gmail.com>',
+      from: process.env.GMAIL_FROM,
       to,
       subject,
       html,

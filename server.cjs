@@ -34,8 +34,8 @@ app.use(cookieParser());
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.GMAIL_USER || 'fmalekbenamorf@gmail.com',
-    pass: process.env.GMAIL_APP_PASSWORD || 'gdwf jvzu olih ktep',
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
   },
 });
 
@@ -54,7 +54,7 @@ app.post('/api/send-email', async (req, res) => {
     const { to, subject, html } = req.body;
     
     await transporter.sendMail({
-      from: process.env.GMAIL_FROM || 'Andiamo Events <fmalekbenamorf@gmail.com>',
+      from: process.env.GMAIL_FROM,
       to,
       subject,
       html,
