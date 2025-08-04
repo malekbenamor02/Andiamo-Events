@@ -10,11 +10,18 @@ const bcrypt = require('bcryptjs');
 // Load environment variables
 require('dotenv').config();
 
+// Debug: Log environment variables
+console.log('Environment variables check:');
+console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? 'Found' : 'Missing');
+console.log('SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? 'Found' : 'Missing');
+console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Found' : 'Missing');
+
 // Initialize Supabase client only if environment variables are available
 let supabase = null;
-if (process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY) {
+if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
   const { createClient } = require('@supabase/supabase-js');
-  supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
+  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+  console.log('Supabase client initialized successfully');
 } else {
   console.warn('Supabase environment variables not found. Admin login functionality will be disabled.');
 }
@@ -300,4 +307,4 @@ app.post('/api/validate-ticket', async (req, res) => {
   }
 });
 
-app.listen(process.env.PORT || 8080, () => console.log('API server running'));
+app.listen(process.env.PORT || 8082, () => console.log('API server running on port', process.env.PORT || 8082));
