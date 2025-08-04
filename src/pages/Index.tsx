@@ -32,7 +32,7 @@ const Index = ({ language }: IndexProps) => {
   const isMobile = useIsMobile();
   const [counters, setCounters] = useState({ events: 0, members: 0, followers: 0});
   const [featuredEvents, setFeaturedEvents] = useState<Event[]>([]);
-  const [animatedSections, setAnimatedSections] = useState<Set<string>>(new Set());
+  const [animatedSections, setAnimatedSections] = useState<Set<string>>(new Set(['hero']));
   
   // Refs for each section
   const heroRef = useRef<HTMLDivElement>(null);
@@ -46,6 +46,11 @@ const Index = ({ language }: IndexProps) => {
   // Scroll to top when page loads/refreshes
   useEffect(() => {
     window.scrollTo(0, 0);
+  }, []);
+
+  // Ensure hero section is visible immediately on page load
+  useEffect(() => {
+    setAnimatedSections(prev => new Set([...prev, 'hero']));
   }, []);
 
   // Scroll-triggered animations using Intersection Observer

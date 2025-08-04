@@ -24,6 +24,7 @@ import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute
 
 import AmbassadorApplication from "./pages/ambassador/Application";
 import PassPurchase from "./pages/PassPurchase";
+import LoadingDemo from "./pages/LoadingDemo";
 
 const queryClient = new QueryClient();
 
@@ -66,6 +67,7 @@ const App = () => {
               <Route path="/contact" element={<Contact language={language} />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy language={language} />} />
               <Route path="/terms" element={<Terms language={language} />} />
+              <Route path="/loading-demo" element={<LoadingDemo />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
             <Footer language={language} />
