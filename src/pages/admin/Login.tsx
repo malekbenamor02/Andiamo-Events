@@ -63,9 +63,44 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         })
       });
 
-      const data = await response.json();
+      // Check if response is OK before trying to parse JSON
+      if (!response.ok) {
+        // Try to get error message from response
+        let errorMessage = t[language].error;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          // If response is not JSON, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        setError(errorMessage);
+        toast({
+          title: language === 'en' ? "Login Failed" : "Échec de connexion",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
 
-      if (response.ok && data.success) {
+      // Parse JSON response
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        console.error('Failed to parse response as JSON:', e);
+        setError(t[language].error);
+        toast({
+          title: language === 'en' ? "Login Failed" : "Échec de connexion",
+          description: language === 'en' ? "Invalid response from server" : "Réponse invalide du serveur",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (data.success) {
         // Login successful - JWT token is now stored in httpOnly cookie
         toast({
           title: language === 'en' ? "Login Successful!" : "Connexion réussie!",
@@ -86,11 +121,21 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
           variant: "destructive",
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
-      const errorMessage = language === 'en' 
-        ? "Network error. Please check your connection."
-        : "Erreur réseau. Veuillez vérifier votre connexion.";
+      // More detailed error handling
+      let errorMessage = t[language].error;
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        errorMessage = language === 'en' 
+          ? "Network error. Please check your connection and ensure the API is accessible."
+          : "Erreur réseau. Veuillez vérifier votre connexion et vous assurer que l'API est accessible.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      } else {
+        errorMessage = language === 'en' 
+          ? "Network error. Please check your connection."
+          : "Erreur réseau. Veuillez vérifier votre connexion.";
+      }
       setError(errorMessage);
       toast({
         title: language === 'en' ? "Connection Error" : "Erreur de connexion",

@@ -33,7 +33,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!api|assets|.*\\.[a-z0-9]+$).*)",
+      "source": "/((?!api/|assets/|.*\\..*$).*)",
       "destination": "/index.html"
     }
   ]
