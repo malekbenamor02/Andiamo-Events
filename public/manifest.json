@@ -1,0 +1,23 @@
+{
+  "name": "Andiamo Events Scanner",
+  "short_name": "Event Scanner",
+  "description": "QR Code scanner for event tickets",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/placeholder.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ],
+  "permissions": [
+    "camera"
+  ],
+  "categories": ["utilities", "productivity"],
+  "lang": "en",
+  "dir": "ltr"
+} 
