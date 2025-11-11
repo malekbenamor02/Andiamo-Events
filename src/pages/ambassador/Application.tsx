@@ -185,9 +185,15 @@ const Application = ({ language }: ApplicationProps) => {
         }
       }
 
-      // Only show error if we actually found a record (not if query failed)
-      // If query failed due to RLS, existingAmb/existingApp will be null, so we continue
-      if (existingAmb && !ambError) {
+      // Only show error if we actually found a record AND there was no error
+      // If query failed due to RLS, we'll allow the application to proceed
+      // This is a safety measure - if policies aren't set up, we don't block applications
+      
+      // Check if we have a valid result (not an error)
+      const hasExistingAmb = existingAmb && !ambError;
+      const hasExistingApp = existingApp && !appError;
+      
+      if (hasExistingAmb) {
         toast({
           title: 'Already Applied', 
           description: existingAmb.status === 'approved' 
@@ -199,7 +205,7 @@ const Application = ({ language }: ApplicationProps) => {
         return;
       }
 
-      if (existingApp && !appError) {
+      if (hasExistingApp) {
         toast({
           title: 'Already Applied', 
           description: existingApp.status === 'approved' 
@@ -209,6 +215,12 @@ const Application = ({ language }: ApplicationProps) => {
         });
         setIsSubmitting(false);
         return;
+      }
+      
+      // If we got here and there were errors, log them but continue
+      // This allows applications to go through even if RLS policies aren't set up
+      if (ambError || appError) {
+        console.log('Duplicate check queries had errors, but allowing application to proceed');
       }
 
       const { error } = await supabase
