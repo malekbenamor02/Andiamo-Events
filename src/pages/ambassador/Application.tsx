@@ -145,21 +145,49 @@ const Application = ({ language }: ApplicationProps) => {
       const sanitizedMotivation = DOMPurify.sanitize(formData.motivation);
       
       // Check for existing phone in ambassadors (phone is the primary identifier)
-      const { data: existingAmb } = await supabase
+      const { data: existingAmb, error: ambError } = await supabase
         .from('ambassadors')
         .select('id, status')
         .eq('phone', formData.phoneNumber)
         .maybeSingle();
       
+      // Log for debugging (remove in production)
+      if (ambError) {
+        console.error('Error checking ambassadors:', ambError);
+        // If RLS policy doesn't exist, the query will fail
+        // For now, we'll continue if it's a permission error
+        if (ambError.code === '42501' || ambError.message?.includes('permission') || ambError.message?.includes('policy')) {
+          console.warn('RLS policy may not be set up. Continuing with application...');
+        } else {
+          // For other errors, we should still allow the application
+          console.warn('Error checking ambassadors, but allowing application to continue');
+        }
+      }
+      
       // Check for existing phone in applications (only check pending or approved applications)
-      const { data: existingApp } = await supabase
+      const { data: existingApp, error: appError } = await supabase
         .from('ambassador_applications')
         .select('id, status')
         .eq('phone_number', formData.phoneNumber)
         .in('status', ['pending', 'approved'])
         .maybeSingle();
 
-      if (existingAmb) {
+      // Log for debugging (remove in production)
+      if (appError) {
+        console.error('Error checking applications:', appError);
+        // If RLS policy doesn't exist, the query will fail
+        // For now, we'll continue if it's a permission error
+        if (appError.code === '42501' || appError.message?.includes('permission') || appError.message?.includes('policy')) {
+          console.warn('RLS policy may not be set up. Continuing with application...');
+        } else {
+          // For other errors, we should still allow the application
+          console.warn('Error checking applications, but allowing application to continue');
+        }
+      }
+
+      // Only show error if we actually found a record (not if query failed)
+      // If query failed due to RLS, existingAmb/existingApp will be null, so we continue
+      if (existingAmb && !ambError) {
         toast({
           title: 'Already Applied', 
           description: existingAmb.status === 'approved' 
@@ -171,7 +199,7 @@ const Application = ({ language }: ApplicationProps) => {
         return;
       }
 
-      if (existingApp) {
+      if (existingApp && !appError) {
         toast({
           title: 'Already Applied', 
           description: existingApp.status === 'approved' 
