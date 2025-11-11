@@ -143,25 +143,43 @@ const Application = ({ language }: ApplicationProps) => {
       const sanitizedCity = DOMPurify.sanitize(formData.city);
       const sanitizedSocialLink = DOMPurify.sanitize(formData.socialLink);
       const sanitizedMotivation = DOMPurify.sanitize(formData.motivation);
-      // Check for existing phone/email in ambassadors
+      
+      // Check for existing phone in ambassadors (phone is the primary identifier)
       const { data: existingAmb } = await supabase
         .from('ambassadors')
-        .select('id')
-        .or(`phone.eq.${formData.phoneNumber},email.eq.${formData.email}`)
+        .select('id, status')
+        .eq('phone', formData.phoneNumber)
         .maybeSingle();
-      // Check for existing phone/email in applications
+      
+      // Check for existing phone in applications (only check pending or approved applications)
       const { data: existingApp } = await supabase
         .from('ambassador_applications')
-        .select('id')
-        .or(`phone_number.eq.${formData.phoneNumber},email.eq.${formData.email}`)
+        .select('id, status')
+        .eq('phone_number', formData.phoneNumber)
+        .in('status', ['pending', 'approved'])
         .maybeSingle();
 
-      if (existingAmb || existingApp) {
+      if (existingAmb) {
         toast({
           title: 'Already Applied', 
-          description: 'You have already applied or are already an ambassador.', 
+          description: existingAmb.status === 'approved' 
+            ? 'You are already an approved ambassador.' 
+            : 'You have already applied. Your application is being reviewed.', 
           variant: 'destructive' 
         });
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (existingApp) {
+        toast({
+          title: 'Already Applied', 
+          description: existingApp.status === 'approved' 
+            ? 'Your application has already been approved.' 
+            : 'You have already submitted an application. Please wait for review.', 
+          variant: 'destructive' 
+        });
+        setIsSubmitting(false);
         return;
       }
 
