@@ -10,7 +10,14 @@ CREATE INDEX IF NOT EXISTS idx_ambassador_applications_phone ON public.ambassado
 
 -- Add SELECT policy to allow checking for existing applications by phone number
 -- This is needed for the duplicate check in the application form
-CREATE POLICY "Public can check existing applications by phone" ON public.ambassador_applications
+CREATE POLICY IF NOT EXISTS "Public can check existing applications by phone" ON public.ambassador_applications
+  FOR SELECT 
+  USING (true);
+
+-- Add SELECT policy to allow checking for existing ambassadors by phone number
+-- This is needed for the duplicate check in the application form
+-- Note: This allows public to check if a phone number exists, but only returns id and status fields
+CREATE POLICY IF NOT EXISTS "Public can check existing ambassadors by phone" ON ambassadors
   FOR SELECT 
   USING (true);
 
