@@ -3,6 +3,17 @@ import bcrypt from 'bcryptjs';
 import { createClient } from '@supabase/supabase-js';
 
 export default async function handler(req, res) {
+  console.log('Admin login API called:', {
+    method: req.method,
+    url: req.url,
+    hasBody: !!req.body,
+    env: {
+      hasSupabaseUrl: !!process.env.SUPABASE_URL,
+      hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
+      hasJwtSecret: !!process.env.JWT_SECRET,
+    }
+  });
+
   // Enable CORS - for credentials, we must use a specific origin, not '*'
   const origin = req.headers.origin;
   if (origin) {
@@ -19,11 +30,16 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method not allowed', method: req.method });
   }
 
   try {
     const { email, password } = req.body;
+
+    if (!email || !password) {
+      console.log('Missing email or password');
+      return res.status(400).json({ error: 'Email and password required' });
+    }
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password required' });
@@ -31,8 +47,14 @@ export default async function handler(req, res) {
 
     // Check if environment variables are set
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-      console.error('Missing Supabase environment variables');
-      return res.status(500).json({ error: 'Server configuration error' });
+      console.error('Missing Supabase environment variables', {
+        hasSupabaseUrl: !!process.env.SUPABASE_URL,
+        hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
+      });
+      return res.status(500).json({ 
+        error: 'Server configuration error',
+        details: 'Missing Supabase environment variables. Please check Vercel settings.'
+      });
     }
 
     const supabase = createClient(
@@ -41,6 +63,7 @@ export default async function handler(req, res) {
     );
 
     // Fetch admin by email
+    console.log('Fetching admin for email:', email);
     const { data: admin, error } = await supabase
       .from('admins')
       .select('*')
@@ -49,12 +72,16 @@ export default async function handler(req, res) {
 
     if (error) {
       console.error('Supabase error:', error);
+      // Don't reveal if admin exists or not for security
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     if (!admin) {
+      console.log('Admin not found for email:', email);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+
+    console.log('Admin found, checking password');
 
     // Compare password
     const isMatch = await bcrypt.compare(password, admin.password);
