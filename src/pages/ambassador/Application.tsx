@@ -144,83 +144,68 @@ const Application = ({ language }: ApplicationProps) => {
       const sanitizedSocialLink = DOMPurify.sanitize(formData.socialLink);
       const sanitizedMotivation = DOMPurify.sanitize(formData.motivation);
       
-      // Check for existing phone in ambassadors (phone is the primary identifier)
-      const { data: existingAmb, error: ambError } = await supabase
-        .from('ambassadors')
-        .select('id, status')
-        .eq('phone', formData.phoneNumber)
-        .maybeSingle();
+      // TEMPORARY: Check if duplicate check should be enabled
+      // Set to false to disable duplicate checking (for testing)
+      const ENABLE_DUPLICATE_CHECK = true;
       
-      // Log for debugging (remove in production)
-      if (ambError) {
-        console.error('Error checking ambassadors:', ambError);
-        // If RLS policy doesn't exist, the query will fail
-        // For now, we'll continue if it's a permission error
-        if (ambError.code === '42501' || ambError.message?.includes('permission') || ambError.message?.includes('policy')) {
-          console.warn('RLS policy may not be set up. Continuing with application...');
+      if (ENABLE_DUPLICATE_CHECK) {
+        // Check for existing phone in ambassadors (phone is the primary identifier)
+        const { data: existingAmb, error: ambError } = await supabase
+          .from('ambassadors')
+          .select('id, status')
+          .eq('phone', formData.phoneNumber)
+          .maybeSingle();
+        
+        // Log for debugging
+        console.log('Ambassador check result:', { existingAmb, ambError });
+        
+        // Check for existing phone in applications (only check pending or approved applications)
+        const { data: existingApp, error: appError } = await supabase
+          .from('ambassador_applications')
+          .select('id, status')
+          .eq('phone_number', formData.phoneNumber)
+          .in('status', ['pending', 'approved'])
+          .maybeSingle();
+
+        // Log for debugging
+        console.log('Application check result:', { existingApp, appError });
+
+        // If queries failed due to RLS policies, allow the application
+        // This prevents blocking applications when policies aren't set up
+        const queryFailed = (ambError && (ambError.code === '42501' || ambError.message?.includes('permission') || ambError.message?.includes('policy'))) ||
+                           (appError && (appError.code === '42501' || appError.message?.includes('permission') || appError.message?.includes('policy')));
+        
+        if (queryFailed) {
+          console.warn('RLS policies may not be set up. Allowing application to proceed.');
+          // Continue with application if policies aren't set up
         } else {
-          // For other errors, we should still allow the application
-          console.warn('Error checking ambassadors, but allowing application to continue');
+          // Only block if we found a record AND there was no error
+          if (existingAmb && !ambError) {
+            console.log('Found existing ambassador:', existingAmb);
+            toast({
+              title: 'Already Applied', 
+              description: existingAmb.status === 'approved' 
+                ? 'You are already an approved ambassador.' 
+                : 'You have already applied. Your application is being reviewed.', 
+              variant: 'destructive' 
+            });
+            setIsSubmitting(false);
+            return;
+          }
+
+          if (existingApp && !appError) {
+            console.log('Found existing application:', existingApp);
+            toast({
+              title: 'Already Applied', 
+              description: existingApp.status === 'approved' 
+                ? 'Your application has already been approved.' 
+                : 'You have already submitted an application. Please wait for review.', 
+              variant: 'destructive' 
+            });
+            setIsSubmitting(false);
+            return;
+          }
         }
-      }
-      
-      // Check for existing phone in applications (only check pending or approved applications)
-      const { data: existingApp, error: appError } = await supabase
-        .from('ambassador_applications')
-        .select('id, status')
-        .eq('phone_number', formData.phoneNumber)
-        .in('status', ['pending', 'approved'])
-        .maybeSingle();
-
-      // Log for debugging (remove in production)
-      if (appError) {
-        console.error('Error checking applications:', appError);
-        // If RLS policy doesn't exist, the query will fail
-        // For now, we'll continue if it's a permission error
-        if (appError.code === '42501' || appError.message?.includes('permission') || appError.message?.includes('policy')) {
-          console.warn('RLS policy may not be set up. Continuing with application...');
-        } else {
-          // For other errors, we should still allow the application
-          console.warn('Error checking applications, but allowing application to continue');
-        }
-      }
-
-      // Only show error if we actually found a record AND there was no error
-      // If query failed due to RLS, we'll allow the application to proceed
-      // This is a safety measure - if policies aren't set up, we don't block applications
-      
-      // Check if we have a valid result (not an error)
-      const hasExistingAmb = existingAmb && !ambError;
-      const hasExistingApp = existingApp && !appError;
-      
-      if (hasExistingAmb) {
-        toast({
-          title: 'Already Applied', 
-          description: existingAmb.status === 'approved' 
-            ? 'You are already an approved ambassador.' 
-            : 'You have already applied. Your application is being reviewed.', 
-          variant: 'destructive' 
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (hasExistingApp) {
-        toast({
-          title: 'Already Applied', 
-          description: existingApp.status === 'approved' 
-            ? 'Your application has already been approved.' 
-            : 'You have already submitted an application. Please wait for review.', 
-          variant: 'destructive' 
-        });
-        setIsSubmitting(false);
-        return;
-      }
-      
-      // If we got here and there were errors, log them but continue
-      // This allows applications to go through even if RLS policies aren't set up
-      if (ambError || appError) {
-        console.log('Duplicate check queries had errors, but allowing application to proceed');
       }
 
       const { error } = await supabase
