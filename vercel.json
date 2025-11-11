@@ -2,9 +2,20 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
-      "source": "/((?!api/|assets/|.*\\.[a-z0-9]+$).*)",
+      "source": "/((?!api|assets|.*\\.).*)",
       "destination": "/index.html"
     }
   ]
