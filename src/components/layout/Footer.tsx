@@ -289,12 +289,12 @@ const Footer = ({ language }: FooterProps) => {
             <p className="text-muted-foreground text-sm">
               © 2025 Andiamo Events. {content[language].rights} <span className="mx-2">|</span> Developed by
               <a
-                href="https://www.instagram.com/malek.bamor/"
+                href="https://www.instagram.com/ahlem.abbes_/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-semibold text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1 ml-1"
               >
-                Malek Ben Amor
+                Ahlem Abbes
                 <Instagram className="w-4 h-4 ml-1" />
               </a>
             </p>
