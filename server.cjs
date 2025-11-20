@@ -76,36 +76,161 @@ app.post('/api/send-email', async (req, res) => {
 
 // Admin login endpoint
 app.post('/api/admin-login', async (req, res) => {
-  if (!supabase) {
-    return res.status(500).json({ error: 'Supabase not configured' });
+  try {
+    if (!supabase) {
+      console.error('Supabase not configured');
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+    
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password required' });
+    }
+    
+    // Fetch admin by email
+    const { data: admin, error } = await supabase
+      .from('admins')
+      .select('*')
+      .eq('email', email)
+      .single();
+      
+    if (error) {
+      console.error('Supabase error:', error);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    if (!admin) {
+      console.log('Admin not found for email:', email);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    if (!admin.password) {
+      console.error('Admin has no password field');
+      return res.status(500).json({ error: 'Server configuration error' });
+    }
+    
+    // Compare password
+    let isMatch;
+    try {
+      isMatch = await bcrypt.compare(password, admin.password);
+    } catch (bcryptError) {
+      console.error('Bcrypt comparison error:', bcryptError);
+      return res.status(500).json({ error: 'Server error', details: 'Password verification failed' });
+    }
+    
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    // Generate JWT (24 hours for session cookie)
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      console.warn('WARNING: JWT_SECRET is not set! Using fallback secret. This is insecure in production.');
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(500).json({ error: 'Server configuration error: JWT_SECRET is required in production.' });
+      }
+    }
+    
+    let token;
+    try {
+      token = jwt.sign({ id: admin.id, email: admin.email, role: admin.role }, jwtSecret || 'fallback-secret-dev-only', { expiresIn: '24h' });
+    } catch (jwtError) {
+      console.error('JWT signing error:', jwtError);
+      return res.status(500).json({ error: 'Server error', details: 'Failed to generate token' });
+    }
+    
+    res.cookie('adminToken', token, { 
+      httpOnly: true, 
+      secure: false, // Allow HTTP for localhost
+      sameSite: 'lax', // More permissive for mobile
+      path: '/', // Ensure cookie is available for all paths
+      domain: 'localhost' // Set domain explicitly
+      // Remove maxAge to make it a session cookie (expires when browser closes)
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Admin login error:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
   }
-  
-  const { email, password } = req.body;
-  // Fetch admin by email
-  const { data: admin, error } = await supabase
-    .from('admins')
-    .select('*')
-    .eq('email', email)
-    .single();
-  if (error || !admin) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+});
+
+// Update sales settings endpoint
+app.post('/api/update-sales-settings', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    // Verify admin authentication
+    const token = req.cookies.adminToken;
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Verify JWT token
+    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
+    let decoded;
+    try {
+      decoded = jwt.verify(token, jwtSecret);
+    } catch (jwtError) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Verify admin exists
+    const { data: admin, error: adminError } = await supabase
+      .from('admins')
+      .select('id, email')
+      .eq('id', decoded.id)
+      .eq('email', decoded.email)
+      .single();
+
+    if (adminError || !admin) {
+      return res.status(401).json({ error: 'Invalid admin' });
+    }
+
+    // Get the enabled value from request body
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid request: enabled must be a boolean' });
+    }
+
+    // Update or insert sales settings
+    const { data, error } = await supabase
+      .from('site_content')
+      .upsert({
+        key: 'sales_settings',
+        content: { enabled },
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'key'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating sales settings:', error);
+      return res.status(500).json({ 
+        error: 'Failed to update settings',
+        details: error.message 
+      });
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      settings: data 
+    });
+  } catch (error) {
+    console.error('Error in update-sales-settings:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
   }
-  // Compare password
-  const isMatch = await bcrypt.compare(password, admin.password);
-  if (!isMatch) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-  // Generate JWT (24 hours for session cookie)
-  const token = jwt.sign({ id: admin.id, email: admin.email, role: admin.role }, process.env.JWT_SECRET || 'fallback-secret', { expiresIn: '24h' });
-  res.cookie('adminToken', token, { 
-    httpOnly: true, 
-    secure: false, // Allow HTTP for localhost
-    sameSite: 'lax', // More permissive for mobile
-    path: '/', // Ensure cookie is available for all paths
-    domain: 'localhost' // Set domain explicitly
-    // Remove maxAge to make it a session cookie (expires when browser closes)
-  });
-  res.json({ success: true });
 });
 
 // Admin logout endpoint
@@ -146,7 +271,14 @@ function requireAdminAuth(req, res, next) {
   const token = req.cookies.adminToken;
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret');
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      console.error('WARNING: JWT_SECRET is not set! Using fallback secret. This is insecure in production.');
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(500).json({ error: 'Server configuration error: JWT_SECRET is required in production.' });
+      }
+    }
+    const decoded = jwt.verify(token, jwtSecret || 'fallback-secret-dev-only');
     req.admin = decoded;
     next();
   } catch (err) {

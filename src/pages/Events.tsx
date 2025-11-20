@@ -553,29 +553,6 @@ const Events = ({ language }: EventsProps) => {
                 </div>
               )}
 
-              {/* Pricing Section */}
-              {(selectedEvent.standard_price || selectedEvent.vip_price) && (
-                <div className="bg-gradient-dark rounded-xl p-4 mb-6">
-                  <h3 className="text-lg font-bold text-gradient-neon mb-3 text-center">
-                    {content[language].ticketPricing}
-                  </h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    {selectedEvent.standard_price && (
-                      <div className="bg-background/50 rounded-lg p-3 text-center">
-                        <h4 className="font-semibold text-sm mb-1">{content[language].standard}</h4>
-                        <p className="text-xl font-bold text-primary">{selectedEvent.standard_price} TND</p>
-                      </div>
-                    )}
-                    {selectedEvent.vip_price && (
-                      <div className="bg-background/50 rounded-lg p-3 text-center">
-                        <h4 className="font-semibold text-sm mb-1">{content[language].vip}</h4>
-                        <p className="text-xl font-bold text-primary">{selectedEvent.vip_price} TND</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
               {/* Description - Modern Card Design */}
               <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 rounded-2xl p-6 border border-blue-500/20">
                 <h3 className="text-xl font-bold text-gradient-to-r from-blue-400 to-purple-400 mb-4 flex items-center">

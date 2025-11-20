@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Navigation from "./components/layout/Navigation";
 import Footer from "./components/layout/Footer";
+import MaintenanceMode from "./components/layout/MaintenanceMode";
 import Index from "./pages/Index";
 import Events from "./pages/Events";
 
@@ -42,9 +43,10 @@ const App = () => {
         <Sonner />
         <BrowserRouter>
           <ScrollToTop />
-          <div className="min-h-screen bg-background">
-            <Navigation language={language} toggleLanguage={toggleLanguage} />
-            <Routes>
+          <MaintenanceMode language={language}>
+            <div className="min-h-screen bg-background">
+              <Navigation language={language} toggleLanguage={toggleLanguage} />
+              <Routes>
               <Route path="/" element={<Index language={language} />} />
               <Route path="/events" element={<Events language={language} />} />
               <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
@@ -69,9 +71,10 @@ const App = () => {
               <Route path="/terms" element={<Terms language={language} />} />
               <Route path="/loading-demo" element={<LoadingDemo />} />
               <Route path="*" element={<NotFound />} />
-            </Routes>
-            <Footer language={language} />
-          </div>
+              </Routes>
+              <Footer language={language} />
+            </div>
+          </MaintenanceMode>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

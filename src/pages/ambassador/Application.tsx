@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
-import { User, Star, Users, Sparkles, Zap, Heart, Mail, Phone, MapPin, Instagram, FileText, Calendar, Award, Target, Gift, Crown, TrendingUp, Users2, Clock, CheckCircle } from "lucide-react";
+import { User, Star, Users, Sparkles, Zap, Heart, Mail, Phone, MapPin, Instagram, FileText, Calendar, Award, Target, Gift, Crown, TrendingUp, Users2, Clock, CheckCircle, XCircle, RefreshCw } from "lucide-react";
 // @ts-ignore
 import DOMPurify from 'dompurify';
 
@@ -28,6 +29,10 @@ const Application = ({ language }: ApplicationProps) => {
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
   const [animatedSections, setAnimatedSections] = useState<Set<string>>(new Set());
+  // Start with null - we'll determine the actual status from the database
+  const [applicationEnabled, setApplicationEnabled] = useState<boolean | null>(null);
+  const [applicationMessage, setApplicationMessage] = useState<string>("");
+  const [loadingApplicationStatus, setLoadingApplicationStatus] = useState(true);
   
   // Refs for animation sections
   const heroRef = useRef<HTMLDivElement>(null);
@@ -69,6 +74,95 @@ const Application = ({ language }: ApplicationProps) => {
 
     return () => observer.disconnect();
   }, []);
+
+  // Check if ambassador applications are enabled
+  useEffect(() => {
+    const checkApplicationStatus = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('site_content')
+          .select('content')
+          .eq('key', 'ambassador_application_settings')
+          .single();
+
+        if (error) {
+          // PGRST116 means no rows found - this is expected if settings don't exist yet
+          if (error.code === 'PGRST116') {
+            console.log('Ambassador application settings not found, defaulting to enabled');
+            setApplicationEnabled(true);
+            setApplicationMessage("");
+            setLoadingApplicationStatus(false);
+            return;
+          }
+          console.error('Error fetching ambassador application settings:', error);
+          // Default to enabled if error (so users can still apply)
+          setApplicationEnabled(true);
+          setApplicationMessage("");
+          setLoadingApplicationStatus(false);
+          return;
+        }
+
+        if (data && data.content) {
+          const settings = data.content as { enabled?: boolean; message?: string };
+          const isEnabled = settings.enabled !== false; // Default to true if not set
+          console.log('Application status loaded:', { 
+            enabled: isEnabled, 
+            hasMessage: !!settings.message, 
+            settings,
+            applicationEnabled: isEnabled,
+            willShowForm: isEnabled !== false
+          });
+          setApplicationEnabled(isEnabled);
+          setApplicationMessage(
+            settings.message || 
+            (language === 'en' 
+              ? 'Ambassador applications are currently closed. Please check back later.' 
+              : 'Les candidatures d\'ambassadeur sont actuellement fermées. Veuillez réessayer plus tard.')
+          );
+        } else {
+          // Default to enabled if no setting exists
+          console.log('No data found, defaulting to enabled');
+          setApplicationEnabled(true);
+          setApplicationMessage("");
+        }
+      } catch (error) {
+        console.error('Error checking application status:', error);
+        // Default to enabled on error (so users can still apply)
+        setApplicationEnabled(true);
+        setApplicationMessage("");
+      } finally {
+        // Always set loading to false, even if there was an error
+        setLoadingApplicationStatus(false);
+        console.log('Application status check completed - loading set to false', {
+          applicationEnabled,
+          loadingApplicationStatus: false
+        });
+      }
+    };
+
+    checkApplicationStatus();
+
+    // Set up real-time subscription to listen for changes
+    const channel = supabase
+      .channel('ambassador-application-settings-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'site_content',
+          filter: 'key=eq.ambassador_application_settings'
+        },
+        () => {
+          checkApplicationStatus();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [language]);
 
   const t = {
     en: {
@@ -235,6 +329,86 @@ const Application = ({ language }: ApplicationProps) => {
     }
   };
 
+  // Show loading state until we know the actual status (prevents flash of wrong content)
+  if (loadingApplicationStatus || applicationEnabled === null) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">
+            {language === 'en' ? 'Loading...' : 'Chargement...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show closed message if applications are disabled
+  if (applicationEnabled === false) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Animated background elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+        </div>
+
+        <div className="max-w-3xl w-full relative z-10">
+          <div className="backdrop-blur-sm bg-card/40 border border-border/50 rounded-3xl p-8 md:p-12 shadow-2xl">
+            <div className="text-center space-y-8">
+              {/* Icon */}
+              <div className="flex justify-center">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-ping" style={{ animationDuration: '3s' }}></div>
+                  <div className="relative bg-gradient-to-br from-primary via-primary/80 to-secondary p-6 md:p-8 rounded-2xl shadow-2xl">
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/50 to-secondary/50 rounded-2xl blur-sm"></div>
+                    <XCircle className="w-12 h-12 md:w-16 md:h-16 text-white relative z-10" />
+                  </div>
+                </div>
+              </div>
+              
+              {/* Content */}
+              <div className="space-y-6 pt-4">
+                <div className="space-y-3">
+                  <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
+                    {language === 'en' ? 'Applications Closed' : 'Candidatures Fermées'}
+                  </h1>
+                  <div className="h-1 w-24 bg-gradient-to-r from-primary to-secondary mx-auto rounded-full"></div>
+                </div>
+                
+                <p className="text-lg md:text-xl lg:text-2xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
+                  {applicationMessage}
+                </p>
+              </div>
+
+              {/* Link to login */}
+              <div className="pt-8">
+                <Link to="/ambassador/auth">
+                  <Button variant="outline" className="px-6 py-3">
+                    {t.login}
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show the application form (applications are enabled)
+  console.log('Rendering: Application form', { 
+    applicationEnabled, 
+    loadingApplicationStatus,
+    type: typeof applicationEnabled,
+    shouldShowForm: applicationEnabled === true && !loadingApplicationStatus
+  });
+  
+  // Safety check - if somehow we get here with wrong state, default to showing form
+  if (applicationEnabled !== true) {
+    console.warn('Unexpected state in form render:', { applicationEnabled, loadingApplicationStatus });
+  }
+  
   return (
     <div className="min-h-screen bg-gradient-dark flex flex-col items-center justify-start p-0 md:p-8 relative overflow-hidden">
       {/* Floating Stars Background */}
@@ -287,7 +461,7 @@ const Application = ({ language }: ApplicationProps) => {
         className={`w-full max-w-3xl mx-auto text-center py-12 px-4 md:px-0 transform transition-all duration-1000 ease-out relative z-10 ${
           animatedSections.has('hero') 
             ? 'opacity-100 translate-y-0 scale-100' 
-            : 'opacity-0 translate-y-8 scale-95'
+            : 'opacity-100 translate-y-0 scale-100'
         }`}
       >
         <div className="flex flex-col items-center gap-4">
@@ -320,7 +494,7 @@ const Application = ({ language }: ApplicationProps) => {
         className={`w-full max-w-5xl mx-auto bg-card/80 rounded-2xl shadow-xl flex flex-col md:flex-row overflow-hidden transform transition-all duration-1000 ease-out relative z-10 ${
           animatedSections.has('form') 
             ? 'opacity-100 translate-y-0 scale-100' 
-            : 'opacity-0 translate-y-8 scale-95'
+            : 'opacity-100 translate-y-0 scale-100'
         }`}
       >
         {/* Form Section */}
@@ -466,14 +640,13 @@ const Application = ({ language }: ApplicationProps) => {
                         {t.motivation}
                       </Label>
                       <div className="relative">
-                        <Input 
+                        <Textarea 
                           id="motivation" 
                           value={formData.motivation} 
                           onChange={e => setFormData({ ...formData, motivation: e.target.value })} 
-                          className="pl-10"
+                          className="min-h-[120px] resize-y"
                           placeholder="Tell us why you want to be an ambassador..."
                         />
-                        <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       </div>
                     </div>
                   </div>

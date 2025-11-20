@@ -18,7 +18,7 @@ import {
   Plus, Edit, Trash2, Calendar, MapPin, Phone, Mail, User, Settings,
   Eye, EyeOff, Save, X, Image, Video, Upload,
   Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
-  PieChart, Download, RefreshCw, Copy
+  PieChart, Download, RefreshCw, Copy, Wrench
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
@@ -135,6 +135,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [sponsorToDelete, setSponsorToDelete] = useState(null);
   const [allEvents, setAllEvents] = useState([]);
+  
+  // Sales settings state
+  const [salesEnabled, setSalesEnabled] = useState(true);
+  const [loadingSalesSettings, setLoadingSalesSettings] = useState(false);
+
+  // Maintenance mode state
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
+  const [loadingMaintenanceSettings, setLoadingMaintenanceSettings] = useState(false);
+
+  // Ambassador application settings state
+  const [ambassadorApplicationEnabled, setAmbassadorApplicationEnabled] = useState(true);
+  const [ambassadorApplicationMessage, setAmbassadorApplicationMessage] = useState("");
+  const [loadingAmbassadorApplicationSettings, setLoadingAmbassadorApplicationSettings] = useState(false);
 
   // --- Team Members State ---
   const [teamMembers, setTeamMembers] = useState([]);
@@ -253,7 +267,30 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       purchaseDetails: "Purchase Details",
       customerInfo: "Customer Information",
       purchaseStatus: "Purchase Status",
-      noPurchases: "No purchases found"
+      noPurchases: "No purchases found",
+      settings: "Settings",
+      salesSettings: "Sales Settings",
+      enableSales: "Enable Sales",
+      disableSales: "Disable Sales",
+      salesEnabled: "Sales are currently enabled",
+      salesDisabled: "Sales are currently disabled",
+      salesSettingsDescription: "Control whether ambassadors can add sales. When disabled, ambassadors will see a message that sales are not open yet.",
+      maintenanceSettings: "Maintenance Mode",
+      enableMaintenance: "Enable Maintenance Mode",
+      disableMaintenance: "Disable Maintenance Mode",
+      maintenanceEnabled: "Maintenance mode is currently active",
+      maintenanceDisabled: "Maintenance mode is currently inactive",
+      maintenanceSettingsDescription: "Control website maintenance mode. When enabled, users will see a maintenance message and cannot access the site. Admin access is always allowed.",
+      maintenanceMessage: "Maintenance Message",
+      maintenanceMessagePlaceholder: "Enter a custom maintenance message (optional)",
+      ambassadorApplicationSettings: "Ambassador Application Settings",
+      ambassadorApplicationSettingsDescription: "Control whether users can submit ambassador applications. When disabled, users will see a message that applications are closed.",
+      ambassadorApplicationEnabled: "Applications are currently open",
+      ambassadorApplicationDisabled: "Applications are currently closed",
+      enableAmbassadorApplication: "Enable Applications",
+      disableAmbassadorApplication: "Disable Applications",
+      ambassadorApplicationMessage: "Application Closed Message",
+      ambassadorApplicationMessagePlaceholder: "Enter a custom message for when applications are closed (optional)"
     },
     fr: {
       title: "Tableau de Bord Admin",
@@ -318,7 +355,30 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       purchaseDetails: "Détails de l'Achat",
       customerInfo: "Informations Client",
       purchaseStatus: "Statut de l'Achat",
-      noPurchases: "Aucun achat trouvé"
+      noPurchases: "Aucun achat trouvé",
+      settings: "Paramètres",
+      salesSettings: "Paramètres de Ventes",
+      enableSales: "Activer les Ventes",
+      disableSales: "Désactiver les Ventes",
+      salesEnabled: "Les ventes sont actuellement activées",
+      salesDisabled: "Les ventes sont actuellement désactivées",
+      salesSettingsDescription: "Contrôlez si les ambassadeurs peuvent ajouter des ventes. Lorsqu'elle est désactivée, les ambassadeurs verront un message indiquant que les ventes ne sont pas encore ouvertes.",
+      maintenanceSettings: "Mode Maintenance",
+      enableMaintenance: "Activer le Mode Maintenance",
+      disableMaintenance: "Désactiver le Mode Maintenance",
+      maintenanceEnabled: "Le mode maintenance est actuellement actif",
+      maintenanceDisabled: "Le mode maintenance est actuellement inactif",
+      maintenanceSettingsDescription: "Contrôlez le mode maintenance du site web. Lorsqu'il est activé, les utilisateurs verront un message de maintenance et ne pourront pas accéder au site. L'accès administrateur est toujours autorisé.",
+      maintenanceMessage: "Message de Maintenance",
+      maintenanceMessagePlaceholder: "Entrez un message de maintenance personnalisé (optionnel)",
+      ambassadorApplicationSettings: "Paramètres de Candidature d'Ambassadeur",
+      ambassadorApplicationSettingsDescription: "Contrôlez si les utilisateurs peuvent soumettre des candidatures d'ambassadeur. Lorsqu'elle est désactivée, les utilisateurs verront un message indiquant que les candidatures sont fermées.",
+      ambassadorApplicationEnabled: "Les candidatures sont actuellement ouvertes",
+      ambassadorApplicationDisabled: "Les candidatures sont actuellement fermées",
+      enableAmbassadorApplication: "Ouvrir les Candidatures",
+      disableAmbassadorApplication: "Fermer les Candidatures",
+      ambassadorApplicationMessage: "Message de Candidature Fermée",
+      ambassadorApplicationMessagePlaceholder: "Entrez un message personnalisé lorsque les candidatures sont fermées (optionnel)"
     }
   };
 
@@ -569,6 +629,99 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [selectedEventId, tickets, ambassadors]);
 
+  // Fetch functions - defined before fetchAllData to avoid hoisting issues
+  const fetchSalesSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('key', 'sales_settings')
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching sales settings:', error);
+        return;
+      }
+
+      if (data && data.content) {
+        const settings = data.content as { enabled?: boolean };
+        setSalesEnabled(settings.enabled !== false); // Default to true if not set
+      } else {
+        // Default to enabled if no setting exists
+        setSalesEnabled(true);
+      }
+    } catch (error) {
+      console.error('Error fetching sales settings:', error);
+    }
+  };
+
+  const fetchMaintenanceSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('key', 'maintenance_settings')
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching maintenance settings:', error);
+        return;
+      }
+
+      if (data && data.content) {
+        const settings = data.content as { enabled?: boolean; message?: string };
+        setMaintenanceEnabled(settings.enabled === true);
+        setMaintenanceMessage(settings.message || "");
+      } else {
+        // Default to disabled if no setting exists
+        setMaintenanceEnabled(false);
+        setMaintenanceMessage("");
+      }
+    } catch (error) {
+      console.error('Error fetching maintenance settings:', error);
+    }
+  };
+
+  const fetchAmbassadorApplicationSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('key', 'ambassador_application_settings')
+        .single();
+
+      if (error) {
+        // PGRST116 means no rows found - this is expected if settings don't exist yet
+        if (error.code === 'PGRST116') {
+          // Default to enabled if no setting exists
+          setAmbassadorApplicationEnabled(true);
+          setAmbassadorApplicationMessage("");
+          return;
+        }
+        console.error('Error fetching ambassador application settings:', error);
+        // Set defaults on error to prevent loading state
+        setAmbassadorApplicationEnabled(true);
+        setAmbassadorApplicationMessage("");
+        return;
+      }
+
+      if (data && data.content) {
+        const settings = data.content as { enabled?: boolean; message?: string };
+        setAmbassadorApplicationEnabled(settings.enabled !== false); // Default to true if not set
+        setAmbassadorApplicationMessage(settings.message || "");
+      } else {
+        // Default to enabled if no setting exists
+        setAmbassadorApplicationEnabled(true);
+        setAmbassadorApplicationMessage("");
+      }
+    } catch (error) {
+      console.error('Error fetching ambassador application settings:', error);
+      // Set defaults on error to prevent loading state
+      setAmbassadorApplicationEnabled(true);
+      setAmbassadorApplicationMessage("");
+    }
+  };
+
   const fetchAllData = async () => {
     try {
       setLoading(true);
@@ -634,6 +787,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setAmbassadorSales({});
       }
 
+      // Fetch sales settings
+      await fetchSalesSettings();
+      await fetchMaintenanceSettings();
+      await fetchAmbassadorApplicationSettings();
+
     } catch (error) {
       console.error('Error fetching data:', error);
       toast({
@@ -664,6 +822,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         .eq('phone', application.phone_number)
         .maybeSingle();
 
+      let ambassadorId: string;
+
       if (existingAmbassador) {
         // Update their info
         const { error: updateAmbassadorError } = await supabase
@@ -679,6 +839,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           })
           .eq('phone', application.phone_number);
         if (updateAmbassadorError) throw updateAmbassadorError;
+        ambassadorId = existingAmbassador.id;
       } else {
         // Create ambassador account
         const { data: newAmbassador, error: createError } = await supabase
@@ -696,6 +857,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           .select()
           .single();
         if (createError) throw createError;
+        if (!newAmbassador) throw new Error('Failed to create ambassador account');
+        ambassadorId = newAmbassador.id;
       }
 
       // Update application status
@@ -705,9 +868,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         .eq('id', application.id);
 
       if (updateError) throw updateError;
-
-      // Get ambassador ID for tracking
-      const ambassadorId = existingAmbassador ? existingAmbassador.id : newAmbassador.id;
 
       // Send approval email with credentials (plain password)
       const emailConfig = createApprovalEmail(
@@ -814,6 +974,206 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
     } finally {
       setProcessingId(null);
+    }
+  };
+
+
+  // Update sales settings - using direct Supabase (old method)
+  const updateSalesSettings = async (enabled: boolean) => {
+    setLoadingSalesSettings(true);
+    try {
+      const { error } = await supabase
+        .from('site_content')
+        .upsert({
+          key: 'sales_settings',
+          content: { enabled },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'key'
+        });
+
+      if (error) {
+        // If RLS blocks it, provide helpful error
+        if (error.code === '42501' || error.message?.includes('policy')) {
+          throw new Error('Permission denied. Please run FIX_SALES_SETTINGS.sql in Supabase SQL Editor to enable admin updates.');
+        }
+        throw error;
+      }
+
+      setSalesEnabled(enabled);
+      toast({
+        title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
+        description: enabled
+          ? (language === 'en' ? 'Sales are now enabled for ambassadors' : 'Les ventes sont maintenant activées pour les ambassadeurs')
+          : (language === 'en' ? 'Sales are now disabled for ambassadors' : 'Les ventes sont maintenant désactivées pour les ambassadeurs'),
+      });
+      
+      // Refresh the settings to ensure sync
+      await fetchSalesSettings();
+    } catch (error: any) {
+      console.error('Error updating sales settings:', error);
+      const errorMessage = error.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres');
+      toast({
+        title: t.error,
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingSalesSettings(false);
+    }
+  };
+
+  const updateMaintenanceSettings = async (enabled: boolean, message?: string) => {
+    setLoadingMaintenanceSettings(true);
+    try {
+      const { error } = await supabase
+        .from('site_content')
+        .upsert({
+          key: 'maintenance_settings',
+          content: { enabled, message: message || "" },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'key'
+        });
+
+      if (error) {
+        // If RLS blocks it, provide helpful error
+        if (error.code === '42501' || error.message?.includes('policy')) {
+          throw new Error('Permission denied. Please run the maintenance settings migration in Supabase SQL Editor to enable admin updates.');
+        }
+        throw error;
+      }
+
+      setMaintenanceEnabled(enabled);
+      if (message !== undefined) {
+        setMaintenanceMessage(message);
+      }
+      toast({
+        title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
+        description: enabled
+          ? (language === 'en' ? 'Maintenance mode is now enabled. Users will see the maintenance message.' : 'Le mode maintenance est maintenant activé. Les utilisateurs verront le message de maintenance.')
+          : (language === 'en' ? 'Maintenance mode is now disabled. The site is accessible to all users.' : 'Le mode maintenance est maintenant désactivé. Le site est accessible à tous les utilisateurs.'),
+      });
+      
+      // Refresh the settings to ensure sync
+      await fetchMaintenanceSettings();
+    } catch (error: any) {
+      console.error('Error updating maintenance settings:', error);
+      const errorMessage = error.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres');
+      toast({
+        title: t.error,
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingMaintenanceSettings(false);
+    }
+  };
+
+  const updateAmbassadorApplicationSettings = async (enabled: boolean, message?: string) => {
+    // Prevent multiple simultaneous updates
+    if (loadingAmbassadorApplicationSettings) {
+      console.log('Update already in progress, skipping...');
+      return;
+    }
+
+    console.log('=== Starting ambassador application settings update ===', { enabled, message, currentState: { enabled: ambassadorApplicationEnabled, message: ambassadorApplicationMessage } });
+    
+    // Use functional update to ensure we're using the latest state
+    setLoadingAmbassadorApplicationSettings(true);
+    console.log('Loading state set to true');
+    const previousEnabled = ambassadorApplicationEnabled;
+    const previousMessage = ambassadorApplicationMessage;
+
+    // Safety timeout to ensure loading state is always cleared
+    let timeoutId: NodeJS.Timeout | null = setTimeout(() => {
+      console.warn('Ambassador application settings update timed out, clearing loading state');
+      setLoadingAmbassadorApplicationSettings(false);
+    }, 10000); // 10 second timeout
+
+    try {
+      console.log('Calling supabase upsert...');
+      // Update local state immediately for better UX
+      setAmbassadorApplicationEnabled(enabled);
+      if (message !== undefined) {
+        setAmbassadorApplicationMessage(message);
+      }
+
+      const { data, error } = await supabase
+        .from('site_content')
+        .upsert({
+          key: 'ambassador_application_settings',
+          content: { enabled, message: message || "" },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'key'
+        });
+
+      console.log('Supabase response:', { data, error });
+
+      if (error) {
+        // Revert local state on error
+        setAmbassadorApplicationEnabled(previousEnabled);
+        setAmbassadorApplicationMessage(previousMessage);
+        
+        console.error('Error updating ambassador application settings:', error);
+        
+        // If RLS blocks it, provide helpful error
+        if (error.code === '42501' || error.message?.includes('policy')) {
+          toast({
+            title: t.error,
+            description: language === 'en' 
+              ? 'Permission denied. Please run INIT_AMBASSADOR_APPLICATION_SETTINGS.sql in Supabase SQL Editor.'
+              : 'Permission refusée. Veuillez exécuter INIT_AMBASSADOR_APPLICATION_SETTINGS.sql dans l\'éditeur SQL Supabase.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: t.error,
+            description: error.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres'),
+            variant: 'destructive',
+          });
+        }
+        // Continue to finally block to clear loading state
+      } else {
+        toast({
+          title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
+          description: enabled
+            ? (language === 'en' ? 'Ambassador applications are now open. Users can submit applications.' : 'Les candidatures ambassadeur sont maintenant ouvertes. Les utilisateurs peuvent soumettre des candidatures.')
+            : (language === 'en' ? 'Ambassador applications are now closed. Users will see the closed message.' : 'Les candidatures ambassadeur sont maintenant fermées. Les utilisateurs verront le message de fermeture.'),
+        });
+        
+        // Refresh the settings to ensure sync (don't await to avoid blocking)
+        setTimeout(() => {
+          fetchAmbassadorApplicationSettings().catch(err => {
+            console.error('Error refreshing settings:', err);
+          });
+        }, 100);
+      }
+    } catch (error: any) {
+      console.error('Unexpected error updating ambassador application settings:', error);
+      // Revert local state on error
+      setAmbassadorApplicationEnabled(previousEnabled);
+      setAmbassadorApplicationMessage(previousMessage);
+      
+      toast({
+        title: t.error,
+        description: error?.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres'),
+        variant: 'destructive',
+      });
+    } finally {
+      // Always clear loading state and timeout
+      console.log('=== Finally block executing, clearing loading state ===');
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        console.log('Timeout cleared');
+      }
+      // Force state update using functional form
+      setLoadingAmbassadorApplicationSettings(prev => {
+        console.log('Setting loading state to false, previous value:', prev);
+        return false;
+      });
+      console.log('=== Loading state update queued ===');
     }
   };
 
@@ -1770,6 +2130,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               >
                 <DollarSign className={`w-4 h-4 transition-transform duration-300 ${activeTab === "tickets" ? "animate-pulse" : ""}`} />
                 <span>Ticket Management</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("settings")}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-900 ${
+                  activeTab === "settings" 
+                    ? "bg-primary text-primary-foreground shadow-lg" 
+                    : "hover:bg-accent hover:shadow-md"
+                }`}
+              >
+                <Settings className={`w-4 h-4 transition-transform duration-300 ${activeTab === "settings" ? "animate-pulse" : ""}`} />
+                <span>{t.settings}</span>
               </button>
             </div>
           </div>
@@ -3650,6 +4021,213 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </div>
 
 
+              </TabsContent>
+
+              {/* Settings Tab */}
+              <TabsContent value="settings" className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full px-2">
+                  {/* Sales Settings Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
+                    <Card className="shadow-lg h-full flex flex-col">
+                    <CardHeader className="pb-4">
+                      <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                        <Settings className="w-5 h-5 text-primary" />
+                        {t.salesSettings}
+                      </CardTitle>
+                      <p className="text-sm text-foreground/70 mt-2">{t.salesSettingsDescription}</p>
+                    </CardHeader>
+                    <CardContent className="flex-1 flex flex-col space-y-4">
+                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border transition-all duration-300 hover:shadow-md">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
+                            salesEnabled 
+                              ? 'bg-green-500 shadow-md shadow-green-500/50' 
+                              : 'bg-gray-500'
+                          }`}>
+                            {salesEnabled ? (
+                              <CheckCircle className="w-5 h-5 text-white" />
+                            ) : (
+                              <XCircle className="w-5 h-5 text-white" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-foreground">
+                              {salesEnabled ? t.salesEnabled : t.salesDisabled}
+                            </p>
+                            <p className="text-xs text-foreground/60 line-clamp-2">
+                              {salesEnabled 
+                                ? (language === 'en' ? 'Ambassadors can add sales' : 'Les ambassadeurs peuvent ajouter des ventes')
+                                : (language === 'en' ? 'Sales are disabled' : 'Les ventes sont désactivées')
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => updateSalesSettings(!salesEnabled)}
+                          disabled={loadingSalesSettings}
+                          variant={salesEnabled ? "destructive" : "default"}
+                          size="sm"
+                          className="ml-2 flex-shrink-0 transition-all duration-300"
+                        >
+                          {loadingSalesSettings ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : salesEnabled ? (
+                            <XCircle className="w-4 h-4" />
+                          ) : (
+                            <CheckCircle className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  </div>
+
+                  {/* Maintenance Mode Settings Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
+                    <Card className="shadow-lg h-full flex flex-col">
+                    <CardHeader className="pb-4">
+                      <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                        <Settings className="w-5 h-5 text-primary" />
+                        {t.maintenanceSettings}
+                      </CardTitle>
+                      <p className="text-sm text-foreground/70 mt-2">{t.maintenanceSettingsDescription}</p>
+                    </CardHeader>
+                    <CardContent className="flex-1 flex flex-col space-y-4">
+                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border transition-all duration-300 hover:shadow-md">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
+                            maintenanceEnabled 
+                              ? 'bg-orange-500 shadow-md shadow-orange-500/50' 
+                              : 'bg-gray-500'
+                          }`}>
+                            {maintenanceEnabled ? (
+                              <Wrench className="w-5 h-5 text-white" />
+                            ) : (
+                              <CheckCircle className="w-5 h-5 text-white" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-foreground">
+                              {maintenanceEnabled ? t.maintenanceEnabled : t.maintenanceDisabled}
+                            </p>
+                            <p className="text-xs text-foreground/60 line-clamp-2">
+                              {maintenanceEnabled 
+                                ? (language === 'en' ? 'Website in maintenance' : 'Site en maintenance')
+                                : (language === 'en' ? 'Website accessible' : 'Site accessible')
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => updateMaintenanceSettings(!maintenanceEnabled, maintenanceMessage)}
+                          disabled={loadingMaintenanceSettings}
+                          variant={maintenanceEnabled ? "default" : "destructive"}
+                          size="sm"
+                          className="ml-2 flex-shrink-0 transition-all duration-300"
+                        >
+                          {loadingMaintenanceSettings ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : maintenanceEnabled ? (
+                            <CheckCircle className="w-4 h-4" />
+                          ) : (
+                            <Wrench className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Maintenance Message Input */}
+                      <div className="space-y-2">
+                        <Label htmlFor="maintenance-message" className="text-sm text-foreground">{t.maintenanceMessage}</Label>
+                        <Textarea
+                          id="maintenance-message"
+                          placeholder={t.maintenanceMessagePlaceholder}
+                          value={maintenanceMessage}
+                          onChange={(e) => setMaintenanceMessage(e.target.value)}
+                          onBlur={() => {
+                            updateMaintenanceSettings(maintenanceEnabled, maintenanceMessage);
+                          }}
+                          className="min-h-[80px] text-sm bg-background text-foreground"
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  </div>
+
+                  {/* Ambassador Application Settings Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
+                    <Card className="shadow-lg h-full flex flex-col">
+                    <CardHeader className="pb-4">
+                      <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                        <Settings className="w-5 h-5 text-primary" />
+                        {t.ambassadorApplicationSettings}
+                      </CardTitle>
+                      <p className="text-sm text-foreground/70 mt-2">{t.ambassadorApplicationSettingsDescription}</p>
+                    </CardHeader>
+                    <CardContent className="flex-1 flex flex-col space-y-4">
+                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border transition-all duration-300 hover:shadow-md">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
+                            ambassadorApplicationEnabled 
+                              ? 'bg-blue-500 shadow-md shadow-blue-500/50' 
+                              : 'bg-gray-500'
+                          }`}>
+                            {ambassadorApplicationEnabled ? (
+                              <CheckCircle className="w-5 h-5 text-white" />
+                            ) : (
+                              <XCircle className="w-5 h-5 text-white" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-foreground">
+                              {ambassadorApplicationEnabled ? t.ambassadorApplicationEnabled : t.ambassadorApplicationDisabled}
+                            </p>
+                            <p className="text-xs text-foreground/60 line-clamp-2">
+                              {ambassadorApplicationEnabled 
+                                ? (language === 'en' ? 'Applications are open' : 'Les candidatures sont ouvertes')
+                                : (language === 'en' ? 'Applications are closed' : 'Les candidatures sont fermées')
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            updateAmbassadorApplicationSettings(!ambassadorApplicationEnabled, ambassadorApplicationMessage);
+                          }}
+                          disabled={loadingAmbassadorApplicationSettings}
+                          variant={ambassadorApplicationEnabled ? "destructive" : "default"}
+                          size="sm"
+                          className="ml-2 flex-shrink-0 transition-all duration-300"
+                        >
+                          {loadingAmbassadorApplicationSettings ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : ambassadorApplicationEnabled ? (
+                            <XCircle className="w-4 h-4" />
+                          ) : (
+                            <CheckCircle className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Ambassador Application Closed Message Input */}
+                      <div className="space-y-2">
+                        <Label htmlFor="ambassador-application-message" className="text-sm text-foreground">{t.ambassadorApplicationMessage}</Label>
+                        <Textarea
+                          id="ambassador-application-message"
+                          placeholder={t.ambassadorApplicationMessagePlaceholder}
+                          value={ambassadorApplicationMessage}
+                          onChange={(e) => setAmbassadorApplicationMessage(e.target.value)}
+                          onBlur={() => {
+                            updateAmbassadorApplicationSettings(ambassadorApplicationEnabled, ambassadorApplicationMessage);
+                          }}
+                          className="min-h-[80px] text-sm bg-background text-foreground"
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  </div>
+                </div>
               </TabsContent>
             </Tabs>
           </div>

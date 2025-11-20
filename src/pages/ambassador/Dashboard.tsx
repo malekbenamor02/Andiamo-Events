@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, User, BarChart, Calendar, Plus, Edit, Trash2 } from 'lucide-react';
+import { LogOut, User, BarChart, Calendar, Plus, Edit, Trash2, Lock, Clock, AlertCircle, DollarSign } from 'lucide-react';
 
 const AmbassadorDashboard = ({ language }) => {
   const [ambassador, setAmbassador] = useState(null);
@@ -19,6 +19,8 @@ const AmbassadorDashboard = ({ language }) => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSale, setEditingSale] = useState(null);
   const [saleToDelete, setSaleToDelete] = useState(null);
+  const [salesEnabled, setSalesEnabled] = useState(true);
+  const [loadingSalesSettings, setLoadingSalesSettings] = useState(true);
 
   const [formData, setFormData] = useState({
     event_id: '',
@@ -51,7 +53,9 @@ const AmbassadorDashboard = ({ language }) => {
     save: "Save",
     cancel: "Cancel",
     newSaleTitle: "Record a New Sale",
-    editSaleTitle: "Edit Sale"
+    editSaleTitle: "Edit Sale",
+    salesNotOpen: "Sales Not Open Yet",
+    salesNotOpenMessage: "Sales are currently disabled. Please check back later or contact the administrator."
   } : {
     title: "Tableau de Bord Ambassadeur",
     welcome: "Bienvenue",
@@ -73,7 +77,9 @@ const AmbassadorDashboard = ({ language }) => {
     save: "Enregistrer",
     cancel: "Annuler",
     newSaleTitle: "Enregistrer une Nouvelle Vente",
-    editSaleTitle: "Modifier Vente"
+    editSaleTitle: "Modifier Vente",
+    salesNotOpen: "Les Ventes Ne Sont Pas Encore Ouvertes",
+    salesNotOpenMessage: "Les ventes sont actuellement désactivées. Veuillez réessayer plus tard ou contacter l'administrateur."
   };
 
   useEffect(() => {
@@ -89,6 +95,23 @@ const AmbassadorDashboard = ({ language }) => {
   
   const fetchData = async (ambassadorId) => {
     setLoading(true);
+    setLoadingSalesSettings(true);
+    
+    // Fetch sales settings
+    const { data: settingsData } = await supabase
+      .from('site_content')
+      .select('content')
+      .eq('key', 'sales_settings')
+      .single();
+
+    if (settingsData && settingsData.content) {
+      const settings = settingsData.content as { enabled?: boolean };
+      setSalesEnabled(settings.enabled !== false); // Default to true if not set
+    } else {
+      setSalesEnabled(true); // Default to enabled
+    }
+    setLoadingSalesSettings(false);
+
     const { data: salesData, error: salesError } = await supabase
       .from('clients')
       .select('*, events(name)')
@@ -138,6 +161,15 @@ const AmbassadorDashboard = ({ language }) => {
   };
 
   const handleSaveSale = async () => {
+    if (!salesEnabled) {
+      toast({
+        title: t.salesNotOpen,
+        description: t.salesNotOpenMessage,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!formData.event_id || !formData.full_name || !formData.phone) {
       toast({
         title: language === 'en' ? 'Missing Information' : 'Informations Manquantes',
@@ -255,124 +287,192 @@ const AmbassadorDashboard = ({ language }) => {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardHeader><CardTitle>{t.totalSales}</CardTitle></CardHeader>
-            <CardContent><p className="text-3xl font-bold">{totalSalesCount}</p></CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>{t.commissionEarned}</CardTitle></CardHeader>
-            <CardContent><p className="text-3xl font-bold">{totalCommission.toFixed(2)} TND</p></CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>Tickets Sold</CardTitle></CardHeader>
-            <CardContent>
-              <div className="flex flex-col md:flex-row items-center justify-center gap-2 md:gap-4">
-                <div className="flex items-center gap-2 bg-purple-100 rounded-lg px-3 py-1">
-                  <span className="font-semibold text-purple-700">Standard:</span>
-                  <span className="text-2xl font-bold text-purple-700">{totalStandardTickets}</span>
-                </div>
-                <div className="flex items-center gap-2 bg-pink-100 rounded-lg px-3 py-1">
-                  <span className="font-semibold text-pink-700">VIP:</span>
-                  <span className="text-2xl font-bold text-pink-700">{totalVipTickets}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>{t.upcomingEvents}</CardTitle></CardHeader>
-            <CardContent><p className="text-3xl font-bold">{events.length}</p></CardContent>
-          </Card>
-        </div>
-
-        {/* Sales Section */}
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">{t.mySales}</h2>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => handleOpenDialog()}>
-                <Plus className="w-4 h-4 mr-2" />
-                {t.addSale}
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>{editingSale ? t.editSaleTitle : t.newSaleTitle}</DialogTitle></DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="event">{t.event}</Label>
-                  <Select value={formData.event_id} onValueChange={(value) => setFormData({ ...formData, event_id: value })}>
-                    <SelectTrigger><SelectValue placeholder="Select an event" /></SelectTrigger>
-                    <SelectContent>
-                      {events.map(event => <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="clientName">{t.clientName}</Label>
-                  <Input id="clientName" value={formData.full_name} onChange={(e) => setFormData({ ...formData, full_name: e.target.value })} />
-                </div>
-                <div>
-                  <Label htmlFor="clientPhone">{t.clientPhone}</Label>
-                  <Input id="clientPhone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Standard Tickets</Label>
-                    <Input type="number" min="0" value={formData.standard_tickets} onChange={(e) => setFormData({ ...formData, standard_tickets: parseInt(e.target.value) || 0 })} />
+        {/* Statistics Cards - Only show when sales are enabled */}
+        {!loadingSalesSettings && salesEnabled && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8 animate-in slide-in-from-bottom-4 fade-in duration-700">
+            <Card className="transform transition-all duration-300 hover:scale-105 hover:shadow-lg">
+              <CardHeader><CardTitle className="flex items-center gap-2">
+                <BarChart className="w-5 h-5 text-primary" />
+                {t.totalSales}
+              </CardTitle></CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                  {totalSalesCount}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Total tickets sold</p>
+              </CardContent>
+            </Card>
+            <Card className="transform transition-all duration-300 hover:scale-105 hover:shadow-lg">
+              <CardHeader><CardTitle className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-green-500" />
+                {t.commissionEarned}
+              </CardTitle></CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                  {totalCommission.toFixed(2)} TND
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Your earnings</p>
+              </CardContent>
+            </Card>
+            <Card className="transform transition-all duration-300 hover:scale-105 hover:shadow-lg">
+              <CardHeader><CardTitle className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-purple-500" />
+                Tickets Sold
+              </CardTitle></CardHeader>
+              <CardContent>
+                <div className="flex flex-col md:flex-row items-center justify-center gap-2 md:gap-4">
+                  <div className="flex items-center gap-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg px-3 py-2 transform hover:scale-105 transition-transform">
+                    <span className="font-semibold text-purple-700 dark:text-purple-300">Standard:</span>
+                    <span className="text-2xl font-bold text-purple-700 dark:text-purple-300">{totalStandardTickets}</span>
                   </div>
-                  <div>
-                    <Label>VIP Tickets</Label>
-                    <Input type="number" min="0" value={formData.vip_tickets} onChange={(e) => setFormData({ ...formData, vip_tickets: parseInt(e.target.value) || 0 })} />
+                  <div className="flex items-center gap-2 bg-pink-100 dark:bg-pink-900/30 rounded-lg px-3 py-2 transform hover:scale-105 transition-transform">
+                    <span className="font-semibold text-pink-700 dark:text-pink-300">VIP:</span>
+                    <span className="text-2xl font-bold text-pink-700 dark:text-pink-300">{totalVipTickets}</span>
                   </div>
                 </div>
-                <div className="flex justify-end space-x-2">
-                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>{t.cancel}</Button>
-                  <Button onClick={handleSaveSale}>{t.save}</Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+              </CardContent>
+            </Card>
+            <Card className="transform transition-all duration-300 hover:scale-105 hover:shadow-lg">
+              <CardHeader><CardTitle className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-blue-500" />
+                {t.upcomingEvents}
+              </CardTitle></CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                  {events.length}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Available events</p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.clientName}</TableHead>
-                <TableHead>{t.event}</TableHead>
-                <TableHead>{t.tickets}</TableHead>
-                <TableHead>{t.amount}</TableHead>
-                <TableHead>{t.date}</TableHead>
-                <TableHead>{t.actions}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sales.length > 0 ? sales.map(sale => (
-                <TableRow key={sale.id}>
-                  <TableCell>{sale.full_name}</TableCell>
-                  <TableCell>{sale.events.name}</TableCell>
-                  <TableCell>{sale.standard_tickets + sale.vip_tickets}</TableCell>
-                  <TableCell>{sale.total_amount.toFixed(2)} TND</TableCell>
-                  <TableCell>{new Date(sale.created_at).toLocaleDateString()}</TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button variant="outline" size="sm" onClick={() => handleOpenDialog(sale)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => setSaleToDelete(sale)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+        {/* Sales Disabled Message - Shows above sales section when disabled */}
+        {!loadingSalesSettings && !salesEnabled && (
+          <div className="mb-8 animate-in slide-in-from-top-4 fade-in duration-700">
+            <Card className="border-2 border-orange-200 dark:border-orange-800 bg-gradient-to-br from-orange-50 via-yellow-50 to-orange-50 dark:from-orange-950/20 dark:via-yellow-950/20 dark:to-orange-950/20 shadow-xl overflow-hidden">
+              <CardContent className="p-8">
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-orange-400 rounded-full blur-xl opacity-50 animate-pulse"></div>
+                    <div className="relative w-20 h-20 bg-gradient-to-br from-orange-400 to-yellow-500 rounded-full flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform duration-300">
+                      <Lock className="w-10 h-10 text-white animate-bounce" />
                     </div>
-                  </TableCell>
-                </TableRow>
-              )) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center">{t.noSales}</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </Card>
+                  </div>
+                  <div className="flex-1 text-center md:text-left">
+                    <h3 className="text-2xl font-bold text-orange-700 dark:text-orange-300 mb-2 flex items-center justify-center md:justify-start gap-2">
+                      <AlertCircle className="w-6 h-6 animate-pulse" />
+                      {t.salesNotOpen}
+                    </h3>
+                    <p className="text-orange-600 dark:text-orange-400 text-lg">
+                      {t.salesNotOpenMessage}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <div className="w-16 h-16 bg-orange-200 dark:bg-orange-900 rounded-full flex items-center justify-center animate-spin-slow">
+                      <Clock className="w-8 h-8 text-orange-600 dark:text-orange-400" />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Sales Section - Only show when sales are enabled */}
+        {!loadingSalesSettings && salesEnabled && (
+          <>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">{t.mySales}</h2>
+              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button 
+                    onClick={() => handleOpenDialog()}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    {t.addSale}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader><DialogTitle>{editingSale ? t.editSaleTitle : t.newSaleTitle}</DialogTitle></DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="event">{t.event}</Label>
+                      <Select value={formData.event_id} onValueChange={(value) => setFormData({ ...formData, event_id: value })}>
+                        <SelectTrigger><SelectValue placeholder="Select an event" /></SelectTrigger>
+                        <SelectContent>
+                          {events.map(event => <SelectItem key={event.id} value={event.id}>{event.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="clientName">{t.clientName}</Label>
+                      <Input id="clientName" value={formData.full_name} onChange={(e) => setFormData({ ...formData, full_name: e.target.value })} />
+                    </div>
+                    <div>
+                      <Label htmlFor="clientPhone">{t.clientPhone}</Label>
+                      <Input id="clientPhone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Standard Tickets</Label>
+                        <Input type="number" min="0" value={formData.standard_tickets} onChange={(e) => setFormData({ ...formData, standard_tickets: parseInt(e.target.value) || 0 })} />
+                      </div>
+                      <div>
+                        <Label>VIP Tickets</Label>
+                        <Input type="number" min="0" value={formData.vip_tickets} onChange={(e) => setFormData({ ...formData, vip_tickets: parseInt(e.target.value) || 0 })} />
+                      </div>
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <Button variant="outline" onClick={() => setIsDialogOpen(false)}>{t.cancel}</Button>
+                      <Button onClick={handleSaveSale}>{t.save}</Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            <Card>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t.clientName}</TableHead>
+                    <TableHead>{t.event}</TableHead>
+                    <TableHead>{t.tickets}</TableHead>
+                    <TableHead>{t.amount}</TableHead>
+                    <TableHead>{t.date}</TableHead>
+                    <TableHead>{t.actions}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sales.length > 0 ? sales.map(sale => (
+                    <TableRow key={sale.id}>
+                      <TableCell>{sale.full_name}</TableCell>
+                      <TableCell>{sale.events.name}</TableCell>
+                      <TableCell>{sale.standard_tickets + sale.vip_tickets}</TableCell>
+                      <TableCell>{sale.total_amount.toFixed(2)} TND</TableCell>
+                      <TableCell>{new Date(sale.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button variant="outline" size="sm" onClick={() => handleOpenDialog(sale)}>
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => setSaleToDelete(sale)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )) : (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center">{t.noSales}</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Card>
+          </>
+        )}
       </div>
 
       {/* Custom Delete Confirmation Dialog */}

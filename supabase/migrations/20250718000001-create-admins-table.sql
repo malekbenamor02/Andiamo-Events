@@ -22,8 +22,11 @@ ALTER TABLE admins ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Admins can view admin data" ON admins
   FOR ALL USING (true);
 
--- Insert a default admin user (password: admin123)
--- In production, use proper password hashing
-INSERT INTO admins (name, email, password, role) 
-VALUES ('Admin', 'admin@andiamo.com', 'admin123', 'admin')
-ON CONFLICT (email) DO NOTHING; 
+-- NOTE: Do not insert default admin with plain text password
+-- Admin accounts should be created using the setup script: node create-admin.js
+-- Then run the generated SQL in Supabase SQL Editor
+-- 
+-- Example (DO NOT USE - This is just for reference):
+-- INSERT INTO admins (name, email, password, role, is_active) 
+-- VALUES ('Admin User', 'admin@andiamo.com', '$2b$10$...hashed_password...', 'admin', true)
+-- ON CONFLICT (email) DO NOTHING; 

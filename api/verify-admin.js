@@ -39,7 +39,14 @@ export default async function handler(req, res) {
     }
 
     // Verify the JWT token
-    const decoded = jwt.verify(adminToken, process.env.JWT_SECRET || 'fallback-secret');
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      console.error('WARNING: JWT_SECRET is not set! Using fallback secret. This is insecure in production.');
+      if (process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production') {
+        return res.status(500).json({ valid: false, error: 'Server configuration error' });
+      }
+    }
+    const decoded = jwt.verify(adminToken, jwtSecret || 'fallback-secret-dev-only');
     
     // Check if environment variables are set
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {

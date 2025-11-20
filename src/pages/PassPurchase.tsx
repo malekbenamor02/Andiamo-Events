@@ -47,8 +47,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedPassType, setSelectedPassType] = useState<string>('');
-  const [quantity, setQuantity] = useState(1);
+  const [selectedPasses, setSelectedPasses] = useState<Record<string, number>>({});
   const [customerInfo, setCustomerInfo] = useState({
     fullName: '',
     email: '',
@@ -193,15 +192,43 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     }] : [])
   ] : [];
 
-  const selectedPass = passTypes.find(p => p.id === selectedPassType);
-  const totalPrice = selectedPass ? selectedPass.price * quantity : 0;
+  // Calculate total price from all selected passes
+  const totalPrice = Object.entries(selectedPasses).reduce((total, [passId, qty]) => {
+    const pass = passTypes.find(p => p.id === passId);
+    return total + (pass ? pass.price * qty : 0);
+  }, 0);
 
-  // Auto-select standard pass if it's the only option
-  useEffect(() => {
-    if (passTypes.length === 1 && passTypes[0].id === 'standard') {
-      setSelectedPassType('standard');
+  // Toggle pass selection
+  const togglePassSelection = (passId: string) => {
+    setSelectedPasses(prev => {
+      if (prev[passId]) {
+        // Remove pass if already selected
+        const newState = { ...prev };
+        delete newState[passId];
+        return newState;
+      } else {
+        // Add pass with quantity 1
+        return { ...prev, [passId]: 1 };
+      }
+    });
+  };
+
+  // Update quantity for a specific pass
+  const updatePassQuantity = (passId: string, quantity: number) => {
+    if (quantity <= 0) {
+      // Remove pass if quantity is 0
+      setSelectedPasses(prev => {
+        const newState = { ...prev };
+        delete newState[passId];
+        return newState;
+      });
+    } else {
+      setSelectedPasses(prev => ({
+        ...prev,
+        [passId]: quantity
+      }));
     }
-  }, [passTypes]);
+  };
 
   // Validation functions
   const validateEmail = (email: string): boolean => {
@@ -248,7 +275,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   };
 
   const validateForm = () => {
-    if (!selectedPassType) {
+    if (Object.keys(selectedPasses).length === 0) {
       toast({
         title: t[language].error,
         description: t[language].selectPass,
@@ -449,58 +476,157 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
           {/* Pass Selection & Purchase */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Pass Types */}
-            <Card className="glass">
-              <CardHeader>
-                <CardTitle className="text-gradient-neon">{t[language].passSelection}</CardTitle>
+            {/* Pass Types - Modern Design */}
+            <Card className="glass border-2 border-primary/20">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-gradient-neon text-3xl font-bold text-center">
+                  {t[language].passSelection}
+                </CardTitle>
+                <p className="text-center text-muted-foreground mt-2">
+                  {language === 'en' ? 'Select one or more pass types' : 'Sélectionnez un ou plusieurs types de pass'}
+                </p>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                  {passTypes.map((passType) => (
-                    <div
-                      key={passType.id}
-                      className={`border-2 rounded-lg p-4 cursor-pointer transition-all duration-300 ${
-                        selectedPassType === passType.id
-                          ? 'border-primary bg-primary/10'
-                          : 'border-border hover:border-primary/50'
-                      } ${!passType.available ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      onClick={() => passType.available && setSelectedPassType(passType.id)}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-semibold text-primary">{passType.name}</h3>
-                        <Badge variant={passType.available ? 'default' : 'secondary'}>
-                          {passType.available ? t[language].available : t[language].outOfStock}
-                        </Badge>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {passTypes.map((passType, index) => {
+                    const isSelected = selectedPasses[passType.id] !== undefined;
+                    const quantity = selectedPasses[passType.id] || 0;
+                    const isStandard = passType.id === 'standard';
+                    
+                    return (
+                      <div
+                        key={passType.id}
+                        className={`relative group overflow-hidden rounded-2xl transition-all duration-500 ${
+                          isSelected
+                            ? 'scale-105 shadow-2xl'
+                            : 'scale-100 hover:scale-[1.02]'
+                        } ${!passType.available ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        onClick={() => passType.available && togglePassSelection(passType.id)}
+                        style={{
+                          animationDelay: `${index * 100}ms`
+                        }}
+                      >
+                        {/* Background Gradient */}
+                        <div className={`absolute inset-0 transition-opacity duration-500 ${
+                          isSelected
+                            ? isStandard
+                              ? 'bg-gradient-to-br from-purple-600/30 via-purple-500/20 to-blue-600/30'
+                              : 'bg-gradient-to-br from-pink-600/30 via-pink-500/20 to-purple-600/30'
+                            : isStandard
+                              ? 'bg-gradient-to-br from-purple-500/10 via-purple-400/5 to-blue-500/10'
+                              : 'bg-gradient-to-br from-pink-500/10 via-pink-400/5 to-purple-500/10'
+                        }`} />
+                        
+                        {/* Border Glow Effect */}
+                        <div className={`absolute inset-0 rounded-2xl transition-all duration-500 ${
+                          isSelected
+                            ? isStandard
+                              ? 'border-2 border-purple-400 shadow-[0_0_30px_rgba(168,85,247,0.6)]'
+                              : 'border-2 border-pink-400 shadow-[0_0_30px_rgba(236,72,153,0.6)]'
+                            : isStandard
+                              ? 'border-2 border-purple-500/30 hover:border-purple-400/60'
+                              : 'border-2 border-pink-500/30 hover:border-pink-400/60'
+                        }`} />
+                        
+                        {/* Content */}
+                        <div className="relative p-6">
+                          {/* Selection Indicator */}
+                          <div className="flex items-start justify-between mb-4">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
+                              isSelected
+                                ? isStandard
+                                  ? 'bg-purple-500 shadow-lg shadow-purple-500/50'
+                                  : 'bg-pink-500 shadow-lg shadow-pink-500/50'
+                                : 'bg-muted border-2 border-border'
+                            }`}>
+                              {isSelected && (
+                                <CheckCircle className={`w-5 h-5 ${
+                                  isStandard ? 'text-white' : 'text-white'
+                                }`} />
+                              )}
+                            </div>
+                            {!passType.available && (
+                              <Badge variant="secondary" className="ml-auto">
+                                {t[language].outOfStock}
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          {/* Pass Type Name */}
+                          <h3 className={`text-2xl font-bold mb-2 transition-colors duration-300 ${
+                            isSelected
+                              ? isStandard
+                                ? 'text-purple-300'
+                                : 'text-pink-300'
+                              : 'text-foreground'
+                          }`}>
+                            {passType.name}
+                          </h3>
+                          
+                          {/* Price */}
+                          <div className="mb-4">
+                            <p className={`text-4xl font-extrabold mb-1 transition-all duration-300 ${
+                              isSelected
+                                ? isStandard
+                                  ? 'text-transparent bg-clip-text bg-gradient-to-r from-purple-300 to-blue-300'
+                                  : 'text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-purple-300'
+                                : 'text-primary'
+                            }`}>
+                              {passType.price} TND
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {language === 'en' ? 'per pass' : 'par pass'}
+                            </p>
+                          </div>
+                          
+                          {/* Description */}
+                          <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                            {passType.description}
+                          </p>
+                          
+                          {/* Quantity Selector */}
+                          {isSelected && (
+                            <div 
+                              className="mt-4 pt-4 border-t border-border/50 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="flex items-center justify-between">
+                                <Label htmlFor={`quantity-${passType.id}`} className="text-sm font-semibold">
+                                  {t[language].quantity}:
+                                </Label>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => updatePassQuantity(passType.id, Math.max(1, quantity - 1))}
+                                  >
+                                    -
+                                  </Button>
+                                  <div className={`w-12 h-8 flex items-center justify-center rounded-md font-bold ${
+                                    isStandard
+                                      ? 'bg-purple-500/20 text-purple-300 border border-purple-400/30'
+                                      : 'bg-pink-500/20 text-pink-300 border border-pink-400/30'
+                                  }`}>
+                                    {quantity}
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => updatePassQuantity(passType.id, Math.min(10, quantity + 1))}
+                                  >
+                                    +
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-2xl font-bold text-primary mb-2">
-                        {passType.price} TND
-                      </p>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        {passType.description}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
-
-                {selectedPass && (
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-4">
-                      <Label htmlFor="quantity">{t[language].quantity}:</Label>
-                      <Select value={quantity.toString()} onValueChange={(value) => setQuantity(parseInt(value))}>
-                        <SelectTrigger className="w-24">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[1, 2, 3, 4, 5].map(num => (
-                            <SelectItem key={num} value={num.toString()}>
-                              {num}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )}
               </CardContent>
             </Card>
 
@@ -570,17 +696,23 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             </Card>
 
             {/* Order Summary */}
-            {selectedPass && (
+            {Object.keys(selectedPasses).length > 0 && (
               <Card className="glass">
                 <CardHeader>
                   <CardTitle className="text-gradient-neon">{t[language].summary}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span>{selectedPass.name} x {quantity}</span>
-                      <span>{selectedPass.price * quantity} TND</span>
-                    </div>
+                    {Object.entries(selectedPasses).map(([passId, qty]) => {
+                      const pass = passTypes.find(p => p.id === passId);
+                      if (!pass) return null;
+                      return (
+                        <div key={passId} className="flex justify-between">
+                          <span>{pass.name} x {qty}</span>
+                          <span>{pass.price * qty} TND</span>
+                        </div>
+                      );
+                    })}
                     <div className="border-t pt-3">
                       <div className="flex justify-between font-bold text-lg">
                         <span>{t[language].total}:</span>
