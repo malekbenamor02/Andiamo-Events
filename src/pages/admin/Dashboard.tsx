@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
 import { uploadFavicon, deleteFavicon, fetchFaviconSettings } from "@/lib/favicon";
+import { uploadOGImage, deleteOGImage, fetchOGImageSettings } from "@/lib/og-image";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail } from "@/lib/email";
@@ -177,6 +178,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }>({});
   const [loadingFaviconSettings, setLoadingFaviconSettings] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState<string | null>(null);
+
+  // OG Image state
+  const [ogImageSettings, setOGImageSettings] = useState<{
+    og_image?: string;
+  }>({});
+  const [loadingOGImageSettings, setLoadingOGImageSettings] = useState(false);
+  const [uploadingOGImage, setUploadingOGImage] = useState(false);
 
   // Marketing/SMS state
   const [phoneSubscribers, setPhoneSubscribers] = useState<Array<{id: string; phone_number: string; subscribed_at: string}>>([]);
@@ -367,6 +375,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       faviconError: "Failed to upload favicon",
       deleteFavicon: "Delete Favicon",
       faviconDeleted: "Favicon deleted successfully!",
+      ogImageSettings: "Social Media Preview Image",
+      ogImageSettingsDescription: "Upload an image that appears when sharing your website link on social media (WhatsApp, Facebook, Twitter, etc.). Recommended size: 1200x630px.",
+      uploadOGImage: "Upload Preview Image",
+      currentOGImage: "Current Preview Image",
+      noOGImage: "No preview image uploaded yet",
+      ogImageUploaded: "Preview image uploaded successfully!",
+      ogImageError: "Failed to upload preview image",
+      deleteOGImage: "Delete Preview Image",
+      ogImageDeleted: "Preview image deleted successfully!",
       logs: "Site Logs",
       logsTitle: "Site Activity Logs",
       logsDescription: "View all website activities, errors, and events",
@@ -490,6 +507,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       faviconError: "Échec du téléchargement du favicon",
       deleteFavicon: "Supprimer le Favicon",
       faviconDeleted: "Favicon supprimé avec succès !",
+      ogImageSettings: "Image d'Aperçu des Réseaux Sociaux",
+      ogImageSettingsDescription: "Téléchargez une image qui apparaît lors du partage du lien de votre site sur les réseaux sociaux (WhatsApp, Facebook, Twitter, etc.). Taille recommandée: 1200x630px.",
+      uploadOGImage: "Télécharger l'Image d'Aperçu",
+      currentOGImage: "Image d'Aperçu Actuelle",
+      noOGImage: "Aucune image d'aperçu téléchargée",
+      ogImageUploaded: "Image d'aperçu téléchargée avec succès !",
+      ogImageError: "Échec du téléchargement de l'image d'aperçu",
+      deleteOGImage: "Supprimer l'Image d'Aperçu",
+      ogImageDeleted: "Image d'aperçu supprimée avec succès !",
       logs: "Journaux du Site",
       logsTitle: "Journaux d'Activité du Site",
       logsDescription: "Voir toutes les activités, erreurs et événements du site",
@@ -1098,6 +1124,93 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  // Fetch OG image settings
+  const loadOGImageSettings = async () => {
+    try {
+      setLoadingOGImageSettings(true);
+      const settings = await fetchOGImageSettings();
+      setOGImageSettings(settings);
+    } catch (error) {
+      console.error('Error fetching OG image settings:', error);
+      setOGImageSettings({});
+    } finally {
+      setLoadingOGImageSettings(false);
+    }
+  };
+
+  // Handle OG image upload
+  const handleUploadOGImage = async (file: File) => {
+    try {
+      setUploadingOGImage(true);
+      const result = await uploadOGImage(file);
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      // Reload OG image settings
+      await loadOGImageSettings();
+
+      toast({
+        title: language === 'en' ? 'Preview Image Uploaded' : 'Image d\'Aperçu Téléchargée',
+        description: language === 'en' 
+          ? 'Preview image uploaded successfully' 
+          : 'Image d\'aperçu téléchargée avec succès',
+      });
+    } catch (error) {
+      console.error('Error uploading OG image:', error);
+      toast({
+        title: language === 'en' ? 'Upload Failed' : 'Échec du Téléchargement',
+        description: language === 'en' 
+          ? `Failed to upload preview image: ${error instanceof Error ? error.message : 'Unknown error'}` 
+          : `Échec du téléchargement: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingOGImage(false);
+    }
+  };
+
+  // Handle OG image delete
+  const handleDeleteOGImage = async () => {
+    try {
+      const currentUrl = ogImageSettings.og_image;
+      if (!currentUrl) {
+        toast({
+          title: language === 'en' ? 'No Preview Image' : 'Aucune Image d\'Aperçu',
+          description: language === 'en' ? 'No preview image to delete' : 'Aucune image d\'aperçu à supprimer',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const result = await deleteOGImage(currentUrl);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete preview image');
+      }
+
+      // Reload OG image settings
+      await loadOGImageSettings();
+
+      toast({
+        title: language === 'en' ? 'Preview Image Deleted' : 'Image d\'Aperçu Supprimée',
+        description: language === 'en' 
+          ? 'Preview image deleted successfully' 
+          : 'Image d\'aperçu supprimée avec succès',
+      });
+    } catch (error) {
+      console.error('Error deleting OG image:', error);
+      toast({
+        title: language === 'en' ? 'Delete Failed' : 'Échec de la Suppression',
+        description: language === 'en' 
+          ? `Failed to delete preview image: ${error instanceof Error ? error.message : 'Unknown error'}` 
+          : `Échec de la suppression: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+        variant: 'destructive',
+      });
+    }
+  };
+
   // Fetch phone subscribers
   const fetchPhoneSubscribers = async () => {
     try {
@@ -1575,6 +1688,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchAmbassadorApplicationSettings();
       await fetchHeroImages();
       await loadFaviconSettings();
+      await loadOGImageSettings();
       await fetchPhoneSubscribers();
       await fetchSmsLogs();
       // SMS balance is now fetched manually via button, not automatically
@@ -5632,11 +5746,75 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         <p className="text-xs text-muted-foreground">
                           {language === 'en' ? `Showing ${siteLogs.length} logs` : `Affichage de ${siteLogs.length} journaux`}
                         </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* OG Image Settings Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Image className="w-5 h-5 text-primary" />
+                          {t.ogImageSettings}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">{t.ogImageSettingsDescription}</p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        {loadingOGImageSettings ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold">{t.uploadOGImage}</Label>
+                              <FileUpload
+                                onFileSelect={(file) => {
+                                  if (file) {
+                                    handleUploadOGImage(file);
+                                  }
+                                }}
+                                onUrlChange={() => {}}
+                                accept="image/jpeg,image/jpg,image/png,image/webp"
+                                label={uploadingOGImage ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : t.uploadOGImage}
+                                maxSize={5 * 1024 * 1024}
+                              />
+                              {ogImageSettings.og_image && (
+                                <div className="mt-4 space-y-2">
+                                  <Label className="text-sm font-semibold">{t.currentOGImage}</Label>
+                                  <div className="flex items-start gap-4 p-4 bg-muted/30 rounded-lg">
+                                    <img 
+                                      src={ogImageSettings.og_image} 
+                                      alt="OG Image Preview" 
+                                      className="w-32 h-20 object-cover rounded-lg flex-shrink-0 border border-border/50" 
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs text-muted-foreground mb-2 break-all">{ogImageSettings.og_image}</p>
+                                      <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={handleDeleteOGImage}
+                                        className="flex-shrink-0"
+                                      >
+                                        <Trash2 className="w-3 h-3 mr-2" />
+                                        {t.deleteOGImage}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              {!ogImageSettings.og_image && (
+                                <p className="text-sm text-muted-foreground mt-2">{t.noOGImage}</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </TabsContent>
 
               {/* Settings Tab */}
               <TabsContent value="settings" className="space-y-6">

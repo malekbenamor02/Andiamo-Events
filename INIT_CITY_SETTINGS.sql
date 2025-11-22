@@ -23,3 +23,4 @@ WHERE key = 'available_cities';
 
 
 
+
