@@ -60,18 +60,16 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
     en: [
       { name: "Home", href: "/" },
       { name: "Events", href: "/events" },
-  
-      { name: "About", href: "/about" },
       { name: "Ambassador", href: "/ambassador" },
       { name: "Contact", href: "/contact" },
+      { name: "About", href: "/about" },
     ],
     fr: [
       { name: "Accueil", href: "/" },
       { name: "Événements", href: "/events" },
-  
-      { name: "À Propos", href: "/about" },
       { name: "Ambassadeur", href: "/ambassador" },
       { name: "Contact", href: "/contact" },
+      { name: "À Propos", href: "/about" },
     ]
   };
 
