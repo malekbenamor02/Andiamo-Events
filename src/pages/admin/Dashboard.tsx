@@ -5808,6 +5808,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               {!ogImageSettings.og_image && (
                                 <p className="text-sm text-muted-foreground mt-2">{t.noOGImage}</p>
                               )}
+                              {ogImageSettings.og_image && (
+                                <Alert className="mt-4">
+                                  <AlertCircle className="h-4 w-4" />
+                                  <AlertDescription className="text-xs">
+                                    {language === 'en' 
+                                      ? 'After uploading a new image, social media platforms may show the old cached image. To fix this: 1) Wait 5-10 minutes for changes to propagate, 2) Use Facebook Sharing Debugger or Twitter Card Validator to clear cache, 3) Share the link again.'
+                                      : 'Après avoir téléchargé une nouvelle image, les plateformes de médias sociaux peuvent afficher l\'ancienne image mise en cache. Pour corriger cela : 1) Attendez 5-10 minutes, 2) Utilisez Facebook Sharing Debugger ou Twitter Card Validator pour vider le cache, 3) Partagez à nouveau le lien.'}
+                                  </AlertDescription>
+                                </Alert>
+                              )}
                             </div>
                           </div>
                         )}

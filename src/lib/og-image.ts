@@ -14,17 +14,48 @@ export const uploadOGImage = async (
   file: File
 ): Promise<{ url: string; path: string; error?: string }> => {
   try {
-    // Generate filename
+    // First, delete old OG images to clean up storage
+    try {
+      const { data: existingData } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('key', 'og_image_settings')
+        .single();
+
+      if (existingData?.content) {
+        const currentSettings = existingData.content as OGImageSettings;
+        if (currentSettings.og_image) {
+          // Extract and delete old file
+          const oldUrl = currentSettings.og_image;
+          const urlParts = oldUrl.split('/');
+          const imagesIndex = urlParts.findIndex(part => part === 'images');
+          if (imagesIndex !== -1) {
+            const oldFilePath = urlParts.slice(imagesIndex + 1).join('/');
+            // Remove query parameters if any
+            const cleanPath = oldFilePath.split('?')[0];
+            if (cleanPath.startsWith(OG_IMAGE_FOLDER)) {
+              await supabase.storage.from('images').remove([cleanPath]);
+            }
+          }
+        }
+      }
+    } catch (cleanupError) {
+      console.warn('Error cleaning up old OG image (continuing with upload):', cleanupError);
+    }
+
+    // Generate unique filename with timestamp to ensure URL changes
     const fileExtension = file.name.split('.').pop();
-    const fileName = `og-image.${fileExtension}`;
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 9);
+    const fileName = `og-image-${timestamp}-${randomId}.${fileExtension}`;
     const filePath = `${OG_IMAGE_FOLDER}/${fileName}`;
 
-    // Upload to Supabase Storage
+    // Upload to Supabase Storage (no upsert - always create new file)
     const { data, error } = await supabase.storage
       .from('images')
       .upload(filePath, file, {
-        cacheControl: '31536000', // Cache for 1 year
-        upsert: true // Allow overwriting
+        cacheControl: '3600', // Cache for 1 hour (shorter for easier updates)
+        upsert: false // Create new file each time
       });
 
     if (error) {
