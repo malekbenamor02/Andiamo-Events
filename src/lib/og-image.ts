@@ -45,9 +45,9 @@ export const uploadOGImage = async (
 
     // Generate unique filename with timestamp to ensure URL changes
     const fileExtension = file.name.split('.').pop();
-    const timestamp = Date.now();
+    const fileTimestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 9);
-    const fileName = `og-image-${timestamp}-${randomId}.${fileExtension}`;
+    const fileName = `og-image-${fileTimestamp}-${randomId}.${fileExtension}`;
     const filePath = `${OG_IMAGE_FOLDER}/${fileName}`;
 
     // Upload to Supabase Storage (no upsert - always create new file)
