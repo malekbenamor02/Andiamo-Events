@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { X, Phone, Sparkles, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,10 +11,18 @@ interface PhoneSubscriptionPopupProps {
   language: 'en' | 'fr';
 }
 
-const STORAGE_KEY = 'phone_subscription_popup_closed';
 const SHOW_DELAY = 5000; // 5 seconds
 
+// Pages where popup should NOT show
+const EXCLUDED_PATHS = [
+  '/admin',
+  '/admin/login',
+  '/ambassador/auth',
+  '/ambassador/dashboard'
+];
+
 const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
+  const location = useLocation();
   const [isVisible, setIsVisible] = useState(false);
   const [isFloating, setIsFloating] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -22,20 +31,31 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
   const [isDuplicate, setIsDuplicate] = useState(false);
   const { toast } = useToast();
 
+  // Check if current path should exclude popup
+  const shouldShowPopup = () => {
+    return !EXCLUDED_PATHS.some(path => location.pathname.startsWith(path));
+  };
+
   useEffect(() => {
-    // Check if popup was previously closed
-    const wasClosed = localStorage.getItem(STORAGE_KEY);
-    if (wasClosed === 'true') {
+    // Reset visibility when route changes
+    setIsVisible(false);
+    setIsFloating(false);
+    setIsSuccess(false);
+    setIsDuplicate(false);
+    setPhoneNumber("");
+
+    // Don't show on admin/login pages
+    if (!shouldShowPopup()) {
       return;
     }
 
-    // Show popup after delay
+    // Show popup after delay (every time user visits)
     const timer = setTimeout(() => {
       setIsVisible(true);
     }, SHOW_DELAY);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [location.pathname]);
 
   // Convert to floating mode after initial display
   useEffect(() => {
@@ -53,7 +73,7 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
     setIsSuccess(false);
     setIsDuplicate(false);
     setPhoneNumber("");
-    localStorage.setItem(STORAGE_KEY, 'true');
+    // Don't save to localStorage - show popup every time user visits
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -128,7 +148,8 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
     }
   };
 
-  if (!isVisible) return null;
+  // Don't show popup on excluded pages
+  if (!shouldShowPopup() || !isVisible) return null;
 
   const translations = {
     en: {
