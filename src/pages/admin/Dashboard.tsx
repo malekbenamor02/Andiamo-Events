@@ -8,8 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
+import { uploadFavicon, deleteFavicon, fetchFaviconSettings } from "@/lib/favicon";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail } from "@/lib/email";
@@ -19,11 +21,13 @@ import {
   Eye, EyeOff, Save, X, Image, Video, Upload,
   Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
   PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
-  Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2
+  Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Filter, Search,
+  Shield, AlertTriangle, TrendingDown, Database, Zap, Monitor
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import { useIsMobile } from "@/hooks/use-mobile";
 
 
 interface AdminDashboardProps {
@@ -105,6 +109,7 @@ interface PassPurchase {
 }
 
 const AdminDashboard = ({ language }: AdminDashboardProps) => {
+  const isMobile = useIsMobile();
   const [applications, setApplications] = useState<AmbassadorApplication[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
 
@@ -162,6 +167,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [heroImages, setHeroImages] = useState<HeroImage[]>([]);
   const [loadingHeroImages, setLoadingHeroImages] = useState(false);
   const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
+
+  // Favicon state
+  const [faviconSettings, setFaviconSettings] = useState<{
+    favicon_ico?: string;
+    favicon_32x32?: string;
+    favicon_16x16?: string;
+    apple_touch_icon?: string;
+  }>({});
+  const [loadingFaviconSettings, setLoadingFaviconSettings] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState<string | null>(null);
 
   // Marketing/SMS state
   const [phoneSubscribers, setPhoneSubscribers] = useState<Array<{id: string; phone_number: string; subscribed_at: string}>>([]);
@@ -228,6 +243,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             });
 
   const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(2 * 60 * 60); // 2 hours in seconds
+
+  // Site logs state
+  const [siteLogs, setSiteLogs] = useState<any[]>([]);
+  const [loadingSiteLogs, setLoadingSiteLogs] = useState(false);
+  const [logFilter, setLogFilter] = useState<'all' | 'info' | 'warning' | 'error' | 'success' | 'action'>('all');
+  const [logCategoryFilter, setLogCategoryFilter] = useState<string>('all');
+  const [logSearchTerm, setLogSearchTerm] = useState('');
+  
+  // Analytics state
+  const [logStatistics, setLogStatistics] = useState<any>(null);
+  const [loadingStatistics, setLoadingStatistics] = useState(false);
+  const [suspiciousActivity, setSuspiciousActivity] = useState<any>(null);
+  const [loadingSuspicious, setLoadingSuspicious] = useState(false);
+  const [cleanupDays, setCleanupDays] = useState(30);
+  const [cleaningLogs, setCleaningLogs] = useState(false);
 
   const content = {
     en: {
@@ -323,7 +353,35 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       deleteHeroImage: "Delete",
       noHeroImages: "No hero images yet. Upload an image to get started.",
       heroImageAlt: "Image Alt Text",
-      reorderImages: "Reorder by dragging"
+      reorderImages: "Reorder by dragging",
+      faviconSettings: "Favicon Settings",
+      faviconSettingsDescription: "Upload and manage favicon images that appear in browser tabs. Images are saved in the 'favicon' folder in storage.",
+      uploadFavicon: "Upload Favicon",
+      faviconIco: "Favicon (.ico)",
+      favicon32x32: "Favicon 32x32",
+      favicon16x16: "Favicon 16x16",
+      appleTouchIcon: "Apple Touch Icon (180x180)",
+      currentFavicon: "Current Favicon",
+      noFavicon: "No favicon uploaded yet",
+      faviconUploaded: "Favicon uploaded successfully!",
+      faviconError: "Failed to upload favicon",
+      deleteFavicon: "Delete Favicon",
+      faviconDeleted: "Favicon deleted successfully!",
+      logs: "Site Logs",
+      logsTitle: "Site Activity Logs",
+      logsDescription: "View all website activities, errors, and events",
+      allLogs: "All Logs",
+      logType: "Type",
+      logCategory: "Category",
+      logMessage: "Message",
+      logDetails: "Details",
+      logTime: "Time",
+      logUser: "User",
+      logPage: "Page",
+      noLogs: "No logs found",
+      filterByType: "Filter by Type",
+      filterByCategory: "Filter by Category",
+      searchLogs: "Search logs..."
     },
     fr: {
       title: "Tableau de Bord Admin",
@@ -418,7 +476,35 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       deleteHeroImage: "Supprimer",
       noHeroImages: "Aucune image hero pour le moment. Téléchargez une image pour commencer.",
       heroImageAlt: "Texte Alternatif de l'Image",
-      reorderImages: "Réorganiser en faisant glisser"
+      reorderImages: "Réorganiser en faisant glisser",
+      faviconSettings: "Paramètres du Favicon",
+      faviconSettingsDescription: "Téléchargez et gérez les images de favicon qui apparaissent dans les onglets du navigateur. Les images sont enregistrées dans le dossier 'favicon' dans le stockage.",
+      uploadFavicon: "Télécharger le Favicon",
+      faviconIco: "Favicon (.ico)",
+      favicon32x32: "Favicon 32x32",
+      favicon16x16: "Favicon 16x16",
+      appleTouchIcon: "Icône Apple Touch (180x180)",
+      currentFavicon: "Favicon Actuel",
+      noFavicon: "Aucun favicon téléchargé",
+      faviconUploaded: "Favicon téléchargé avec succès !",
+      faviconError: "Échec du téléchargement du favicon",
+      deleteFavicon: "Supprimer le Favicon",
+      faviconDeleted: "Favicon supprimé avec succès !",
+      logs: "Journaux du Site",
+      logsTitle: "Journaux d'Activité du Site",
+      logsDescription: "Voir toutes les activités, erreurs et événements du site",
+      allLogs: "Tous les Journaux",
+      logType: "Type",
+      logCategory: "Catégorie",
+      logMessage: "Message",
+      logDetails: "Détails",
+      logTime: "Heure",
+      logUser: "Utilisateur",
+      logPage: "Page",
+      noLogs: "Aucun journal trouvé",
+      filterByType: "Filtrer par Type",
+      filterByCategory: "Filtrer par Catégorie",
+      searchLogs: "Rechercher dans les journaux..."
     }
   };
 
@@ -626,6 +712,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setAnimatedTickets(new Set());
     }
   }, [activeTab, hasTicketsAnimated, tickets]);
+
+  // Fetch logs and analytics when logs tab is active
+  useEffect(() => {
+    if (activeTab === 'logs') {
+      fetchSiteLogs();
+      fetchLogStatistics();
+      fetchSuspiciousActivity();
+    }
+  }, [activeTab, logFilter, logCategoryFilter, logSearchTerm]);
 
   // Set default selected event to upcoming event
   useEffect(() => {
@@ -916,6 +1011,93 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     await saveHeroImages(newOrder);
   };
 
+  // Fetch favicon settings
+  const loadFaviconSettings = async () => {
+    try {
+      setLoadingFaviconSettings(true);
+      const settings = await fetchFaviconSettings();
+      setFaviconSettings(settings);
+    } catch (error) {
+      console.error('Error fetching favicon settings:', error);
+      setFaviconSettings({});
+    } finally {
+      setLoadingFaviconSettings(false);
+    }
+  };
+
+  // Handle favicon upload
+  const handleUploadFavicon = async (file: File, type: 'favicon_ico' | 'favicon_32x32' | 'favicon_16x16' | 'apple_touch_icon') => {
+    try {
+      setUploadingFavicon(type);
+      const result = await uploadFavicon(file, type);
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      // Reload favicon settings
+      await loadFaviconSettings();
+
+      toast({
+        title: language === 'en' ? 'Favicon Uploaded' : 'Favicon Téléchargé',
+        description: language === 'en' 
+          ? `Favicon ${type} uploaded successfully` 
+          : `Favicon ${type} téléchargé avec succès`,
+      });
+    } catch (error) {
+      console.error('Error uploading favicon:', error);
+      toast({
+        title: language === 'en' ? 'Upload Failed' : 'Échec du Téléchargement',
+        description: language === 'en' 
+          ? `Failed to upload favicon: ${error instanceof Error ? error.message : 'Unknown error'}` 
+          : `Échec du téléchargement: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingFavicon(null);
+    }
+  };
+
+  // Handle favicon delete
+  const handleDeleteFavicon = async (type: 'favicon_ico' | 'favicon_32x32' | 'favicon_16x16' | 'apple_touch_icon') => {
+    try {
+      const currentUrl = faviconSettings[type];
+      if (!currentUrl) {
+        toast({
+          title: language === 'en' ? 'No Favicon' : 'Aucun Favicon',
+          description: language === 'en' ? 'No favicon to delete' : 'Aucun favicon à supprimer',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const result = await deleteFavicon(type, currentUrl);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete favicon');
+      }
+
+      // Reload favicon settings
+      await loadFaviconSettings();
+
+      toast({
+        title: language === 'en' ? 'Favicon Deleted' : 'Favicon Supprimé',
+        description: language === 'en' 
+          ? `Favicon ${type} deleted successfully` 
+          : `Favicon ${type} supprimé avec succès`,
+      });
+    } catch (error) {
+      console.error('Error deleting favicon:', error);
+      toast({
+        title: language === 'en' ? 'Delete Failed' : 'Échec de la Suppression',
+        description: language === 'en' 
+          ? `Failed to delete favicon: ${error instanceof Error ? error.message : 'Unknown error'}` 
+          : `Échec de la suppression: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+        variant: 'destructive',
+      });
+    }
+  };
+
   // Fetch phone subscribers
   const fetchPhoneSubscribers = async () => {
     try {
@@ -945,7 +1127,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (error) throw error;
+      // Handle case where table doesn't exist (404) or other errors
+      if (error) {
+        // P42P01 = relation does not exist (table not found)
+        // 404 = Not Found
+        if (error.code === 'P42P01' || error.message?.includes('404') || error.message?.includes('does not exist')) {
+          console.warn('SMS logs table does not exist yet. Please run migration: 20250120000000-create-sms-logs-table.sql');
+          setSmsLogs([]);
+          return;
+        }
+        throw error;
+      }
       setSmsLogs(data || []);
     } catch (error) {
       console.error('Error fetching SMS logs:', error);
@@ -956,6 +1148,131 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   // Fetch SMS balance
+  // Fetch log statistics
+  const fetchLogStatistics = async () => {
+    try {
+      setLoadingStatistics(true);
+      // @ts-ignore - RPC function may not be in types yet
+      const { data, error } = await supabase.rpc('get_log_statistics', {
+        start_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        end_date: new Date().toISOString()
+      });
+
+      if (error) {
+        // Don't show error if function doesn't exist (migration not run)
+        if (error.code === '42883' || error.message?.includes('does not exist')) {
+          console.warn('get_log_statistics function not found. Please run migration 20250130000002-add-log-cleanup-and-analytics.sql');
+          setLogStatistics(null);
+          return;
+        }
+        throw error;
+      }
+      setLogStatistics(data);
+    } catch (error) {
+      console.error('Error fetching log statistics:', error);
+      setLogStatistics(null);
+    } finally {
+      setLoadingStatistics(false);
+    }
+  };
+
+  // Fetch suspicious activity
+  const fetchSuspiciousActivity = async () => {
+    try {
+      setLoadingSuspicious(true);
+      // @ts-ignore - RPC function may not be in types yet
+      const { data, error } = await supabase.rpc('detect_suspicious_activity', {
+        lookback_hours: 24
+      });
+
+      if (error) {
+        // Don't show error if function doesn't exist (migration not run)
+        if (error.code === '42883' || error.message?.includes('does not exist')) {
+          console.warn('detect_suspicious_activity function not found. Please run migration 20250130000002-add-log-cleanup-and-analytics.sql');
+          setSuspiciousActivity(null);
+          return;
+        }
+        throw error;
+      }
+      setSuspiciousActivity(data);
+    } catch (error) {
+      console.error('Error fetching suspicious activity:', error);
+      setSuspiciousActivity(null);
+    } finally {
+      setLoadingSuspicious(false);
+    }
+  };
+
+  // Cleanup old logs
+  const cleanupOldLogs = async () => {
+    try {
+      setCleaningLogs(true);
+      // @ts-ignore
+      const { data, error } = await supabase.rpc('cleanup_old_logs', {
+        days_to_keep: cleanupDays
+      });
+
+      if (error) throw error;
+      
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' 
+          ? `Cleaned up ${data} old log entries` 
+          : `${data} anciennes entrées de journal nettoyées`,
+      });
+      
+      // Refresh logs and statistics
+      await fetchSiteLogs();
+      await fetchLogStatistics();
+    } catch (error) {
+      console.error('Error cleaning up logs:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' ? 'Failed to cleanup logs' : 'Échec du nettoyage des journaux',
+        variant: 'destructive',
+      });
+    } finally {
+      setCleaningLogs(false);
+    }
+  };
+
+  const fetchSiteLogs = async () => {
+    try {
+      setLoadingSiteLogs(true);
+      let query = supabase
+        // @ts-ignore - site_logs table may not be in types yet
+      .from('site_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1000); // Limit to most recent 1000 logs
+
+      // Apply filters
+      if (logFilter !== 'all') {
+        query = query.eq('log_type', logFilter);
+      }
+      if (logCategoryFilter !== 'all') {
+        query = query.eq('category', logCategoryFilter);
+      }
+      if (logSearchTerm.trim()) {
+        query = query.or(`message.ilike.%${logSearchTerm}%,details.ilike.%${logSearchTerm}%`);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      setSiteLogs(data || []);
+    } catch (error) {
+      console.error('Error fetching site logs:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' ? 'Failed to load logs' : 'Échec du chargement des journaux',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingSiteLogs(false);
+    }
+  };
+
   const fetchSmsBalance = async () => {
     try {
       setLoadingBalance(true);
@@ -1166,9 +1483,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             : `Envoyé: ${data.sent}, Échoué: ${data.failed} sur ${data.total}`,
         });
         
-        // Refresh logs and balance
+        // Refresh logs (balance is refreshed manually via button)
         await fetchSmsLogs();
-        await fetchSmsBalance();
         
         // Clear message
         setSmsMessage('');
@@ -1258,9 +1574,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchMaintenanceSettings();
       await fetchAmbassadorApplicationSettings();
       await fetchHeroImages();
+      await loadFaviconSettings();
       await fetchPhoneSubscribers();
       await fetchSmsLogs();
-      await fetchSmsBalance();
+      // SMS balance is now fetched manually via button, not automatically
+      if (activeTab === 'logs') {
+        await fetchSiteLogs();
+      }
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -2486,7 +2806,44 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     );
   }
 
-
+  // Check if accessed on mobile device
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-gradient-dark flex items-center justify-center p-4">
+        <Card className="max-w-md w-full glass border-border/50 shadow-2xl">
+          <CardContent className="p-8 text-center space-y-6">
+            <div className="mx-auto w-20 h-20 bg-gradient-to-r from-primary via-secondary to-accent rounded-full flex items-center justify-center relative overflow-hidden animate-pulse-glow">
+              <Monitor className="w-10 h-10 text-primary-foreground relative z-10" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-orbitron font-bold text-gradient-neon mb-2">
+                {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
+              </h2>
+              <p className="text-muted-foreground">
+                {language === 'en' 
+                  ? 'The admin dashboard is only available on desktop computers. Please access it from a PC or laptop for the best experience.'
+                  : 'Le tableau de bord admin est uniquement disponible sur les ordinateurs de bureau. Veuillez y accéder depuis un PC ou un ordinateur portable pour une meilleure expérience.'}
+              </p>
+            </div>
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {language === 'en'
+                  ? 'For security and usability reasons, the admin dashboard requires a larger screen.'
+                  : 'Pour des raisons de sécurité et d\'utilisabilité, le tableau de bord admin nécessite un écran plus grand.'}
+              </AlertDescription>
+            </Alert>
+            <Button
+              onClick={() => navigate('/')}
+              className="btn-gradient w-full"
+            >
+              {language === 'en' ? 'Back to Home' : 'Retour à l\'accueil'}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   
   return (
     <div className="pt-16 min-h-screen bg-background min-w-0">
@@ -2596,6 +2953,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               >
                 <Megaphone className={`w-4 h-4 transition-transform duration-300 ${activeTab === "marketing" ? "animate-pulse" : ""}`} />
                 <span>{language === 'en' ? 'Marketing' : 'Marketing'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("logs");
+                  fetchSiteLogs();
+                }}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-875 ${
+                  activeTab === "logs" 
+                    ? "bg-primary text-primary-foreground shadow-lg" 
+                    : "hover:bg-accent hover:shadow-md"
+                }`}
+              >
+                <Activity className={`w-4 h-4 transition-transform duration-300 ${activeTab === "logs" ? "animate-pulse" : ""}`} />
+                <span>{t.logs}</span>
               </button>
               <button
                 onClick={() => setActiveTab("settings")}
@@ -4502,60 +4873,64 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
-                        {loadingBalance ? (
-                          <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border">
-                              <div className="flex-1">
-                                <p className="text-sm text-muted-foreground">{language === 'en' ? 'Current Balance' : 'Solde Actuel'}</p>
-                                {smsBalance?.balance ? (
-                                  typeof smsBalance.balance === 'object' ? (
-                                    <div className="mt-1">
-                                      <p className="text-lg font-bold text-primary">
-                                        {smsBalance.balance.balance || smsBalance.balance.solde || smsBalance.balance.credit || 'N/A'}
-                                      </p>
-                                      {smsBalance.balance.balance === 0 || smsBalance.balance.solde === 0 || smsBalance.balance.credit === 0 ? (
-                                        <p className="text-xs text-red-500 mt-1">
-                                          ⚠️ {language === 'en' ? 'Insufficient balance!' : 'Solde insuffisant!'}
-                                        </p>
-                                      ) : null}
-                                    </div>
-                                  ) : (
-                                    <p className="text-2xl font-bold text-primary mt-1">
-                                      {smsBalance.balance}
-                                      {smsBalance.balance === '0' || smsBalance.balance === 0 ? (
-                                        <span className="text-xs text-red-500 ml-2">
-                                          ⚠️ {language === 'en' ? 'Insufficient!' : 'Insuffisant!'}
-                                        </span>
-                                      ) : null}
-                                    </p>
-                                  )
-                                ) : (
-                                  <p className="text-lg font-medium text-muted-foreground mt-1">
-                                    {language === 'en' ? 'Click to check balance' : 'Cliquez pour vérifier le solde'}
-                                  </p>
-                                )}
+                        <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border">
+                          <div className="flex-1">
+                            <p className="text-sm text-muted-foreground mb-2">{language === 'en' ? 'Current Balance' : 'Solde Actuel'}</p>
+                            {loadingBalance ? (
+                              <div className="flex items-center gap-2">
+                                <RefreshCw className="w-5 h-5 animate-spin text-primary" />
+                                <p className="text-sm text-muted-foreground">{language === 'en' ? 'Loading...' : 'Chargement...'}</p>
                               </div>
-                            </div>
-                            <Button
-                              onClick={fetchSmsBalance}
-                              disabled={loadingBalance}
-                              variant="outline"
-                              size="sm"
-                              className="w-full"
-                            >
-                              {loadingBalance ? (
-                                <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                            ) : smsBalance?.balance ? (
+                              typeof smsBalance.balance === 'object' ? (
+                                <div className="mt-1">
+                                  <p className="text-2xl font-bold text-primary">
+                                    {smsBalance.balance.balance || smsBalance.balance.solde || smsBalance.balance.credit || 'N/A'}
+                                  </p>
+                                  {smsBalance.balance.balance === 0 || smsBalance.balance.solde === 0 || smsBalance.balance.credit === 0 ? (
+                                    <p className="text-xs text-red-500 mt-1">
+                                      ⚠️ {language === 'en' ? 'Insufficient balance!' : 'Solde insuffisant!'}
+                                    </p>
+                                  ) : null}
+                                </div>
                               ) : (
-                                <RefreshCw className="w-4 h-4 mr-2" />
-                              )}
+                                <div>
+                                  <p className="text-2xl font-bold text-primary">
+                                    {smsBalance.balance}
+                                    {smsBalance.balance === '0' || smsBalance.balance === 0 ? (
+                                      <span className="text-xs text-red-500 ml-2">
+                                        ⚠️ {language === 'en' ? 'Insufficient!' : 'Insuffisant!'}
+                                      </span>
+                                    ) : null}
+                                  </p>
+                                </div>
+                              )
+                            ) : (
+                              <p className="text-lg font-medium text-muted-foreground">
+                                {language === 'en' ? 'Click button to check balance' : 'Cliquez sur le bouton pour vérifier le solde'}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          onClick={fetchSmsBalance}
+                          disabled={loadingBalance}
+                          variant="default"
+                          size="lg"
+                          className="w-full btn-gradient hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
+                        >
+                          {loadingBalance ? (
+                            <>
+                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                              {language === 'en' ? 'Loading...' : 'Chargement...'}
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="w-5 h-5 mr-2" />
                               {language === 'en' ? 'Refresh Balance' : 'Actualiser le Solde'}
-                            </Button>
-                          </>
-                        )}
+                            </>
+                          )}
+                        </Button>
                       </CardContent>
                     </Card>
                   </div>
@@ -4853,6 +5228,416 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </div>
               </TabsContent>
 
+              {/* Logs Tab */}
+              <TabsContent value="logs" className="space-y-6">
+                <div className="w-full px-2 space-y-6">
+                  {/* Analytics Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Total Logs */}
+                    <Card className="shadow-lg">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground">{language === 'en' ? 'Total Logs' : 'Total Journaux'}</p>
+                            <p className="text-2xl font-bold">
+                              {loadingStatistics ? '...' : (logStatistics?.total_logs || 0)}
+                            </p>
+                          </div>
+                          <Activity className="w-8 h-8 text-primary" />
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Error Rate */}
+                    <Card className="shadow-lg">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground">{language === 'en' ? 'Error Rate' : 'Taux d\'Erreur'}</p>
+                            <p className="text-2xl font-bold">
+                              {loadingStatistics ? '...' : (logStatistics?.error_rate || 0)}%
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {loadingStatistics ? '' : (logStatistics?.error_count || 0)} {language === 'en' ? 'errors' : 'erreurs'}
+                            </p>
+                          </div>
+                          <AlertTriangle className={`w-8 h-8 ${(logStatistics?.error_rate || 0) > 5 ? 'text-red-500' : 'text-yellow-500'}`} />
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Login Attempts */}
+                    <Card className="shadow-lg">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground">{language === 'en' ? 'Login Attempts' : 'Tentatives de Connexion'}</p>
+                            <p className="text-2xl font-bold">
+                              {loadingStatistics ? '...' : (logStatistics?.login_attempts?.total || 0)}
+                            </p>
+                            <p className="text-xs text-green-600">
+                              {loadingStatistics ? '' : (logStatistics?.login_attempts?.successful || 0)} {language === 'en' ? 'success' : 'succès'}
+                            </p>
+                            <p className="text-xs text-red-600">
+                              {loadingStatistics ? '' : (logStatistics?.login_attempts?.failed || 0)} {language === 'en' ? 'failed' : 'échecs'}
+                            </p>
+                          </div>
+                          <Shield className="w-8 h-8 text-blue-500" />
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Suspicious Activity */}
+                    <Card className={`shadow-lg ${suspiciousActivity?.unusual_error_rate?.alert ? 'border-red-500' : ''}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground">{language === 'en' ? 'Security Status' : 'Statut de Sécurité'}</p>
+                            <p className="text-lg font-bold">
+                              {loadingSuspicious ? '...' : 
+                               suspiciousActivity?.unusual_error_rate?.alert ? '⚠️ Alert' : '✓ Normal'}
+                            </p>
+                            {suspiciousActivity?.multiple_failed_logins?.length > 0 && (
+                              <p className="text-xs text-red-600">
+                                {suspiciousActivity.multiple_failed_logins.length} {language === 'en' ? 'suspicious logins' : 'connexions suspectes'}
+                              </p>
+                            )}
+                          </div>
+                          <Shield className={`w-8 h-8 ${suspiciousActivity?.unusual_error_rate?.alert ? 'text-red-500' : 'text-green-500'}`} />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Analytics Details */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Most Visited Pages */}
+                    <Card className="shadow-lg">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                          <TrendingUp className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'Most Visited Pages' : 'Pages les Plus Visitées'}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {loadingStatistics ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : logStatistics?.most_visited_pages?.length > 0 ? (
+                          <div className="space-y-2">
+                            {logStatistics.most_visited_pages.map((page: any, index: number) => (
+                              <div key={index} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded">
+                                <span className="text-sm truncate">{page.page || 'Unknown'}</span>
+                                <Badge variant="outline">{page.count}</Badge>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground text-center py-4">{language === 'en' ? 'No page views yet' : 'Aucune page visitée'}</p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Most Submitted Forms */}
+                    <Card className="shadow-lg">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                          <FileText className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'Most Submitted Forms' : 'Formulaires les Plus Soumis'}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {loadingStatistics ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : logStatistics?.most_submitted_forms?.length > 0 ? (
+                          <div className="space-y-2">
+                            {logStatistics.most_submitted_forms.map((form: any, index: number) => (
+                              <div key={index} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded">
+                                <span className="text-sm truncate">{form.form || 'Unknown'}</span>
+                                <Badge variant="outline">{form.count}</Badge>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground text-center py-4">{language === 'en' ? 'No form submissions yet' : 'Aucune soumission de formulaire'}</p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Top Errors */}
+                    <Card className="shadow-lg">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                          <AlertCircle className="w-5 h-5 text-red-500" />
+                          {language === 'en' ? 'Top Errors' : 'Erreurs Principales'}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {loadingStatistics ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : logStatistics?.top_errors?.length > 0 ? (
+                          <div className="space-y-2">
+                            {logStatistics.top_errors.map((error: any, index: number) => (
+                              <div key={index} className="p-2 hover:bg-muted/50 rounded">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-semibold text-red-600">{language === 'en' ? 'Error' : 'Erreur'} {index + 1}</span>
+                                  <Badge variant="destructive">{error.count}</Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground truncate" title={error.message}>
+                                  {error.message}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground text-center py-4">{language === 'en' ? 'No errors yet' : 'Aucune erreur'}</p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Security Alerts */}
+                    <Card className="shadow-lg">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                          <Shield className="w-5 h-5 text-yellow-500" />
+                          {language === 'en' ? 'Security Alerts' : 'Alertes de Sécurité'}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {loadingSuspicious ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : suspiciousActivity?.multiple_failed_logins?.length > 0 ? (
+                          <div className="space-y-2">
+                            {suspiciousActivity.multiple_failed_logins.map((login: any, index: number) => (
+                              <div key={index} className="p-2 bg-yellow-500/10 border border-yellow-500/20 rounded">
+                                <p className="text-sm font-semibold text-yellow-600">
+                                  {language === 'en' ? 'Multiple failed logins:' : 'Plusieurs échecs de connexion:'} {login.email}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{login.attempts} {language === 'en' ? 'attempts' : 'tentatives'}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-green-600 text-center py-4">{language === 'en' ? '✓ No suspicious activity detected' : '✓ Aucune activité suspecte détectée'}</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Cleanup Section */}
+                  <Card className="shadow-lg">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Database className="w-5 h-5 text-primary" />
+                        {language === 'en' ? 'Log Cleanup' : 'Nettoyage des Journaux'}
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        {language === 'en' 
+                          ? 'Automatically delete logs older than specified days to manage database size'
+                          : 'Supprimer automatiquement les journaux plus anciens que le nombre de jours spécifié pour gérer la taille de la base de données'}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center gap-4">
+                        <Label>{language === 'en' ? 'Keep logs for:' : 'Conserver les journaux pendant:'}</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="365"
+                          value={cleanupDays}
+                          onChange={(e) => setCleanupDays(parseInt(e.target.value) || 30)}
+                          className="w-24"
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          {language === 'en' ? 'days' : 'jours'}
+                        </span>
+                        <Button
+                          onClick={cleanupOldLogs}
+                          disabled={cleaningLogs}
+                          variant="outline"
+                          className="flex items-center gap-2"
+                        >
+                          {cleaningLogs ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              {language === 'en' ? 'Cleaning...' : 'Nettoyage...'}
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="w-4 h-4" />
+                              {language === 'en' ? 'Cleanup Now' : 'Nettoyer Maintenant'}
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Logs Table Card */}
+                  <Card className="shadow-lg">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                        <Activity className="w-5 h-5 text-primary" />
+                        {t.logsTitle}
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground mt-2">{t.logsDescription}</p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Filters */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <Label className="flex items-center gap-2">
+                            <Filter className="w-4 h-4" />
+                            {t.filterByType}
+                          </Label>
+                          <Select value={logFilter} onValueChange={(value: any) => {
+                            setLogFilter(value);
+                            setTimeout(() => fetchSiteLogs(), 100);
+                          }}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{t.allLogs}</SelectItem>
+                              <SelectItem value="info">Info</SelectItem>
+                              <SelectItem value="warning">Warning</SelectItem>
+                              <SelectItem value="error">Error</SelectItem>
+                              <SelectItem value="success">Success</SelectItem>
+                              <SelectItem value="action">Action</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{t.filterByCategory}</Label>
+                          <Select value={logCategoryFilter} onValueChange={(value) => {
+                            setLogCategoryFilter(value);
+                            setTimeout(() => fetchSiteLogs(), 100);
+                          }}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Categories</SelectItem>
+                              <SelectItem value="user_action">User Action</SelectItem>
+                              <SelectItem value="api_call">API Call</SelectItem>
+                              <SelectItem value="database">Database</SelectItem>
+                              <SelectItem value="page_view">Page View</SelectItem>
+                              <SelectItem value="form_submission">Form Submission</SelectItem>
+                              <SelectItem value="authentication">Authentication</SelectItem>
+                              <SelectItem value="error">Error</SelectItem>
+                              <SelectItem value="system">System</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="flex items-center gap-2">
+                            <Search className="w-4 h-4" />
+                            Search
+                          </Label>
+                          <Input
+                            placeholder={t.searchLogs}
+                            value={logSearchTerm}
+                            onChange={(e) => {
+                              setLogSearchTerm(e.target.value);
+                              setTimeout(() => fetchSiteLogs(), 500);
+                            }}
+                            className="w-full"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Logs Table */}
+                      {loadingSiteLogs ? (
+                        <div className="flex items-center justify-center py-12">
+                          <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                        </div>
+                      ) : siteLogs.length === 0 ? (
+                        <div className="text-center py-12 text-muted-foreground">
+                          {t.noLogs}
+                        </div>
+                      ) : (
+                        <div className="border border-border rounded-lg overflow-hidden">
+                          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted/50 sticky top-0">
+                                <tr>
+                                  <th className="px-4 py-3 text-left font-semibold">{t.logTime}</th>
+                                  <th className="px-4 py-3 text-left font-semibold">{t.logType}</th>
+                                  <th className="px-4 py-3 text-left font-semibold">{t.logCategory}</th>
+                                  <th className="px-4 py-3 text-left font-semibold">{t.logMessage}</th>
+                                  <th className="px-4 py-3 text-left font-semibold">{t.logUser}</th>
+                                  <th className="px-4 py-3 text-left font-semibold">{t.logPage}</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border">
+                                {siteLogs.map((log) => {
+                                  const logTypeColors = {
+                                    info: 'bg-blue-500 text-white hover:bg-blue-600',
+                                    warning: 'bg-yellow-500 text-white hover:bg-yellow-600',
+                                    error: 'bg-red-500 text-white hover:bg-red-600',
+                                    success: 'bg-green-500 text-white hover:bg-green-600',
+                                    action: 'bg-purple-500 text-white hover:bg-purple-600'
+                                  };
+                                  const date = new Date(log.created_at);
+                                  const formattedDate = date.toLocaleString();
+                                  return (
+                                    <tr key={log.id} className="hover:bg-muted/30 transition-colors">
+                                      <td className="px-4 py-3 text-muted-foreground text-xs">{formattedDate}</td>
+                                      <td className="px-4 py-3">
+                                        <Badge className={`${logTypeColors[log.log_type as keyof typeof logTypeColors] || 'bg-gray-500 text-white'} font-semibold px-2 py-1`}>
+                                          {log.log_type}
+                                        </Badge>
+                                      </td>
+                                      <td className="px-4 py-3 text-muted-foreground">{log.category}</td>
+                                      <td className="px-4 py-3 max-w-md truncate" title={log.message}>
+                                        {log.message}
+                                      </td>
+                                      <td className="px-4 py-3 text-muted-foreground">
+                                        {log.user_type || 'guest'}
+                                      </td>
+                                      <td className="px-4 py-3 text-muted-foreground text-xs max-w-xs truncate" title={log.page_url}>
+                                        {log.page_url ? new URL(log.page_url).pathname : '-'}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Refresh Buttons */}
+                      <div className="flex justify-between items-center">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            fetchSiteLogs();
+                            fetchLogStatistics();
+                            fetchSuspiciousActivity();
+                          }}
+                          disabled={loadingSiteLogs || loadingStatistics || loadingSuspicious}
+                          className="flex items-center gap-2"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${(loadingSiteLogs || loadingStatistics || loadingSuspicious) ? 'animate-spin' : ''}`} />
+                          {language === 'en' ? 'Refresh All' : 'Actualiser Tout'}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          {language === 'en' ? `Showing ${siteLogs.length} logs` : `Affichage de ${siteLogs.length} journaux`}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
               {/* Settings Tab */}
               <TabsContent value="settings" className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full px-2">
@@ -5056,6 +5841,152 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       </div>
                     </CardContent>
                   </Card>
+                  </div>
+
+                  {/* Favicon Settings Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Image className="w-5 h-5 text-primary" />
+                          {t.faviconSettings}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">{t.faviconSettingsDescription}</p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        {loadingFaviconSettings ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Favicon ICO */}
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold">{t.faviconIco}</Label>
+                              <FileUpload
+                                onFileSelect={(file) => {
+                                  if (file) {
+                                    handleUploadFavicon(file, 'favicon_ico');
+                                  }
+                                }}
+                                onUrlChange={() => {}}
+                                accept=".ico,image/x-icon"
+                                label={uploadingFavicon === 'favicon_ico' ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : t.uploadFavicon}
+                              />
+                              {faviconSettings.favicon_ico && (
+                                <div className="mt-2 flex items-center justify-between gap-2 p-2 bg-muted/30 rounded-lg">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <img src={faviconSettings.favicon_ico} alt="Favicon" className="w-8 h-8 flex-shrink-0" />
+                                    <span className="text-xs text-muted-foreground truncate">{t.currentFavicon}</span>
+                                  </div>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteFavicon('favicon_ico')}
+                                    className="flex-shrink-0"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Favicon 32x32 */}
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold">{t.favicon32x32}</Label>
+                              <FileUpload
+                                onFileSelect={(file) => {
+                                  if (file) {
+                                    handleUploadFavicon(file, 'favicon_32x32');
+                                  }
+                                }}
+                                onUrlChange={() => {}}
+                                accept="image/png,image/x-icon"
+                                label={uploadingFavicon === 'favicon_32x32' ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : t.uploadFavicon}
+                              />
+                              {faviconSettings.favicon_32x32 && (
+                                <div className="mt-2 flex items-center justify-between gap-2 p-2 bg-muted/30 rounded-lg">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <img src={faviconSettings.favicon_32x32} alt="Favicon 32x32" className="w-8 h-8 flex-shrink-0" />
+                                    <span className="text-xs text-muted-foreground truncate">{t.currentFavicon}</span>
+                                  </div>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteFavicon('favicon_32x32')}
+                                    className="flex-shrink-0"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Favicon 16x16 */}
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold">{t.favicon16x16}</Label>
+                              <FileUpload
+                                onFileSelect={(file) => {
+                                  if (file) {
+                                    handleUploadFavicon(file, 'favicon_16x16');
+                                  }
+                                }}
+                                onUrlChange={() => {}}
+                                accept="image/png,image/x-icon"
+                                label={uploadingFavicon === 'favicon_16x16' ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : t.uploadFavicon}
+                              />
+                              {faviconSettings.favicon_16x16 && (
+                                <div className="mt-2 flex items-center justify-between gap-2 p-2 bg-muted/30 rounded-lg">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <img src={faviconSettings.favicon_16x16} alt="Favicon 16x16" className="w-8 h-8 flex-shrink-0" />
+                                    <span className="text-xs text-muted-foreground truncate">{t.currentFavicon}</span>
+                                  </div>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteFavicon('favicon_16x16')}
+                                    className="flex-shrink-0"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Apple Touch Icon */}
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold">{t.appleTouchIcon}</Label>
+                              <FileUpload
+                                onFileSelect={(file) => {
+                                  if (file) {
+                                    handleUploadFavicon(file, 'apple_touch_icon');
+                                  }
+                                }}
+                                onUrlChange={() => {}}
+                                accept="image/png"
+                                label={uploadingFavicon === 'apple_touch_icon' ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : t.uploadFavicon}
+                              />
+                              {faviconSettings.apple_touch_icon && (
+                                <div className="mt-2 flex items-center justify-between gap-2 p-2 bg-muted/30 rounded-lg">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <img src={faviconSettings.apple_touch_icon} alt="Apple Touch Icon" className="w-8 h-8 rounded-lg flex-shrink-0" />
+                                    <span className="text-xs text-muted-foreground truncate">{t.currentFavicon}</span>
+                                  </div>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteFavicon('apple_touch_icon')}
+                                    className="flex-shrink-0"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
                   </div>
 
                   {/* Hero Images Settings Card */}

@@ -18,12 +18,18 @@ CREATE INDEX IF NOT EXISTS idx_sms_logs_created_at ON public.sms_logs(created_at
 -- Enable Row Level Security
 ALTER TABLE public.sms_logs ENABLE ROW LEVEL SECURITY;
 
--- Allow admins to view all SMS logs
-CREATE POLICY "Admins can view SMS logs" ON public.sms_logs
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Admins can view SMS logs" ON public.sms_logs;
+DROP POLICY IF EXISTS "Admins can insert SMS logs" ON public.sms_logs;
+DROP POLICY IF EXISTS "Public can view SMS logs" ON public.sms_logs;
+DROP POLICY IF EXISTS "Public can insert SMS logs" ON public.sms_logs;
+
+-- Allow public to view SMS logs (for admin dashboard)
+CREATE POLICY "Public can view SMS logs" ON public.sms_logs
   FOR SELECT USING (true);
 
--- Allow admins to insert SMS logs
-CREATE POLICY "Admins can insert SMS logs" ON public.sms_logs
+-- Allow public to insert SMS logs (for API)
+CREATE POLICY "Public can insert SMS logs" ON public.sms_logs
   FOR INSERT WITH CHECK (true);
 
 -- Add comment

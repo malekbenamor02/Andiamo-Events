@@ -1,20 +1,15 @@
 import { useState, useEffect } from "react";
-import { MessageCircle, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import hero1 from "@/assets/1.jpg";
 import hero2 from "@/assets/2.jpg";
 import hero3 from "@/assets/3.jpg";
 import { useNavigate } from "react-router-dom";
-import bcrypt from 'bcryptjs';
+import TypewriterText from "./TypewriterText";
 
 interface HeroSectionProps {
   language: 'en' | 'fr';
-}
-
-interface SocialLinks {
-  whatsapp?: string;
-  [key: string]: string | undefined;
 }
 
 interface SiteContentItem {
@@ -25,7 +20,6 @@ interface SiteContentItem {
 const HeroSection = ({ language }: HeroSectionProps) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [heroContent, setHeroContent] = useState<any>({});
-  const [socialLinks, setSocialLinks] = useState<SocialLinks>({});
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -34,17 +28,13 @@ const HeroSection = ({ language }: HeroSectionProps) => {
         const { data, error } = await supabase
           .from('site_content')
           .select('*')
-          .in('key', ['hero_section', 'social_links']);
+          .eq('key', 'hero_section');
 
         if (error) throw error;
 
-        data?.forEach((item: SiteContentItem) => {
-          if (item.key === 'hero_section') {
-            setHeroContent(item.content as any);
-          } else if (item.key === 'social_links') {
-            setSocialLinks(item.content as SocialLinks);
-          }
-        });
+        if (data && data[0]) {
+          setHeroContent(data[0].content as any);
+        }
       } catch (error) {
         console.error('Error fetching site content:', error);
       }
@@ -69,6 +59,26 @@ const HeroSection = ({ language }: HeroSectionProps) => {
       watchVideo: "Voir les Highlights"
     }
   };
+
+  // Typewriter texts for the first part of the title
+  const typewriterTexts = {
+    en: [
+      "Live the Night",
+      "Dance the Night Away",
+      "Experience the Ultimate Party",
+      "Join the Nightlife Revolution",
+      "Where Music Meets Magic",
+    ],
+    fr: [
+      "Vivez la Nuit",
+      "Dansez toute la Nuit",
+      "Vivez la Fête Ultime",
+      "Rejoignez la Révolution Nocturne",
+      "Là où la Musique Rencontre la Magie",
+    ],
+  };
+
+  const staticSuffix = language === 'en' ? "with Andiamo" : "avec Andiamo";
 
   // Use Supabase content if available, otherwise fall back to default
   const content = heroContent[language] || defaultContent[language];
@@ -101,10 +111,6 @@ const HeroSection = ({ language }: HeroSectionProps) => {
     return () => clearInterval(timer);
   }, [heroSlides.length]);
 
-  const whatsappClick = () => {
-    const whatsappLink = socialLinks?.whatsapp || "https://wa.me/216XXXXXXXX";
-    window.open(whatsappLink, "_blank");
-  };
 
   return (
     <section className="relative h-screen flex items-center justify-center overflow-hidden bg-gradient-dark">
@@ -137,12 +143,18 @@ const HeroSection = ({ language }: HeroSectionProps) => {
       {/* Content */}
       <div className="relative z-20 text-center max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="animate-fade-in-up">
-          <h1 className="text-5xl md:text-7xl font-orbitron font-bold mb-6">
+          <h1 className="text-5xl md:text-7xl font-orbitron font-bold mb-6 min-h-[1.2em]">
             <span className="block text-gradient-neon animate-pulse-glow">
-              {(content?.title || defaultContent[language].title).split(' ').slice(0, 3).join(' ')}
+              <TypewriterText 
+                texts={typewriterTexts[language]}
+                speed={80}
+                deleteSpeed={40}
+                pauseTime={2500}
+                className="inline"
+              />
             </span>
-            <span className="block text-white mt-2">
-              {(content?.title || defaultContent[language].title).split(' ').slice(3).join(' ')}
+            <span className="block text-white mt-2 animate-pulse-glow">
+              {staticSuffix}
             </span>
           </h1>
           
@@ -154,24 +166,18 @@ const HeroSection = ({ language }: HeroSectionProps) => {
             {content?.description || defaultContent[language].description}
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
-            <Button
-              onClick={whatsappClick}
-              size="lg"
-              className="btn-gradient text-lg px-8 py-4 hover-lift"
-            >
-              <MessageCircle className="w-5 h-5 mr-2" />
-              {content?.cta || defaultContent[language].cta}
-            </Button>
-            
+          <div className="flex justify-center items-center animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
             <Button
               variant="outline"
               size="lg"
-              className="btn-neon text-lg px-8 py-4 hover-lift"
+              className="btn-neon text-lg px-8 py-4 hover:scale-110 active:scale-95 transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-primary/50 relative overflow-hidden group"
               onClick={() => navigate('/events')}
             >
-              <Play className="w-5 h-5 mr-2" />
-              {content?.watchVideo || defaultContent[language].watchVideo}
+              <span className="relative z-10 flex items-center">
+                <Play className="w-5 h-5 mr-2 transition-transform duration-300 group-hover:scale-110" />
+                {content?.watchVideo || defaultContent[language].watchVideo}
+              </span>
+              <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-secondary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             </Button>
           </div>
         </div>

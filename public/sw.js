@@ -19,6 +19,22 @@ self.addEventListener('install', (event) => {
 
 // Fetch event
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  
+  // Don't cache API requests, Supabase requests, or module scripts
+  if (url.pathname.startsWith('/api/') || 
+      url.hostname.includes('supabase') ||
+      url.pathname.endsWith('.js') ||
+      url.pathname.endsWith('.mjs') ||
+      url.pathname.endsWith('.ts') ||
+      url.pathname.endsWith('.tsx') ||
+      event.request.destination === 'script') {
+    // Always fetch from network for scripts and API calls
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  
+  // For other requests, try cache first, then network
   event.respondWith(
     caches.match(event.request)
       .then((response) => {

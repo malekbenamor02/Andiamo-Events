@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, Users, Clock } from "lucide-react";
+import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, Users, Clock, DollarSign, Info, Image as ImageIcon, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,11 @@ const Events = ({ language }: EventsProps) => {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  const [isFullScreenGallery, setIsFullScreenGallery] = useState(false);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<'details' | 'gallery'>('details');
+  const galleryRef = useRef<HTMLDivElement>(null);
   const [animatedEvents, setAnimatedEvents] = useState<Set<string>>(new Set());
   const [hasAnimated, setHasAnimated] = useState(false);
   const [animatedGalleryEvents, setAnimatedGalleryEvents] = useState<Set<string>>(new Set());
@@ -78,7 +83,11 @@ const Events = ({ language }: EventsProps) => {
       vip: "VIP",
       featured: "Featured",
       cancelled: "Cancelled",
-      completed: "Completed"
+      completed: "Completed",
+      gallery: "Gallery",
+      details: "Details",
+      viewFullscreen: "View Fullscreen",
+      exitFullscreen: "Exit Fullscreen"
     },
     fr: {
       title: "Événements",
@@ -108,7 +117,11 @@ const Events = ({ language }: EventsProps) => {
       vip: "VIP",
       featured: "En Vedette",
       cancelled: "Annulé",
-      completed: "Terminé"
+      completed: "Terminé",
+      gallery: "Galerie",
+      details: "Détails",
+      viewFullscreen: "Voir Plein Écran",
+      exitFullscreen: "Quitter Plein Écran"
     }
   };
 
@@ -137,12 +150,9 @@ const Events = ({ language }: EventsProps) => {
       console.error('Error fetching events:', error);
     } finally {
       setLoading(false);
-      // Force scroll to top after data is loaded
       setTimeout(() => {
         window.scrollTo(0, 0);
       }, 100);
-      
-      // And one more time to be sure
       setTimeout(() => {
         window.scrollTo(0, 0);
       }, 500);
@@ -179,7 +189,8 @@ const Events = ({ language }: EventsProps) => {
     setSelectedEvent(event);
     setCurrentMediaIndex(0);
     setShowModal(true);
-    // Hide scrollbar when modal is open
+    setActiveTab('details');
+    setIsFullScreenGallery(false);
     document.body.classList.add('modal-open');
   };
 
@@ -187,122 +198,145 @@ const Events = ({ language }: EventsProps) => {
     setShowModal(false);
     setSelectedEvent(null);
     setCurrentMediaIndex(0);
-    // Restore scrollbar when modal is closed
+    setIsFullScreenGallery(false);
+    setActiveTab('details');
     document.body.classList.remove('modal-open');
   };
 
   const nextMedia = () => {
     if (!selectedEvent) return;
-    const totalMedia = (selectedEvent.gallery_images?.length || 0) + (selectedEvent.gallery_videos?.length || 0);
-    setCurrentMediaIndex((currentMediaIndex + 1) % totalMedia);
+    const allMedia = [
+      ...(selectedEvent.gallery_images?.map((url, index) => ({ type: 'image' as const, url, index })) || []),
+      ...(selectedEvent.gallery_videos?.map((url, index) => ({ type: 'video' as const, url, index: index + (selectedEvent.gallery_images?.length || 0) })) || [])
+    ];
+    if (allMedia.length === 0) return;
+    setCurrentMediaIndex((currentMediaIndex + 1) % allMedia.length);
   };
 
   const previousMedia = () => {
     if (!selectedEvent) return;
-    const totalMedia = (selectedEvent.gallery_images?.length || 0) + (selectedEvent.gallery_videos?.length || 0);
-    setCurrentMediaIndex((currentMediaIndex - 1 + totalMedia) % totalMedia);
+    const allMedia = [
+      ...(selectedEvent.gallery_images?.map((url, index) => ({ type: 'image' as const, url, index })) || []),
+      ...(selectedEvent.gallery_videos?.map((url, index) => ({ type: 'video' as const, url, index: index + (selectedEvent.gallery_images?.length || 0) })) || [])
+    ];
+    if (allMedia.length === 0) return;
+    setCurrentMediaIndex((currentMediaIndex - 1 + allMedia.length) % allMedia.length);
   };
 
   const goToMedia = (index: number) => {
     setCurrentMediaIndex(index);
   };
 
-  // Animation effect for upcoming events
+  // Swipe handlers for mobile gallery
+  const minSwipeDistance = 50;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+
+    if (isLeftSwipe) {
+      nextMedia();
+    }
+    if (isRightSwipe) {
+      previousMedia();
+    }
+  };
+
+  // Animation effects
   useEffect(() => {
     if (!hasAnimated && upcomingEvents.length > 0) {
       const timer = setTimeout(() => {
         setHasAnimated(true);
-        // Animate events one by one
         upcomingEvents.forEach((event, index) => {
           setTimeout(() => {
             setAnimatedEvents(prev => new Set([...prev, event.id]));
-          }, index * 200); // 200ms delay between each event
+          }, index * 200);
         });
       }, 500);
       return () => clearTimeout(timer);
     }
   }, [hasAnimated, upcomingEvents]);
 
-  // Animation effect for gallery events
   useEffect(() => {
     if (!hasGalleryAnimated && galleryEvents.length > 0) {
       const timer = setTimeout(() => {
         setHasGalleryAnimated(true);
-        // Animate gallery events one by one
         galleryEvents.forEach((event, index) => {
           setTimeout(() => {
             setAnimatedGalleryEvents(prev => new Set([...prev, event.id]));
-          }, index * 150); // 150ms delay between each event
+          }, index * 150);
         });
       }, 300);
       return () => clearTimeout(timer);
     }
   }, [hasGalleryAnimated, galleryEvents]);
 
-  // Force scroll to top on page load/refresh
   useEffect(() => {
-    // Immediately scroll to top
     window.scrollTo(0, 0);
-    
-    // Also use requestAnimationFrame to ensure it happens after render
     requestAnimationFrame(() => {
       window.scrollTo(0, 0);
     });
-    
-    // And one more time after a short delay to be absolutely sure
     const timer = setTimeout(() => {
       window.scrollTo(0, 0);
     }, 50);
-    
     return () => clearTimeout(timer);
   }, []);
 
-  // Also scroll to top when loading finishes
   useEffect(() => {
     if (!loading) {
       const timer = setTimeout(() => {
         window.scrollTo(0, 0);
       }, 100);
-      
       return () => clearTimeout(timer);
     }
   }, [loading]);
 
-  // Scroll-triggered animations for event cards
   useEffect(() => {
     const handleScroll = () => {
       const upcomingCards = document.querySelectorAll('.upcoming-event-card');
       const galleryCards = document.querySelectorAll('.gallery-event-card');
       
-      // Check upcoming event cards
       upcomingCards.forEach((card, index) => {
         const rect = card.getBoundingClientRect();
         const isVisible = rect.top < window.innerHeight * 0.8;
-        
         if (isVisible && !scrollAnimatedEvents.has(upcomingEvents[index]?.id)) {
           setScrollAnimatedEvents(prev => new Set([...prev, upcomingEvents[index]?.id]));
         }
       });
       
-      // Check gallery event cards
       galleryCards.forEach((card, index) => {
         const rect = card.getBoundingClientRect();
         const isVisible = rect.top < window.innerHeight * 0.8;
-        
         if (isVisible && !scrollAnimatedGalleryEvents.has(galleryEvents[index]?.id)) {
           setScrollAnimatedGalleryEvents(prev => new Set([...prev, galleryEvents[index]?.id]));
         }
       });
     };
 
-    // Add scroll listener
     window.addEventListener('scroll', handleScroll);
-    
-    // Initial check
     handleScroll();
-    
     return () => window.removeEventListener('scroll', handleScroll);
   }, [upcomingEvents, galleryEvents, scrollAnimatedEvents, scrollAnimatedGalleryEvents]);
+
+  // Get all media for current event (used in modal)
+  const getAllMediaForEvent = (event: Event | null) => {
+    if (!event) return [];
+    return [
+      ...(event.gallery_images?.map((url, index) => ({ type: 'image' as const, url, index })) || []),
+      ...(event.gallery_videos?.map((url, index) => ({ type: 'video' as const, url, index: index + (event.gallery_images?.length || 0) })) || [])
+    ];
+  };
 
   if (loading) {
     return (
@@ -313,6 +347,9 @@ const Events = ({ language }: EventsProps) => {
       />
     );
   }
+
+  const allMedia = getAllMediaForEvent(selectedEvent);
+  const hasGallery = allMedia.length > 0;
 
   return (
     <div className="pt-16 min-h-screen bg-background">
@@ -402,7 +439,7 @@ const Events = ({ language }: EventsProps) => {
 
       {/* Event Gallery Section */}
       {galleryEvents.length > 0 && (
-          <section className="py-20 bg-gradient-dark">
+        <section className="py-20 bg-gradient-dark">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-12 animate-in slide-in-from-bottom-4 duration-700 delay-200">
               <h2 className="text-3xl md:text-4xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-left-4 duration-1000">
@@ -410,390 +447,517 @@ const Events = ({ language }: EventsProps) => {
               </h2>
             </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-8 justify-items-center">
-                  {galleryEvents.map((event, index) => (
-                    <Card 
-                      key={event.id} 
-                      className={`gallery-event-card glass overflow-hidden cursor-pointer hover-lift group w-full max-w-md transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-                        scrollAnimatedGalleryEvents.has(event.id) 
-                          ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                          : 'opacity-0 translate-y-8'
-                      }`}
-                      onClick={() => openModal(event)}
-                    >
-                      <div className="relative">
-                        <img
-                          src={event.poster_url || "/api/placeholder/400/400"}
-                          alt={event.name}
-                          className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                        {(event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0) > 0 && (
-                          <Badge className="absolute top-4 left-4 bg-purple-500 animate-in slide-in-from-top-4 duration-500">
-                            {(event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0)} Media
-                          </Badge>
-                        )}
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-center animate-in zoom-in-95 duration-300">
-                            <p className="text-sm font-semibold">{content[language].viewDetails}</p>
-                          </div>
-                        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-8 justify-items-center">
+              {galleryEvents.map((event, index) => (
+                <Card 
+                  key={event.id} 
+                  className={`gallery-event-card glass overflow-hidden cursor-pointer hover-lift group w-full max-w-md transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                    scrollAnimatedGalleryEvents.has(event.id) 
+                      ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
+                      : 'opacity-0 translate-y-8'
+                  }`}
+                  onClick={() => openModal(event)}
+                >
+                  <div className="relative">
+                    <img
+                      src={event.poster_url || "/api/placeholder/400/400"}
+                      alt={event.name}
+                      className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    {((event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0) > 0) && (
+                      <Badge className="absolute top-4 left-4 bg-purple-500 animate-in slide-in-from-top-4 duration-500">
+                        {(event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0)} Media
+                      </Badge>
+                    )}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-center animate-in zoom-in-95 duration-300">
+                        <p className="text-sm font-semibold">{content[language].viewDetails}</p>
                       </div>
-                      <CardContent className="p-4">
-                        <h3 className="font-semibold text-sm line-clamp-2 mb-2 animate-in slide-in-from-left-4 duration-500 delay-200">
-                          {event.name}
-                        </h3>
-                        <div className="flex items-center text-xs text-muted-foreground animate-in slide-in-from-left-4 duration-500 delay-300">
-                          <Calendar className="w-3 h-3 mr-1 animate-pulse" />
-                          {formatDate(event.date)}
-                        </div>
-                        <div className="flex items-center text-xs text-muted-foreground mt-1 animate-in slide-in-from-left-4 duration-500 delay-400">
-                          <MapPin className="w-3 h-3 mr-1 animate-pulse" />
-                          {event.city}
-                        </div>
-                        {(event.standard_price || (event.vip_price && Number(event.vip_price) > 0)) && (
-                          <div className="flex items-center space-x-2 text-xs text-muted-foreground mt-1 animate-in slide-in-from-left-4 duration-500 delay-500">
-                            {event.standard_price && (
-                              <span className="text-green-500 font-semibold">Standard: {event.standard_price} TND</span>
-                            )}
-                            {event.vip_price && Number(event.vip_price) > 0 && (
-                              <span className="text-blue-500 font-semibold">VIP: {event.vip_price} TND</span>
-                            )}
-                          </div>
+                    </div>
+                  </div>
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold text-sm line-clamp-2 mb-2 animate-in slide-in-from-left-4 duration-500 delay-200">
+                      {event.name}
+                    </h3>
+                    <div className="flex items-center text-xs text-muted-foreground animate-in slide-in-from-left-4 duration-500 delay-300">
+                      <Calendar className="w-3 h-3 mr-1 animate-pulse" />
+                      {formatDate(event.date)}
+                    </div>
+                    <div className="flex items-center text-xs text-muted-foreground mt-1 animate-in slide-in-from-left-4 duration-500 delay-400">
+                      <MapPin className="w-3 h-3 mr-1 animate-pulse" />
+                      {event.city}
+                    </div>
+                    {(event.standard_price || (event.vip_price && Number(event.vip_price) > 0)) && (
+                      <div className="flex items-center space-x-2 text-xs text-muted-foreground mt-1 animate-in slide-in-from-left-4 duration-500 delay-500">
+                        {event.standard_price && (
+                          <span className="text-green-500 font-semibold">Standard: {event.standard_price} TND</span>
                         )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                        {event.vip_price && Number(event.vip_price) > 0 && (
+                          <span className="text-blue-500 font-semibold">VIP: {event.vip_price} TND</span>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </section>
+          </div>
+        </section>
       )}
 
-            {/* Event Modal */}
+      {/* Enhanced Event Modal */}
       {showModal && selectedEvent && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300" style={{ overflow: 'hidden' }}>
-          <div className="bg-gradient-to-br from-background via-background/95 to-background/90 rounded-3xl max-w-6xl w-full h-[92vh] flex flex-col shadow-2xl border border-border/20 animate-in slide-in-from-bottom-4 duration-300">
-            {/* Header with Gradient Overlay */}
-            <div className="relative overflow-hidden rounded-t-3xl">
-              <img
-                src={selectedEvent.poster_url || "/api/placeholder/800/400"}
-                alt={selectedEvent.name}
-                className="w-full h-72 md:h-80 object-cover"
-              />
-              
-              {/* Gradient Overlay */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
-          
+        <>
+          {/* Full Screen Gallery View (Mobile) */}
+          {isFullScreenGallery && (
+            <div 
+              className="fixed inset-0 z-[60] bg-black flex items-center justify-center"
+              onTouchStart={onTouchStart}
+              onTouchMove={onTouchMove}
+              onTouchEnd={onTouchEnd}
+            >
               {/* Close Button */}
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute top-6 right-6 bg-black/40 hover:bg-black/60 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 hover:scale-110"
-                onClick={closeModal}
+                className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 z-10"
+                onClick={() => setIsFullScreenGallery(false)}
               >
-                <X className="w-5 h-5" />
+                <X className="w-6 h-6" />
               </Button>
-              
-              {/* Badges */}
-              <div className="absolute top-6 left-6 flex gap-2">
-                {selectedEvent.featured && (
-                  <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 shadow-lg">
-                    ⭐ {content[language].featured}
-                  </Badge>
-                )}
-                
-                {selectedEvent.event_status === 'cancelled' && (
-                  <Badge className="bg-red-500 text-white border-0 shadow-lg">
-                    ❌ {content[language].cancelled}
-                  </Badge>
-                )}
-              </div>
-              
-              {/* Event Title Overlay */}
-              <div className="absolute bottom-6 left-6 right-6">
-                <h2 className="text-3xl md:text-4xl font-bold text-white drop-shadow-lg mb-2">
-                  {selectedEvent.name}
-                </h2>
-                <div className="flex items-center gap-4 text-white/90 text-sm">
-                  <div className="flex items-center">
-                    <Calendar className="w-4 h-4 mr-2" />
-                    <span>{formatDate(selectedEvent.date)}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <MapPin className="w-4 h-4 mr-2" />
-                    <span>{selectedEvent.venue}, {selectedEvent.city}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Content */}
-            <div className="p-8 space-y-8 flex-1 overflow-y-auto">
-              {/* Pricing Section */}
-              {(selectedEvent.standard_price || selectedEvent.vip_price) && (
-                <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl p-6 border border-purple-500/20">
-                  <h3 className="text-xl font-bold text-gradient-neon mb-4 text-center">
-                    {content[language].ticketPricing}
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {selectedEvent.standard_price && (
-                      <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 text-center border border-border/20 hover:border-purple-500/40 transition-all duration-200">
-                        <h4 className="font-semibold text-lg mb-2 text-purple-400">{content[language].standard}</h4>
-                        <p className="text-3xl font-bold text-gradient-to-r from-purple-400 to-pink-400">{selectedEvent.standard_price} TND</p>
-                      </div>
-                    )}
-                    {selectedEvent.vip_price && (
-                      <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 text-center border border-border/20 hover:border-pink-500/40 transition-all duration-200">
-                        <h4 className="font-semibold text-lg mb-2 text-pink-400">{content[language].vip}</h4>
-                        <p className="text-3xl font-bold text-gradient-to-r from-pink-400 to-purple-400">{selectedEvent.vip_price} TND</p>
-                      </div>
-                    )}
-                  </div>
+              {/* Exit Fullscreen Button */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-4 left-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 z-10"
+                onClick={() => setIsFullScreenGallery(false)}
+              >
+                <Minimize2 className="w-6 h-6" />
+              </Button>
+
+              {/* Media Counter */}
+              {allMedia.length > 1 && (
+                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black/60 text-white px-4 py-2 rounded-full backdrop-blur-sm z-10">
+                  {currentMediaIndex + 1} / {allMedia.length}
                 </div>
               )}
 
-              {/* Description - Modern Card Design */}
-              <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 rounded-2xl p-6 border border-blue-500/20">
-                <h3 className="text-xl font-bold text-gradient-to-r from-blue-400 to-purple-400 mb-4 flex items-center">
-                  <span className="w-2 h-2 bg-blue-400 rounded-full mr-3"></span>
-                  {content[language].aboutEvent}
-                </h3>
-                <div className="max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                  <p className="text-muted-foreground text-base leading-relaxed">
-                    {selectedEvent.description}
-                  </p>
-                </div>
-              </div>
-
-              {/* Event Details Grid - Modern Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-gradient-to-r from-green-500/5 to-blue-500/5 rounded-2xl p-6 border border-green-500/20">
-                  <h4 className="font-semibold text-lg text-green-400 mb-4 flex items-center">
-                    <span className="w-2 h-2 bg-green-400 rounded-full mr-3"></span>
-                    {content[language].eventDetails}
-                  </h4>
-                  <div className="space-y-3 text-muted-foreground">
-                    <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                      <Calendar className="w-4 h-4 mr-3 text-green-400" />
-                      <span>{formatDate(selectedEvent.date)}</span>
-                    </div>
-                    <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                      <MapPin className="w-4 h-4 mr-3 text-green-400" />
-                      <span>{selectedEvent.venue}</span>
-                    </div>
-                    <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                      <MapPin className="w-4 h-4 mr-3 text-green-400" />
-                      <span>{selectedEvent.city}</span>
-                    </div>
-                    {selectedEvent.capacity && (
-                      <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                        <Users className="w-4 h-4 mr-3 text-green-400" />
-                        <span>{content[language].capacity}: {selectedEvent.capacity}</span>
-                      </div>
-                    )}
-                    {selectedEvent.age_restriction && (
-                      <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                        <Clock className="w-4 h-4 mr-3 text-green-400" />
-                        <span>{content[language].ageRestriction}: {selectedEvent.age_restriction}+</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="bg-gradient-to-r from-orange-500/5 to-red-500/5 rounded-2xl p-6 border border-orange-500/20">
-                  <h4 className="font-semibold text-lg text-orange-400 mb-4 flex items-center">
-                    <span className="w-2 h-2 bg-orange-400 rounded-full mr-3"></span>
-                    {content[language].quickInfo}
-                  </h4>
-                  <div className="space-y-3 text-muted-foreground">
-                    <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                      <span className="w-2 h-2 bg-orange-400 rounded-full mr-3"></span>
-                      <span>{selectedEvent.featured ? content[language].featured : 'Regular Event'}</span>
-                    </div>
-                    {selectedEvent.dress_code && (
-                      <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                        <span className="w-2 h-2 bg-orange-400 rounded-full mr-3"></span>
-                        <span>{content[language].dressCode}: {selectedEvent.dress_code}</span>
-                      </div>
-                    )}
-                    {selectedEvent.special_notes && (
-                      <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                        <span className="w-2 h-2 bg-orange-400 rounded-full mr-3"></span>
-                        <span>{content[language].specialNotes}: {selectedEvent.special_notes}</span>
-                      </div>
-                    )}
-                    {selectedEvent.organizer_contact && (
-                      <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                        <span className="w-2 h-2 bg-orange-400 rounded-full mr-3"></span>
-                        <span>{content[language].organizerContact}: {selectedEvent.organizer_contact}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons - Modern Design */}
-              {selectedEvent.event_type === 'upcoming' && (
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <Button 
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 flex-1 py-6 text-lg font-semibold rounded-xl"
-                    onClick={() => {
-                      closeModal();
-                      navigate(`/pass-purchase?eventId=${selectedEvent.id}`);
-                    }}
-                  >
-                    <ExternalLink className="w-5 h-5 mr-2" />
-                    {content[language].bookNow}
-                  </Button>
-                  {selectedEvent.whatsapp_link && (
-              <Button
-                      variant="outline"
-                      className="border-2 border-green-500 text-green-500 hover:bg-green-500 hover:text-white transition-all duration-200 flex-1 py-6 text-lg font-semibold rounded-xl backdrop-blur-sm"
-                      onClick={() => window.open(selectedEvent.whatsapp_link, '_blank')}
-              >
-                      💬 {content[language].joinEvent}
-              </Button>
+              {/* Main Media Display - Full Screen */}
+              {allMedia[currentMediaIndex] && (
+                <div className="w-full h-full flex items-center justify-center p-4">
+                  {allMedia[currentMediaIndex].type === 'video' ? (
+                    <video
+                      src={allMedia[currentMediaIndex].url}
+                      controls
+                      className="max-w-full max-h-full object-contain"
+                      autoPlay
+                    />
+                  ) : (
+                    <img
+                      src={allMedia[currentMediaIndex].url}
+                      alt={`${selectedEvent.name} - Image ${currentMediaIndex + 1}`}
+                      className="max-w-full max-h-full object-contain"
+                    />
                   )}
                 </div>
-          )}
-          
-              {/* Gallery Media - Modern Design */}
-              {selectedEvent.event_type === 'gallery' && 
-               ((selectedEvent.gallery_images?.length || 0) + (selectedEvent.gallery_videos?.length || 0) > 0) && (
-                <div className="bg-gradient-to-r from-indigo-500/5 to-purple-500/5 rounded-2xl p-6 border border-indigo-500/20">
-                  <h3 className="text-xl font-bold text-gradient-to-r from-indigo-400 to-purple-400 mb-4 flex items-center">
-                    <span className="w-2 h-2 bg-indigo-400 rounded-full mr-3"></span>
-                    {language === 'en' ? 'Event Media' : 'Médias de l\'Événement'}
-                  </h3>
-                  
-                  {/* Main Media Display */}
-                  <div className="relative h-64 bg-gradient-to-br from-black/20 to-black/10 rounded-xl overflow-hidden mb-4 border border-indigo-500/20">
-            {(() => {
-              const allMedia = [
-                ...(selectedEvent.gallery_images?.map((url, index) => ({
-                  type: 'image' as const,
-                  url,
-                  index
-                })) || []),
-                ...(selectedEvent.gallery_videos?.map((url, index) => ({
-                  type: 'video' as const,
-                  url,
-                  index: index + (selectedEvent.gallery_images?.length || 0)
-                })) || [])
-              ];
-              
-                      const currentMedia = allMedia[currentMediaIndex];
-              
-              if (!currentMedia) {
-                return (
-                          <div className="flex items-center justify-center h-full text-muted-foreground">
-                    <p>No media available</p>
-                  </div>
-                );
-              }
-              
-              return currentMedia.type === 'video' ? (
-                <video
-                  src={currentMedia.url}
-                  controls
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <img
-                  src={currentMedia.url}
-                  alt={`${selectedEvent.name} - Image ${currentMedia.index + 1}`}
-                  className="w-full h-full object-contain"
-                />
-              );
-            })()}
-          </div>
-          
-                  {/* Navigation */}
-          {(() => {
-            const allMedia = [
-              ...(selectedEvent.gallery_images?.map((url, index) => ({
-                type: 'image' as const,
-                url,
-                index
-              })) || []),
-              ...(selectedEvent.gallery_videos?.map((url, index) => ({
-                type: 'video' as const,
-                url,
-                index: index + (selectedEvent.gallery_images?.length || 0)
-              })) || [])
-            ];
-            
-            if (allMedia.length <= 1) return null;
-            
-            return (
-                      <div className="space-y-4">
-                        {/* Media Counter */}
-                        <div className="text-center">
-                          <span className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-4 py-2 rounded-full text-sm font-semibold">
-                            {currentMediaIndex + 1} / {allMedia.length}
-                          </span>
-                        </div>
-                        
-                        {/* Navigation Arrows */}
-                        <div className="flex justify-center space-x-3">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={previousMedia}
-                            className="bg-background/80 backdrop-blur-sm border-indigo-500/30 hover:border-indigo-500/60 hover:bg-indigo-500/10 transition-all duration-200"
-                          >
-                            <ChevronLeft className="w-4 h-4" />
-                          </Button>
-                          
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={nextMedia}
-                            className="bg-background/80 backdrop-blur-sm border-indigo-500/30 hover:border-indigo-500/60 hover:bg-indigo-500/10 transition-all duration-200"
-                          >
-                            <ChevronRight className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        
-                        {/* Thumbnail Navigation */}
-                        <div className="flex justify-center space-x-2 overflow-x-auto pb-2">
-                {allMedia.map((media, index) => (
-                  <button
-                    key={index}
-                              onClick={() => goToMedia(index)}
-                              className={`w-16 h-12 rounded-lg overflow-hidden border-2 transition-all duration-200 flex-shrink-0 hover:scale-105 ${
-                                index === currentMediaIndex 
-                                  ? 'border-indigo-500 shadow-lg shadow-indigo-500/25' 
-                                  : 'border-border/50 hover:border-indigo-500/50'
-                    }`}
+              )}
+
+              {/* Navigation Arrows */}
+              {allMedia.length > 1 && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 z-10"
+                    onClick={previousMedia}
                   >
-                    {media.type === 'video' ? (
-                      <div className="relative w-full h-full">
-                        <video
+                    <ChevronLeft className="w-8 h-8" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 z-10"
+                    onClick={nextMedia}
+                  >
+                    <ChevronRight className="w-8 h-8" />
+                  </Button>
+                </>
+              )}
+
+              {/* Thumbnail Strip (Bottom) */}
+              {allMedia.length > 1 && (
+                <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 overflow-x-auto px-4 pb-2">
+                  {allMedia.map((media, index) => (
+                    <button
+                      key={index}
+                      onClick={() => goToMedia(index)}
+                      className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition-all duration-200 flex-shrink-0 ${
+                        index === currentMediaIndex 
+                          ? 'border-white shadow-lg shadow-white/50 scale-110' 
+                          : 'border-white/30 hover:border-white/60 opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      {media.type === 'video' ? (
+                        <div className="relative w-full h-full">
+                          <video
+                            src={media.url}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                            <Play className="w-4 h-4 text-white" />
+                          </div>
+                        </div>
+                      ) : (
+                        <img
                           src={media.url}
+                          alt={`Thumbnail ${index + 1}`}
                           className="w-full h-full object-cover"
                         />
-                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                                    <Play className="w-3 h-3 text-white" />
-                        </div>
-                      </div>
-                    ) : (
-                      <img
-                        src={media.url}
-                        alt={`Thumbnail ${index + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    )}
-                  </button>
-                ))}
-                        </div>
-              </div>
-            );
-          })()}
+                      )}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
-          </div>
-        </div>
+          )}
+
+          {/* Main Modal */}
+          {!isFullScreenGallery && (
+            <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-0 md:p-4 animate-in fade-in duration-300" style={{ overflow: 'hidden' }}>
+              <div className="bg-gradient-to-br from-background via-background/95 to-background/90 rounded-none md:rounded-3xl max-w-6xl w-full h-full md:h-[92vh] flex flex-col shadow-2xl border-0 md:border border-border/20 animate-in slide-in-from-bottom-4 duration-300">
+                {/* Header with Poster */}
+                <div className="relative overflow-hidden rounded-none md:rounded-t-3xl flex-shrink-0">
+                  <img
+                    src={selectedEvent.poster_url || "/api/placeholder/800/400"}
+                    alt={selectedEvent.name}
+                    className="w-full h-64 md:h-80 object-cover"
+                  />
+                  
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent"></div>
+          
+                  {/* Close Button */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 hover:scale-110 z-10"
+                    onClick={closeModal}
+                  >
+                    <X className="w-5 h-5 md:w-6 h-6" />
+                  </Button>
+                  
+                  {/* Badges */}
+                  <div className="absolute top-4 left-4 flex gap-2 flex-wrap">
+                    {selectedEvent.featured && (
+                      <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 shadow-lg">
+                        ⭐ {content[language].featured}
+                      </Badge>
+                    )}
+                    {selectedEvent.event_status === 'cancelled' && (
+                      <Badge className="bg-red-500 text-white border-0 shadow-lg">
+                        ❌ {content[language].cancelled}
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  {/* Event Title Overlay */}
+                  <div className="absolute bottom-4 left-4 right-4">
+                    <h2 className="text-2xl md:text-4xl font-bold text-white drop-shadow-lg mb-2">
+                      {selectedEvent.name}
+                    </h2>
+                    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 text-white/90 text-sm">
+                      <div className="flex items-center">
+                        <Calendar className="w-4 h-4 mr-2" />
+                        <span className="text-xs md:text-sm">{formatDate(selectedEvent.date)}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <MapPin className="w-4 h-4 mr-2" />
+                        <span className="text-xs md:text-sm">{selectedEvent.venue}, {selectedEvent.city}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tabs for Details/Gallery */}
+                {hasGallery && (
+                  <div className="flex border-b border-border/20 bg-background/50 backdrop-blur-sm flex-shrink-0">
+                    <button
+                      onClick={() => setActiveTab('details')}
+                      className={`flex-1 px-6 py-4 text-sm md:text-base font-semibold transition-all duration-200 border-b-2 ${
+                        activeTab === 'details'
+                          ? 'border-primary text-primary bg-primary/5'
+                          : 'border-transparent text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Info className="w-4 h-4 md:w-5 h-5 inline-block mr-2" />
+                      {content[language].details}
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('gallery')}
+                      className={`flex-1 px-6 py-4 text-sm md:text-base font-semibold transition-all duration-200 border-b-2 ${
+                        activeTab === 'gallery'
+                          ? 'border-primary text-primary bg-primary/5'
+                          : 'border-transparent text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <ImageIcon className="w-4 h-4 md:w-5 h-5 inline-block mr-2" />
+                      {content[language].gallery} ({allMedia.length})
+                    </button>
+                  </div>
+                )}
+
+                {/* Content Area */}
+                <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+                  {activeTab === 'details' ? (
+                    <>
+                      {/* Pricing Section */}
+                      {(selectedEvent.standard_price || selectedEvent.vip_price) && (
+                        <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl p-4 md:p-6 border border-purple-500/20">
+                          <h3 className="text-lg md:text-xl font-bold text-gradient-neon mb-4 text-center flex items-center justify-center gap-2">
+                            <DollarSign className="w-5 h-5" />
+                            {content[language].ticketPricing}
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {selectedEvent.standard_price && (
+                              <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 hover:border-purple-500/40 transition-all duration-200">
+                                <h4 className="font-semibold text-base md:text-lg mb-2 text-purple-400">{content[language].standard}</h4>
+                                <p className="text-2xl md:text-3xl font-bold text-gradient-to-r from-purple-400 to-pink-400">{selectedEvent.standard_price} TND</p>
+                              </div>
+                            )}
+                            {selectedEvent.vip_price && (
+                              <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 hover:border-pink-500/40 transition-all duration-200">
+                                <h4 className="font-semibold text-base md:text-lg mb-2 text-pink-400">{content[language].vip}</h4>
+                                <p className="text-2xl md:text-3xl font-bold text-gradient-to-r from-pink-400 to-purple-400">{selectedEvent.vip_price} TND</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Description */}
+                      <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 rounded-2xl p-4 md:p-6 border border-blue-500/20">
+                        <h3 className="text-lg md:text-xl font-bold text-gradient-to-r from-blue-400 to-purple-400 mb-4 flex items-center">
+                          <span className="w-2 h-2 bg-blue-400 rounded-full mr-3"></span>
+                          {content[language].aboutEvent}
+                        </h3>
+                        <p className="text-muted-foreground text-sm md:text-base leading-relaxed">
+                          {selectedEvent.description}
+                        </p>
+                      </div>
+
+                      {/* Event Details Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                        <div className="bg-gradient-to-r from-green-500/5 to-blue-500/5 rounded-2xl p-4 md:p-6 border border-green-500/20">
+                          <h4 className="font-semibold text-base md:text-lg text-green-400 mb-4 flex items-center">
+                            <span className="w-2 h-2 bg-green-400 rounded-full mr-3"></span>
+                            {content[language].eventDetails}
+                          </h4>
+                          <div className="space-y-3 text-muted-foreground text-sm md:text-base">
+                            <div className="flex items-center p-2 bg-background/50 rounded-lg">
+                              <Calendar className="w-4 h-4 mr-3 text-green-400 flex-shrink-0" />
+                              <span className="break-words">{formatDate(selectedEvent.date)}</span>
+                            </div>
+                            <div className="flex items-center p-2 bg-background/50 rounded-lg">
+                              <MapPin className="w-4 h-4 mr-3 text-green-400 flex-shrink-0" />
+                              <span className="break-words">{selectedEvent.venue}</span>
+                            </div>
+                            <div className="flex items-center p-2 bg-background/50 rounded-lg">
+                              <MapPin className="w-4 h-4 mr-3 text-green-400 flex-shrink-0" />
+                              <span>{selectedEvent.city}</span>
+                            </div>
+                            {selectedEvent.capacity && (
+                              <div className="flex items-center p-2 bg-background/50 rounded-lg">
+                                <Users className="w-4 h-4 mr-3 text-green-400 flex-shrink-0" />
+                                <span>{content[language].capacity}: {selectedEvent.capacity}</span>
+                              </div>
+                            )}
+                            {selectedEvent.age_restriction && (
+                              <div className="flex items-center p-2 bg-background/50 rounded-lg">
+                                <Clock className="w-4 h-4 mr-3 text-green-400 flex-shrink-0" />
+                                <span>{content[language].ageRestriction}: {selectedEvent.age_restriction}+</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="bg-gradient-to-r from-orange-500/5 to-red-500/5 rounded-2xl p-4 md:p-6 border border-orange-500/20">
+                          <h4 className="font-semibold text-base md:text-lg text-orange-400 mb-4 flex items-center">
+                            <span className="w-2 h-2 bg-orange-400 rounded-full mr-3"></span>
+                            {content[language].quickInfo}
+                          </h4>
+                          <div className="space-y-3 text-muted-foreground text-sm md:text-base">
+                            <div className="flex items-center p-2 bg-background/50 rounded-lg">
+                              <span className="w-2 h-2 bg-orange-400 rounded-full mr-3 flex-shrink-0"></span>
+                              <span>{selectedEvent.featured ? content[language].featured : 'Regular Event'}</span>
+                            </div>
+                            {selectedEvent.dress_code && (
+                              <div className="flex items-center p-2 bg-background/50 rounded-lg">
+                                <span className="w-2 h-2 bg-orange-400 rounded-full mr-3 flex-shrink-0"></span>
+                                <span className="break-words">{content[language].dressCode}: {selectedEvent.dress_code}</span>
+                              </div>
+                            )}
+                            {selectedEvent.special_notes && (
+                              <div className="flex items-center p-2 bg-background/50 rounded-lg">
+                                <span className="w-2 h-2 bg-orange-400 rounded-full mr-3 flex-shrink-0"></span>
+                                <span className="break-words">{content[language].specialNotes}: {selectedEvent.special_notes}</span>
+                              </div>
+                            )}
+                            {selectedEvent.organizer_contact && (
+                              <div className="flex items-center p-2 bg-background/50 rounded-lg">
+                                <span className="w-2 h-2 bg-orange-400 rounded-full mr-3 flex-shrink-0"></span>
+                                <span className="break-words">{content[language].organizerContact}: {selectedEvent.organizer_contact}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      {selectedEvent.event_type === 'upcoming' && (
+                        <div className="flex flex-col sm:flex-row gap-4">
+                          <Button 
+                            className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 flex-1 py-6 text-base md:text-lg font-semibold rounded-xl"
+                            onClick={() => {
+                              closeModal();
+                              navigate(`/pass-purchase?eventId=${selectedEvent.id}`);
+                            }}
+                          >
+                            <ExternalLink className="w-5 h-5 mr-2" />
+                            {content[language].bookNow}
+                          </Button>
+                          {selectedEvent.whatsapp_link && (
+                            <Button
+                              variant="outline"
+                              className="border-2 border-green-500 text-green-500 hover:bg-green-500 hover:text-white transition-all duration-200 flex-1 py-6 text-base md:text-lg font-semibold rounded-xl backdrop-blur-sm"
+                              onClick={() => window.open(selectedEvent.whatsapp_link, '_blank')}
+                            >
+                              💬 {content[language].joinEvent}
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    /* Gallery Tab */
+                    <div className="space-y-6">
+                      {/* Main Gallery Display */}
+                      <div 
+                        ref={galleryRef}
+                        className="relative bg-gradient-to-br from-black/20 to-black/10 rounded-xl overflow-hidden border border-indigo-500/20 h-[70vh] md:h-[500px] min-h-[400px] md:min-h-[500px]"
+                        onTouchStart={onTouchStart}
+                        onTouchMove={onTouchMove}
+                        onTouchEnd={onTouchEnd}
+                      >
+                        {allMedia[currentMediaIndex] && (
+                          <>
+                            {allMedia[currentMediaIndex].type === 'video' ? (
+                              <video
+                                src={allMedia[currentMediaIndex].url}
+                                controls
+                                className="w-full h-full object-contain"
+                                autoPlay
+                              />
+                            ) : (
+                              <img
+                                src={allMedia[currentMediaIndex].url}
+                                alt={`${selectedEvent.name} - Image ${currentMediaIndex + 1}`}
+                                className="w-full h-full object-contain cursor-pointer"
+                                onClick={() => setIsFullScreenGallery(true)}
+                              />
+                            )}
+                          </>
+                        )}
+
+                        {/* Fullscreen Button (Desktop) */}
+                        {allMedia[currentMediaIndex]?.type === 'image' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 md:block hidden"
+                            onClick={() => setIsFullScreenGallery(true)}
+                          >
+                            <Maximize2 className="w-5 h-5" />
+                          </Button>
+                        )}
+
+                        {/* Navigation Arrows */}
+                        {allMedia.length > 1 && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="absolute left-2 md:left-4 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200"
+                              onClick={previousMedia}
+                            >
+                              <ChevronLeft className="w-5 h-5 md:w-6 h-6" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="absolute right-2 md:right-4 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200"
+                              onClick={nextMedia}
+                            >
+                              <ChevronRight className="w-5 h-5 md:w-6 h-6" />
+                            </Button>
+                          </>
+                        )}
+
+                        {/* Media Counter */}
+                        {allMedia.length > 1 && (
+                          <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1.5 rounded-full backdrop-blur-sm text-sm font-semibold">
+                            {currentMediaIndex + 1} / {allMedia.length}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Thumbnail Navigation */}
+                      {allMedia.length > 1 && (
+                        <div className="flex justify-center gap-2 overflow-x-auto pb-2 -mx-2 px-2">
+                          {allMedia.map((media, index) => (
+                            <button
+                              key={index}
+                              onClick={() => goToMedia(index)}
+                              className={`w-20 h-20 md:w-24 md:h-24 rounded-lg overflow-hidden border-2 transition-all duration-200 flex-shrink-0 hover:scale-105 ${
+                                index === currentMediaIndex 
+                                  ? 'border-indigo-500 shadow-lg shadow-indigo-500/25 scale-105' 
+                                  : 'border-border/50 hover:border-indigo-500/50 opacity-70 hover:opacity-100'
+                              }`}
+                            >
+                              {media.type === 'video' ? (
+                                <div className="relative w-full h-full">
+                                  <video
+                                    src={media.url}
+                                    className="w-full h-full object-cover"
+                                  />
+                                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                                    <Play className="w-4 h-4 text-white" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <img
+                                  src={media.url}
+                                  alt={`Thumbnail ${index + 1}`}
+                                  className="w-full h-full object-cover"
+                                />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Mobile Fullscreen Hint */}
+                      {typeof window !== 'undefined' && window.innerWidth < 768 && allMedia[currentMediaIndex]?.type === 'image' && (
+                        <div className="text-center text-sm text-muted-foreground">
+                          <p>{language === 'en' ? 'Tap image to view fullscreen' : 'Appuyez sur l\'image pour voir en plein écran'}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

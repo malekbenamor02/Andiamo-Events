@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { logFormSubmission, logger } from "@/lib/logger";
 import { Mail, MessageCircle, MapPin, Star, Sparkles, Heart, Zap, Send, User, MessageSquare, Phone, Globe, Users, Award, FileText } from "lucide-react";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 
@@ -154,6 +155,13 @@ const Contact = ({ language }: ContactProps) => {
 
       if (error) throw error;
 
+      // Log successful form submission
+      logFormSubmission('Contact Form', true, {
+        name: formData.name,
+        email: formData.email,
+        subject: formData.subject
+      }, 'guest');
+
       toast({
         title: language === 'en' ? "Message Sent!" : "Message Envoyé!",
         description: language === 'en' 
@@ -168,6 +176,17 @@ const Contact = ({ language }: ContactProps) => {
         message: ''
       });
     } catch (error) {
+      // Log failed form submission
+      logFormSubmission('Contact Form', false, {
+        email: formData.email,
+        subject: formData.subject,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'guest');
+      logger.error('Contact form submission failed', error, {
+        category: 'form_submission',
+        details: { formName: 'Contact Form', email: formData.email }
+      });
+
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       toast({
         title: language === 'en' ? "Error" : "Erreur",

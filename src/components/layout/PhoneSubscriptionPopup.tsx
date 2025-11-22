@@ -19,6 +19,7 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isDuplicate, setIsDuplicate] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -49,6 +50,9 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
   const handleClose = () => {
     setIsVisible(false);
     setIsFloating(false);
+    setIsSuccess(false);
+    setIsDuplicate(false);
+    setPhoneNumber("");
     localStorage.setItem(STORAGE_KEY, 'true');
   };
 
@@ -94,24 +98,18 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
       if (error) {
         // Check if it's a duplicate error
         if (error.code === '23505') {
-          toast({
-            title: language === 'en' ? "Already Subscribed" : "Déjà Abonné",
-            description: language === 'en' 
-              ? "This phone number is already subscribed to our updates."
-              : "Ce numéro de téléphone est déjà abonné à nos mises à jour.",
-          });
+          setIsSuccess(true);
+          setIsDuplicate(true);
+          // Close popup after showing duplicate message
+          setTimeout(() => {
+            handleClose();
+          }, 2000);
         } else {
           throw error;
         }
       } else {
         setIsSuccess(true);
-        toast({
-          title: language === 'en' ? "Thank You!" : "Merci!",
-          description: language === 'en' 
-            ? "You'll receive all the latest news and updates."
-            : "Vous recevrez toutes les dernières nouvelles et mises à jour.",
-        });
-        
+        setIsDuplicate(false);
         // Close popup after success
         setTimeout(() => {
           handleClose();
@@ -119,6 +117,7 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
       }
     } catch (error) {
       console.error('Error subscribing phone number:', error);
+      setIsSubmitting(false);
       toast({
         title: language === 'en' ? "Error" : "Erreur",
         description: language === 'en' 
@@ -126,8 +125,6 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
           : "Échec de l'abonnement. Veuillez réessayer plus tard.",
         variant: "destructive",
       });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -143,6 +140,7 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
       subscribing: "Subscribing...",
       close: "Close",
       success: "Successfully subscribed!",
+      alreadySubscribed: "Already subscribed!",
     },
     fr: {
       title: "Restez Informé!",
@@ -153,6 +151,7 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
       subscribing: "Abonnement...",
       close: "Fermer",
       success: "Abonnement réussi!",
+      alreadySubscribed: "Déjà abonné!",
     },
   };
 
@@ -233,8 +232,8 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
                   <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-ping" />
                   <CheckCircle2 className="relative h-12 w-12 text-primary animate-in zoom-in-95 duration-300" />
                 </div>
-                <p className="text-sm font-semibold text-foreground">
-                  {t.success}
+                <p className="text-sm font-semibold text-foreground text-center">
+                  {isDuplicate ? t.alreadySubscribed : t.success}
                 </p>
               </div>
             ) : (

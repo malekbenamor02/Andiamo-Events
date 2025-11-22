@@ -125,6 +125,18 @@ const AmbassadorDashboard = ({ language }) => {
       .eq('event_type', 'upcoming');
 
     if (salesError || eventsError) {
+      // Log database errors
+      if (salesError) {
+        logger.error('Error fetching ambassador sales', salesError, {
+          category: 'database',
+          details: { ambassadorId }
+        });
+      }
+      if (eventsError) {
+        logger.error('Error fetching events for ambassador', eventsError, {
+          category: 'database'
+        });
+      }
       toast({ title: "Error", description: "Failed to fetch data.", variant: "destructive" });
     } else {
       setSales(salesData);
@@ -238,6 +250,14 @@ const AmbassadorDashboard = ({ language }) => {
       fetchData(ambassador.id);
     } catch (error) {
       console.error('Error saving sale:', error);
+      logger.error('Error saving ambassador sale', error, {
+        category: 'database',
+        details: {
+          ambassadorId: ambassador.id,
+          eventId: formData.event_id,
+          operation: editingSale ? 'update' : 'insert'
+        }
+      });
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 

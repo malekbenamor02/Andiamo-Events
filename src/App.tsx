@@ -28,6 +28,8 @@ import AmbassadorApplication from "./pages/ambassador/Application";
 import PassPurchase from "./pages/PassPurchase";
 import LoadingDemo from "./pages/LoadingDemo";
 import DisableInspect from "./components/security/DisableInspect";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { FaviconLoader } from "./components/FaviconLoader";
 
 const queryClient = new QueryClient();
 
@@ -39,17 +41,19 @@ const App = () => {
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <DisableInspect />
-          <ScrollToTop />
-          <MaintenanceMode language={language}>
-            <div className="min-h-screen bg-background">
-              <Navigation language={language} toggleLanguage={toggleLanguage} />
-              <Routes>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <FaviconLoader />
+            <DisableInspect />
+            <ScrollToTop />
+            <MaintenanceMode language={language}>
+              <div className="min-h-screen bg-background">
+                <Navigation language={language} toggleLanguage={toggleLanguage} />
+                <Routes>
               <Route path="/" element={<Index language={language} />} />
               <Route path="/events" element={<Events language={language} />} />
               <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
@@ -75,13 +79,14 @@ const App = () => {
               <Route path="/loading-demo" element={<LoadingDemo />} />
               <Route path="*" element={<NotFound />} />
               </Routes>
-              <Footer language={language} />
-              <PhoneSubscriptionPopup language={language} />
-            </div>
-          </MaintenanceMode>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
+                <Footer language={language} />
+                <PhoneSubscriptionPopup language={language} />
+              </div>
+            </MaintenanceMode>
+          </BrowserRouter>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 };
 

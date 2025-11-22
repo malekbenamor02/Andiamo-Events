@@ -135,4 +135,4 @@ export const deleteHeroImage = async (path: string): Promise<boolean> => {
     console.error('Delete failed:', error);
     return false;
   }
-}; 
+};

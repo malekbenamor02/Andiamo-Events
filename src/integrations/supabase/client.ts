@@ -6,19 +6,31 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  throw new Error('Missing Supabase environment variables. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.');
+  const error = new Error('Missing Supabase environment variables. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.');
+  console.error('Supabase configuration error:', error);
+  console.error('VITE_SUPABASE_URL:', SUPABASE_URL ? 'Set' : 'Missing');
+  console.error('VITE_SUPABASE_ANON_KEY:', SUPABASE_PUBLISHABLE_KEY ? 'Set' : 'Missing');
+  throw error;
 }
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+// Create the base Supabase client
+const baseClient = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
   }
 });
+
+// Temporarily remove error logging wrapper to fix query builder chainability
+// Database errors will still be caught by global error handlers in main.tsx
+// We'll implement a better logging solution later that doesn't interfere with Supabase's API
+
+// Export the client - all other methods (auth, storage, rpc) work normally
+export const supabase = baseClient;
 
 // After installing Supabase CLI, run the following command to apply your migration
 // supabase db push

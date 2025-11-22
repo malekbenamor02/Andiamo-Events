@@ -14,10 +14,14 @@ const NotFound = () => {
   const [notFoundContent, setNotFoundContent] = useState<NotFoundContent>({});
 
   useEffect(() => {
-    console.error(
-      "404 Error: User attempted to access non-existent route:",
-      location.pathname
-    );
+    // Log 404 error
+    logger.warning(`404 Error: Page not found - ${location.pathname}`, {
+      category: 'error',
+      details: {
+        path: location.pathname,
+        type: '404'
+      }
+    });
 
     const fetchContent = async () => {
       try {
@@ -32,6 +36,10 @@ const NotFound = () => {
         }
       } catch (error) {
         console.error('Error fetching not found content:', error);
+        logger.error('Error fetching 404 page content', error, {
+          category: 'database',
+          details: { path: location.pathname }
+        });
       }
     };
 

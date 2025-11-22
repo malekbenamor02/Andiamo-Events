@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Eye, EyeOff, Lock, User } from "lucide-react";
+import { Eye, EyeOff, Lock, User, Mail, ArrowLeft, Sparkles, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { logger } from "@/lib/logger";
 
 interface AdminLoginProps {
   language: 'en' | 'fr';
@@ -74,6 +75,13 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
           // If response is not JSON, use status text
           errorMessage = response.statusText || errorMessage;
         }
+        // Log failed admin login attempt
+        logger.warning('Admin login failed', {
+          category: 'authentication',
+          userType: 'admin',
+          details: { email, reason: errorMessage }
+        });
+
         setError(errorMessage);
         toast({
           title: language === 'en' ? "Login Failed" : "Échec de connexion",
@@ -101,6 +109,18 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       }
 
       if (data.success) {
+        // Log successful admin login
+        logger.success('Admin login successful', {
+          category: 'authentication',
+          userType: 'admin',
+          details: { email }
+        });
+        logger.action('Admin logged in', {
+          category: 'authentication',
+          userType: 'admin',
+          details: { email }
+        });
+
         // Login successful - JWT token is now stored in httpOnly cookie
         toast({
           title: language === 'en' ? "Login Successful!" : "Connexion réussie!",
@@ -147,47 +167,64 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <Card className="shadow-2xl border-0 bg-white/95 backdrop-blur-sm">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center mb-4">
-              <Lock className="w-6 h-6 text-white" />
+    <div className="min-h-screen bg-gradient-dark flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 rounded-full bg-primary/20 blur-3xl animate-float" />
+        <div className="absolute bottom-1/3 right-1/4 w-48 h-48 rounded-full bg-secondary/20 blur-3xl animate-float delay-1000" />
+        <div className="absolute top-1/2 right-1/3 w-32 h-32 rounded-full bg-accent/10 blur-3xl animate-float delay-2000" />
+        <div className="absolute inset-0 opacity-[0.05]" style={{
+          backgroundImage: `radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)`,
+          backgroundSize: '20px 20px',
+        }} />
+      </div>
+
+      <div className="w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-700">
+        <Card className="glass border-border/50 shadow-2xl">
+          <CardHeader className="text-center pt-8 pb-4 relative">
+            <div className="mx-auto w-16 h-16 bg-gradient-to-r from-primary via-secondary to-accent rounded-full flex items-center justify-center mb-4 relative overflow-hidden animate-pulse-glow">
+              <Lock className="w-8 h-8 text-primary-foreground relative z-10" />
+              <Sparkles className="absolute top-1 right-1 w-4 h-4 text-white/80 animate-spin-slow" />
             </div>
-            <CardTitle className="text-2xl font-bold text-gray-900">
+            <CardTitle className="text-3xl font-orbitron font-bold text-gradient-neon mb-2">
               {t[language].title}
             </CardTitle>
-            <CardDescription className="text-gray-600">
+            <CardDescription className="text-muted-foreground text-sm">
               {t[language].description}
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
+          <CardContent className="p-6">
+            <form onSubmit={handleLogin} className="space-y-5">
               {error && (
-                <Alert variant="destructive">
+                <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-2">
+                  <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
               
               <div className="space-y-2">
-                <Label htmlFor="email" className="flex items-center gap-2">
-                  <User className="w-4 h-4" />
+                <Label htmlFor="email" className="flex items-center gap-2 text-foreground/80">
+                  <Mail className="w-4 h-4 text-primary" />
                   {t[language].email}
                 </Label>
+                <div className="relative">
                   <Input
                     id="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                  required
+                    required
+                    className="w-full pl-10 h-12 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
                     placeholder="admin@andiamo.com"
-                  className="w-full"
                   />
+                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <div className="absolute inset-0 rounded-md pointer-events-none opacity-0 group-hover:opacity-10 transition-opacity duration-300 bg-gradient-to-r from-primary/20 to-secondary/20" />
+                </div>
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="password" className="flex items-center gap-2">
-                  <Lock className="w-4 h-4" />
+                <Label htmlFor="password" className="flex items-center gap-2 text-foreground/80">
+                  <Lock className="w-4 h-4 text-primary" />
                   {t[language].password}
                 </Label>
                 <div className="relative">
@@ -197,14 +234,15 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    className="w-full pr-10 pl-10 h-12 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
                     placeholder="••••••••"
-                    className="w-full pr-10"
                   />
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-muted-foreground hover:text-foreground"
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? (
@@ -213,24 +251,40 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                       <Eye className="h-4 w-4" />
                     )}
                   </Button>
+                  <div className="absolute inset-0 rounded-md pointer-events-none opacity-0 group-hover:opacity-10 transition-opacity duration-300 bg-gradient-to-r from-primary/20 to-secondary/20" />
                 </div>
               </div>
               
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                className="w-full h-12 btn-gradient text-lg font-semibold relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
                 disabled={loading}
               >
-                {loading ? t[language].loading : t[language].login}
+                <span className="relative z-10 flex items-center justify-center gap-2">
+                  {loading ? (
+                    <>
+                      <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                      {t[language].loading}
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-5 h-5" />
+                      {t[language].login}
+                    </>
+                  )}
+                </span>
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-secondary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="absolute inset-0 bg-[length:200%_200%] animate-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ backgroundImage: 'linear-gradient(to right, transparent 0%, rgba(255,255,255,0.1) 30%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.1) 70%, transparent 100%)' }} />
               </Button>
             </form>
             
-            <div className="mt-4 text-center">
+            <div className="mt-6 text-center border-t border-border/50 pt-6">
               <Button
                 variant="link"
                 onClick={() => navigate('/')}
-                className="text-gray-600 hover:text-gray-900"
+                className="text-muted-foreground hover:text-primary transition-colors duration-300 flex items-center justify-center gap-2 mx-auto"
               >
+                <ArrowLeft className="w-4 h-4" />
                 {t[language].backToHome}
               </Button>
             </div>

@@ -4,6 +4,7 @@ import { Instagram, MessageCircle, Mail, MapPin, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
+import { logFormSubmission, logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 
 interface FooterProps {
@@ -128,12 +129,32 @@ const Footer = ({ language }: FooterProps) => {
 
       if (error) throw error;
 
+      // Log successful newsletter subscription
+      logFormSubmission('Newsletter Subscription', true, {
+        email,
+        language
+      }, 'guest');
+      logger.action('Newsletter subscription', {
+        category: 'form_submission',
+        details: { email, language }
+      });
+
       toast({
         title: content[language].subscribed,
         description: content[language].newsletter,
       });
       setEmail("");
     } catch (error) {
+      // Log failed newsletter subscription
+      logFormSubmission('Newsletter Subscription', false, {
+        email,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }, 'guest');
+      logger.error('Newsletter subscription failed', error, {
+        category: 'form_submission',
+        details: { formName: 'Newsletter Subscription', email }
+      });
+
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       toast({
         title: content[language].error,
