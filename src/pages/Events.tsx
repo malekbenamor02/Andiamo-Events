@@ -365,20 +365,16 @@ const Events = ({ language }: EventsProps) => {
         </div>
       </section>
 
-      {/* Upcoming Events Section */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12 animate-in slide-in-from-bottom-4 duration-700 delay-200">
-            <h2 className="text-3xl md:text-4xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-left-4 duration-1000">
-              {content[language].upcomingTitle}
-            </h2>
-          </div>
-
-          {upcomingEvents.length === 0 ? (
-            <div className="text-center py-20 animate-in fade-in duration-500">
-              <p className="text-2xl text-muted-foreground">{content[language].noUpcomingEvents}</p>
+      {/* Upcoming Events Section - Only show if there are events */}
+      {upcomingEvents.length > 0 && (
+        <section className="py-20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-12 animate-in slide-in-from-bottom-4 duration-700 delay-200">
+              <h2 className="text-3xl md:text-4xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-left-4 duration-1000">
+                {content[language].upcomingTitle}
+              </h2>
             </div>
-          ) : (
+
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 justify-items-center">
               {upcomingEvents.map((event, index) => (
                 <Card 
@@ -433,9 +429,9 @@ const Events = ({ language }: EventsProps) => {
                 </Card>
               ))}
             </div>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
       {/* Event Gallery Section */}
       {galleryEvents.length > 0 && (
