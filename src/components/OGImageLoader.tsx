@@ -19,10 +19,17 @@ export const OGImageLoader = () => {
         if (existingOGImage) existingOGImage.remove();
         if (existingTwitterImage) existingTwitterImage.remove();
 
+        // Helper function to add cache-busting parameter
+        const addCacheBuster = (url: string, timestamp?: string) => {
+          const separator = url.includes('?') ? '&' : '?';
+          const cacheBuster = timestamp || Date.now().toString();
+          return `${url}${separator}v=${cacheBuster}`;
+        };
+
         // If no OG image in database, use default from public folder
         if (!settings.og_image) {
-          // Use default OG image from public folder
-          const defaultOGImage = `${window.location.origin}/og-image.jpg`;
+          // Use default OG image from public folder with cache-busting
+          const defaultOGImage = addCacheBuster(`${window.location.origin}/og-image.jpg`);
           
           // Add OG image meta tag
           const ogImageMeta = document.createElement('meta');
@@ -36,22 +43,25 @@ export const OGImageLoader = () => {
           twitterImageMeta.setAttribute('content', defaultOGImage);
           document.head.appendChild(twitterImageMeta);
         } else {
-          // Use OG image from database
+          // Use OG image from database with cache-busting timestamp
+          const ogImageUrl = addCacheBuster(settings.og_image, settings.updated_at);
+          
+          // Add OG image meta tag
           const ogImageMeta = document.createElement('meta');
           ogImageMeta.setAttribute('property', 'og:image');
-          ogImageMeta.setAttribute('content', settings.og_image);
+          ogImageMeta.setAttribute('content', ogImageUrl);
           document.head.appendChild(ogImageMeta);
 
           // Add Twitter image meta tag
           const twitterImageMeta = document.createElement('meta');
           twitterImageMeta.setAttribute('name', 'twitter:image');
-          twitterImageMeta.setAttribute('content', settings.og_image);
+          twitterImageMeta.setAttribute('content', ogImageUrl);
           document.head.appendChild(twitterImageMeta);
         }
       } catch (error) {
         console.error('Error loading OG image from database:', error);
-        // Fallback to default OG image
-        const defaultOGImage = `${window.location.origin}/og-image.jpg`;
+        // Fallback to default OG image with cache-busting
+        const defaultOGImage = `${window.location.origin}/og-image.jpg?v=${Date.now()}`;
         
         const ogImageMeta = document.createElement('meta');
         ogImageMeta.setAttribute('property', 'og:image');
@@ -93,4 +103,5 @@ export const OGImageLoader = () => {
 
   return null;
 };
+
 

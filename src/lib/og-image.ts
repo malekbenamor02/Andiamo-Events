@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 export interface OGImageSettings {
   og_image?: string;
+  updated_at?: string; // Timestamp for cache-busting
 }
 
 const OG_IMAGE_FOLDER = 'og-image';
@@ -48,9 +49,11 @@ export const uploadOGImage = async (
       .single();
 
     const currentSettings = (existingData?.content as OGImageSettings) || {};
+    const timestamp = Date.now().toString();
     const updatedSettings: OGImageSettings = {
       ...currentSettings,
-      og_image: urlData.publicUrl
+      og_image: urlData.publicUrl,
+      updated_at: timestamp // Store timestamp for cache-busting
     };
 
     const { error: updateError } = await supabase
@@ -200,4 +203,5 @@ export const fetchOGImageSettings = async (): Promise<OGImageSettings> => {
     return {};
   }
 };
+
 
