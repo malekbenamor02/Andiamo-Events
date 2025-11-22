@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import LoadingScreen from "@/components/ui/LoadingScreen";
 
 interface Event {
   id: string;
@@ -175,7 +176,6 @@ const Events = ({ language }: EventsProps) => {
   };
 
   const openModal = (event: Event) => {
-    console.log('Opening modal, hiding scrollbar');
     setSelectedEvent(event);
     setCurrentMediaIndex(0);
     setShowModal(true);
@@ -184,7 +184,6 @@ const Events = ({ language }: EventsProps) => {
   };
 
   const closeModal = () => {
-    console.log('Closing modal, restoring scrollbar');
     setShowModal(false);
     setSelectedEvent(null);
     setCurrentMediaIndex(0);
@@ -307,12 +306,11 @@ const Events = ({ language }: EventsProps) => {
 
   if (loading) {
     return (
-      <div className="pt-16 min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center animate-in fade-in duration-1000">
-          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-muted-foreground animate-pulse">Loading events...</p>
-        </div>
-      </div>
+      <LoadingScreen 
+        variant="default" 
+        size="fullscreen" 
+        text={content[language].title ? `Loading ${content[language].title.toLowerCase()}...` : "Loading events..."}
+      />
     );
   }
 

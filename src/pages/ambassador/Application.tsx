@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import { User, Star, Users, Sparkles, Zap, Heart, Mail, Phone, MapPin, Instagram, FileText, Calendar, Award, Target, Gift, Crown, TrendingUp, Users2, Clock, CheckCircle, XCircle, RefreshCw } from "lucide-react";
 // @ts-ignore
 import DOMPurify from 'dompurify';
+import LoadingScreen from '@/components/ui/LoadingScreen';
 
 interface ApplicationProps {
   language: 'en' | 'fr';
@@ -105,13 +106,6 @@ const Application = ({ language }: ApplicationProps) => {
         if (data && data.content) {
           const settings = data.content as { enabled?: boolean; message?: string };
           const isEnabled = settings.enabled !== false; // Default to true if not set
-          console.log('Application status loaded:', { 
-            enabled: isEnabled, 
-            hasMessage: !!settings.message, 
-            settings,
-            applicationEnabled: isEnabled,
-            willShowForm: isEnabled !== false
-          });
           setApplicationEnabled(isEnabled);
           setApplicationMessage(
             settings.message || 
@@ -121,7 +115,6 @@ const Application = ({ language }: ApplicationProps) => {
           );
         } else {
           // Default to enabled if no setting exists
-          console.log('No data found, defaulting to enabled');
           setApplicationEnabled(true);
           setApplicationMessage("");
         }
@@ -133,10 +126,6 @@ const Application = ({ language }: ApplicationProps) => {
       } finally {
         // Always set loading to false, even if there was an error
         setLoadingApplicationStatus(false);
-        console.log('Application status check completed - loading set to false', {
-          applicationEnabled,
-          loadingApplicationStatus: false
-        });
       }
     };
 
@@ -250,8 +239,7 @@ const Application = ({ language }: ApplicationProps) => {
           .eq('phone', formData.phoneNumber)
           .maybeSingle();
         
-        // Log for debugging
-        console.log('Ambassador check result:', { existingAmb, ambError });
+        // Check for existing ambassador
         
         // Check for existing phone in applications (only check pending or approved applications)
         const { data: existingApp, error: appError } = await supabase
@@ -261,8 +249,7 @@ const Application = ({ language }: ApplicationProps) => {
           .in('status', ['pending', 'approved'])
           .maybeSingle();
 
-        // Log for debugging
-        console.log('Application check result:', { existingApp, appError });
+        // Check for existing application
 
         // If queries failed due to RLS policies, allow the application
         // This prevents blocking applications when policies aren't set up
@@ -275,7 +262,6 @@ const Application = ({ language }: ApplicationProps) => {
         } else {
           // Only block if we found a record AND there was no error
           if (existingAmb && !ambError) {
-            console.log('Found existing ambassador:', existingAmb);
             toast({
               title: 'Already Applied', 
               description: existingAmb.status === 'approved' 
@@ -288,7 +274,6 @@ const Application = ({ language }: ApplicationProps) => {
           }
 
           if (existingApp && !appError) {
-            console.log('Found existing application:', existingApp);
             toast({
               title: 'Already Applied', 
               description: existingApp.status === 'approved' 
@@ -332,14 +317,11 @@ const Application = ({ language }: ApplicationProps) => {
   // Show loading state until we know the actual status (prevents flash of wrong content)
   if (loadingApplicationStatus || applicationEnabled === null) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">
-            {language === 'en' ? 'Loading...' : 'Chargement...'}
-          </p>
-        </div>
-      </div>
+      <LoadingScreen 
+        variant="default" 
+        size="fullscreen" 
+        text={language === 'en' ? 'Loading...' : 'Chargement...'}
+      />
     );
   }
 
@@ -405,9 +387,6 @@ const Application = ({ language }: ApplicationProps) => {
   });
   
   // Safety check - if somehow we get here with wrong state, default to showing form
-  if (applicationEnabled !== true) {
-    console.warn('Unexpected state in form render:', { applicationEnabled, loadingApplicationStatus });
-  }
   
   return (
     <div className="min-h-screen bg-gradient-dark flex flex-col items-center justify-start p-0 md:p-8 relative overflow-hidden">

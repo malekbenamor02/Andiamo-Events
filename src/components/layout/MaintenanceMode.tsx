@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Wrench, RefreshCw } from "lucide-react";
+import LoadingScreen from '@/components/ui/LoadingScreen';
 
 interface MaintenanceModeProps {
   children: React.ReactNode;
@@ -81,14 +82,11 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">
-            {language === 'en' ? 'Loading...' : 'Chargement...'}
-          </p>
-        </div>
-      </div>
+      <LoadingScreen 
+        variant="default" 
+        size="fullscreen" 
+        text={language === 'en' ? 'Loading...' : 'Chargement...'}
+      />
     );
   }
 

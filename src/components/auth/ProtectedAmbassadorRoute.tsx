@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import LoadingScreen from '@/components/ui/LoadingScreen';
 
 const ProtectedAmbassadorRoute = ({ children, language }) => {
   const navigate = useNavigate();
@@ -16,11 +17,11 @@ const ProtectedAmbassadorRoute = ({ children, language }) => {
 
   if (!isAuth) {
     return (
-      <div className="pt-16 min-h-screen bg-background flex items-center justify-center">
-        <p>
-          {language === 'en' ? 'Redirecting to login...' : 'Redirection vers la connexion...'}
-        </p>
-      </div>
+      <LoadingScreen 
+        variant="default" 
+        size="fullscreen" 
+        text={language === 'en' ? 'Redirecting to login...' : 'Redirection vers la connexion...'}
+      />
     );
   }
 

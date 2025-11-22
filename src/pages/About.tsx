@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import aboutHero from "@/assets/about-hero.jpg";
 import { useNavigate } from "react-router-dom";
+import LoadingScreen from "@/components/ui/LoadingScreen";
 
 interface AboutProps {
   language: 'en' | 'fr';
@@ -21,11 +22,13 @@ const About = ({ language }: AboutProps) => {
   const [aboutContent, setAboutContent] = useState<AboutContent>({});
   const [animatedSections, setAnimatedSections] = useState<Set<string>>(new Set());
   const [hasAnimated, setHasAnimated] = useState(false);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchSiteContent = async () => {
       try {
+        setLoading(true);
         const { data, error } = await supabase
           .from('site_content')
           .select('*')
@@ -37,6 +40,8 @@ const About = ({ language }: AboutProps) => {
         }
       } catch (error) {
         console.error('Error fetching about content:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -174,6 +179,16 @@ const About = ({ language }: AboutProps) => {
   };
 
   const t = content[language];
+
+  if (loading) {
+    return (
+      <LoadingScreen 
+        variant="default" 
+        size="fullscreen" 
+        text={language === 'en' ? 'Loading...' : 'Chargement...'}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pt-16">

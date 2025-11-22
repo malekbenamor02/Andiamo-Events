@@ -6,30 +6,35 @@ const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
+const https = require('https');
+const querystring = require('querystring');
 
 // Load environment variables
 require('dotenv').config();
 
 // Debug: Log environment variables
-console.log('Environment variables check:');
-console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? 'Found' : 'Missing');
-console.log('SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? 'Found' : 'Missing');
-console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Found' : 'Missing');
+// Check environment variables
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  console.warn('Warning: Supabase environment variables not configured. Admin login functionality will be disabled.');
+}
+if (!process.env.JWT_SECRET) {
+  console.warn('Warning: JWT_SECRET not configured. Using fallback (insecure for production).');
+}
 
 // Initialize Supabase client only if environment variables are available
 let supabase = null;
 if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
   const { createClient } = require('@supabase/supabase-js');
   supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-  console.log('Supabase client initialized successfully');
+  // Supabase client initialized
 } else {
-  console.warn('Supabase environment variables not found. Admin login functionality will be disabled.');
+  // Supabase client not initialized - admin login disabled
 }
 
 const app = express();
 
 app.use(cors({
-  origin: ['http://localhost:8080', 'http://localhost:3000', 'http://192.168.1.*', 'http://10.0.*'],
+  origin: ['http://localhost:8080', 'http://localhost:3000', 'http://192.168.1.*', 'http://10.0.*', 'http://127.0.0.1:3000'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -435,6 +440,382 @@ app.post('/api/validate-ticket', async (req, res) => {
     res.status(500).json({ 
       error: 'Internal server error', 
       details: error.message 
+    });
+  }
+});
+
+// ==================== SMS Marketing Routes ====================
+// Test endpoint to verify SMS routes are working
+app.get('/api/sms-test', (req, res) => {
+  res.json({ success: true, message: 'SMS API routes are working!' });
+});
+
+// WinSMS API configuration
+const WINSMS_API_KEY = process.env.WINSMS_API_KEY || "iUOh18YaJE1Ea1keZgW72qg451g713r722EqWe9q1zS0kSAXcuL5lm3JWDFi";
+const WINSMS_API_HOST = "www.winsmspro.com";
+const WINSMS_API_PATH = "/sms/sms/api";
+const WINSMS_SENDER = "Andiamo"; // Your sender ID
+
+// Helper function to format Tunisian phone number
+function formatPhoneNumber(phone) {
+  let cleaned = phone.replace(/\D/g, '');
+  if (cleaned.startsWith('216')) {
+    cleaned = cleaned.substring(3);
+  }
+  cleaned = cleaned.replace(/^0+/, '');
+  if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
+    return '216' + cleaned;
+  }
+  return null;
+}
+
+// POST /api/send-sms - Send SMS broadcast
+app.post('/api/send-sms', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Supabase not configured' });
+    }
+
+    const { phoneNumbers, message } = req.body;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, error: 'Message is required' });
+    }
+
+    if (!phoneNumbers || !Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
+      return res.status(400).json({ success: false, error: 'Phone numbers array is required' });
+    }
+
+    const results = [];
+    const errors = [];
+
+    for (const phoneNumber of phoneNumbers) {
+      const formattedNumber = formatPhoneNumber(phoneNumber);
+      
+      if (!formattedNumber) {
+        errors.push({ phoneNumber, error: `Invalid phone number format: ${phoneNumber}` });
+        
+        // Log invalid number
+        await supabase.from('sms_logs').insert({
+          phone_number: phoneNumber,
+          message: message.trim(),
+          status: 'failed',
+          error_message: `Invalid phone number format: ${phoneNumber}`
+        });
+        continue;
+      }
+
+      try {
+        // Format parameters according to WinSMS documentation
+        const postData = querystring.stringify({
+          'action': 'send-sms',
+          'api_key': WINSMS_API_KEY,
+          'to': formattedNumber,
+          'sms': message.trim(),
+          'from': WINSMS_SENDER
+        });
+
+        // Create HTTPS request options (as per WinSMS documentation)
+        const options = {
+          hostname: WINSMS_API_HOST,
+          port: 443,
+          path: WINSMS_API_PATH + '?' + postData,
+          method: 'GET',
+          timeout: 10000
+        };
+
+        // Make HTTPS request using native https module
+        const responseData = await new Promise((resolve, reject) => {
+          const req = https.request(options, (res) => {
+            let data = '';
+            
+            res.on('data', (chunk) => {
+              data += chunk;
+            });
+            
+            res.on('end', () => {
+              try {
+                // Try to parse JSON response
+                const parsed = JSON.parse(data);
+                resolve({ status: res.statusCode, data: parsed, raw: data });
+              } catch (e) {
+                // If not JSON, return raw string
+                resolve({ status: res.statusCode, data: data, raw: data });
+              }
+            });
+          });
+
+          req.on('error', (e) => {
+            reject(e);
+          });
+
+          req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('Request timeout'));
+          });
+
+          req.end();
+        });
+        
+        // Check API response for errors
+        const responseText = typeof responseData.data === 'string' 
+          ? responseData.data 
+          : JSON.stringify(responseData.data);
+        
+        // Check for WinSMS error codes (e.g., "102" = Authentication Failed)
+        const isError = responseData.status !== 200 ||
+                       (responseData.data && responseData.data.code && responseData.data.code !== '200') ||
+                       responseText.includes('error') || 
+                       responseText.includes('Error') || 
+                       responseText.includes('ERROR') ||
+                       responseText.includes('Authentication Failed') ||
+                       responseText.includes('Failed') ||
+                       responseText.includes('insufficient') ||
+                       responseText.includes('Insufficient') ||
+                       responseText.includes('balance') && responseText.includes('0') ||
+                       responseText.toLowerCase().includes('solde insuffisant') ||
+                       responseText.toLowerCase().includes('solde') && responseText.includes('0');
+        
+        if (isError) {
+          // Extract error message
+          let errorMessage = 'SMS sending failed';
+          if (responseData.data && responseData.data.message) {
+            errorMessage = responseData.data.message;
+          } else if (responseData.data && responseData.data.code) {
+            errorMessage = `Error code ${responseData.data.code}: ${responseData.data.message || 'Unknown error'}`;
+          } else {
+            errorMessage = responseText || 'Unknown error';
+          }
+          
+          await supabase.from('sms_logs').insert({
+            phone_number: phoneNumber,
+            message: message.trim(),
+            status: 'failed',
+            error_message: errorMessage,
+            api_response: JSON.stringify(responseData.data || responseData.raw)
+          });
+          
+          errors.push({ phoneNumber, error: errorMessage });
+        } else {
+          // Success
+          await supabase.from('sms_logs').insert({
+            phone_number: phoneNumber,
+            message: message.trim(),
+            status: 'sent',
+            api_response: JSON.stringify(responseData.data || responseData.raw),
+            sent_at: new Date().toISOString()
+          });
+          
+          results.push({ phoneNumber, success: true, response: responseData.data || responseData.raw });
+        }
+      } catch (error) {
+        const errorMessage = error.message || 'Unknown error';
+        
+        // Check if it's a balance-related error
+        const isBalanceError = errorMessage.toString().includes('insufficient') ||
+                              errorMessage.toString().includes('balance') ||
+                              errorMessage.toString().includes('solde');
+        
+        const finalErrorMessage = isBalanceError 
+          ? `Insufficient balance: ${errorMessage}` 
+          : errorMessage.toString();
+        
+        await supabase.from('sms_logs').insert({
+          phone_number: phoneNumber,
+          message: message.trim(),
+          status: 'failed',
+          error_message: finalErrorMessage,
+          api_response: null
+        });
+
+        errors.push({ phoneNumber, error: finalErrorMessage });
+      }
+
+      // Small delay to avoid overwhelming the API (100ms between requests)
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    res.json({
+      success: true,
+      total: phoneNumbers.length,
+      sent: results.length,
+      failed: errors.length,
+      results,
+      errors
+    });
+
+  } catch (error) {
+    console.error('Error sending SMS broadcast:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send SMS broadcast'
+    });
+  }
+});
+
+// GET /api/sms-balance - Check SMS balance (as per WinSMS documentation)
+app.get('/api/sms-balance', async (req, res) => {
+  try {
+    // Build URL according to WinSMS documentation
+    const url = `${WINSMS_API_PATH}?action=check-balance&api_key=${WINSMS_API_KEY}&response=json`;
+
+    // Create HTTPS request options
+    const options = {
+      hostname: WINSMS_API_HOST,
+      port: 443,
+      path: url,
+      method: 'GET',
+      timeout: 10000
+    };
+
+    // Make HTTPS request using native https module (as per WinSMS documentation)
+    const responseData = await new Promise((resolve, reject) => {
+      const req = https.get(options, (res) => {
+        let data = '';
+        
+        console.log('Balance check - HTTP Status:', res.statusCode);
+        
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        
+        res.on('end', () => {
+          try {
+            // Try to parse JSON response
+            const parsed = JSON.parse(data);
+            resolve({ status: res.statusCode, data: parsed, raw: data });
+          } catch (e) {
+            // If not JSON, return raw string
+            resolve({ status: res.statusCode, data: data, raw: data });
+          }
+        });
+      });
+
+      req.on('error', (e) => {
+        console.error('Balance check error:', e);
+        reject(e);
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+
+      req.end();
+    });
+
+    // Parse the response - WinSMS might return different formats
+    let balanceData = responseData.data;
+    
+    // If response is a string, try to parse it
+    if (typeof balanceData === 'string') {
+      try {
+        balanceData = JSON.parse(balanceData);
+      } catch (e) {
+        // Keep as string if JSON parse fails
+      }
+    }
+
+    // Check for error codes (e.g., "102" = Authentication Failed)
+    if (balanceData && balanceData.code && balanceData.code !== '200') {
+      return res.status(500).json({
+        success: false,
+        error: balanceData.message || `Error code ${balanceData.code}`,
+        rawResponse: balanceData
+      });
+    }
+
+    res.json({
+      success: true,
+      balance: balanceData,
+      rawResponse: responseData.raw,
+      // Try to extract balance value from common formats
+      balanceValue: balanceData?.balance || balanceData?.solde || balanceData?.credit || balanceData?.amount || null
+    });
+  } catch (error) {
+    console.error('Error checking SMS balance:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to check SMS balance',
+      rawResponse: null
+    });
+  }
+});
+
+// POST /api/bulk-phones - Add bulk phone numbers
+app.post('/api/bulk-phones', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Supabase not configured' });
+    }
+
+    const { phoneNumbers } = req.body;
+
+    if (!phoneNumbers || !Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
+      return res.status(400).json({ success: false, error: 'Phone numbers array is required' });
+    }
+
+    const validNumbers = [];
+    const invalidNumbers = [];
+    const duplicateNumbers = [];
+
+    for (const phone of phoneNumbers) {
+      const formatted = formatPhoneNumber(phone);
+      
+      if (!formatted) {
+        invalidNumbers.push(phone);
+        continue;
+      }
+
+      const localNumber = formatted.substring(3);
+
+      // Check if number already exists
+      const { data: existing } = await supabase
+        .from('phone_subscribers')
+        .select('phone_number')
+        .eq('phone_number', localNumber)
+        .single();
+
+      if (existing) {
+        duplicateNumbers.push(phone);
+        continue;
+      }
+
+      validNumbers.push({
+        phone_number: localNumber,
+        language: 'en'
+      });
+    }
+
+    let insertedCount = 0;
+    if (validNumbers.length > 0) {
+      const { data, error } = await supabase
+        .from('phone_subscribers')
+        .insert(validNumbers)
+        .select();
+
+      if (error && error.code !== '23505') {
+        throw error;
+      }
+
+      insertedCount = data?.length || 0;
+    }
+
+    res.json({
+      success: true,
+      total: phoneNumbers.length,
+      inserted: insertedCount,
+      duplicates: duplicateNumbers.length,
+      invalid: invalidNumbers.length,
+      duplicateNumbers,
+      invalidNumbers
+    });
+
+  } catch (error) {
+    console.error('Error adding bulk phone numbers:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to add phone numbers'
     });
   }
 });

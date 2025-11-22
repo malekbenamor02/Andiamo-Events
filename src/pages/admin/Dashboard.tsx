@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import FileUpload from "@/components/ui/file-upload";
-import { uploadImage } from "@/lib/upload";
+import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail } from "@/lib/email";
@@ -18,10 +18,12 @@ import {
   Plus, Edit, Trash2, Calendar, MapPin, Phone, Mail, User, Settings,
   Eye, EyeOff, Save, X, Image, Video, Upload,
   Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
-  PieChart, Download, RefreshCw, Copy, Wrench
+  PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
+  Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
+import LoadingScreen from '@/components/ui/LoadingScreen';
 
 
 interface AdminDashboardProps {
@@ -149,6 +151,30 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [ambassadorApplicationEnabled, setAmbassadorApplicationEnabled] = useState(true);
   const [ambassadorApplicationMessage, setAmbassadorApplicationMessage] = useState("");
   const [loadingAmbassadorApplicationSettings, setLoadingAmbassadorApplicationSettings] = useState(false);
+
+  // Hero images state
+  interface HeroImage {
+    type: string;
+    src: string;
+    alt: string;
+    path?: string;
+  }
+  const [heroImages, setHeroImages] = useState<HeroImage[]>([]);
+  const [loadingHeroImages, setLoadingHeroImages] = useState(false);
+  const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
+
+  // Marketing/SMS state
+  const [phoneSubscribers, setPhoneSubscribers] = useState<Array<{id: string; phone_number: string; subscribed_at: string}>>([]);
+  const [loadingSubscribers, setLoadingSubscribers] = useState(false);
+  const [smsMessage, setSmsMessage] = useState("");
+  const [sendingSms, setSendingSms] = useState(false);
+  const [selectedPhones, setSelectedPhones] = useState<Set<string>>(new Set());
+  const [bulkPhonesInput, setBulkPhonesInput] = useState("");
+  const [addingBulkPhones, setAddingBulkPhones] = useState(false);
+  const [smsBalance, setSmsBalance] = useState<any>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
+  const [smsLogs, setSmsLogs] = useState<Array<{id: string; phone_number: string; message: string; status: string; error_message?: string; sent_at?: string; created_at: string}>>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   // --- Team Members State ---
   const [teamMembers, setTeamMembers] = useState([]);
@@ -290,7 +316,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       enableAmbassadorApplication: "Enable Applications",
       disableAmbassadorApplication: "Disable Applications",
       ambassadorApplicationMessage: "Application Closed Message",
-      ambassadorApplicationMessagePlaceholder: "Enter a custom message for when applications are closed (optional)"
+      ambassadorApplicationMessagePlaceholder: "Enter a custom message for when applications are closed (optional)",
+      heroImagesSettings: "Hero Images",
+      heroImagesSettingsDescription: "Manage hero images displayed on the home page. You can add, delete, and reorder images.",
+      uploadHeroImage: "Upload Hero Image",
+      deleteHeroImage: "Delete",
+      noHeroImages: "No hero images yet. Upload an image to get started.",
+      heroImageAlt: "Image Alt Text",
+      reorderImages: "Reorder by dragging"
     },
     fr: {
       title: "Tableau de Bord Admin",
@@ -378,7 +411,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       enableAmbassadorApplication: "Ouvrir les Candidatures",
       disableAmbassadorApplication: "Fermer les Candidatures",
       ambassadorApplicationMessage: "Message de Candidature Fermée",
-      ambassadorApplicationMessagePlaceholder: "Entrez un message personnalisé lorsque les candidatures sont fermées (optionnel)"
+      ambassadorApplicationMessagePlaceholder: "Entrez un message personnalisé lorsque les candidatures sont fermées (optionnel)",
+      heroImagesSettings: "Images Hero",
+      heroImagesSettingsDescription: "Gérez les images hero affichées sur la page d'accueil. Vous pouvez ajouter, supprimer et réorganiser les images.",
+      uploadHeroImage: "Télécharger une Image Hero",
+      deleteHeroImage: "Supprimer",
+      noHeroImages: "Aucune image hero pour le moment. Téléchargez une image pour commencer.",
+      heroImageAlt: "Texte Alternatif de l'Image",
+      reorderImages: "Réorganiser en faisant glisser"
     }
   };
 
@@ -722,6 +762,432 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  // Fetch hero images
+  const fetchHeroImages = async () => {
+    try {
+      setLoadingHeroImages(true);
+      const { data, error } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('key', 'hero_section')
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching hero images:', error);
+        setHeroImages([]);
+        return;
+      }
+
+      if (data && data.content) {
+        const content = data.content as any;
+        if (content.images && Array.isArray(content.images)) {
+          setHeroImages(content.images);
+        } else {
+          setHeroImages([]);
+        }
+      } else {
+        setHeroImages([]);
+      }
+    } catch (error) {
+      console.error('Error fetching hero images:', error);
+      setHeroImages([]);
+    } finally {
+      setLoadingHeroImages(false);
+    }
+  };
+
+  // Save hero images to site_content
+  const saveHeroImages = async (images: HeroImage[]) => {
+    try {
+      // Get existing hero_section content
+      const { data: existingData } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('key', 'hero_section')
+        .single();
+
+      let existingContent = existingData?.content || {};
+      if (typeof existingContent !== 'object') {
+        existingContent = {};
+      }
+
+      // Update images array
+      const updatedContent = {
+        ...existingContent,
+        images: images
+      };
+
+      // Upsert hero_section with updated images
+      const { error } = await supabase
+        .from('site_content')
+        .upsert({
+          key: 'hero_section',
+          content: updatedContent,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'key'
+        });
+
+      if (error) throw error;
+
+      setHeroImages(images);
+      toast({
+        title: language === 'en' ? 'Hero Images Updated' : 'Images Hero Mises à Jour',
+        description: language === 'en' 
+          ? 'Hero images have been updated successfully' 
+          : 'Les images hero ont été mises à jour avec succès',
+      });
+    } catch (error) {
+      console.error('Error saving hero images:', error);
+      toast({
+        title: t.error,
+        description: language === 'en' 
+          ? 'Failed to save hero images' 
+          : 'Échec de la sauvegarde des images hero',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Handle hero image upload
+  const handleUploadHeroImage = async (file: File) => {
+    try {
+      setUploadingHeroImage(true);
+      
+      // Upload to hero-images bucket
+      const uploadResult = await uploadHeroImage(file);
+      
+      if (uploadResult.error) {
+        throw new Error(uploadResult.error);
+      }
+
+      // Create new hero image object
+      const newImage: HeroImage = {
+        type: 'image',
+        src: uploadResult.url,
+        alt: file.name.replace(/\.[^/.]+$/, ''), // Remove extension for alt text
+        path: uploadResult.path
+      };
+
+      // Add to hero images array
+      const updatedImages = [...heroImages, newImage];
+      await saveHeroImages(updatedImages);
+    } catch (error) {
+      console.error('Error uploading hero image:', error);
+      toast({
+        title: t.error,
+        description: language === 'en' 
+          ? 'Failed to upload hero image' 
+          : 'Échec du téléchargement de l\'image hero',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingHeroImage(false);
+    }
+  };
+
+  // Handle hero image delete
+  const handleDeleteHeroImage = async (index: number) => {
+    try {
+      const imageToDelete = heroImages[index];
+      
+      // Delete from storage if path exists
+      if (imageToDelete.path) {
+        await deleteHeroImage(imageToDelete.path);
+      }
+
+      // Remove from array
+      const updatedImages = heroImages.filter((_, i) => i !== index);
+      await saveHeroImages(updatedImages);
+    } catch (error) {
+      console.error('Error deleting hero image:', error);
+      toast({
+        title: t.error,
+        description: language === 'en' 
+          ? 'Failed to delete hero image' 
+          : 'Échec de la suppression de l\'image hero',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Handle reorder hero images
+  const handleReorderHeroImages = async (newOrder: HeroImage[]) => {
+    await saveHeroImages(newOrder);
+  };
+
+  // Fetch phone subscribers
+  const fetchPhoneSubscribers = async () => {
+    try {
+      setLoadingSubscribers(true);
+      const { data, error } = await supabase
+        .from('phone_subscribers')
+        .select('*')
+        .order('subscribed_at', { ascending: false });
+
+      if (error) throw error;
+      setPhoneSubscribers(data || []);
+    } catch (error) {
+      console.error('Error fetching phone subscribers:', error);
+      setPhoneSubscribers([]);
+    } finally {
+      setLoadingSubscribers(false);
+    }
+  };
+
+  // Fetch SMS logs
+  const fetchSmsLogs = async () => {
+    try {
+      setLoadingLogs(true);
+      const { data, error } = await supabase
+        .from('sms_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      setSmsLogs(data || []);
+    } catch (error) {
+      console.error('Error fetching SMS logs:', error);
+      setSmsLogs([]);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  // Fetch SMS balance
+  const fetchSmsBalance = async () => {
+    try {
+      setLoadingBalance(true);
+      const response = await fetch('/api/sms-balance');
+      
+      // Check if response is OK
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error: ${response.status} ${response.statusText}. ${text.substring(0, 200)}`);
+      }
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setSmsBalance(data);
+      } else {
+        console.error('Error fetching SMS balance:', data.error);
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: data.error || (language === 'en' ? 'Failed to fetch SMS balance' : 'Échec de la récupération du solde SMS'),
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching SMS balance:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to fetch SMS balance. Make sure the server is running on port 8082.' : 'Échec de la récupération du solde SMS. Assurez-vous que le serveur est en cours d\'exécution sur le port 8082.'),
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingBalance(false);
+    }
+  };
+
+  // Add bulk phone numbers
+  const handleAddBulkPhones = async () => {
+    if (!bulkPhonesInput.trim()) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter phone numbers' 
+          : 'Veuillez entrer des numéros de téléphone',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setAddingBulkPhones(true);
+      
+      // Parse phone numbers (split by newline or comma)
+      const phones = bulkPhonesInput
+        .split(/[\n,]/)
+        .map(phone => phone.trim())
+        .filter(phone => phone.length > 0);
+
+      if (phones.length === 0) {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? 'No valid phone numbers found' 
+            : 'Aucun numéro de téléphone valide trouvé',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const response = await fetch('/api/bulk-phones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumbers: phones }),
+      });
+
+      // Check if response is OK
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMsg = `Server error: ${response.status} ${response.statusText}`;
+        if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+          errorMsg = language === 'en' 
+            ? 'API route not found. Please restart the backend server (npm run server) to load the new routes.'
+            : 'Route API introuvable. Veuillez redémarrer le serveur backend (npm run server) pour charger les nouvelles routes.';
+        } else {
+          errorMsg += `. ${text.substring(0, 200)}`;
+        }
+        throw new Error(errorMsg);
+      }
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        let errorMsg = language === 'en'
+          ? 'API route not found. Please restart the backend server (npm run server) to load the new routes.'
+          : 'Route API introuvable. Veuillez redémarrer le serveur backend (npm run server) pour charger les nouvelles routes.';
+        if (!text.includes('<!DOCTYPE') && !text.includes('<html')) {
+          errorMsg = `Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`;
+        }
+        throw new Error(errorMsg);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: language === 'en' ? 'Success' : 'Succès',
+          description: language === 'en' 
+            ? `${data.inserted} phone numbers added. ${data.duplicates} duplicates skipped. ${data.invalid} invalid numbers.`
+            : `${data.inserted} numéros ajoutés. ${data.duplicates} doublons ignorés. ${data.invalid} numéros invalides.`,
+        });
+        setBulkPhonesInput('');
+        await fetchPhoneSubscribers();
+      } else {
+        throw new Error(data.error || 'Failed to add phone numbers');
+      }
+    } catch (error) {
+      console.error('Error adding bulk phones:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to add phone numbers' : 'Échec de l\'ajout des numéros'),
+        variant: 'destructive',
+      });
+    } finally {
+      setAddingBulkPhones(false);
+    }
+  };
+
+  // Send SMS broadcast
+  const handleSendSmsBroadcast = async () => {
+    if (!smsMessage.trim()) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter a message' 
+          : 'Veuillez entrer un message',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Get selected phones or all subscribers if none selected
+    const phonesToSend = selectedPhones.size > 0 
+      ? Array.from(selectedPhones)
+      : phoneSubscribers.map(sub => sub.phone_number);
+
+    if (phonesToSend.length === 0) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'No phone numbers selected' 
+          : 'Aucun numéro de téléphone sélectionné',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Check balance before sending
+    if (smsBalance?.balanceValue === 0 || smsBalance?.balance === 0 || smsBalance?.balance === '0') {
+      const confirmSend = window.confirm(
+        language === 'en' 
+          ? '⚠️ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
+          : '⚠️ Avertissement: Votre solde SMS semble être de 0. Les messages peuvent échouer. Voulez-vous continuer?'
+      );
+      if (!confirmSend) {
+        return;
+      }
+    }
+
+    try {
+      setSendingSms(true);
+      
+      const response = await fetch('/api/send-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          phoneNumbers: phonesToSend, 
+          message: smsMessage.trim() 
+        }),
+      });
+
+      // Check if response is OK
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error: ${response.status} ${response.statusText}. ${text.substring(0, 200)}`);
+      }
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: language === 'en' ? 'SMS Broadcast Sent' : 'Diffusion SMS Envoyée',
+          description: language === 'en' 
+            ? `Sent: ${data.sent}, Failed: ${data.failed} out of ${data.total}`
+            : `Envoyé: ${data.sent}, Échoué: ${data.failed} sur ${data.total}`,
+        });
+        
+        // Refresh logs and balance
+        await fetchSmsLogs();
+        await fetchSmsBalance();
+        
+        // Clear message
+        setSmsMessage('');
+        setSelectedPhones(new Set());
+      } else {
+        throw new Error(data.error || 'Failed to send SMS');
+      }
+    } catch (error) {
+      console.error('Error sending SMS broadcast:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send SMS' : 'Échec de l\'envoi du SMS'),
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingSms(false);
+    }
+  };
+
   const fetchAllData = async () => {
     try {
       setLoading(true);
@@ -791,6 +1257,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchSalesSettings();
       await fetchMaintenanceSettings();
       await fetchAmbassadorApplicationSettings();
+      await fetchHeroImages();
+      await fetchPhoneSubscribers();
+      await fetchSmsLogs();
+      await fetchSmsBalance();
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -1073,15 +1543,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const updateAmbassadorApplicationSettings = async (enabled: boolean, message?: string) => {
     // Prevent multiple simultaneous updates
     if (loadingAmbassadorApplicationSettings) {
-      console.log('Update already in progress, skipping...');
+      // Update already in progress, skipping...
       return;
     }
 
-    console.log('=== Starting ambassador application settings update ===', { enabled, message, currentState: { enabled: ambassadorApplicationEnabled, message: ambassadorApplicationMessage } });
-    
     // Use functional update to ensure we're using the latest state
     setLoadingAmbassadorApplicationSettings(true);
-    console.log('Loading state set to true');
     const previousEnabled = ambassadorApplicationEnabled;
     const previousMessage = ambassadorApplicationMessage;
 
@@ -1092,7 +1559,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }, 10000); // 10 second timeout
 
     try {
-      console.log('Calling supabase upsert...');
       // Update local state immediately for better UX
       setAmbassadorApplicationEnabled(enabled);
       if (message !== undefined) {
@@ -1108,8 +1574,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }, {
           onConflict: 'key'
         });
-
-      console.log('Supabase response:', { data, error });
 
       if (error) {
         // Revert local state on error
@@ -1163,17 +1627,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
     } finally {
       // Always clear loading state and timeout
-      console.log('=== Finally block executing, clearing loading state ===');
       if (timeoutId) {
         clearTimeout(timeoutId);
-        console.log('Timeout cleared');
       }
       // Force state update using functional form
-      setLoadingAmbassadorApplicationSettings(prev => {
-        console.log('Setting loading state to false, previous value:', prev);
-        return false;
-      });
-      console.log('=== Loading state update queued ===');
+      setLoadingAmbassadorApplicationSettings(() => false);
     }
   };
 
@@ -2020,14 +2478,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   if (loading) {
     return (
-      <div className="pt-16 min-h-screen bg-background">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center animate-in fade-in duration-500">
-            <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-muted-foreground animate-pulse">Loading dashboard...</p>
-          </div>
-        </div>
-      </div>
+      <LoadingScreen 
+        variant="default" 
+        size="fullscreen" 
+        text="Loading dashboard..."
+      />
     );
   }
 
@@ -2130,6 +2585,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               >
                 <DollarSign className={`w-4 h-4 transition-transform duration-300 ${activeTab === "tickets" ? "animate-pulse" : ""}`} />
                 <span>Ticket Management</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("marketing")}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
+                  activeTab === "marketing" 
+                    ? "bg-primary text-primary-foreground shadow-lg" 
+                    : "hover:bg-accent hover:shadow-md"
+                }`}
+              >
+                <Megaphone className={`w-4 h-4 transition-transform duration-300 ${activeTab === "marketing" ? "animate-pulse" : ""}`} />
+                <span>{language === 'en' ? 'Marketing' : 'Marketing'}</span>
               </button>
               <button
                 onClick={() => setActiveTab("settings")}
@@ -4023,6 +4489,370 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
               </TabsContent>
 
+              {/* Marketing Tab */}
+              <TabsContent value="marketing" className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full px-2">
+                  {/* SMS Balance Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <CreditCard className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'SMS Balance' : 'Solde SMS'}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        {loadingBalance ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border">
+                              <div className="flex-1">
+                                <p className="text-sm text-muted-foreground">{language === 'en' ? 'Current Balance' : 'Solde Actuel'}</p>
+                                {smsBalance?.balance ? (
+                                  typeof smsBalance.balance === 'object' ? (
+                                    <div className="mt-1">
+                                      <p className="text-lg font-bold text-primary">
+                                        {smsBalance.balance.balance || smsBalance.balance.solde || smsBalance.balance.credit || 'N/A'}
+                                      </p>
+                                      {smsBalance.balance.balance === 0 || smsBalance.balance.solde === 0 || smsBalance.balance.credit === 0 ? (
+                                        <p className="text-xs text-red-500 mt-1">
+                                          ⚠️ {language === 'en' ? 'Insufficient balance!' : 'Solde insuffisant!'}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                  ) : (
+                                    <p className="text-2xl font-bold text-primary mt-1">
+                                      {smsBalance.balance}
+                                      {smsBalance.balance === '0' || smsBalance.balance === 0 ? (
+                                        <span className="text-xs text-red-500 ml-2">
+                                          ⚠️ {language === 'en' ? 'Insufficient!' : 'Insuffisant!'}
+                                        </span>
+                                      ) : null}
+                                    </p>
+                                  )
+                                ) : (
+                                  <p className="text-lg font-medium text-muted-foreground mt-1">
+                                    {language === 'en' ? 'Click to check balance' : 'Cliquez pour vérifier le solde'}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              onClick={fetchSmsBalance}
+                              disabled={loadingBalance}
+                              variant="outline"
+                              size="sm"
+                              className="w-full"
+                            >
+                              {loadingBalance ? (
+                                <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                              ) : (
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                              )}
+                              {language === 'en' ? 'Refresh Balance' : 'Actualiser le Solde'}
+                            </Button>
+                          </>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Phone Subscribers Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 lg:col-span-2">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Phone className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'Phone Subscribers' : 'Abonnés Téléphone'}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">
+                          {language === 'en' 
+                            ? `Total: ${phoneSubscribers.length} subscribers`
+                            : `Total: ${phoneSubscribers.length} abonnés`}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        {loadingSubscribers ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {/* Bulk Add Section */}
+                            <div className="space-y-2">
+                              <Label>{language === 'en' ? 'Add Bulk Phone Numbers' : 'Ajouter des Numéros en Masse'}</Label>
+                              <Textarea
+                                value={bulkPhonesInput}
+                                onChange={(e) => setBulkPhonesInput(e.target.value)}
+                                placeholder={language === 'en' 
+                                  ? 'Enter phone numbers (one per line or comma separated)\nExample: 21234567, 51234567\nOr:\n21234567\n51234567'
+                                  : 'Entrez les numéros de téléphone (un par ligne ou séparés par des virgules)\nExemple: 21234567, 51234567\nOu:\n21234567\n51234567'}
+                                className="min-h-[120px] text-sm bg-background text-foreground"
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  onClick={handleAddBulkPhones}
+                                  disabled={addingBulkPhones || !bulkPhonesInput.trim()}
+                                  className="flex-1"
+                                >
+                                  {addingBulkPhones ? (
+                                    <>
+                                      <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                                      {language === 'en' ? 'Adding...' : 'Ajout...'}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Plus className="w-4 h-4 mr-2" />
+                                      {language === 'en' ? 'Add Numbers' : 'Ajouter les Numéros'}
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  onClick={fetchPhoneSubscribers}
+                                  variant="outline"
+                                  size="sm"
+                                >
+                                  <RefreshCw className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Subscribers List */}
+                            {phoneSubscribers.length === 0 ? (
+                              <div className="text-center py-8 text-muted-foreground">
+                                <p>{language === 'en' ? 'No subscribers yet' : 'Aucun abonné pour le moment'}</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-sm">
+                                    {language === 'en' ? 'Subscribers' : 'Abonnés'} ({phoneSubscribers.length})
+                                  </Label>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        if (selectedPhones.size === phoneSubscribers.length) {
+                                          setSelectedPhones(new Set());
+                                        } else {
+                                          setSelectedPhones(new Set(phoneSubscribers.map(sub => sub.phone_number)));
+                                        }
+                                      }}
+                                    >
+                                      {selectedPhones.size === phoneSubscribers.length 
+                                        ? (language === 'en' ? 'Deselect All' : 'Tout Désélectionner')
+                                        : (language === 'en' ? 'Select All' : 'Tout Sélectionner')}
+                                    </Button>
+                                  </div>
+                                </div>
+                                <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2">
+                                  {phoneSubscribers.map((subscriber) => (
+                                    <div
+                                      key={subscriber.id}
+                                      className={`flex items-center justify-between p-3 rounded-lg border transition-all duration-300 ${
+                                        selectedPhones.has(subscriber.phone_number)
+                                          ? 'bg-primary/10 border-primary'
+                                          : 'bg-card border-border hover:border-primary/50'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedPhones.has(subscriber.phone_number)}
+                                          onChange={(e) => {
+                                            const newSelected = new Set(selectedPhones);
+                                            if (e.target.checked) {
+                                              newSelected.add(subscriber.phone_number);
+                                            } else {
+                                              newSelected.delete(subscriber.phone_number);
+                                            }
+                                            setSelectedPhones(newSelected);
+                                          }}
+                                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                                        />
+                                        <div>
+                                          <p className="font-medium">+216 {subscriber.phone_number}</p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {new Date(subscriber.subscribed_at).toLocaleDateString()}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* SMS Broadcast Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 lg:col-span-3">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Send className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'SMS Broadcast' : 'Diffusion SMS'}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">
+                          {language === 'en' 
+                            ? `Send message to ${selectedPhones.size > 0 ? selectedPhones.size : phoneSubscribers.length} ${selectedPhones.size > 0 ? 'selected' : 'all'} subscriber(s)`
+                            : `Envoyer un message à ${selectedPhones.size > 0 ? selectedPhones.size : phoneSubscribers.length} abonné(s) ${selectedPhones.size > 0 ? 'sélectionné(s)' : 'au total'}`}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        <div className="space-y-2">
+                          <Label>{language === 'en' ? 'Message' : 'Message'} *</Label>
+                          <Textarea
+                            value={smsMessage}
+                            onChange={(e) => setSmsMessage(e.target.value)}
+                            placeholder={language === 'en' 
+                              ? 'Enter your SMS message here...\n\nExample:\nIcy spicy with andiamo events\nle 21 décembre au Queen kantaoui\ncheck your email (or Spam) and your Qr code bch tnjmou todkhlou bih ll event\nNestnwkom.'
+                              : 'Entrez votre message SMS ici...\n\nExemple:\nIcy spicy with andiamo events\nle 21 décembre au Queen kantaoui\ncheck your email (or Spam) and your Qr code bch tnjmou todkhlou bih ll event\nNestnwkom.'}
+                            className="min-h-[200px] text-sm bg-background text-foreground"
+                          />
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>{language === 'en' ? 'Characters' : 'Caractères'}: {smsMessage.length}</span>
+                            <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(smsMessage.length / 160)}</span>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={handleSendSmsBroadcast}
+                          disabled={sendingSms || !smsMessage.trim() || phoneSubscribers.length === 0}
+                          className="w-full btn-gradient"
+                          size="lg"
+                        >
+                          {sendingSms ? (
+                            <>
+                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                              {language === 'en' ? 'Sending SMS...' : 'Envoi SMS...'}
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-5 h-5 mr-2" />
+                              {language === 'en' 
+                                ? `Send SMS to ${selectedPhones.size > 0 ? selectedPhones.size : phoneSubscribers.length} Subscriber(s)`
+                                : `Envoyer SMS à ${selectedPhones.size > 0 ? selectedPhones.size : phoneSubscribers.length} Abonné(s)`}
+                            </>
+                          )}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* SMS Logs Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 lg:col-span-3">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <FileText className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'SMS Logs' : 'Journal SMS'}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">
+                          {language === 'en' 
+                            ? 'Recent SMS sending history and errors'
+                            : 'Historique récent d\'envoi SMS et erreurs'}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        {loadingLogs ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex justify-end">
+                              <Button
+                                onClick={fetchSmsLogs}
+                                variant="outline"
+                                size="sm"
+                              >
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                {language === 'en' ? 'Refresh' : 'Actualiser'}
+                              </Button>
+                            </div>
+                            {smsLogs.length === 0 ? (
+                              <div className="text-center py-8 text-muted-foreground">
+                                <p>{language === 'en' ? 'No SMS logs yet' : 'Aucun journal SMS pour le moment'}</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">
+                                {smsLogs.map((log) => (
+                                  <div
+                                    key={log.id}
+                                    className={`p-4 rounded-lg border transition-all duration-300 ${
+                                      log.status === 'sent'
+                                        ? 'bg-green-500/10 border-green-500/30'
+                                        : log.status === 'failed'
+                                        ? 'bg-red-500/10 border-red-500/30'
+                                        : 'bg-yellow-500/10 border-yellow-500/30'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <Badge
+                                            variant={
+                                              log.status === 'sent'
+                                                ? 'default'
+                                                : log.status === 'failed'
+                                                ? 'destructive'
+                                                : 'secondary'
+                                            }
+                                          >
+                                            {log.status === 'sent'
+                                              ? (language === 'en' ? 'Sent' : 'Envoyé')
+                                              : log.status === 'failed'
+                                              ? (language === 'en' ? 'Failed' : 'Échoué')
+                                              : (language === 'en' ? 'Pending' : 'En Attente')}
+                                          </Badge>
+                                          <span className="text-sm font-medium">+216 {log.phone_number}</span>
+                                        </div>
+                                        <p className="text-sm text-foreground/80 mb-2 line-clamp-2">
+                                          {log.message}
+                                        </p>
+                                        {log.error_message && (
+                                          <div className="mt-2 p-2 bg-red-500/20 rounded text-xs text-red-400">
+                                            <strong>{language === 'en' ? 'Error' : 'Erreur'}:</strong> {log.error_message}
+                                          </div>
+                                        )}
+                                        {log.api_response && (
+                                          <details className="mt-2">
+                                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                                              {language === 'en' ? 'View API Response' : 'Voir Réponse API'}
+                                            </summary>
+                                            <pre className="mt-1 p-2 bg-muted/50 rounded text-xs overflow-auto max-h-32">
+                                              {typeof log.api_response === 'string' 
+                                                ? log.api_response 
+                                                : JSON.stringify(log.api_response, null, 2)}
+                                            </pre>
+                                          </details>
+                                        )}
+                                        <p className="text-xs text-muted-foreground mt-2">
+                                          {log.sent_at
+                                            ? new Date(log.sent_at).toLocaleString()
+                                            : new Date(log.created_at).toLocaleString()}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </TabsContent>
+
               {/* Settings Tab */}
               <TabsContent value="settings" className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full px-2">
@@ -4226,6 +5056,128 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       </div>
                     </CardContent>
                   </Card>
+                  </div>
+
+                  {/* Hero Images Settings Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Image className="w-5 h-5 text-primary" />
+                          {t.heroImagesSettings}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">{t.heroImagesSettingsDescription}</p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        {loadingHeroImages ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : (
+                          <>
+                            {/* Upload Hero Image */}
+                            <div className="space-y-2">
+                              <Label>{t.uploadHeroImage}</Label>
+                              <FileUpload
+                                onFileSelect={(file) => {
+                                  if (file) {
+                                    handleUploadHeroImage(file);
+                                  }
+                                }}
+                                accept="image/*"
+                                maxSize={10}
+                                label={uploadingHeroImage ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : t.uploadHeroImage}
+                              />
+                              {uploadingHeroImage && (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                  {language === 'en' ? 'Uploading image...' : 'Téléchargement de l\'image...'}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Hero Images List */}
+                            {heroImages.length === 0 ? (
+                              <div className="flex items-center justify-center py-8 text-center text-muted-foreground">
+                                <p>{t.noHeroImages}</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                <Label className="text-sm">{t.reorderImages}</Label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                  {heroImages.map((image, index) => (
+                                    <Card key={index} className="relative group overflow-hidden">
+                                      <div className="relative aspect-video w-full">
+                                        <img
+                                          src={image.src}
+                                          alt={image.alt}
+                                          className="w-full h-full object-cover"
+                                        />
+                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                                          <div className="flex flex-col gap-2">
+                                            <div className="flex gap-2">
+                                              <Button
+                                                size="sm"
+                                                variant="secondary"
+                                                onClick={() => {
+                                                  if (index > 0) {
+                                                    const newOrder = [...heroImages];
+                                                    [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+                                                    handleReorderHeroImages(newOrder);
+                                                  }
+                                                }}
+                                                disabled={index === 0}
+                                                className="shadow-lg"
+                                              >
+                                                <ArrowUp className="w-4 h-4" />
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant="secondary"
+                                                onClick={() => {
+                                                  if (index < heroImages.length - 1) {
+                                                    const newOrder = [...heroImages];
+                                                    [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+                                                    handleReorderHeroImages(newOrder);
+                                                  }
+                                                }}
+                                                disabled={index === heroImages.length - 1}
+                                                className="shadow-lg"
+                                              >
+                                                <ArrowDown className="w-4 h-4" />
+                                              </Button>
+                                            </div>
+                                            <Button
+                                              size="sm"
+                                              variant="destructive"
+                                              onClick={() => handleDeleteHeroImage(index)}
+                                              className="shadow-lg"
+                                            >
+                                              <Trash2 className="w-4 h-4 mr-1" />
+                                              {t.deleteHeroImage}
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <CardContent className="p-3">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs text-muted-foreground">
+                                            {language === 'en' ? 'Image' : 'Image'} {index + 1}
+                                          </span>
+                                          <Badge variant="outline" className="text-xs">
+                                            {image.alt || 'No alt text'}
+                                          </Badge>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </CardContent>
+                    </Card>
                   </div>
                 </div>
               </TabsContent>

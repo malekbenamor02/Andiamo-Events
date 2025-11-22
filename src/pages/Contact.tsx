@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Mail, MessageCircle, MapPin, Star, Sparkles, Heart, Zap, Send, User, MessageSquare, Phone, Globe, Users, Award, FileText } from "lucide-react";
+import LoadingScreen from "@/components/ui/LoadingScreen";
 
 interface ContactProps {
   language: 'en' | 'fr';
@@ -27,6 +27,7 @@ interface ContactInfo {
 const Contact = ({ language }: ContactProps) => {
   const [contactContent, setContactContent] = useState<ContactContent>({});
   const [contactInfo, setContactInfo] = useState<ContactInfo>({});
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -79,6 +80,8 @@ const Contact = ({ language }: ContactProps) => {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+    
     const fetchContent = async () => {
       try {
         const { data, error } = await supabase
@@ -86,21 +89,39 @@ const Contact = ({ language }: ContactProps) => {
           .select('*')
           .in('key', ['contact_content', 'contact_info']);
 
-        if (error) throw error;
-
-        data?.forEach(item => {
-          if (item.key === 'contact_content') {
-            setContactContent(item.content as ContactContent);
-          } else if (item.key === 'contact_info') {
-            setContactInfo(item.content as ContactInfo);
-          }
-        });
+        if (error) {
+          console.error('Error fetching contact content:', error);
+        } else if (data && isMounted) {
+          data.forEach(item => {
+            if (item.key === 'contact_content') {
+              setContactContent(item.content as ContactContent);
+            } else if (item.key === 'contact_info') {
+              setContactInfo(item.content as ContactInfo);
+            }
+          });
+        }
       } catch (error) {
         console.error('Error fetching contact content:', error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
+    // Set loading to false after a short delay to ensure page renders
+    const timeout = setTimeout(() => {
+      if (isMounted) {
+        setLoading(false);
+      }
+    }, 500);
+
     fetchContent();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeout);
+    };
   }, []);
 
   const defaultContent = {
@@ -114,7 +135,8 @@ const Contact = ({ language }: ContactProps) => {
     }
   };
 
-  const content = contactContent.title ? contactContent : defaultContent[language];
+  // Use contact content from database if available, otherwise use default
+  const content = contactContent?.title ? contactContent : defaultContent[language];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,6 +178,16 @@ const Contact = ({ language }: ContactProps) => {
 
     setIsSubmitting(false);
   };
+
+  if (loading) {
+    return (
+      <LoadingScreen 
+        variant="default" 
+        size="fullscreen" 
+        text={language === 'en' ? 'Loading...' : 'Chargement...'}
+      />
+    );
+  }
 
   return (
     <div className="pt-16 min-h-screen bg-background relative overflow-hidden">

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { LogOut, User, BarChart, Calendar, Plus, Edit, Trash2, Lock, Clock, AlertCircle, DollarSign } from 'lucide-react';
+import LoadingScreen from '@/components/ui/LoadingScreen';
 
 const AmbassadorDashboard = ({ language }) => {
   const [ambassador, setAmbassador] = useState(null);
@@ -262,9 +263,11 @@ const AmbassadorDashboard = ({ language }) => {
 
   if (loading || !ambassador) {
     return (
-      <div className="pt-16 min-h-screen bg-background flex items-center justify-center">
-        <p>{t.loading}</p>
-      </div>
+      <LoadingScreen 
+        variant="default" 
+        size="fullscreen" 
+        text={t.loading}
+      />
     );
   }
 

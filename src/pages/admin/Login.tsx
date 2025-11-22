@@ -110,7 +110,6 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         });
 
         // Redirect to admin dashboard
-        console.log('Login successful, redirecting to /admin');
         navigate('/admin');
       } else {
         // Login failed

@@ -16,6 +16,7 @@ import NotFound from "./pages/NotFound";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Terms from "./pages/Terms";
 import ScrollToTop from "./components/layout/ScrollToTop";
+import PhoneSubscriptionPopup from "./components/layout/PhoneSubscriptionPopup";
 import Auth from "./pages/ambassador/Auth";
 import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -26,6 +27,7 @@ import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute
 import AmbassadorApplication from "./pages/ambassador/Application";
 import PassPurchase from "./pages/PassPurchase";
 import LoadingDemo from "./pages/LoadingDemo";
+import DisableInspect from "./components/security/DisableInspect";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +44,7 @@ const App = () => {
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <DisableInspect />
           <ScrollToTop />
           <MaintenanceMode language={language}>
             <div className="min-h-screen bg-background">
@@ -73,6 +76,7 @@ const App = () => {
               <Route path="*" element={<NotFound />} />
               </Routes>
               <Footer language={language} />
+              <PhoneSubscriptionPopup language={language} />
             </div>
           </MaintenanceMode>
         </BrowserRouter>
