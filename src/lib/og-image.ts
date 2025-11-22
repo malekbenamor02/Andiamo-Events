@@ -44,7 +44,7 @@ export const uploadOGImage = async (
     }
 
     // Generate unique filename with timestamp to ensure URL changes
-    const fileExtension = file.name.split('.').pop();
+    const fileExtension = file.name.split('.').pop() || 'jpg';
     const fileTimestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 9);
     const fileName = `og-image-${fileTimestamp}-${randomId}.${fileExtension}`;
