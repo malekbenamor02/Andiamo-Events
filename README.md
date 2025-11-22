@@ -2,6 +2,8 @@
 
 A modern nightlife events website with ambassador management system, built with React, Vite, TypeScript, Tailwind CSS, and Supabase.
 
+<!-- Last updated: 2025-01-30 -->
+
 ## 🚀 Features
 
 ### Core Website
