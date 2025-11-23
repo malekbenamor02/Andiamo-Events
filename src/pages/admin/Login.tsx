@@ -272,6 +272,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
                     className="w-full pl-10 h-12 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
                     placeholder="admin@andiamo.com"
                   />
@@ -292,6 +293,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    autoComplete="current-password"
                     className="w-full pr-10 pl-10 h-12 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
                     placeholder="••••••••"
                   />

@@ -168,6 +168,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [loadingHeroImages, setLoadingHeroImages] = useState(false);
   const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
 
+  // About images state
+  interface AboutImage {
+    src: string;
+    alt: string;
+    path?: string;
+  }
+  const [aboutImages, setAboutImages] = useState<AboutImage[]>([]);
+  const [loadingAboutImages, setLoadingAboutImages] = useState(false);
+  const [uploadingAboutImage, setUploadingAboutImage] = useState(false);
+
   // Marketing/SMS state
   const [phoneSubscribers, setPhoneSubscribers] = useState<Array<{id: string; phone_number: string; subscribed_at: string}>>([]);
   const [loadingSubscribers, setLoadingSubscribers] = useState(false);
@@ -927,6 +937,159 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     await saveHeroImages(newOrder);
   };
 
+  // Fetch about images
+  const fetchAboutImages = async () => {
+    try {
+      setLoadingAboutImages(true);
+      const { data, error } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('key', 'about_section')
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching about images:', error);
+        setAboutImages([]);
+        return;
+      }
+
+      if (data && data.content) {
+        const content = data.content as any;
+        if (content.images && Array.isArray(content.images)) {
+          setAboutImages(content.images);
+        } else {
+          setAboutImages([]);
+        }
+      } else {
+        setAboutImages([]);
+      }
+    } catch (error) {
+      console.error('Error fetching about images:', error);
+      setAboutImages([]);
+    } finally {
+      setLoadingAboutImages(false);
+    }
+  };
+
+  // Save about images to site_content
+  const saveAboutImages = async (images: AboutImage[]) => {
+    try {
+      // Get existing about_section content
+      const { data: existingData } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('key', 'about_section')
+        .single();
+
+      let existingContent = existingData?.content || {};
+      if (typeof existingContent !== 'object') {
+        existingContent = {};
+      }
+
+      // Update images array
+      const updatedContent = {
+        ...existingContent,
+        images: images
+      };
+
+      // Upsert about_section with updated images
+      const { error } = await supabase
+        .from('site_content')
+        .upsert({
+          key: 'about_section',
+          content: updatedContent,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'key'
+        });
+
+      if (error) throw error;
+
+      setAboutImages(images);
+      toast({
+        title: language === 'en' ? 'About Images Updated' : 'Images À Propos Mises à Jour',
+        description: language === 'en' 
+          ? 'About images have been updated successfully' 
+          : 'Les images de la page À propos ont été mises à jour avec succès',
+      });
+    } catch (error) {
+      console.error('Error saving about images:', error);
+      toast({
+        title: t.error,
+        description: language === 'en' 
+          ? 'Failed to save about images' 
+          : 'Échec de la sauvegarde des images À propos',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Handle about image upload
+  const handleUploadAboutImage = async (file: File) => {
+    try {
+      setUploadingAboutImage(true);
+      
+      // Upload to hero-images bucket (reusing the same bucket)
+      const uploadResult = await uploadHeroImage(file);
+      
+      if (uploadResult.error) {
+        throw new Error(uploadResult.error);
+      }
+
+      // Create new about image object
+      const newImage: AboutImage = {
+        src: uploadResult.url,
+        alt: file.name.replace(/\.[^/.]+$/, ''), // Remove extension for alt text
+        path: uploadResult.path
+      };
+
+      // Add to about images array
+      const updatedImages = [...aboutImages, newImage];
+      await saveAboutImages(updatedImages);
+    } catch (error) {
+      console.error('Error uploading about image:', error);
+      toast({
+        title: t.error,
+        description: language === 'en' 
+          ? 'Failed to upload about image' 
+          : 'Échec du téléchargement de l\'image À propos',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingAboutImage(false);
+    }
+  };
+
+  // Handle about image delete
+  const handleDeleteAboutImage = async (index: number) => {
+    try {
+      const imageToDelete = aboutImages[index];
+      
+      // Delete from storage if path exists
+      if (imageToDelete.path) {
+        await deleteHeroImage(imageToDelete.path);
+      }
+
+      // Remove from array
+      const updatedImages = aboutImages.filter((_, i) => i !== index);
+      await saveAboutImages(updatedImages);
+    } catch (error) {
+      console.error('Error deleting about image:', error);
+      toast({
+        title: t.error,
+        description: language === 'en' 
+          ? 'Failed to delete about image' 
+          : 'Échec de la suppression de l\'image À propos',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Handle reorder about images
+  const handleReorderAboutImages = async (newOrder: AboutImage[]) => {
+    await saveAboutImages(newOrder);
+  };
+
   // Fetch phone subscribers
   const fetchPhoneSubscribers = async () => {
     try {
@@ -1385,6 +1548,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchMaintenanceSettings();
       await fetchAmbassadorApplicationSettings();
       await fetchHeroImages();
+      await fetchAboutImages();
       await fetchPhoneSubscribers();
       await fetchSmsLogs();
       await fetchSmsBalance();
@@ -5468,6 +5632,132 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                             >
                                               <Trash2 className="w-4 h-4 mr-1" />
                                               {t.deleteHeroImage}
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <CardContent className="p-3">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs text-muted-foreground">
+                                            {language === 'en' ? 'Image' : 'Image'} {index + 1}
+                                          </span>
+                                          <Badge variant="outline" className="text-xs">
+                                            {image.alt || 'No alt text'}
+                                          </Badge>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* About Images Settings Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Image className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'About Page Images' : 'Images de la Page À Propos'}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">
+                          {language === 'en' 
+                            ? 'Manage images displayed on the About page. Upload, reorder, or remove images. Recommended: 4 images for best display.' 
+                            : 'Gérez les images affichées sur la page À propos. Téléchargez, réorganisez ou supprimez des images. Recommandé: 4 images pour un meilleur affichage.'}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        {loadingAboutImages ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : (
+                          <>
+                            {/* Upload About Image */}
+                            <div className="space-y-2">
+                              <Label>{language === 'en' ? 'Upload About Image' : 'Télécharger une Image'}</Label>
+                              <FileUpload
+                                onFileSelect={(file) => {
+                                  if (file) {
+                                    handleUploadAboutImage(file);
+                                  }
+                                }}
+                                accept="image/*"
+                                maxSize={10}
+                                label={uploadingAboutImage ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload About Image' : 'Télécharger une Image')}
+                              />
+                              {uploadingAboutImage && (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                  {language === 'en' ? 'Uploading image...' : 'Téléchargement de l\'image...'}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* About Images List */}
+                            {aboutImages.length === 0 ? (
+                              <div className="flex items-center justify-center py-8 text-center text-muted-foreground">
+                                <p>{language === 'en' ? 'No about images uploaded yet' : 'Aucune image À propos téléchargée'}</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                <Label className="text-sm">{language === 'en' ? 'Reorder Images' : 'Réorganiser les Images'}</Label>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                  {aboutImages.map((image, index) => (
+                                    <Card key={index} className="relative group overflow-hidden">
+                                      <div className="relative aspect-square w-full">
+                                        <img
+                                          src={image.src}
+                                          alt={image.alt || `About image ${index + 1}`}
+                                          className="w-full h-full object-cover"
+                                        />
+                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                                          <div className="flex flex-col gap-2">
+                                            <div className="flex gap-2">
+                                              <Button
+                                                size="sm"
+                                                variant="secondary"
+                                                onClick={() => {
+                                                  if (index > 0) {
+                                                    const newOrder = [...aboutImages];
+                                                    [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+                                                    handleReorderAboutImages(newOrder);
+                                                  }
+                                                }}
+                                                disabled={index === 0}
+                                                className="shadow-lg"
+                                              >
+                                                <ArrowUp className="w-4 h-4" />
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant="secondary"
+                                                onClick={() => {
+                                                  if (index < aboutImages.length - 1) {
+                                                    const newOrder = [...aboutImages];
+                                                    [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+                                                    handleReorderAboutImages(newOrder);
+                                                  }
+                                                }}
+                                                disabled={index === aboutImages.length - 1}
+                                                className="shadow-lg"
+                                              >
+                                                <ArrowDown className="w-4 h-4" />
+                                              </Button>
+                                            </div>
+                                            <Button
+                                              size="sm"
+                                              variant="destructive"
+                                              onClick={() => handleDeleteAboutImage(index)}
+                                              className="shadow-lg"
+                                            >
+                                              <Trash2 className="w-4 h-4 mr-1" />
+                                              {language === 'en' ? 'Delete' : 'Supprimer'}
                                             </Button>
                                           </div>
                                         </div>

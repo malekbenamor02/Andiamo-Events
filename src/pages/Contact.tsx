@@ -6,7 +6,6 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { logFormSubmission, logger } from "@/lib/logger";
 import { Mail, MessageCircle, MapPin, Star, Sparkles, Heart, Zap, Send, User, MessageSquare, Phone, Globe, Users, Award, FileText } from "lucide-react";
-import LoadingScreen from "@/components/ui/LoadingScreen";
 
 interface ContactProps {
   language: 'en' | 'fr';
@@ -28,7 +27,6 @@ interface ContactInfo {
 const Contact = ({ language }: ContactProps) => {
   const [contactContent, setContactContent] = useState<ContactContent>({});
   const [contactInfo, setContactInfo] = useState<ContactInfo>({});
-  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -87,41 +85,35 @@ const Contact = ({ language }: ContactProps) => {
       try {
         const { data, error } = await supabase
           .from('site_content')
-          .select('*')
+          .select('key, content')
           .in('key', ['contact_content', 'contact_info']);
 
         if (error) {
           console.error('Error fetching contact content:', error);
-        } else if (data && isMounted) {
+          // Don't block page rendering on error - use defaults
+          return;
+        } 
+        
+        if (data && isMounted) {
           data.forEach(item => {
-            if (item.key === 'contact_content') {
+            if (item.key === 'contact_content' && item.content) {
               setContactContent(item.content as ContactContent);
-            } else if (item.key === 'contact_info') {
+            } else if (item.key === 'contact_info' && item.content) {
               setContactInfo(item.content as ContactInfo);
             }
           });
         }
       } catch (error) {
         console.error('Error fetching contact content:', error);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        // Don't block page rendering on error - defaults will be used
       }
     };
 
-    // Set loading to false after a short delay to ensure page renders
-    const timeout = setTimeout(() => {
-      if (isMounted) {
-        setLoading(false);
-      }
-    }, 500);
-
+    // Fetch content in background - don't block rendering
     fetchContent();
 
     return () => {
       isMounted = false;
-      clearTimeout(timeout);
     };
   }, []);
 
@@ -137,7 +129,9 @@ const Contact = ({ language }: ContactProps) => {
   };
 
   // Use contact content from database if available, otherwise use default
-  const content = contactContent?.title ? contactContent : defaultContent[language];
+  const content = (contactContent && typeof contactContent === 'object' && 'title' in contactContent) 
+    ? contactContent 
+    : defaultContent[language];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -198,15 +192,9 @@ const Contact = ({ language }: ContactProps) => {
     setIsSubmitting(false);
   };
 
-  if (loading) {
-    return (
-      <LoadingScreen 
-        variant="default" 
-        size="fullscreen" 
-        text={language === 'en' ? 'Loading...' : 'Chargement...'}
-      />
-    );
-  }
+  // Show loading screen only for a brief moment, then show content
+  // Always render the page - don't block on loading
+  // Content will update when data is fetched
 
   return (
     <div className="pt-16 min-h-screen bg-background relative overflow-hidden">
