@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
 interface PhoneSubscriptionPopupProps {
@@ -23,13 +24,42 @@ const EXCLUDED_PATHS = [
 
 const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
   const location = useLocation();
+  const isMobile = useIsMobile();
   const [isVisible, setIsVisible] = useState(false);
-  const [isFloating, setIsFloating] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isDuplicate, setIsDuplicate] = useState(false);
+  const [shouldShowOnThisPage, setShouldShowOnThisPage] = useState(false);
   const { toast } = useToast();
+
+  // Probability system for showing notification
+  // Returns true/false based on random probability
+  const shouldShowNotification = (): boolean => {
+    const random = Math.random();
+    
+    // 30% chance - Show on all pages (high probability)
+    if (random < 0.3) {
+      return true;
+    }
+    // 25% chance - Show on 3 out of 4 pages
+    else if (random < 0.55) {
+      return Math.random() < 0.75; // 75% chance per page
+    }
+    // 20% chance - Show on 2 out of 4 pages
+    else if (random < 0.75) {
+      return Math.random() < 0.5; // 50% chance per page
+    }
+    // 15% chance - Show on 1 out of 4 pages
+    else if (random < 0.9) {
+      return Math.random() < 0.25; // 25% chance per page
+    }
+    // 10% chance - Don't show at all
+    else {
+      return false;
+    }
+  };
 
   // Check if current path should exclude popup
   const shouldShowPopup = () => {
@@ -39,41 +69,49 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
   useEffect(() => {
     // Reset visibility when route changes
     setIsVisible(false);
-    setIsFloating(false);
+    setIsExiting(false);
     setIsSuccess(false);
     setIsDuplicate(false);
     setPhoneNumber("");
+
+    // Only show on mobile devices
+    if (!isMobile) {
+      return;
+    }
 
     // Don't show on admin/login pages
     if (!shouldShowPopup()) {
       return;
     }
 
-    // Show popup after delay (every time user visits)
+    // Determine if notification should show on this page (random probability)
+    const showOnPage = shouldShowNotification();
+    setShouldShowOnThisPage(showOnPage);
+
+    if (!showOnPage) {
+      return;
+    }
+
+    // Random delay between 3-8 seconds for variety
+    const randomDelay = Math.floor(Math.random() * 5000) + 3000;
+    
+    // Show popup after random delay
     const timer = setTimeout(() => {
       setIsVisible(true);
-    }, SHOW_DELAY);
+    }, randomDelay);
 
     return () => clearTimeout(timer);
-  }, [location.pathname]);
-
-  // Convert to floating mode after initial display
-  useEffect(() => {
-    if (isVisible && !isFloating) {
-      const floatTimer = setTimeout(() => {
-        setIsFloating(true);
-      }, 3000); // Wait 3 seconds before floating
-      return () => clearTimeout(floatTimer);
-    }
-  }, [isVisible, isFloating]);
+  }, [location.pathname, isMobile]);
 
   const handleClose = () => {
-    setIsVisible(false);
-    setIsFloating(false);
-    setIsSuccess(false);
-    setIsDuplicate(false);
-    setPhoneNumber("");
-    // Don't save to localStorage - show popup every time user visits
+    setIsExiting(true);
+    setTimeout(() => {
+      setIsVisible(false);
+      setIsExiting(false);
+      setIsSuccess(false);
+      setIsDuplicate(false);
+      setPhoneNumber("");
+    }, 300);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -148,8 +186,11 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
     }
   };
 
-  // Don't show popup on excluded pages
-  if (!shouldShowPopup() || !isVisible) return null;
+  // Only show on mobile devices
+  if (!isMobile) return null;
+  
+  // Don't show popup on excluded pages or if not selected for this page
+  if (!shouldShowPopup() || !shouldShowOnThisPage || !isVisible) return null;
 
   const translations = {
     en: {
@@ -180,130 +221,106 @@ const PhoneSubscriptionPopup = ({ language }: PhoneSubscriptionPopupProps) => {
 
   return (
     <>
-      {/* Backdrop overlay */}
-      {!isFloating && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 transition-opacity duration-500 ease-out animate-in fade-in-0"
-          onClick={handleClose}
-        />
-      )}
-
-      {/* Popup */}
-      <div
-        className={cn(
-          "fixed z-50 transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-          isFloating
-            ? "bottom-6 right-6 w-[320px] max-w-[calc(100vw-2rem)]"
-            : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm mx-4"
-        )}
+      {/* Native Mobile Notification - Slides from top */}
+      <div 
+        className="fixed top-0 left-0 right-0 z-[99999] pointer-events-none"
         style={{
-          animation: isVisible ? 'slideInScale 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' : undefined
+          transform: isExiting ? 'translateY(-100%)' : 'translateY(0)',
+          opacity: isExiting ? 0 : 1,
+          transition: isExiting 
+            ? 'transform 0.35s cubic-bezier(0.4, 0, 1, 1), opacity 0.35s ease-out'
+            : 'transform 0.5s cubic-bezier(0.2, 0, 0, 1), opacity 0.5s ease-out'
         }}
       >
-        <div className="relative bg-gradient-to-br from-background via-background to-muted/20 border border-primary/20 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl">
-          {/* Decorative gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10 pointer-events-none" />
-          
-          {/* Animated background pattern */}
-          <div className="absolute inset-0 opacity-[0.03]">
-            <div className="absolute inset-0" style={{
-              backgroundImage: `radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)`,
-              backgroundSize: '20px 20px',
-            }} />
-          </div>
-
-          {/* Close button */}
-          <button
+        <div className="px-2 pt-2 pb-1">
+          <div 
+            className="bg-gradient-to-br from-primary/95 via-primary/90 to-secondary/95 backdrop-blur-xl rounded-[14px] shadow-[0_4px_20px_rgba(0,0,0,0.3)] border border-primary/30 overflow-hidden pointer-events-auto cursor-pointer active:opacity-95 transition-opacity"
             onClick={handleClose}
-            className="absolute top-3 right-3 z-10 rounded-full p-1.5 hover:bg-muted/80 transition-all duration-200 group"
-            aria-label={t.close}
           >
-            <X className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors" />
-          </button>
-
-          {/* Content */}
-          <div className="relative p-5">
-            {/* Icon and Title */}
-            <div className="flex items-start gap-3 mb-4">
-              <div className="relative flex-shrink-0">
-                <div className="absolute inset-0 bg-primary/20 rounded-full blur-lg animate-pulse" />
-                <div className="relative bg-gradient-to-br from-primary to-primary/80 p-2.5 rounded-xl shadow-lg">
-                  <Phone className="h-5 w-5 text-primary-foreground" />
+            <div className="px-3 py-2.5">
+              <div className="flex items-start gap-2.5">
+                {/* App Icon with gradient */}
+                <div className="w-8 h-8 rounded-[10px] bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0 border border-white/20">
+                  <Phone className="w-4 h-4 text-white" />
                 </div>
-              </div>
-              <div className="flex-1 pt-0.5">
-                <h3 className="text-lg font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent mb-0.5">
-                  {t.title}
-                </h3>
-                <p className="text-xs text-muted-foreground font-medium">
-                  {t.subtitle}
-                </p>
+                
+                {/* Notification Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[10px] font-semibold text-white/80">
+                      {language === 'en' ? 'Andiamo Events' : 'Andiamo Events'}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleClose();
+                      }}
+                      className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
+                    >
+                      <X className="w-3 h-3 text-white/80" />
+                    </button>
+                  </div>
+                  <h4 className="text-[13px] font-semibold text-white mb-0.5 leading-[1.2]">
+                    {t.title}
+                  </h4>
+                  <p className="text-[12px] text-white/90 leading-[1.3] mb-2">
+                    {t.subtitle}
+                  </p>
+                  
+                  {/* Compact Form */}
+                  {!isSuccess ? (
+                    <form 
+                      onSubmit={(e) => {
+                        e.stopPropagation();
+                        handleSubmit(e);
+                      }}
+                      className="space-y-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="relative">
+                        <div className="absolute left-2 top-1/2 -translate-y-1/2 text-white/70">
+                          <Phone className="h-3 w-3" />
+                        </div>
+                        <Input
+                          type="tel"
+                          value={phoneNumber}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '');
+                            if (value.length <= 8) {
+                              setPhoneNumber(value);
+                            }
+                          }}
+                          placeholder={t.phonePlaceholder}
+                          className="pl-7 h-8 text-xs bg-white/20 border-white/30 text-white placeholder:text-white/60 focus:border-white/50 focus:ring-white/20 backdrop-blur-sm"
+                          disabled={isSubmitting}
+                          required
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        className="w-full h-7 text-xs font-semibold bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur-sm"
+                        disabled={isSubmitting}
+                      >
+                        {isSubmitting ? (
+                          <div className="h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1.5" />
+                        ) : (
+                          <Sparkles className="h-3 w-3 mr-1.5" />
+                        )}
+                        {isSubmitting ? t.subscribing : t.subscribe}
+                      </Button>
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-white" />
+                      <p className="text-[11px] text-white/90">
+                        {isDuplicate ? t.alreadySubscribed : t.success}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-
-            {/* Description */}
-            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-              {t.description}
-            </p>
-
-            {/* Success State */}
-            {isSuccess ? (
-              <div className="flex flex-col items-center justify-center py-6 gap-2">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-ping" />
-                  <CheckCircle2 className="relative h-12 w-12 text-primary animate-in zoom-in-95 duration-300" />
-                </div>
-                <p className="text-sm font-semibold text-foreground text-center">
-                  {isDuplicate ? t.alreadySubscribed : t.success}
-                </p>
-              </div>
-            ) : (
-              /* Form */
-              <form onSubmit={handleSubmit} className="space-y-3">
-                <div className="relative">
-                  <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
-                    <Phone className="h-3.5 w-3.5" />
-                  </div>
-                  <Input
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={(e) => {
-                      // Only allow digits
-                      const value = e.target.value.replace(/\D/g, '');
-                      if (value.length <= 8) {
-                        setPhoneNumber(value);
-                      }
-                    }}
-                    placeholder={t.phonePlaceholder}
-                    className="pl-9 h-10 text-sm bg-background/50 border-primary/20 focus:border-primary/40 focus:ring-primary/20 transition-all duration-200"
-                    disabled={isSubmitting}
-                    required
-                  />
-                </div>
-
-                <Button
-                  type="submit"
-                  className="w-full h-10 text-sm font-semibold bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg hover:shadow-xl transition-all duration-200"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <div className="h-3.5 w-3.5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin mr-2" />
-                      {t.subscribing}
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-3.5 w-3.5 mr-2" />
-                      {t.subscribe}
-                    </>
-                  )}
-                </Button>
-              </form>
-            )}
-
-            {/* Decorative elements */}
-            <div className="absolute -bottom-3 -right-3 w-24 h-24 bg-primary/5 rounded-full blur-2xl" />
-            <div className="absolute -top-3 -left-3 w-20 h-20 bg-primary/5 rounded-full blur-xl" />
           </div>
         </div>
       </div>

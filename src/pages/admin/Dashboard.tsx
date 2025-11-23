@@ -239,9 +239,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(2 * 60 * 60); // 2 hours in seconds
 
-  // Mobile notification state (must be declared before conditional returns)
-  const [showNotification, setShowNotification] = useState(true);
-  const [isExiting, setIsExiting] = useState(false);
 
   const content = {
     en: {
@@ -2619,65 +2616,55 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Show mobile message if accessed from mobile device (after all hooks are called)
   if (isMobile) {
-    const handleClose = () => {
-      setIsExiting(true);
-      setTimeout(() => {
-        setShowNotification(false);
-        navigate('/admin/login');
-      }, 400); // Match animation duration
-    };
-
-    if (!showNotification) {
-      return null;
-    }
 
     return (
-      <div className="min-h-screen bg-background">
-        {/* Phone Notification - Slides from top like native notifications */}
-        <div 
-          className={`fixed top-0 left-0 right-0 z-[9999] px-3 pt-2 pb-3 ${
-            isExiting 
-              ? 'animate-slide-up-out' 
-              : 'animate-slide-down-in'
-          }`}
-        >
-          <div className="bg-card/98 backdrop-blur-xl rounded-2xl shadow-2xl border border-border/50 overflow-hidden">
-            {/* Notification Content */}
-            <div className="p-4">
-              <div className="flex items-start gap-3">
-                {/* Icon */}
-                <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
-                  <Settings className="w-5 h-5 text-primary" />
-                </div>
-                
-                {/* Text Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
-                    </h3>
-                    <button
-                      onClick={handleClose}
-                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center hover:bg-destructive/10 transition-colors"
-                    >
-                      <X className="w-3.5 h-3.5 text-muted-foreground" />
-                    </button>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed mb-3">
-                    {language === 'en' 
-                      ? 'The admin dashboard is only available on desktop computers. Please access it from a PC or laptop.'
-                      : 'Le tableau de bord administrateur est uniquement disponible sur les ordinateurs de bureau. Veuillez y accéder depuis un PC ou un ordinateur portable.'}
-                  </p>
-                  <Button 
-                    onClick={handleClose}
-                    size="sm"
-                    className="w-full h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
-                  >
-                    {language === 'en' ? 'Back to Login' : 'Retour à la Connexion'}
-                  </Button>
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <div className="bg-card/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-primary/20 p-8 text-center space-y-6 animate-in fade-in-0 zoom-in-95 duration-500">
+            {/* Icon */}
+            <div className="flex justify-center">
+              <div className="relative">
+                <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse" />
+                <div className="relative bg-gradient-to-br from-primary to-secondary p-4 rounded-2xl shadow-lg">
+                  <Settings className="w-12 h-12 text-primary-foreground" />
                 </div>
               </div>
             </div>
+
+            {/* Title */}
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-secondary to-primary bg-clip-text text-transparent mb-2">
+                {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
+              </h1>
+              <p className="text-muted-foreground text-lg">
+                {language === 'en' 
+                  ? 'Admin Dashboard'
+                  : 'Tableau de Bord Administrateur'}
+              </p>
+            </div>
+
+            {/* Message */}
+            <div className="space-y-3">
+              <p className="text-foreground/90 leading-relaxed">
+                {language === 'en' 
+                  ? 'The admin dashboard is only available on desktop computers and laptops. Please access it from a PC for the best experience and full functionality.'
+                  : 'Le tableau de bord administrateur est uniquement disponible sur les ordinateurs de bureau et les ordinateurs portables. Veuillez y accéder depuis un PC pour une meilleure expérience et toutes les fonctionnalités.'}
+              </p>
+            </div>
+
+            {/* Action Button */}
+            <div className="pt-4">
+              <Button 
+                onClick={() => navigate('/admin/login')}
+                className="w-full bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 h-12 text-base font-semibold"
+              >
+                {language === 'en' ? 'Back to Login' : 'Retour à la Connexion'}
+              </Button>
+            </div>
+
+            {/* Decorative elements */}
+            <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
+            <div className="absolute -top-10 -left-10 w-24 h-24 bg-secondary/5 rounded-full blur-2xl" />
           </div>
         </div>
       </div>

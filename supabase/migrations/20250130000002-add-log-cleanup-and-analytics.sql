@@ -223,3 +223,6 @@ GRANT EXECUTE ON FUNCTION detect_suspicious_activity(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_user_journey(TEXT, TEXT) TO authenticated;
 
 
+
+
+

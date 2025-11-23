@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Eye, EyeOff, Lock, User, Mail, ArrowLeft, Sparkles, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, Lock, User, Mail, ArrowLeft, Sparkles, AlertCircle, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { logger } from "@/lib/logger";
 
 interface AdminLoginProps {
@@ -14,6 +15,7 @@ interface AdminLoginProps {
 }
 
 const AdminLogin = ({ language }: AdminLoginProps) => {
+  const isMobile = useIsMobile();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -165,6 +167,62 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       setLoading(false);
     }
   };
+
+  // Show mobile restriction message if accessed from mobile device
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <div className="bg-card/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-primary/20 p-8 text-center space-y-6 animate-in fade-in-0 zoom-in-95 duration-500">
+            {/* Icon */}
+            <div className="flex justify-center">
+              <div className="relative">
+                <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse" />
+                <div className="relative bg-gradient-to-br from-primary to-secondary p-4 rounded-2xl shadow-lg">
+                  <Settings className="w-12 h-12 text-primary-foreground" />
+                </div>
+              </div>
+            </div>
+
+            {/* Title */}
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-secondary to-primary bg-clip-text text-transparent mb-2">
+                {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
+              </h1>
+              <p className="text-muted-foreground text-lg">
+                {language === 'en' 
+                  ? 'Admin Login'
+                  : 'Connexion Admin'}
+              </p>
+            </div>
+
+            {/* Message */}
+            <div className="space-y-3">
+              <p className="text-foreground/90 leading-relaxed">
+                {language === 'en' 
+                  ? 'The admin login and dashboard are only available on desktop computers and laptops. Please access them from a PC for the best experience and full functionality.'
+                  : 'La connexion admin et le tableau de bord sont uniquement disponibles sur les ordinateurs de bureau et les ordinateurs portables. Veuillez y accéder depuis un PC pour une meilleure expérience et toutes les fonctionnalités.'}
+              </p>
+            </div>
+
+            {/* Action Button */}
+            <div className="pt-4">
+              <Button 
+                onClick={() => navigate('/')}
+                className="w-full bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 h-12 text-base font-semibold"
+              >
+                {language === 'en' ? 'Back to Home' : 'Retour à l\'Accueil'}
+              </Button>
+            </div>
+
+            {/* Decorative elements */}
+            <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
+            <div className="absolute -top-10 -left-10 w-24 h-24 bg-secondary/5 rounded-full blur-2xl" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-dark flex items-center justify-center p-4 relative overflow-hidden">
