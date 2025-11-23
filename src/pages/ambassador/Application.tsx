@@ -703,3 +703,4 @@ const Application = ({ language }: ApplicationProps) => {
 
 export default Application;
 
+

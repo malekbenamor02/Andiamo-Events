@@ -21,3 +21,4 @@ CREATE POLICY "Allow service role to insert logs" ON public.site_logs
 CREATE POLICY "Allow public log inserts" ON public.site_logs
   FOR INSERT WITH CHECK (true);
 
+
