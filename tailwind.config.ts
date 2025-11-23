@@ -129,8 +129,8 @@ export default {
 				'float': 'float 3s ease-in-out infinite',
 				'fade-in-up': 'fade-in-up 0.6s ease-out',
 				'spin-slow': 'spin 3s linear infinite',
-				'slide-down-in': 'slide-down-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
-				'slide-up-out': 'slide-up-out 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53)'
+				'slide-down-in': 'slide-down-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+				'slide-up-out': 'slide-up-out 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards'
 			}
 		}
 	},

@@ -2640,13 +2640,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               ? 'animate-slide-up-out' 
               : 'animate-slide-down-in'
           }`}
-          style={{
-            transform: isExiting ? 'translateY(-100%)' : 'translateY(0)',
-            opacity: isExiting ? 0 : 1,
-            transition: isExiting 
-              ? 'transform 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53), opacity 0.4s ease-out'
-              : 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.5s ease-out'
-          }}
         >
           <div className="bg-card/98 backdrop-blur-xl rounded-2xl shadow-2xl border border-border/50 overflow-hidden">
             {/* Notification Content */}
