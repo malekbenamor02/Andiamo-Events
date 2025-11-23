@@ -2632,58 +2632,60 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
 
     return (
-      <div className="min-h-screen bg-background/95 backdrop-blur-sm">
-        {/* Phone Notification Style Popup */}
+      <div className="min-h-screen bg-background">
+        {/* Phone Notification - Slides from top like native notifications */}
         <div 
-          className={`fixed top-0 left-0 right-0 z-50 p-4 ${
+          className={`fixed top-0 left-0 right-0 z-[9999] px-3 pt-2 pb-3 ${
             isExiting 
               ? 'animate-slide-up-out' 
               : 'animate-slide-down-in'
           }`}
+          style={{
+            transform: isExiting ? 'translateY(-100%)' : 'translateY(0)',
+            opacity: isExiting ? 0 : 1,
+            transition: isExiting 
+              ? 'transform 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53), opacity 0.4s ease-out'
+              : 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.5s ease-out'
+          }}
         >
-          <Card className="max-w-sm mx-auto shadow-2xl border-2 border-primary/20 bg-card/95 backdrop-blur-md">
-            <CardContent className="p-6">
-              {/* Notification Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center shadow-lg">
-                    <Settings className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-lg font-semibold">
-                      {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
-                    </CardTitle>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {language === 'en' ? 'Admin Dashboard' : 'Tableau de Bord'}
-                    </p>
-                  </div>
+          <div className="bg-card/98 backdrop-blur-xl rounded-2xl shadow-2xl border border-border/50 overflow-hidden">
+            {/* Notification Content */}
+            <div className="p-4">
+              <div className="flex items-start gap-3">
+                {/* Icon */}
+                <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
+                  <Settings className="w-5 h-5 text-primary" />
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleClose}
-                  className="h-8 w-8 p-0 rounded-full hover:bg-destructive/10"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
+                
+                {/* Text Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
+                    </h3>
+                    <button
+                      onClick={handleClose}
+                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center hover:bg-destructive/10 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+                    {language === 'en' 
+                      ? 'The admin dashboard is only available on desktop computers. Please access it from a PC or laptop.'
+                      : 'Le tableau de bord administrateur est uniquement disponible sur les ordinateurs de bureau. Veuillez y accéder depuis un PC ou un ordinateur portable.'}
+                  </p>
+                  <Button 
+                    onClick={handleClose}
+                    size="sm"
+                    className="w-full h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
+                  >
+                    {language === 'en' ? 'Back to Login' : 'Retour à la Connexion'}
+                  </Button>
+                </div>
               </div>
-
-              {/* Notification Message */}
-              <p className="text-sm text-foreground/80 mb-4 leading-relaxed">
-                {language === 'en' 
-                  ? 'The admin dashboard is only available on desktop computers. Please access it from a PC or laptop for the best experience.'
-                  : 'Le tableau de bord administrateur est uniquement disponible sur les ordinateurs de bureau. Veuillez y accéder depuis un PC ou un ordinateur portable pour une meilleure expérience.'}
-              </p>
-
-              {/* Action Button */}
-              <Button 
-                onClick={handleClose}
-                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg transition-all duration-300 hover:scale-105"
-              >
-                {language === 'en' ? 'Back to Login' : 'Retour à la Connexion'}
-              </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
     );
