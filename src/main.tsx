@@ -206,28 +206,30 @@ setupErrorHandlers();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {
     try {
-      // Unregister all existing service workers first to clear old caches
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const registration of registrations) {
-        // Check if it's an old version
-        if (registration.active?.scriptURL.includes('sw.js')) {
-          const cacheVersion = await caches.keys();
+      // Only unregister old service workers once (on first load after update)
+      const shouldCleanup = !sessionStorage.getItem('sw-cleanup-done');
+      
+      if (shouldCleanup) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
           // Clear old caches
+          const cacheVersion = await caches.keys();
           for (const cacheName of cacheVersion) {
             if (cacheName.includes('andiamo-events-scanner-v1')) {
               await caches.delete(cacheName);
             }
           }
+          // Only unregister if it's an old version
+          if (registration.active?.scriptURL.includes('sw.js')) {
+            await registration.unregister();
+          }
         }
-        await registration.unregister();
+        sessionStorage.setItem('sw-cleanup-done', 'true');
       }
       
-      // Wait a bit before registering new service worker
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Register new service worker
+      // Register service worker (will reuse existing if already registered)
       const registration = await navigator.serviceWorker.register('/sw.js', {
-        updateViaCache: 'none' // Always check for updates
+        updateViaCache: 'none'
       });
       
       console.log('SW registered: ', registration);
@@ -236,21 +238,11 @@ if ('serviceWorker' in navigator) {
         details: { scope: registration.scope }
       });
       
-      // Check for updates immediately
-      registration.update();
-      
-      // Listen for updates
-      registration.addEventListener('updatefound', () => {
-        const newWorker = registration.installing;
-        if (newWorker) {
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New service worker available, reload to activate
-              window.location.reload();
-            }
-          });
-        }
-      });
+      // Only check for updates once per session to prevent loops
+      if (!sessionStorage.getItem('sw-update-checked')) {
+        registration.update();
+        sessionStorage.setItem('sw-update-checked', 'true');
+      }
     } catch (registrationError) {
       console.log('SW registration failed: ', registrationError);
       logger.error('Service Worker registration failed', registrationError, {

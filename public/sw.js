@@ -8,13 +8,17 @@ const urlsToCache = [
 
 // Install event
 self.addEventListener('install', (event) => {
-  // Force activation of new service worker immediately
-  self.skipWaiting();
+  // Don't skip waiting immediately to prevent refresh loops
+  // Let the old service worker finish before activating new one
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Opened cache');
         return cache.addAll(urlsToCache);
+      })
+      .then(() => {
+        // Only skip waiting after cache is ready
+        return self.skipWaiting();
       })
   );
 });

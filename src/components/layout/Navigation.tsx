@@ -91,8 +91,8 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
             className="flex items-center space-x-2 focus:outline-none"
             onClick={() => {
               if (location.pathname === "/") {
-                window.scrollTo(0, 0);
-                window.location.reload();
+                // Just scroll to top, don't reload to prevent refresh loops
+                window.scrollTo({ top: 0, behavior: 'smooth' });
               } else {
                 navigate("/");
               }
