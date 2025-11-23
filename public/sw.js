@@ -1,13 +1,15 @@
 // Service Worker for Andiamo Events Scanner
-const CACHE_NAME = 'andiamo-events-scanner-v1';
+// Updated cache version to force refresh
+const CACHE_NAME = 'andiamo-events-scanner-v2';
 const urlsToCache = [
-  '/',
   '/manifest.json',
   '/placeholder.svg'
 ];
 
 // Install event
 self.addEventListener('install', (event) => {
+  // Force activation of new service worker immediately
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -21,31 +23,46 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
-  // Don't cache API requests, Supabase requests, or module scripts
-  if (url.pathname.startsWith('/api/') || 
+  // NEVER cache the HTML page, API requests, Supabase requests, or scripts
+  // Always fetch from network to ensure latest version
+  if (url.pathname === '/' || 
+      url.pathname === '/index.html' ||
+      url.pathname.startsWith('/api/') || 
       url.hostname.includes('supabase') ||
       url.pathname.endsWith('.js') ||
       url.pathname.endsWith('.mjs') ||
       url.pathname.endsWith('.ts') ||
       url.pathname.endsWith('.tsx') ||
-      event.request.destination === 'script') {
-    // Always fetch from network for scripts and API calls
+      url.pathname.endsWith('.css') ||
+      event.request.destination === 'script' ||
+      event.request.destination === 'style' ||
+      event.request.destination === 'document') {
+    // Always fetch from network for HTML, scripts, styles, and API calls
     event.respondWith(fetch(event.request));
     return;
   }
   
-  // For other requests, try cache first, then network
+  // For static assets (images, etc.), try network first, then cache
   event.respondWith(
-    caches.match(event.request)
+    fetch(event.request)
       .then((response) => {
-        // Return cached version or fetch from network
-        return response || fetch(event.request);
-      }
-    )
+        // Cache successful responses for static assets
+        if (response.status === 200) {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return response;
+      })
+      .catch(() => {
+        // If network fails, try cache
+        return caches.match(event.request);
+      })
   );
 });
 
-// Activate event
+// Activate event - clear all old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -57,6 +74,9 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
+    }).then(() => {
+      // Take control of all pages immediately
+      return self.clients.claim();
     })
   );
 }); 

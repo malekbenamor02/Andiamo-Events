@@ -204,22 +204,60 @@ setupErrorHandlers();
 
 // Register service worker for PWA functionality
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((registration) => {
-        console.log('SW registered: ', registration);
-        logger.info('Service Worker registered', {
-          category: 'system',
-          details: { scope: registration.scope }
-        });
-      })
-      .catch((registrationError) => {
-        console.log('SW registration failed: ', registrationError);
-        logger.error('Service Worker registration failed', registrationError, {
-          category: 'system',
-          details: { error: String(registrationError) }
-        });
+  window.addEventListener('load', async () => {
+    try {
+      // Unregister all existing service workers first to clear old caches
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        // Check if it's an old version
+        if (registration.active?.scriptURL.includes('sw.js')) {
+          const cacheVersion = await caches.keys();
+          // Clear old caches
+          for (const cacheName of cacheVersion) {
+            if (cacheName.includes('andiamo-events-scanner-v1')) {
+              await caches.delete(cacheName);
+            }
+          }
+        }
+        await registration.unregister();
+      }
+      
+      // Wait a bit before registering new service worker
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Register new service worker
+      const registration = await navigator.serviceWorker.register('/sw.js', {
+        updateViaCache: 'none' // Always check for updates
       });
+      
+      console.log('SW registered: ', registration);
+      logger.info('Service Worker registered', {
+        category: 'system',
+        details: { scope: registration.scope }
+      });
+      
+      // Check for updates immediately
+      registration.update();
+      
+      // Listen for updates
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New service worker available, reload to activate
+              window.location.reload();
+            }
+          });
+        }
+      });
+    } catch (registrationError) {
+      console.log('SW registration failed: ', registrationError);
+      logger.error('Service Worker registration failed', registrationError, {
+        category: 'system',
+        details: { error: String(registrationError) }
+      });
+    }
   });
 }
 
