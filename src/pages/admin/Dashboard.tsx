@@ -239,6 +239,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(2 * 60 * 60); // 2 hours in seconds
 
+  // Mobile notification state (must be declared before conditional returns)
+  const [showNotification, setShowNotification] = useState(true);
+  const [isExiting, setIsExiting] = useState(false);
+
   const content = {
     en: {
       title: "Admin Dashboard",
@@ -2615,34 +2619,72 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Show mobile message if accessed from mobile device (after all hooks are called)
   if (isMobile) {
+    const handleClose = () => {
+      setIsExiting(true);
+      setTimeout(() => {
+        setShowNotification(false);
+        navigate('/admin/login');
+      }, 400); // Match animation duration
+    };
+
+    if (!showNotification) {
+      return null;
+    }
+
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full shadow-lg">
-          <CardContent className="p-8 text-center space-y-4">
-            <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                <Settings className="w-8 h-8 text-primary" />
+      <div className="min-h-screen bg-background/95 backdrop-blur-sm">
+        {/* Phone Notification Style Popup */}
+        <div 
+          className={`fixed top-0 left-0 right-0 z-50 p-4 ${
+            isExiting 
+              ? 'animate-slide-up-out' 
+              : 'animate-slide-down-in'
+          }`}
+        >
+          <Card className="max-w-sm mx-auto shadow-2xl border-2 border-primary/20 bg-card/95 backdrop-blur-md">
+            <CardContent className="p-6">
+              {/* Notification Header */}
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center shadow-lg">
+                    <Settings className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg font-semibold">
+                      {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {language === 'en' ? 'Admin Dashboard' : 'Tableau de Bord'}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClose}
+                  className="h-8 w-8 p-0 rounded-full hover:bg-destructive/10"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
               </div>
-            </div>
-            <CardTitle className="text-2xl">
-              {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
-            </CardTitle>
-            <p className="text-muted-foreground">
-              {language === 'en' 
-                ? 'The admin dashboard is only available on desktop computers. Please access it from a PC or laptop for the best experience.'
-                : 'Le tableau de bord administrateur est uniquement disponible sur les ordinateurs de bureau. Veuillez y accéder depuis un PC ou un ordinateur portable pour une meilleure expérience.'}
-            </p>
-            <div className="pt-4">
+
+              {/* Notification Message */}
+              <p className="text-sm text-foreground/80 mb-4 leading-relaxed">
+                {language === 'en' 
+                  ? 'The admin dashboard is only available on desktop computers. Please access it from a PC or laptop for the best experience.'
+                  : 'Le tableau de bord administrateur est uniquement disponible sur les ordinateurs de bureau. Veuillez y accéder depuis un PC ou un ordinateur portable pour une meilleure expérience.'}
+              </p>
+
+              {/* Action Button */}
               <Button 
-                onClick={() => navigate('/admin/login')}
-                variant="outline"
-                className="w-full"
+                onClick={handleClose}
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg transition-all duration-300 hover:scale-105"
               >
                 {language === 'en' ? 'Back to Login' : 'Retour à la Connexion'}
               </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
