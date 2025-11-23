@@ -19,7 +19,7 @@ import {
   Eye, EyeOff, Save, X, Image, Video, Upload,
   Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
   PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
-  Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2
+  Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Database
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
@@ -175,6 +175,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [smsLogs, setSmsLogs] = useState<Array<{id: string; phone_number: string; message: string; status: string; error_message?: string; sent_at?: string; created_at: string}>>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [siteLogs, setSiteLogs] = useState<Array<{id: string; log_type: string; category: string; message: string; details: any; user_type: string; created_at: string}>>([]);
+  const [loadingSiteLogs, setLoadingSiteLogs] = useState(false);
 
   // --- Team Members State ---
   const [teamMembers, setTeamMembers] = useState([]);
@@ -952,6 +954,33 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setSmsLogs([]);
     } finally {
       setLoadingLogs(false);
+    }
+  };
+
+  // Fetch Site logs
+  const fetchSiteLogs = async () => {
+    try {
+      setLoadingSiteLogs(true);
+      const { data, error } = await supabase
+        .from('site_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      if (error) throw error;
+      setSiteLogs(data || []);
+    } catch (error) {
+      console.error('Error fetching site logs:', error);
+      setSiteLogs([]);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Failed to fetch site logs' 
+          : 'Échec de la récupération des logs du site',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingSiteLogs(false);
     }
   };
 
@@ -2596,6 +2625,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               >
                 <Megaphone className={`w-4 h-4 transition-transform duration-300 ${activeTab === "marketing" ? "animate-pulse" : ""}`} />
                 <span>{language === 'en' ? 'Marketing' : 'Marketing'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("logs");
+                  if (siteLogs.length === 0) {
+                    fetchSiteLogs();
+                  }
+                }}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-875 ${
+                  activeTab === "logs" 
+                    ? "bg-primary text-primary-foreground shadow-lg" 
+                    : "hover:bg-accent hover:shadow-md"
+                }`}
+              >
+                <Activity className={`w-4 h-4 transition-transform duration-300 ${activeTab === "logs" ? "animate-pulse" : ""}`} />
+                <span>{language === 'en' ? 'Logs' : 'Journaux'}</span>
               </button>
               <button
                 onClick={() => setActiveTab("settings")}
@@ -4851,6 +4896,120 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </Card>
                   </div>
                 </div>
+              </TabsContent>
+
+              {/* Logs Tab */}
+              <TabsContent value="logs" className="space-y-6">
+                <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
+                  <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+                    {language === 'en' ? 'Site Logs & Analytics' : 'Journaux et Analytiques du Site'}
+                  </h2>
+                  <Button
+                    onClick={fetchSiteLogs}
+                    disabled={loadingSiteLogs}
+                    variant="outline"
+                    className="animate-in slide-in-from-right-4 duration-1000"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${loadingSiteLogs ? 'animate-spin' : ''}`} />
+                    {language === 'en' ? 'Refresh' : 'Actualiser'}
+                  </Button>
+                </div>
+
+                <Card className="shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Database className="w-5 h-5 text-primary" />
+                      {language === 'en' ? 'Activity Logs' : 'Journaux d\'Activité'}
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      {language === 'en' 
+                        ? 'View all website activity, errors, and events' 
+                        : 'Voir toutes les activités, erreurs et événements du site'}
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingSiteLogs ? (
+                      <div className="flex items-center justify-center py-12">
+                        <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                        <span className="ml-2 text-muted-foreground">
+                          {language === 'en' ? 'Loading logs...' : 'Chargement des logs...'}
+                        </span>
+                      </div>
+                    ) : siteLogs.length === 0 ? (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Database className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <p>{language === 'en' ? 'No logs found' : 'Aucun log trouvé'}</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="border-b border-border">
+                                <th className="text-left p-3 text-sm font-semibold">{language === 'en' ? 'Time' : 'Heure'}</th>
+                                <th className="text-left p-3 text-sm font-semibold">{language === 'en' ? 'Type' : 'Type'}</th>
+                                <th className="text-left p-3 text-sm font-semibold">{language === 'en' ? 'Category' : 'Catégorie'}</th>
+                                <th className="text-left p-3 text-sm font-semibold">{language === 'en' ? 'User' : 'Utilisateur'}</th>
+                                <th className="text-left p-3 text-sm font-semibold">{language === 'en' ? 'Message' : 'Message'}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {siteLogs.map((log) => (
+                                <tr key={log.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                                  <td className="p-3 text-sm text-muted-foreground">
+                                    {new Date(log.created_at).toLocaleString()}
+                                  </td>
+                                  <td className="p-3">
+                                    <Badge 
+                                      variant={
+                                        log.log_type === 'error' ? 'destructive' :
+                                        log.log_type === 'warning' ? 'default' :
+                                        log.log_type === 'success' ? 'default' :
+                                        'secondary'
+                                      }
+                                      className={
+                                        log.log_type === 'error' ? 'bg-red-500' :
+                                        log.log_type === 'warning' ? 'bg-yellow-500' :
+                                        log.log_type === 'success' ? 'bg-green-500' :
+                                        ''
+                                      }
+                                    >
+                                      {log.log_type}
+                                    </Badge>
+                                  </td>
+                                  <td className="p-3 text-sm">{log.category}</td>
+                                  <td className="p-3 text-sm">
+                                    <Badge variant="outline">{log.user_type || 'guest'}</Badge>
+                                  </td>
+                                  <td className="p-3 text-sm">
+                                    <div className="max-w-md">
+                                      <p className="truncate">{log.message}</p>
+                                      {log.details && (
+                                        <details className="mt-1">
+                                          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                                            {language === 'en' ? 'Details' : 'Détails'}
+                                          </summary>
+                                          <pre className="mt-1 p-2 bg-muted/50 rounded text-xs overflow-auto max-h-32">
+                                            {JSON.stringify(log.details, null, 2)}
+                                          </pre>
+                                        </details>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="text-sm text-muted-foreground text-center pt-4">
+                          {language === 'en' 
+                            ? `Showing ${siteLogs.length} most recent logs` 
+                            : `Affichage des ${siteLogs.length} logs les plus récents`}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               {/* Settings Tab */}
