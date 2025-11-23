@@ -26,6 +26,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import { useIsMobile } from "@/hooks/use-mobile";
 
 
 interface AdminDashboardProps {
@@ -107,6 +108,43 @@ interface PassPurchase {
 }
 
 const AdminDashboard = ({ language }: AdminDashboardProps) => {
+  const isMobile = useIsMobile();
+  const navigate = useNavigate();
+  
+  // Show mobile message if accessed from mobile device
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full shadow-lg">
+          <CardContent className="p-8 text-center space-y-4">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <Settings className="w-8 h-8 text-primary" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl">
+              {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
+            </CardTitle>
+            <p className="text-muted-foreground">
+              {language === 'en' 
+                ? 'The admin dashboard is only available on desktop computers. Please access it from a PC or laptop for the best experience.'
+                : 'Le tableau de bord administrateur est uniquement disponible sur les ordinateurs de bureau. Veuillez y accéder depuis un PC ou un ordinateur portable pour une meilleure expérience.'}
+            </p>
+            <div className="pt-4">
+              <Button 
+                onClick={() => navigate('/admin/login')}
+                variant="outline"
+                className="w-full"
+              >
+                {language === 'en' ? 'Back to Login' : 'Retour à la Connexion'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const [applications, setApplications] = useState<AmbassadorApplication[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
 
@@ -126,7 +164,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
   const { toast } = useToast();
-  const navigate = useNavigate();
   const [ambassadorSales, setAmbassadorSales] = useState<Record<string, { standard: number; vip: number }>>({});
   const [ambassadorToDelete, setAmbassadorToDelete] = useState<Ambassador | null>(null);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
