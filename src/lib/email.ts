@@ -33,11 +33,11 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
       <title>Welcome to Andiamo Events</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
           line-height: 1.7; 
           color: #e0e0e0; 
           background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%);
@@ -158,6 +158,29 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           border: 1px solid hsl(195, 100%, 50%, 0.2);
           display: inline-block;
           margin-top: 5px;
+        }
+        .email-copy {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: hsl(195, 100%, 50%);
+          text-decoration: none;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          padding: 8px 12px;
+          border-radius: 6px;
+          background: hsl(218, 23%, 15%);
+          border: 1px solid hsl(195, 100%, 50%, 0.2);
+        }
+        .email-copy:hover {
+          background: hsl(218, 23%, 18%);
+          border-color: hsl(195, 100%, 50%);
+          transform: scale(1.05);
+        }
+        .email-copy-icon {
+          width: 16px;
+          height: 16px;
+          fill: currentColor;
         }
         .button-container {
           text-align: center;
@@ -369,6 +392,15 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           <div class="footer-brand">ANDIAMO EVENTS</div>
           <p class="footer-text">© 2024 Andiamo Events. All rights reserved.</p>
           <p class="footer-text">Tunisia's Premier Nightlife Experience</p>
+          <p class="footer-text" style="margin-top: 15px;">
+            <a href="mailto:contact@andiamo.com" class="email-copy" onclick="navigator.clipboard.writeText('contact@andiamo.com'); this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z\'/></svg> Copied!'; setTimeout(() => { this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z\'/></svg> Copy Email'; }, 2000); return false;">
+              <svg class="email-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              Copy Email
+            </a>
+          </p>
         </div>
       </div>
       ${trackingPixel}
@@ -396,11 +428,11 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
       <title>Application Update - Andiamo Events</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
           line-height: 1.7; 
           color: #e0e0e0; 
           background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%);
@@ -612,6 +644,15 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           <div class="footer-brand">ANDIAMO EVENTS</div>
           <p class="footer-text">© 2024 Andiamo Events. All rights reserved.</p>
           <p class="footer-text">Tunisia's Premier Nightlife Experience</p>
+          <p class="footer-text" style="margin-top: 15px;">
+            <a href="mailto:contact@andiamo.com" class="email-copy" onclick="navigator.clipboard.writeText('contact@andiamo.com'); this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z\'/></svg> Copied!'; setTimeout(() => { this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z\'/></svg> Copy Email'; }, 2000); return false;">
+              <svg class="email-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              Copy Email
+            </a>
+          </p>
         </div>
       </div>
     </body>

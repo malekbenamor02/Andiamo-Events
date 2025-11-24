@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,6 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
 import { uploadOGImage, deleteOGImage, fetchOGImageSettings } from "@/lib/og-image";
@@ -17,7 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail } from "@/lib/email";
 import {
   CheckCircle, XCircle, Clock, Users, TrendingUp, DollarSign, LogOut,
-  Plus, Edit, Trash2, Calendar, MapPin, Phone, Mail, User, Settings,
+  Plus, Edit, Trash2, Calendar as CalendarIcon, MapPin, Phone, Mail, User, Settings,
   Eye, EyeOff, Save, X, Image, Video, Upload,
   Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
   PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
@@ -218,6 +223,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [animatedApplications, setAnimatedApplications] = useState<Set<string>>(new Set());
   const [hasApplicationsAnimated, setHasApplicationsAnimated] = useState(false);
   const [applicationSearchTerm, setApplicationSearchTerm] = useState('');
+  const [applicationDateFrom, setApplicationDateFrom] = useState<Date | undefined>(undefined);
+  const [applicationDateTo, setApplicationDateTo] = useState<Date | undefined>(undefined);
   const [animatedSponsors, setAnimatedSponsors] = useState<Set<string>>(new Set());
   const [hasSponsorsAnimated, setHasSponsorsAnimated] = useState(false);
   const [animatedTeamMembers, setAnimatedTeamMembers] = useState<Set<string>>(new Set());
@@ -554,15 +561,37 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [activeTab, hasApplicationsAnimated, applications, applicationSearchTerm]);
 
-  // Filter applications based on search term
+  // Filter applications based on search term and date range
   const filteredApplications = applications.filter(application => {
+    // Search filter
     const searchLower = applicationSearchTerm.toLowerCase();
-    return (
+    const matchesSearch = 
       application.full_name.toLowerCase().includes(searchLower) ||
       (application.email && application.email.toLowerCase().includes(searchLower)) ||
       application.phone_number.includes(searchLower) ||
-      application.city.toLowerCase().includes(searchLower)
-    );
+      application.city.toLowerCase().includes(searchLower);
+    
+    if (!matchesSearch) return false;
+    
+    // Date range filter
+    if (applicationDateFrom || applicationDateTo) {
+      const applicationDate = new Date(application.created_at);
+      applicationDate.setHours(0, 0, 0, 0); // Reset time to start of day
+      
+      if (applicationDateFrom) {
+        const fromDate = new Date(applicationDateFrom);
+        fromDate.setHours(0, 0, 0, 0);
+        if (applicationDate < fromDate) return false;
+      }
+      
+      if (applicationDateTo) {
+        const toDate = new Date(applicationDateTo);
+        toDate.setHours(23, 59, 59, 999); // End of day
+        if (applicationDate > toDate) return false;
+      }
+    }
+    
+    return true;
   });
 
   // Animation effect for sponsors
@@ -2511,11 +2540,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'approved':
-        return <Badge className="bg-green-500">✅ {t.approved}</Badge>;
+        return <div className="w-3 h-3 rounded-full bg-green-500" title={t.approved} />;
       case 'rejected':
-        return <Badge className="bg-red-500">❌ {t.rejected}</Badge>;
+        return <div className="w-3 h-3 rounded-full bg-red-500" title={t.rejected} />;
       default:
-        return <Badge className="bg-yellow-500">⏳ {t.pending}</Badge>;
+        return <div className="w-3 h-3 rounded-full bg-yellow-500" title={t.pending} />;
     }
   };
 
@@ -2524,18 +2553,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     return url.includes('instagram.com') || url.includes('ig.com');
   };
 
-  // Social link component with icon
-  const SocialLink = ({ url }: { url: string }) => {
+  // Social link component with icon only for table
+  const SocialLink = ({ url, iconOnly = false }: { url: string; iconOnly?: boolean }) => {
     if (isInstagramUrl(url)) {
       return (
         <a 
           href={url} 
           target="_blank" 
           rel="noopener noreferrer"
-          className="inline-flex items-center space-x-2 text-primary hover:text-primary/80 transition-colors duration-300 transform hover:scale-105"
+          className={`inline-flex items-center ${iconOnly ? 'justify-center' : 'space-x-2'} text-primary hover:text-primary/80 transition-all duration-300 transform hover:scale-110`}
+          title="View Instagram Profile"
         >
-          <Instagram className="w-4 h-4" />
-          <span className="text-sm">Instagram Profile</span>
+          <Instagram className={`${iconOnly ? 'w-5 h-5' : 'w-4 h-4'}`} />
+          {!iconOnly && <span className="text-sm">Instagram Profile</span>}
         </a>
       );
     }
@@ -2545,8 +2575,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         target="_blank" 
         rel="noopener noreferrer"
         className="text-primary hover:underline text-sm transition-colors duration-300"
+        title={url}
       >
-        {url}
+        {iconOnly ? <ExternalLink className="w-4 h-4" /> : url}
       </a>
     );
   };
@@ -2996,7 +3027,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     : "hover:bg-accent hover:shadow-md"
                 }`}
               >
-                <Calendar className={`w-4 h-4 transition-transform duration-300 ${activeTab === "events" ? "animate-pulse" : ""}`} />
+                <CalendarIcon className={`w-4 h-4 transition-transform duration-300 ${activeTab === "events" ? "animate-pulse" : ""}`} />
                 <span>{t.events}</span>
               </button>
               <button
@@ -3278,7 +3309,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     <CardContent className="p-6 relative z-10">
                       <div className="flex items-start justify-between mb-4">
                         <div className="p-3 bg-blue-500/20 rounded-xl">
-                          <Calendar className="w-6 h-6 text-blue-500" />
+                          <CalendarIcon className="w-6 h-6 text-blue-500" />
                         </div>
                         <div className="flex items-center gap-1 text-xs font-heading">
                           <TrendingUp className="w-3 h-3 text-green-500" />
@@ -3516,7 +3547,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     <CardHeader>
                       <CardTitle className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <Calendar className="w-5 h-5 text-primary" />
+                          <CalendarIcon className="w-5 h-5 text-primary" />
                           <span className="font-heading">
                             {language === 'en' ? 'Upcoming Events' : 'Événements à Venir'}
                           </span>
@@ -3554,7 +3585,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   </h4>
                                   <div className="flex items-center gap-4 text-sm text-muted-foreground font-heading">
                                     <div className="flex items-center gap-1">
-                                      <Calendar className="w-3 h-3" />
+                                      <CalendarIcon className="w-3 h-3" />
                                       {new Date(event.date).toLocaleDateString()}
                                     </div>
                                     <div className="flex items-center gap-1">
@@ -3846,7 +3877,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </h3>
                         <div className="space-y-2 text-sm text-muted-foreground">
                           <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-300">
-                            <Calendar className="w-4 h-4 animate-pulse" />
+                            <CalendarIcon className="w-4 h-4 animate-pulse" />
                             <span>{new Date(event.date).toLocaleDateString()}</span>
                           </div>
                           <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-400">
@@ -4107,8 +4138,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   </div>
                 </div>
 
-                {/* Search Bar */}
-                <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-500">
+                {/* Search Bar and Date Filter */}
+                <div className="space-y-4 animate-in slide-in-from-bottom-4 fade-in duration-700 delay-500">
                   <div className="relative">
                     <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                     <Input
@@ -4118,193 +4149,273 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       className="pl-10 transition-all duration-300 focus:scale-105"
                     />
                   </div>
+                  
+                  {/* Date Range Filter */}
+                  <div className="flex flex-col sm:flex-row gap-4 items-end">
+                    <div className="flex-1 sm:flex-initial">
+                      <Label className="text-sm text-muted-foreground mb-2 block">From Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal transition-all duration-300 hover:scale-105",
+                              !applicationDateFrom && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                            {applicationDateFrom ? (
+                              format(applicationDateFrom, "PPP")
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 bg-card border-border" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={applicationDateFrom}
+                            onSelect={setApplicationDateFrom}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="flex-1 sm:flex-initial">
+                      <Label className="text-sm text-muted-foreground mb-2 block">To Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal transition-all duration-300 hover:scale-105",
+                              !applicationDateTo && "text-muted-foreground"
+                            )}
+                            disabled={!applicationDateFrom}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                            {applicationDateTo ? (
+                              format(applicationDateTo, "PPP")
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 bg-card border-border" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={applicationDateTo}
+                            onSelect={setApplicationDateTo}
+                            disabled={(date) => applicationDateFrom ? date < applicationDateFrom : false}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    {(applicationDateFrom || applicationDateTo) && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setApplicationDateFrom(undefined);
+                          setApplicationDateTo(undefined);
+                        }}
+                        className="transform hover:scale-105 transition-all duration-300"
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Clear Dates
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
-                <div className="space-y-4">
-                  {filteredApplications.map((application, index) => (
-                    <Card 
-                      key={application.id}
-                      className={`transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg ${
-                        animatedApplications.has(application.id) 
-                          ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                          : 'opacity-0 translate-y-8'
-                      }`}
-                    >
-                      <CardContent className="p-6">
-                        <div>
-                          <div className="space-y-4">
-                            {/* Header with name and status */}
-                            <div className="flex items-center justify-between animate-in slide-in-from-left-4 duration-500 delay-200">
-                              <h3 className="text-xl font-semibold">{application.full_name}</h3>
-                              <div className="animate-in zoom-in-95 duration-300 delay-400">
-                                {getStatusBadge(application.status)}
-                              </div>
+                <div className="rounded-md border border-border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="font-semibold">Name</TableHead>
+                        <TableHead className="font-semibold">Age</TableHead>
+                        <TableHead className="font-semibold">Phone</TableHead>
+                        <TableHead className="font-semibold">Email</TableHead>
+                        <TableHead className="font-semibold">City</TableHead>
+                        <TableHead className="font-semibold">Status</TableHead>
+                        <TableHead className="font-semibold">Applied</TableHead>
+                        <TableHead className="font-semibold">Details</TableHead>
+                        <TableHead className="font-semibold text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredApplications.map((application, index) => (
+                        <TableRow 
+                          key={application.id}
+                          className={`transform transition-all duration-300 hover:bg-muted/30 ${
+                            animatedApplications.has(application.id) 
+                              ? 'animate-in fade-in duration-500' 
+                              : 'opacity-0'
+                          }`}
+                        >
+                          <TableCell className="font-medium">{application.full_name}</TableCell>
+                          <TableCell>{application.age}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-1">
+                              <Phone className="w-3 h-3 text-muted-foreground" />
+                              <span>{application.phone_number}</span>
                             </div>
-
-                            {/* Application details grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                              <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-300">
-                                <User className="w-4 h-4 animate-pulse" />
-                                <span className="font-medium">Age:</span>
-                                <span className="text-muted-foreground">{application.age} years</span>
+                          </TableCell>
+                          <TableCell>
+                            {application.email ? (
+                              <div className="flex items-center space-x-1 group cursor-pointer" 
+                                   onClick={() => {
+                                     navigator.clipboard.writeText(application.email);
+                                     toast({
+                                       title: "Email Copied!",
+                                       description: `${application.email} copied to clipboard`,
+                                     });
+                                   }}
+                                   title="Click to copy email">
+                                <Mail className="w-3 h-3 text-primary group-hover:text-primary/80 transition-colors" />
+                                <span className="text-xs break-all max-w-[150px] truncate text-primary group-hover:text-primary/80 transition-colors">
+                                  {application.email}
+                                </span>
                               </div>
-                              <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-400">
-                                <Phone className="w-4 h-4 animate-pulse" />
-                                <span className="font-medium">Phone:</span>
-                                <span className="text-muted-foreground">{application.phone_number}</span>
-                              </div>
-                              {application.email && (
-                                <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-500">
-                                  <Mail className="w-4 h-4 animate-pulse" />
-                                  <span className="font-medium">Email:</span>
-                                  <span className="text-muted-foreground break-all">{application.email}</span>
-                                </div>
-                              )}
-                              <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-600">
-                                <MapPin className="w-4 h-4 animate-pulse" />
-                                <span className="font-medium">City:</span>
-                                <span className="text-muted-foreground">{application.city}</span>
-                              </div>
-                              <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-700">
-                                <Calendar className="w-4 h-4 animate-pulse" />
-                                <span className="font-medium">Applied:</span>
-                                <span className="text-muted-foreground">{new Date(application.created_at).toLocaleDateString()}</span>
-                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-1">
+                              <MapPin className="w-3 h-3 text-muted-foreground" />
+                              <span>{application.city}</span>
                             </div>
-
-                            {/* Motivation section */}
-                            {application.motivation && (
-                              <div className="mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-800">
-                                <h4 className="font-medium mb-2 flex items-center space-x-2">
-                                  <FileText className="w-4 h-4" />
-                                  <span>Motivation</span>
-                                </h4>
-                                <div className="bg-muted p-4 rounded-lg border-l-4 border-primary">
-                                  <p className="text-sm text-muted-foreground leading-relaxed">
-                                    {application.motivation}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Social link section */}
-                            {application.social_link && (
-                              <div className="mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-900">
-                                <h4 className="font-medium mb-2 flex items-center space-x-2">
-                                  <Instagram className="w-4 h-4" />
-                                  <span>Social Media</span>
-                                </h4>
-                                <div className="bg-muted p-3 rounded-lg">
-                                  <SocialLink url={application.social_link} />
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Action buttons */}
-                          <div className="flex gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-1000">
-                            {application.status === 'pending' && (
-                              <>
-                                <Button 
-                                  onClick={() => handleApprove(application)}
-                                  disabled={processingId === application.id}
-                                  className="bg-green-600 hover:bg-green-700 transform hover:scale-105 transition-all duration-300"
-                                >
-                                  {processingId === application.id ? (
-                                    <>
-                                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                                      {t.processing}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <CheckCircle className="w-4 h-4 mr-2" />
-                                      {t.approve}
-                                    </>
-                                  )}
-                                </Button>
-                                <Button 
-                                  onClick={() => handleReject(application)}
-                                  disabled={processingId === application.id}
-                                  variant="destructive"
-                                  className="transform hover:scale-105 transition-all duration-300"
-                                >
-                                  {processingId === application.id ? (
-                                    <>
-                                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                                      {t.processing}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <XCircle className="w-4 h-4 mr-2" />
-                                      {t.reject}
-                                    </>
-                                  )}
-                                </Button>
-                              </>
-                            )}
-
-                            {/* Email recovery buttons for approved applications with failed emails */}
-                            {application.status === 'approved' && emailFailedApplications.has(application.id) && (
-                              <div className="flex gap-2 mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                <div className="flex-1">
-                                  <p className="text-sm text-yellow-800 font-medium mb-2">
-                                    ⚠️ Email failed to send. Use these options:
-                                  </p>
-                                  <div className="flex gap-2">
-                                    <Button 
-                                      onClick={() => resendEmail(application)}
-                                      disabled={processingId === application.id}
-                                      size="sm"
-                                      className="bg-blue-600 hover:bg-blue-700 transform hover:scale-105 transition-all duration-300"
-                                    >
-                                      {processingId === application.id ? (
-                                        <>
-                                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
-                                          Sending...
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Mail className="w-3 h-3 mr-1" />
-                                          Resend Email
-                                        </>
-                                      )}
-                                    </Button>
-                                    <Button 
-                                      onClick={() => copyCredentials(application)}
-                                      size="sm"
-                                      variant="outline"
-                                      className="transform hover:scale-105 transition-all duration-300"
-                                    >
-                                      <Copy className="w-3 h-3 mr-1" />
-                                      Copy Credentials
-                                    </Button>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center">
+                              {getStatusBadge(application.status)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-1">
+                              <CalendarIcon className="w-3 h-3 text-muted-foreground" />
+                              <span className="text-xs">{new Date(application.created_at).toLocaleDateString()}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              {application.motivation && (
+                                <div className="group relative">
+                                  <FileText className="w-4 h-4 text-primary cursor-help" />
+                                  <div className="absolute left-0 top-6 z-50 hidden group-hover:block w-64 p-3 bg-card border border-border rounded-lg shadow-lg text-xs">
+                                    <p className="font-medium mb-1">Motivation:</p>
+                                    <p className="text-muted-foreground">{application.motivation}</p>
                                   </div>
                                 </div>
+                              )}
+                              {application.social_link && (
+                                <div className="flex items-center">
+                                  <SocialLink url={application.social_link} iconOnly={true} />
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {application.status === 'pending' && (
+                                <>
+                                  <Button 
+                                    onClick={() => handleApprove(application)}
+                                    disabled={processingId === application.id}
+                                    size="sm"
+                                    className="bg-green-600 hover:bg-green-700 transform hover:scale-105 transition-all duration-300"
+                                  >
+                                    {processingId === application.id ? (
+                                      <>
+                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
+                                        {t.processing}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CheckCircle className="w-3 h-3 mr-1" />
+                                        {t.approve}
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button 
+                                    onClick={() => handleReject(application)}
+                                    disabled={processingId === application.id}
+                                    variant="destructive"
+                                    size="sm"
+                                    className="transform hover:scale-105 transition-all duration-300"
+                                  >
+                                    {processingId === application.id ? (
+                                      <>
+                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
+                                        {t.processing}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <XCircle className="w-3 h-3 mr-1" />
+                                        {t.reject}
+                                      </>
+                                    )}
+                                  </Button>
+                                </>
+                              )}
+                              {application.status === 'approved' && emailFailedApplications.has(application.id) && (
+                                <div className="flex gap-1">
+                                  <Button 
+                                    onClick={() => resendEmail(application)}
+                                    disabled={processingId === application.id}
+                                    size="sm"
+                                    className="bg-blue-600 hover:bg-blue-700 transform hover:scale-105 transition-all duration-300"
+                                  >
+                                    {processingId === application.id ? (
+                                      <>
+                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
+                                        Sending...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Mail className="w-3 h-3 mr-1" />
+                                        Resend
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button 
+                                    onClick={() => copyCredentials(application)}
+                                    size="sm"
+                                    variant="outline"
+                                    className="transform hover:scale-105 transition-all duration-300"
+                                  >
+                                    <Copy className="w-3 h-3 mr-1" />
+                                    Copy
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {filteredApplications.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-8">
+                            {applicationSearchTerm ? (
+                              <div className="space-y-2">
+                                <p className="text-muted-foreground animate-pulse">No applications found matching "{applicationSearchTerm}"</p>
+                                <Button 
+                                  variant="outline" 
+                                  onClick={() => setApplicationSearchTerm('')}
+                                  className="transform hover:scale-105 transition-all duration-300"
+                                >
+                                  Clear Search
+                                </Button>
                               </div>
+                            ) : (
+                              <p className="text-muted-foreground animate-pulse">{t.noApplications}</p>
                             )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                  {filteredApplications.length === 0 && (
-                    <div className="text-center py-8 animate-in fade-in duration-500">
-                      {applicationSearchTerm ? (
-                        <div className="space-y-2">
-                          <p className="text-muted-foreground animate-pulse">No applications found matching "{applicationSearchTerm}"</p>
-                          <Button 
-                            variant="outline" 
-                            onClick={() => setApplicationSearchTerm('')}
-                            className="transform hover:scale-105 transition-all duration-300"
-                          >
-                            Clear Search
-                          </Button>
-                        </div>
-                      ) : (
-                        <p className="text-muted-foreground animate-pulse">{t.noApplications}</p>
+                          </TableCell>
+                        </TableRow>
                       )}
-                    </div>
-                  )}
+                    </TableBody>
+                  </Table>
                 </div>
               </TabsContent>
 
@@ -5061,7 +5172,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between mb-4">
                         <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                          <Calendar className="w-6 h-6 text-primary" />
+                          <CalendarIcon className="w-6 h-6 text-primary" />
                       </div>
                         <div className="flex items-center gap-1 text-green-500 text-sm font-heading font-semibold">
                           <TrendingUp className="w-4 h-4" />
@@ -5387,7 +5498,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <Card className="bg-card rounded-2xl border-border/50 shadow-lg animate-in slide-in-from-bottom-4 duration-700 delay-1200">
                   <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle className="text-xl font-heading font-bold flex items-center gap-2">
-                      <Calendar className="w-5 h-5 text-primary" />
+                      <CalendarIcon className="w-5 h-5 text-primary" />
                       Events Overview
                     </CardTitle>
                     <div className="flex items-center gap-2">
