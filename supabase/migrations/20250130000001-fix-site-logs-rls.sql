@@ -25,3 +25,5 @@ CREATE POLICY "Allow public log inserts" ON public.site_logs
 
 
 
+
+

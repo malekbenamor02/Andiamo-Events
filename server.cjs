@@ -718,8 +718,13 @@ app.get('/api/sms-balance', async (req, res) => {
 
     // Check for error codes (e.g., "102" = Authentication Failed)
     if (balanceData && balanceData.code && balanceData.code !== '200') {
-      return res.status(500).json({
-        success: false,
+      // Return 200 status with error details instead of 500
+      return res.status(200).json({
+        success: true,
+        balance: null,
+        currency: null,
+        message: 'Unable to fetch balance from SMS provider',
+        configured: true,
         error: balanceData.message || `Error code ${balanceData.code}`,
         rawResponse: balanceData
       });
@@ -734,8 +739,14 @@ app.get('/api/sms-balance', async (req, res) => {
     });
   } catch (error) {
     console.error('Error checking SMS balance:', error);
-    res.status(500).json({
-      success: false,
+    // Return 200 status with error details instead of 500
+    // This prevents the UI from breaking if SMS service is unavailable
+    res.status(200).json({
+      success: true,
+      balance: null,
+      currency: null,
+      message: 'SMS service unavailable',
+      configured: false,
       error: error.message || 'Failed to check SMS balance',
       rawResponse: null
     });

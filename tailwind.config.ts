@@ -71,8 +71,57 @@ export default {
 				}
 			},
 			fontFamily: {
+				// Current fonts
 				orbitron: ['Orbitron', 'monospace'],
-				sans: ['Inter', 'sans-serif']
+				sans: ['Josefin Sans', 'sans-serif'], // Changed to Josefin Sans - used everywhere
+				
+				// Font testing options - uncomment to test
+				// Option 1: Modern & Bold
+				// heading: ['Bebas Neue', 'sans-serif'],
+				// body: ['Work Sans', 'sans-serif'],
+				
+				// Josefin Sans - ACTIVE (User Requested) ⭐
+				heading: ['Josefin Sans', 'sans-serif'],
+				body: ['Josefin Sans', 'sans-serif'],
+				
+				// Option 2: Clean & Contemporary
+				// heading: ['Outfit', 'sans-serif'],
+				// body: ['DM Sans', 'sans-serif'],
+				
+				// Option 3: Geometric & Modern
+				// heading: ['Space Grotesk', 'sans-serif'],
+				// body: ['Manrope', 'sans-serif'],
+				
+				// Option 4: Energetic & Dynamic
+				// heading: ['Rajdhani', 'sans-serif'],
+				// body: ['Plus Jakarta Sans', 'sans-serif'],
+				
+				// Option 5: Bold & Impactful
+				// heading: ['Montserrat', 'sans-serif'],
+				// body: ['Poppins', 'sans-serif'],
+				
+				// Option 6: Bold & Playful - Great for Events
+				// heading: ['Bungee', 'sans-serif'],
+				// body: ['Raleway', 'sans-serif'],
+				
+				// Option 7: Energetic & Dynamic
+				// heading: ['Righteous', 'sans-serif'],
+				// body: ['Nunito', 'sans-serif'],
+				
+				// Option 8: Futuristic & Modern
+				// heading: ['Exo 2', 'sans-serif'],
+				// body: ['Rubik', 'sans-serif'],
+				
+				// Option 9: Bold & Impactful
+				// heading: ['Anton', 'sans-serif'],
+				// body: ['Source Sans Pro', 'sans-serif'],
+				
+				// Option 10: Modern & Geometric
+				// heading: ['Kanit', 'sans-serif'],
+				// body: ['Quicksand', 'sans-serif'],
+				
+				// Option 11: Josefin Sans - Elegant & Modern (User Requested)
+				josefin: ['Josefin Sans', 'sans-serif'],
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

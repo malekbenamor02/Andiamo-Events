@@ -50,7 +50,7 @@ const CounterSection = ({ language }: CounterSectionProps) => {
     <section id="counter-section" className="py-20 bg-gradient-dark">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <h2 className="text-4xl font-orbitron font-bold mb-4 text-gradient-neon">
+          <h2 className="text-4xl font-heading font-bold mb-4 text-gradient-neon">
             {language === 'en' ? 'Our Impact' : 'Notre Impact'}
           </h2>
           <p className="text-xl text-muted-foreground">
@@ -61,7 +61,7 @@ const CounterSection = ({ language }: CounterSectionProps) => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="text-center">
-            <div className="text-5xl md:text-6xl font-orbitron font-bold text-primary mb-2">
+            <div className="text-5xl md:text-6xl font-heading font-bold text-primary mb-2">
               {counters.events.toLocaleString()}+
             </div>
             <p className="text-xl text-muted-foreground">
@@ -69,7 +69,7 @@ const CounterSection = ({ language }: CounterSectionProps) => {
             </p>
           </div>
           <div className="text-center">
-            <div className="text-5xl md:text-6xl font-orbitron font-bold text-primary mb-2">
+            <div className="text-5xl md:text-6xl font-heading font-bold text-primary mb-2">
               {counters.members.toLocaleString()}+
             </div>
             <p className="text-xl text-muted-foreground">
@@ -77,7 +77,7 @@ const CounterSection = ({ language }: CounterSectionProps) => {
             </p>
           </div>
           <div className="text-center">
-            <div className="text-5xl md:text-6xl font-orbitron font-bold text-primary mb-2">
+            <div className="text-5xl md:text-6xl font-heading font-bold text-primary mb-2">
               {counters.followers.toLocaleString()}+
             </div>
             <p className="text-xl text-muted-foreground">

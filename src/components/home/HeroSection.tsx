@@ -143,7 +143,7 @@ const HeroSection = ({ language }: HeroSectionProps) => {
       {/* Content */}
       <div className="relative z-20 text-center max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="animate-fade-in-up">
-          <h1 className="text-5xl md:text-7xl font-orbitron font-bold mb-6 min-h-[1.2em]">
+          <h1 className="text-5xl md:text-7xl font-heading font-bold mb-6 min-h-[1.2em]">
             <span className="block text-gradient-neon animate-pulse-glow">
               <TypewriterText 
                 texts={typewriterTexts[language]}

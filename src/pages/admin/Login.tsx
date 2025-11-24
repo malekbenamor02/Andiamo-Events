@@ -244,7 +244,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
               <Lock className="w-8 h-8 text-primary-foreground relative z-10" />
               <Sparkles className="absolute top-1 right-1 w-4 h-4 text-white/80 animate-spin-slow" />
             </div>
-            <CardTitle className="text-3xl font-orbitron font-bold text-gradient-neon mb-2">
+            <CardTitle className="text-3xl font-heading font-bold text-gradient-neon mb-2">
               {t[language].title}
             </CardTitle>
             <CardDescription className="text-muted-foreground text-sm">

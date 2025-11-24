@@ -171,7 +171,7 @@ const Footer = ({ language }: FooterProps) => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand */}
           <div className="col-span-1 md:col-span-2">
-            <div className="text-3xl font-orbitron font-bold text-gradient-neon mb-4">
+            <div className="text-3xl font-heading font-bold text-gradient-neon mb-4">
               ANDIAMO EVENTS
             </div>
             <p className="text-muted-foreground mb-6 max-w-md">

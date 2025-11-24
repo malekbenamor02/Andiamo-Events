@@ -21,7 +21,8 @@ import {
   Eye, EyeOff, Save, X, Image, Video, Upload,
   Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
   PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
-  Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Database
+  Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Database,
+  Search, Filter, MoreVertical, ExternalLink, Ticket, TrendingDown, Percent, Target
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
@@ -183,6 +184,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [loadingSubscribers, setLoadingSubscribers] = useState(false);
   const [smsMessage, setSmsMessage] = useState("");
   const [sendingSms, setSendingSms] = useState(false);
+  // Test SMS state
+  const [testPhoneNumber, setTestPhoneNumber] = useState("");
+  const [testSmsMessage, setTestSmsMessage] = useState("");
+  const [sendingTestSms, setSendingTestSms] = useState(false);
   const [selectedPhones, setSelectedPhones] = useState<Set<string>>(new Set());
   const [bulkPhonesInput, setBulkPhonesInput] = useState("");
   const [addingBulkPhones, setAddingBulkPhones] = useState(false);
@@ -246,6 +251,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               ticketTypeDistribution: [],
               ambassadorPerformance: []
             });
+            // New state for redesigned ticket management
+            const [ticketSearchQuery, setTicketSearchQuery] = useState('');
+            const [ticketFilterStatus, setTicketFilterStatus] = useState<string>('all');
+            const [selectedEventForInsights, setSelectedEventForInsights] = useState<any>(null);
+            const [isEventInsightsOpen, setIsEventInsightsOpen] = useState(false);
+            const [chartPeriod, setChartPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
+            const [ticketIssues, setTicketIssues] = useState<any[]>([
+              { id: '1', customerName: 'John Doe', issue: 'Ticket not received', priority: 'high', status: 'open' },
+              { id: '2', customerName: 'Jane Smith', issue: 'Refund request', priority: 'medium', status: 'open' },
+              { id: '3', customerName: 'Mike Johnson', issue: 'Duplicate charge', priority: 'high', status: 'resolved' }
+            ]);
 
   const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(2 * 60 * 60); // 2 hours in seconds
 
@@ -1251,7 +1267,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setLoadingBalance(true);
       const response = await fetch('/api/sms-balance');
       
-      // Check if response is OK
+      // Check if response is OK (should always be 200 now, but check anyway)
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`Server error: ${response.status} ${response.statusText}. ${text.substring(0, 200)}`);
@@ -1266,21 +1282,33 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       const data = await response.json();
       
-      if (data.success) {
+      // Always set the balance data (even if null/error)
         setSmsBalance(data);
-      } else {
-        console.error('Error fetching SMS balance:', data.error);
+      
+      // Show warning toast if there's an error but don't treat it as a failure
+      if (data.error || !data.configured) {
+        console.warn('SMS balance check warning:', data.error || data.message);
+        if (data.error && data.configured) {
+          // Only show toast if API is configured but returned an error
         toast({
-          title: language === 'en' ? 'Error' : 'Erreur',
-          description: data.error || (language === 'en' ? 'Failed to fetch SMS balance' : 'Échec de la récupération du solde SMS'),
-          variant: 'destructive',
-        });
+            title: language === 'en' ? 'Warning' : 'Avertissement',
+            description: data.error || data.message || (language === 'en' ? 'Unable to fetch SMS balance' : 'Impossible de récupérer le solde SMS'),
+            variant: 'default',
+          });
+        }
       }
     } catch (error) {
       console.error('Error fetching SMS balance:', error);
+      // Set null balance on error
+      setSmsBalance({
+        success: true,
+        balance: null,
+        configured: false,
+        error: error instanceof Error ? error.message : 'Network error'
+      });
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to fetch SMS balance. Make sure the server is running on port 8082.' : 'Échec de la récupération du solde SMS. Assurez-vous que le serveur est en cours d\'exécution sur le port 8082.'),
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to fetch SMS balance' : 'Échec de la récupération du solde SMS'),
         variant: 'destructive',
       });
     } finally {
@@ -1380,6 +1408,113 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  // Send Test SMS
+  const handleSendTestSms = async () => {
+    if (!testPhoneNumber.trim()) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter a phone number' 
+          : 'Veuillez entrer un numéro de téléphone',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!testSmsMessage.trim()) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter a message' 
+          : 'Veuillez entrer un message',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate phone number format (should be 8 digits)
+    const phoneRegex = /^\d{8}$/;
+    const cleanPhone = testPhoneNumber.trim().replace(/\s+/g, '');
+    if (!phoneRegex.test(cleanPhone)) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter a valid 8-digit phone number (e.g., 21234567)' 
+          : 'Veuillez entrer un numéro de téléphone valide à 8 chiffres (ex: 21234567)',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Check balance before sending
+    if (smsBalance?.balanceValue === 0 || smsBalance?.balance === 0 || smsBalance?.balance === '0') {
+      const confirmSend = window.confirm(
+        language === 'en' 
+          ? '⚠️ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
+          : '⚠️ Avertissement: Votre solde SMS semble être de 0. Les messages peuvent échouer. Voulez-vous continuer?'
+      );
+      if (!confirmSend) {
+        return;
+      }
+    }
+
+    try {
+      setSendingTestSms(true);
+      
+      const response = await fetch('/api/send-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          phoneNumbers: [cleanPhone], 
+          message: testSmsMessage.trim() 
+        }),
+      });
+
+      // Check if response is OK
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error: ${response.status} ${response.statusText}. ${text.substring(0, 200)}`);
+      }
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: language === 'en' ? 'Test SMS Sent' : 'SMS Test Envoyé',
+          description: language === 'en' 
+            ? `Test SMS sent successfully to +216 ${cleanPhone}`
+            : `SMS test envoyé avec succès à +216 ${cleanPhone}`,
+        });
+        
+        // Refresh logs and balance
+        await fetchSmsLogs();
+        await fetchSmsBalance();
+        
+        // Clear test fields
+        setTestPhoneNumber('');
+        setTestSmsMessage('');
+      } else {
+        throw new Error(data.error || 'Failed to send test SMS');
+      }
+    } catch (error) {
+      console.error('Error sending test SMS:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send test SMS' : 'Échec de l\'envoi du SMS test'),
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingTestSms(false);
+    }
+  };
+
   // Send SMS broadcast
   const handleSendSmsBroadcast = async () => {
     if (!smsMessage.trim()) {
@@ -1393,17 +1528,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       return;
     }
 
-    // Get selected phones or all subscribers if none selected
-    const phonesToSend = selectedPhones.size > 0 
-      ? Array.from(selectedPhones)
-      : phoneSubscribers.map(sub => sub.phone_number);
+    // Get all subscribers
+    const phonesToSend = phoneSubscribers.map(sub => sub.phone_number);
 
     if (phonesToSend.length === 0) {
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
-          ? 'No phone numbers selected' 
-          : 'Aucun numéro de téléphone sélectionné',
+          ? 'No subscribers available' 
+          : 'Aucun abonné disponible',
         variant: 'destructive',
       });
       return;
@@ -1462,7 +1595,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         
         // Clear message
         setSmsMessage('');
-        setSelectedPhones(new Set());
       } else {
         throw new Error(data.error || 'Failed to send SMS');
       }
@@ -1551,7 +1683,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchAboutImages();
       await fetchPhoneSubscribers();
       await fetchSmsLogs();
-      await fetchSmsBalance();
+      // SMS Balance check removed - user must click button to check
       await loadOGImageSettings();
 
     } catch (error) {
@@ -2991,7 +3123,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             {/* Header */}
             <div className="mb-8 flex justify-between items-start min-w-0 animate-in slide-in-from-top-4 fade-in duration-700">
               <div>
-                <h1 className="text-4xl font-orbitron font-bold text-gradient-neon mb-2 animate-in slide-in-from-left-4 duration-1000">
+                <h1 className="text-4xl font-heading font-bold text-gradient-neon mb-2 animate-in slide-in-from-left-4 duration-1000">
                   {t.title}
                 </h1>
                 <p className="text-muted-foreground animate-in slide-in-from-left-4 duration-1000 delay-300">
@@ -3011,122 +3143,517 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 min-w-0">
               {/* Tabs Content - separated from navigation */}
               <TabsContent value="overview" className="space-y-6 mt-20 sm:mt-0">
-                {/* Stats Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 w-full px-2">
-                  <Card 
-                    className={`transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg ${
-                      animatedCards.has(0) 
-                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                        : 'opacity-0 translate-y-8'
-                    }`}
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex items-center space-x-2">
-                        <Clock className="w-8 h-8 text-yellow-500 animate-pulse" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">{t.pendingApplications}</p>
-                          <p className="text-2xl font-bold animate-in slide-in-from-right-4 duration-1000 delay-300">
-                            {pendingApplications.length}
+                {/* Welcome Header */}
+                <div className="animate-in slide-in-from-top-4 fade-in duration-700">
+                  <Card className="bg-gradient-to-br from-primary/10 via-secondary/5 to-background border-primary/20 shadow-xl">
+                    <CardContent className="p-8">
+                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                        <div className="space-y-2">
+                          <h2 className="text-3xl font-heading font-bold text-gradient-neon">
+                            {language === 'en' ? 'Welcome Back!' : 'Bon Retour !'}
+                          </h2>
+                          <p className="text-muted-foreground text-lg font-heading">
+                            {language === 'en' 
+                              ? 'Here\'s what\'s happening with your events today'
+                              : 'Voici ce qui se passe avec vos événements aujourd\'hui'}
                           </p>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card 
-                    className={`transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg ${
-                      animatedCards.has(1) 
-                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200' 
-                        : 'opacity-0 translate-y-8'
-                    }`}
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex items-center space-x-2">
-                        <CheckCircle className="w-8 h-8 text-green-500 animate-pulse" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">{t.approvedApplications}</p>
-                          <p className="text-2xl font-bold animate-in slide-in-from-right-4 duration-1000 delay-500">
-                            {approvedCount}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card 
-                    className={`transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg ${
-                      animatedCards.has(2) 
-                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400' 
-                        : 'opacity-0 translate-y-8'
-                    }`}
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="w-8 h-8 text-blue-500 animate-pulse" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">{t.totalEvents}</p>
-                          <p className="text-2xl font-bold animate-in slide-in-from-right-4 duration-1000 delay-700">
-                            {events.length}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card 
-                    className={`transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg ${
-                      animatedCards.has(3) 
-                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600' 
-                        : 'opacity-0 translate-y-8'
-                    }`}
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex items-center space-x-2">
-                        <Users className="w-8 h-8 text-purple-500 animate-pulse" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">{t.approvedAmbassadors}</p>
-                          <p className="text-2xl font-bold animate-in slide-in-from-right-4 duration-1000 delay-900">
-                            {ambassadors.length}
-                          </p>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <p className="text-sm text-muted-foreground font-heading">
+                              {language === 'en' ? 'Active Events' : 'Événements Actifs'}
+                            </p>
+                            <p className="text-2xl font-bold text-primary font-heading">
+                              {events.filter(e => e.event_type === 'upcoming' && new Date(e.date) >= new Date()).length}
+                            </p>
+                          </div>
+                          <div className="h-12 w-px bg-border" />
+                          <div className="text-right">
+                            <p className="text-sm text-muted-foreground font-heading">
+                              {language === 'en' ? 'Total Revenue' : 'Revenus Totaux'}
+                            </p>
+                            <p className="text-2xl font-bold text-secondary font-heading">
+                              {passPurchases.reduce((sum, p) => sum + (p.total_price || 0), 0).toLocaleString()} TND
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* Recent Activity */}
-                <Card className="animate-in slide-in-from-bottom-4 fade-in duration-1000 delay-800 hover:shadow-lg transition-all duration-300">
+                {/* Enhanced KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full px-2">
+                  {/* Pending Applications Card */}
+                  <Card 
+                    className={`group relative overflow-hidden bg-gradient-to-br from-yellow-500/10 via-yellow-500/5 to-background border-yellow-500/20 transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                      animatedCards.has(0) 
+                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
+                        : 'opacity-0 translate-y-8'
+                    }`}
+                  >
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl" />
+                    <CardContent className="p-6 relative z-10">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="p-3 bg-yellow-500/20 rounded-xl">
+                          <Clock className="w-6 h-6 text-yellow-500" />
+                        </div>
+                        <div className="flex items-center gap-1 text-xs font-heading">
+                          <TrendingUp className="w-3 h-3 text-green-500" />
+                          <span className="text-green-500">+12%</span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground font-heading">{t.pendingApplications}</p>
+                        <p className="text-3xl font-bold font-heading text-foreground">
+                            {pendingApplications.length}
+                          </p>
+                        <p className="text-xs text-muted-foreground font-heading">
+                          {language === 'en' ? 'Awaiting review' : 'En attente de révision'}
+                        </p>
+                        </div>
+                      {/* Mini Sparkline */}
+                      <div className="mt-4 h-8 flex items-end gap-1">
+                        {[3, 5, 4, 7, 6, 8, pendingApplications.length].map((h, i) => (
+                          <div 
+                            key={i}
+                            className="flex-1 bg-yellow-500/30 rounded-t transition-all duration-300 hover:bg-yellow-500/50"
+                            style={{ height: `${(h / 10) * 100}%` }}
+                          />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Approved Applications Card */}
+                  <Card 
+                    className={`group relative overflow-hidden bg-gradient-to-br from-green-500/10 via-green-500/5 to-background border-green-500/20 transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                      animatedCards.has(1) 
+                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200' 
+                        : 'opacity-0 translate-y-8'
+                    }`}
+                  >
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl" />
+                    <CardContent className="p-6 relative z-10">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="p-3 bg-green-500/20 rounded-xl">
+                          <CheckCircle className="w-6 h-6 text-green-500" />
+                        </div>
+                        <div className="flex items-center gap-1 text-xs font-heading">
+                          <TrendingUp className="w-3 h-3 text-green-500" />
+                          <span className="text-green-500">+8%</span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground font-heading">{t.approvedApplications}</p>
+                        <p className="text-3xl font-bold font-heading text-foreground">
+                            {approvedCount}
+                          </p>
+                        <p className="text-xs text-muted-foreground font-heading">
+                          {language === 'en' ? 'Active ambassadors' : 'Ambassadeurs actifs'}
+                        </p>
+                        </div>
+                      {/* Mini Sparkline */}
+                      <div className="mt-4 h-8 flex items-end gap-1">
+                        {[5, 7, 6, 8, 9, 10, approvedCount].map((h, i) => (
+                          <div 
+                            key={i}
+                            className="flex-1 bg-green-500/30 rounded-t transition-all duration-300 hover:bg-green-500/50"
+                            style={{ height: `${(h / 15) * 100}%` }}
+                          />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Total Events Card */}
+                  <Card 
+                    className={`group relative overflow-hidden bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-background border-blue-500/20 transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                      animatedCards.has(2) 
+                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400' 
+                        : 'opacity-0 translate-y-8'
+                    }`}
+                  >
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl" />
+                    <CardContent className="p-6 relative z-10">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="p-3 bg-blue-500/20 rounded-xl">
+                          <Calendar className="w-6 h-6 text-blue-500" />
+                        </div>
+                        <div className="flex items-center gap-1 text-xs font-heading">
+                          <TrendingUp className="w-3 h-3 text-green-500" />
+                          <span className="text-green-500">+15%</span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground font-heading">{t.totalEvents}</p>
+                        <p className="text-3xl font-bold font-heading text-foreground">
+                            {events.length}
+                          </p>
+                        <p className="text-xs text-muted-foreground font-heading">
+                          {language === 'en' ? 'All time events' : 'Événements de tous les temps'}
+                        </p>
+                        </div>
+                      {/* Mini Sparkline */}
+                      <div className="mt-4 h-8 flex items-end gap-1">
+                        {[2, 3, 4, 5, 6, 7, events.length].map((h, i) => (
+                          <div 
+                            key={i}
+                            className="flex-1 bg-blue-500/30 rounded-t transition-all duration-300 hover:bg-blue-500/50"
+                            style={{ height: `${(h / 10) * 100}%` }}
+                          />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Approved Ambassadors Card */}
+                  <Card 
+                    className={`group relative overflow-hidden bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-background border-purple-500/20 transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                      animatedCards.has(3) 
+                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600' 
+                        : 'opacity-0 translate-y-8'
+                    }`}
+                  >
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl" />
+                    <CardContent className="p-6 relative z-10">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="p-3 bg-purple-500/20 rounded-xl">
+                          <Users className="w-6 h-6 text-purple-500" />
+                        </div>
+                        <div className="flex items-center gap-1 text-xs font-heading">
+                          <TrendingUp className="w-3 h-3 text-green-500" />
+                          <span className="text-green-500">+22%</span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground font-heading">{t.approvedAmbassadors}</p>
+                        <p className="text-3xl font-bold font-heading text-foreground">
+                            {ambassadors.length}
+                          </p>
+                        <p className="text-xs text-muted-foreground font-heading">
+                          {language === 'en' ? 'Team members' : 'Membres de l\'équipe'}
+                        </p>
+                        </div>
+                      {/* Mini Sparkline */}
+                      <div className="mt-4 h-8 flex items-end gap-1">
+                        {[4, 5, 6, 7, 8, 9, ambassadors.length].map((h, i) => (
+                          <div 
+                            key={i}
+                            className="flex-1 bg-purple-500/30 rounded-t transition-all duration-300 hover:bg-purple-500/50"
+                            style={{ height: `${(h / 12) * 100}%` }}
+                          />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Charts & Analytics Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Activity Timeline Chart */}
+                  <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-800 hover:shadow-lg transition-all duration-300">
                   <CardHeader>
-                    <CardTitle className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-700 delay-900">
-                      <TrendingUp className="w-5 h-5 animate-pulse transition-transform duration-300 hover:scale-110" />
-                      <span className="animate-in slide-in-from-left-4 duration-700 delay-1000">Recent Activity</span>
+                      <CardTitle className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Activity className="w-5 h-5 text-primary" />
+                          <span className="font-heading">
+                            {language === 'en' ? 'Activity Overview' : 'Aperçu de l\'Activité'}
+                          </span>
+                        </div>
+                        <Badge variant="outline" className="font-heading">
+                          {language === 'en' ? 'Last 7 days' : '7 derniers jours'}
+                        </Badge>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-64 flex items-end justify-between gap-2">
+                        {[12, 18, 15, 22, 19, 25, applications.length].map((value, index) => (
+                          <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
+                            <div className="relative w-full">
+                              <div 
+                                className="w-full bg-gradient-to-t from-primary to-secondary rounded-t transition-all duration-300 group-hover:opacity-80 cursor-pointer"
+                                style={{ height: `${(value / 30) * 100}%` }}
+                              />
+                              <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-background border border-border px-2 py-1 rounded text-xs font-heading whitespace-nowrap">
+                                {value}
+                              </div>
+                            </div>
+                            <span className="text-xs text-muted-foreground font-heading">
+                              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index]}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Distribution Chart */}
+                  <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-900 hover:shadow-lg transition-all duration-300">
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <PieChart className="w-5 h-5 text-primary" />
+                          <span className="font-heading">
+                            {language === 'en' ? 'Applications Status' : 'Statut des Candidatures'}
+                          </span>
+                        </div>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
+                        {/* Pending */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-heading text-muted-foreground">
+                              {language === 'en' ? 'Pending' : 'En Attente'}
+                            </span>
+                            <span className="text-sm font-bold font-heading">{pendingApplications.length}</span>
+                          </div>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-full transition-all duration-500"
+                              style={{ width: `${applications.length > 0 ? (pendingApplications.length / applications.length) * 100 : 0}%` }}
+                            />
+                          </div>
+                        </div>
+                        {/* Approved */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-heading text-muted-foreground">
+                              {language === 'en' ? 'Approved' : 'Approuvé'}
+                            </span>
+                            <span className="text-sm font-bold font-heading">{approvedCount}</span>
+                          </div>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all duration-500"
+                              style={{ width: `${applications.length > 0 ? (approvedCount / applications.length) * 100 : 0}%` }}
+                            />
+                          </div>
+                        </div>
+                        {/* Rejected */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-heading text-muted-foreground">
+                              {language === 'en' ? 'Rejected' : 'Rejeté'}
+                            </span>
+                            <span className="text-sm font-bold font-heading">
+                              {applications.filter(a => a.status === 'rejected').length}
+                            </span>
+                          </div>
+                          <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all duration-500"
+                              style={{ width: `${applications.length > 0 ? (applications.filter(a => a.status === 'rejected').length / applications.length) * 100 : 0}%` }}
+                            />
+                          </div>
+                        </div>
+                        {/* Summary */}
+                        <div className="pt-4 border-t border-border">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-heading font-semibold">
+                              {language === 'en' ? 'Total Applications' : 'Total des Candidatures'}
+                            </span>
+                            <span className="text-lg font-bold font-heading text-primary">
+                              {applications.length}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Quick Actions & Upcoming Events */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Quick Actions */}
+                  <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-1000 hover:shadow-lg transition-all duration-300">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 font-heading">
+                        <Target className="w-5 h-5 text-primary" />
+                        {language === 'en' ? 'Quick Actions' : 'Actions Rapides'}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <Button 
+                        onClick={() => setActiveTab("events")}
+                        className="w-full justify-start font-heading btn-gradient"
+                        variant="outline"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        {language === 'en' ? 'Create New Event' : 'Créer un Nouvel Événement'}
+                      </Button>
+                      <Button 
+                        onClick={() => setActiveTab("applications")}
+                        className="w-full justify-start font-heading"
+                        variant="outline"
+                      >
+                        <FileText className="w-4 h-4 mr-2" />
+                        {language === 'en' ? 'Review Applications' : 'Examiner les Candidatures'}
+                      </Button>
+                      <Button 
+                        onClick={() => setActiveTab("ambassadors")}
+                        className="w-full justify-start font-heading"
+                        variant="outline"
+                      >
+                        <Users className="w-4 h-4 mr-2" />
+                        {language === 'en' ? 'Manage Ambassadors' : 'Gérer les Ambassadeurs'}
+                      </Button>
+                      <Button 
+                        onClick={() => setActiveTab("tickets")}
+                        className="w-full justify-start font-heading"
+                        variant="outline"
+                      >
+                        <Ticket className="w-4 h-4 mr-2" />
+                        {language === 'en' ? 'View Ticket Sales' : 'Voir les Ventes de Billets'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Upcoming Events Preview */}
+                  <Card className="lg:col-span-2 animate-in slide-in-from-bottom-4 fade-in duration-700 delay-1100 hover:shadow-lg transition-all duration-300">
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-5 h-5 text-primary" />
+                          <span className="font-heading">
+                            {language === 'en' ? 'Upcoming Events' : 'Événements à Venir'}
+                          </span>
+                        </div>
+                        <Button 
+                          onClick={() => setActiveTab("events")}
+                          variant="ghost"
+                          size="sm"
+                          className="font-heading"
+                        >
+                          {language === 'en' ? 'View All' : 'Voir Tout'}
+                        </Button>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {events
+                          .filter(e => e.event_type === 'upcoming' && new Date(e.date) >= new Date())
+                          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                          .slice(0, 3)
+                          .map((event, index) => (
+                            <div 
+                              key={event.id}
+                              className={`p-4 bg-muted/50 rounded-lg border border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-md cursor-pointer group animate-in slide-in-from-left-4 fade-in duration-500 ${
+                                index === 0 ? 'delay-1200' :
+                                index === 1 ? 'delay-1300' :
+                                'delay-1400'
+                              }`}
+                              onClick={() => setActiveTab("events")}
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1 space-y-1">
+                                  <h4 className="font-semibold font-heading group-hover:text-primary transition-colors">
+                                    {event.name}
+                                  </h4>
+                                  <div className="flex items-center gap-4 text-sm text-muted-foreground font-heading">
+                                    <div className="flex items-center gap-1">
+                                      <Calendar className="w-3 h-3" />
+                                      {new Date(event.date).toLocaleDateString()}
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <MapPin className="w-3 h-3" />
+                                      {event.venue}
+                                    </div>
+                                  </div>
+                                </div>
+                                <Badge variant="outline" className="font-heading">
+                                  {event.featured ? (language === 'en' ? 'Featured' : 'En Vedette') : event.event_type}
+                                </Badge>
+                              </div>
+                            </div>
+                          ))}
+                        {events.filter(e => e.event_type === 'upcoming' && new Date(e.date) >= new Date()).length === 0 && (
+                          <div className="text-center py-8 text-muted-foreground font-heading">
+                            {language === 'en' ? 'No upcoming events' : 'Aucun événement à venir'}
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Recent Activity - Enhanced */}
+                <Card className="animate-in slide-in-from-bottom-4 fade-in duration-1000 delay-1500 hover:shadow-lg transition-all duration-300">
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <TrendingUp className="w-5 h-5 text-primary animate-pulse" />
+                        <span className="font-heading">
+                          {language === 'en' ? 'Recent Activity' : 'Activité Récente'}
+                        </span>
+                      </div>
+                      <Button 
+                        onClick={() => setActiveTab("applications")}
+                        variant="ghost"
+                        size="sm"
+                        className="font-heading"
+                      >
+                        {language === 'en' ? 'View All' : 'Voir Tout'}
+                      </Button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
                       {applications.slice(0, 5).map((app, index) => (
                         <div 
                           key={app.id} 
-                          className={`flex items-center justify-between p-3 bg-muted rounded-lg transform transition-all duration-300 hover:scale-105 hover:shadow-md animate-in slide-in-from-left-4 fade-in duration-500 ${
-                            index === 0 ? 'delay-1100' :
-                            index === 1 ? 'delay-1200' :
-                            index === 2 ? 'delay-1300' :
-                            index === 3 ? 'delay-1400' :
-                            'delay-1500'
+                          className={`flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-lg border border-border/50 hover:border-primary/50 transform transition-all duration-300 hover:scale-[1.02] hover:shadow-md group animate-in slide-in-from-left-4 fade-in duration-500 ${
+                            index === 0 ? 'delay-1600' :
+                            index === 1 ? 'delay-1700' :
+                            index === 2 ? 'delay-1800' :
+                            index === 3 ? 'delay-1900' :
+                            'delay-2000'
                           }`}
                         >
-                          <div className="animate-in slide-in-from-left-4 duration-500 delay-200">
-                            <p className="font-medium transition-colors duration-300">{app.full_name}</p>
-                            <p className="text-sm text-muted-foreground transition-colors duration-300">{app.city} • {app.phone_number}</p>
+                          <div className="flex items-center gap-4 flex-1">
+                            <div className={`p-2 rounded-lg ${
+                              app.status === 'approved' ? 'bg-green-500/20' :
+                              app.status === 'rejected' ? 'bg-red-500/20' :
+                              'bg-yellow-500/20'
+                            }`}>
+                              {app.status === 'approved' ? (
+                                <CheckCircle className="w-5 h-5 text-green-500" />
+                              ) : app.status === 'rejected' ? (
+                                <XCircle className="w-5 h-5 text-red-500" />
+                              ) : (
+                                <Clock className="w-5 h-5 text-yellow-500" />
+                              )}
                           </div>
-                          <div className="animate-in zoom-in-95 duration-300 delay-300 hover:scale-110 transition-transform duration-300">
+                            <div className="flex-1">
+                              <p className="font-semibold font-heading group-hover:text-primary transition-colors">
+                                {app.full_name}
+                              </p>
+                              <p className="text-sm text-muted-foreground font-heading">
+                                {app.city} • {app.phone_number}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
                             {getStatusBadge(app.status)}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setActiveTab("applications")}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity font-heading"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
                           </div>
                         </div>
                       ))}
                       {applications.length === 0 && (
-                        <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-1100">
-                          <p className="text-center text-muted-foreground py-8 animate-in fade-in duration-500">
+                        <div className="text-center py-12">
+                          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                            <FileText className="w-8 h-8 text-muted-foreground" />
+                          </div>
+                          <p className="text-muted-foreground font-heading">
                             {t.noApplications}
                           </p>
                         </div>
@@ -4403,41 +4930,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </DialogContent>
               </Dialog>
 
-              {/* Ticket Management Tab */}
+              {/* Ticket Management Tab - Redesigned */}
               <TabsContent value="tickets" className="space-y-6">
-                <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-                  <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
-                    Ticket Management & Analytics
+                {/* 🔶 1. Header Section */}
+                <div className="space-y-4 animate-in slide-in-from-top-4 fade-in duration-700">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div>
+                      <h2 className="text-3xl md:text-4xl font-heading font-bold text-gradient-neon mb-2 animate-in slide-in-from-left-4 duration-1000">
+                        Ticket Management
                   </h2>
-                  <div className="flex items-center gap-4 animate-in slide-in-from-right-4 duration-1000 delay-300">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="eventSelect" className="text-sm font-medium">Select Event:</Label>
-                      <Select value={selectedEventId} onValueChange={setSelectedEventId}>
-                        <SelectTrigger className="w-64 transition-all duration-300 hover:shadow-md">
-                          <SelectValue placeholder="Select an event" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {events.map((event) => (
-                            <SelectItem key={event.id} value={event.id}>
-                              <div className="flex items-center gap-2">
-                                <span>{event.name}</span>
-                                {event.event_type === 'upcoming' && (
-                                  <Badge variant="secondary" className="text-xs">Upcoming</Badge>
-                                )}
+                      <p className="text-sm md:text-base text-muted-foreground font-heading animate-in slide-in-from-left-4 duration-1000 delay-200">
+                        Overview of Events • Ticket Sales • Performance Analytics
+                      </p>
                               </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Badge variant="secondary" className="animate-pulse">
-                      {tickets.filter(t => t.event_id === selectedEventId).length} tickets
-                    </Badge>
+                    <div className="flex items-center gap-3">
                     <Button 
                       variant="outline" 
                       size="sm"
                       onClick={() => {
-                        // Force refresh of ticket data
                         const mockTickets = events.map((event, index) => ({
                           id: `ticket-${index + 1}-${Date.now()}`,
                           event_id: event.id,
@@ -4469,11 +4979,37 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           }))
                         }));
                       }}
-                      className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group"
+                        className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group font-heading"
                     >
                       <RefreshCw className="w-4 h-4 mr-2 transition-transform duration-300 group-hover:rotate-180" />
                       Refresh
                     </Button>
+                    </div>
+                  </div>
+                  
+                  {/* Search and Filter Bar */}
+                  <div className="flex flex-col sm:flex-row gap-3 animate-in slide-in-from-bottom-4 duration-700 delay-300">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search events, customers, tickets..."
+                        value={ticketSearchQuery}
+                        onChange={(e) => setTicketSearchQuery(e.target.value)}
+                        className="pl-10 font-heading bg-card border-border focus:border-primary"
+                      />
+                    </div>
+                    <Select value={ticketFilterStatus} onValueChange={setTicketFilterStatus}>
+                      <SelectTrigger className="w-full sm:w-[180px] font-heading">
+                        <Filter className="w-4 h-4 mr-2" />
+                        <SelectValue placeholder="Filter by status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Events</SelectItem>
+                        <SelectItem value="upcoming">Upcoming</SelectItem>
+                        <SelectItem value="past">Past Events</SelectItem>
+                        <SelectItem value="active">Active Sales</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -4518,73 +5054,143 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   ) : null;
                 })()}
 
-                {/* Enhanced Analytics Overview Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in slide-in-from-bottom-4 duration-700 delay-200">
-                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-300 group">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Total Tickets</p>
-                        <p className="text-2xl font-bold text-primary group-hover:scale-110 transition-transform duration-300">{ticketStats.totalTickets}</p>
+                {/* 🔶 2. KPI Analytics Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in slide-in-from-bottom-4 duration-700 delay-400">
+                  {/* Total Events Card */}
+                  <Card className="bg-card rounded-2xl border-border/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 group animate-in slide-in-from-left-4 duration-500 delay-500">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                          <Calendar className="w-6 h-6 text-primary" />
                       </div>
-                      <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center group-hover:bg-primary/20 transition-colors duration-300">
-                        <DollarSign className="w-6 h-6 text-primary group-hover:scale-110 transition-transform duration-300" />
+                        <div className="flex items-center gap-1 text-green-500 text-sm font-heading font-semibold">
+                          <TrendingUp className="w-4 h-4" />
+                          <span>+12.5%</span>
                       </div>
                     </div>
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground font-heading">Total Events</p>
+                        <p className="text-3xl font-heading font-bold text-primary">{events.length}</p>
+                        {/* Mini sparkline */}
+                        <div className="h-8 w-full flex items-end gap-1 opacity-60">
+                          {[65, 72, 68, 80, 75, 85, 90].map((h, i) => (
+                            <div key={i} className="flex-1 bg-primary rounded-t" style={{ height: `${h}%` }} />
+                          ))}
                   </div>
+                      </div>
+                    </CardContent>
+                  </Card>
 
-                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-400 group">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Tickets Sold</p>
-                        <p className="text-2xl font-bold text-green-500 group-hover:scale-110 transition-transform duration-300">{ticketStats.soldTickets}</p>
+                  {/* Total Tickets Sold Card */}
+                  <Card className="bg-card rounded-2xl border-border/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 group animate-in slide-in-from-left-4 duration-500 delay-600">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center group-hover:bg-green-500/20 transition-colors">
+                          <Ticket className="w-6 h-6 text-green-500" />
                       </div>
-                      <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center group-hover:bg-green-500/20 transition-colors duration-300">
-                        <TrendingUp className="w-6 h-6 text-green-500 group-hover:scale-110 transition-transform duration-300" />
+                        <div className="flex items-center gap-1 text-green-500 text-sm font-heading font-semibold">
+                          <TrendingUp className="w-4 h-4" />
+                          <span>+8.2%</span>
                       </div>
                     </div>
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground font-heading">Tickets Sold</p>
+                        <p className="text-3xl font-heading font-bold text-green-500">{ticketStats.soldTickets || ticketStats.totalSold || 0}</p>
+                        {/* Mini sparkline */}
+                        <div className="h-8 w-full flex items-end gap-1 opacity-60">
+                          {[45, 52, 48, 60, 55, 65, 70].map((h, i) => (
+                            <div key={i} className="flex-1 bg-green-500 rounded-t" style={{ height: `${h}%` }} />
+                          ))}
                   </div>
+                      </div>
+                    </CardContent>
+                  </Card>
 
-                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-500 group">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Available Tickets</p>
-                        <p className="text-2xl font-bold text-blue-500 group-hover:scale-110 transition-transform duration-300">{ticketStats.availableTickets}</p>
+                  {/* Revenue Generated Card */}
+                  <Card className="bg-card rounded-2xl border-border/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 group animate-in slide-in-from-left-4 duration-500 delay-700">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="w-12 h-12 bg-orange-500/10 rounded-xl flex items-center justify-center group-hover:bg-orange-500/20 transition-colors">
+                          <DollarSign className="w-6 h-6 text-orange-500" />
                       </div>
-                      <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center group-hover:bg-blue-500/20 transition-colors duration-300">
-                        <BarChart3 className="w-6 h-6 text-blue-500 group-hover:scale-110 transition-transform duration-300" />
+                        <div className="flex items-center gap-1 text-green-500 text-sm font-heading font-semibold">
+                          <TrendingUp className="w-4 h-4" />
+                          <span>+15.3%</span>
                       </div>
                     </div>
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground font-heading">Revenue Generated</p>
+                        <p className="text-3xl font-heading font-bold text-orange-500">{(ticketStats.revenue || ticketStats.totalRevenue || 0).toLocaleString()} TND</p>
+                        {/* Mini sparkline */}
+                        <div className="h-8 w-full flex items-end gap-1 opacity-60">
+                          {[55, 62, 58, 70, 65, 75, 80].map((h, i) => (
+                            <div key={i} className="flex-1 bg-orange-500 rounded-t" style={{ height: `${h}%` }} />
+                          ))}
                   </div>
+                      </div>
+                    </CardContent>
+                  </Card>
 
-                  <div className="bg-card rounded-xl p-6 shadow-lg transform hover:scale-105 hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-600 group">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Total Revenue</p>
-                        <p className="text-2xl font-bold text-orange-500 group-hover:scale-110 transition-transform duration-300">{ticketStats.revenue.toLocaleString()} TND</p>
+                  {/* Conversion Rate Card */}
+                  <Card className="bg-card rounded-2xl border-border/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 group animate-in slide-in-from-left-4 duration-500 delay-800">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
+                          <Target className="w-6 h-6 text-purple-500" />
                       </div>
-                      <div className="w-12 h-12 bg-orange-500/10 rounded-lg flex items-center justify-center group-hover:bg-orange-500/20 transition-colors duration-300">
-                        <CheckCircle className="w-6 h-6 text-orange-500 group-hover:scale-110 transition-transform duration-300" />
+                        <div className="flex items-center gap-1 text-red-500 text-sm font-heading font-semibold">
+                          <TrendingDown className="w-4 h-4" />
+                          <span>-2.1%</span>
                       </div>
                     </div>
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground font-heading">Conversion Rate</p>
+                        <p className="text-3xl font-heading font-bold text-purple-500">
+                          {ticketStats.totalTickets > 0 
+                            ? Math.round((ticketStats.soldTickets / ticketStats.totalTickets) * 100) 
+                            : 0}%
+                        </p>
+                        {/* Mini sparkline */}
+                        <div className="h-8 w-full flex items-end gap-1 opacity-60">
+                          {[70, 68, 72, 65, 70, 68, 66].map((h, i) => (
+                            <div key={i} className="flex-1 bg-purple-500 rounded-t" style={{ height: `${h}%` }} />
+                          ))}
                   </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
 
-                {/* Enhanced Charts and Analytics Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-bottom-4 duration-700 delay-400">
-                  {/* Enhanced Sales by Event Chart */}
-                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-left-4 duration-500 delay-500 hover:shadow-xl transition-all duration-300 group">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <TrendingUp className="w-5 h-5 mr-2 text-primary group-hover:scale-110 transition-transform duration-300" />
-                      Ticket Sales by Type
-                    </h3>
-                    <div className="h-64 bg-muted/20 rounded-lg p-4 transition-all duration-300 group-hover:bg-muted/30">
+                {/* 🔶 3. Charts Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-bottom-4 duration-700 delay-900">
+                  {/* Left: Ticket Sales Chart */}
+                  <Card className="bg-card rounded-2xl border-border/50 shadow-lg hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left-4 duration-500 delay-1000">
+                    <CardHeader className="flex flex-row items-center justify-between pb-4">
+                      <CardTitle className="text-xl font-heading font-bold flex items-center gap-2">
+                        <TrendingUp className="w-5 h-5 text-primary" />
+                        Ticket Sales Over Time
+                      </CardTitle>
+                      <Select value={chartPeriod} onValueChange={(v: any) => setChartPeriod(v)}>
+                        <SelectTrigger className="w-[120px] font-heading text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="daily">Daily</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                          <SelectItem value="yearly">Yearly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-64 bg-muted/20 rounded-xl p-4">
                       <div className="relative h-full">
                         {/* Y-axis labels */}
-                        <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs text-muted-foreground">
-                          <span>100</span>
-                          <span>75</span>
-                          <span>50</span>
-                          <span>25</span>
+                          <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs text-muted-foreground font-heading">
+                            <span>500</span>
+                            <span>375</span>
+                            <span>250</span>
+                            <span>125</span>
                           <span>0</span>
                         </div>
                         
@@ -4593,18 +5199,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           {/* Grid lines */}
                           <div className="absolute inset-0 flex flex-col justify-between">
                             {[0, 1, 2, 3, 4].map((i) => (
-                              <div key={i} className="border-b border-muted/20 h-0 transition-all duration-300 group-hover:border-muted/30"></div>
+                                <div key={i} className="border-b border-muted/20 h-0"></div>
                             ))}
                           </div>
                           
-                          {/* Line chart */}
+                            {/* Line chart with time-based data */}
                           <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
                             <defs>
-                              <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <linearGradient id="salesLineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                                 <stop offset="0%" stopColor="hsl(var(--primary))" />
                                 <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0.1" />
                               </linearGradient>
-                              <filter id="glow">
+                                <filter id="salesGlow">
                                 <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
                                 <feMerge> 
                                   <feMergeNode in="coloredBlur"/>
@@ -4613,248 +5219,470 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               </filter>
                             </defs>
                             
-                            {/* Glowing line */}
+                              {/* Sample data points for time series */}
+                              {(() => {
+                                const dataPoints = [20, 35, 28, 45, 38, 52, 48, 60, 55, 65, 58, 70];
+                                const pathData = dataPoints.map((val, i) => {
+                                  const x = (i / (dataPoints.length - 1)) * 100;
+                                  const y = 100 - (val / 100 * 100);
+                                  return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+                                }).join(' ');
+                                
+                                return (
+                                  <>
                             <path
-                              d={tickets.filter(t => t.event_id === selectedEventId).slice(0, 5).map((ticket, index) => {
-                                const ticketsSold = ticket.quantity - ticket.available_quantity;
-                                const percentage = (ticketsSold / ticket.quantity) * 100;
-                                const x = (index / 4) * 100;
-                                const y = 100 - percentage;
-                                return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-                              }).join(' ')}
+                                      d={pathData + ' L 100 100 L 0 100 Z'}
+                                      fill="url(#salesLineGradient)"
+                                      opacity="0.3"
+                                    />
+                                    <path
+                                      d={pathData}
                               stroke="hsl(var(--primary))"
-                              strokeWidth="3"
+                                      strokeWidth="2.5"
                               fill="none"
                               strokeLinecap="round"
                               strokeLinejoin="round"
-                              filter="url(#glow)"
-                              opacity="0.8"
-                              className="transition-all duration-300 group-hover:stroke-width-4"
-                            />
-                            
-                            {/* Area fill */}
-                            <path
-                              d={tickets.filter(t => t.event_id === selectedEventId).slice(0, 5).map((ticket, index) => {
-                                const ticketsSold = ticket.quantity - ticket.available_quantity;
-                                const percentage = (ticketsSold / ticket.quantity) * 100;
-                                const x = (index / 4) * 100;
-                                const y = 100 - percentage;
-                                return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-                              }).join(' ') + ' L 100 100 L 0 100 Z'}
-                              fill="url(#lineGradient)"
-                              opacity="0.4"
-                              className="transition-all duration-300 group-hover:opacity-60"
-                            />
-                            
-                            {/* Data points with glow */}
-                            {tickets.filter(t => t.event_id === selectedEventId).slice(0, 5).map((ticket, index) => {
-                              const ticketsSold = ticket.quantity - ticket.available_quantity;
-                              const percentage = (ticketsSold / ticket.quantity) * 100;
-                              const x = (index / 4) * 100;
-                              const y = 100 - percentage;
+                                      filter="url(#salesGlow)"
+                                    />
+                                    {dataPoints.map((val, i) => {
+                                      const x = (i / (dataPoints.length - 1)) * 100;
+                                      const y = 100 - (val / 100 * 100);
                               return (
-                                <g key={index}>
-                                  {/* Glow effect */}
-                                  <circle
-                                    cx={x}
-                                    cy={y}
-                                    r="6"
-                                    fill="hsl(var(--primary))"
-                                    opacity="0.3"
-                                    className="animate-pulse"
-                                  />
-                                  {/* Main point */}
-                                  <circle
-                                    cx={x}
-                                    cy={y}
-                                    r="4"
-                                    fill="hsl(var(--primary))"
-                                    stroke="white"
-                                    strokeWidth="1"
-                                    className="transition-all duration-300 group-hover:r-5"
-                                  />
-                                </g>
+                                        <circle key={i} cx={x} cy={y} r="3" fill="hsl(var(--primary))" stroke="white" strokeWidth="1.5" />
                               );
                             })}
+                                  </>
+                                );
+                              })()}
                           </svg>
                           
-                          {/* X-axis labels with better spacing */}
-                          <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-muted-foreground px-2">
-                            {tickets.filter(t => t.event_id === selectedEventId).slice(0, 5).map((ticket, index) => {
+                            {/* X-axis labels */}
+                            <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-muted-foreground px-2 font-heading">
+                              {chartPeriod === 'daily' && ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => (
+                                <span key={i}>{day}</span>
+                              ))}
+                              {chartPeriod === 'weekly' && ['W1', 'W2', 'W3', 'W4'].map((week, i) => (
+                                <span key={i}>{week}</span>
+                              ))}
+                              {chartPeriod === 'monthly' && ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((month, i) => (
+                                <span key={i}>{month}</span>
+                              ))}
+                              {chartPeriod === 'yearly' && ['2020', '2021', '2022', '2023', '2024'].map((year, i) => (
+                                <span key={i}>{year}</span>
+                              ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Right: Revenue Breakdown Donut Chart */}
+                  <Card className="bg-card rounded-2xl border-border/50 shadow-lg hover:shadow-xl transition-all duration-300 animate-in slide-in-from-right-4 duration-500 delay-1100">
+                    <CardHeader>
+                      <CardTitle className="text-xl font-heading font-bold flex items-center gap-2">
+                        <PieChart className="w-5 h-5 text-primary" />
+                        Revenue Breakdown
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-center h-64">
+                        {/* Donut Chart */}
+                        <div className="relative w-48 h-48">
+                          <svg viewBox="0 0 100 100" className="transform -rotate-90">
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
+                            {/* Regular Tickets - 45% */}
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r="40"
+                              fill="none"
+                              stroke="hsl(var(--primary))"
+                              strokeWidth="8"
+                              strokeDasharray={`${2 * Math.PI * 40}`}
+                              strokeDashoffset={`${2 * Math.PI * 40 * 0.55}`}
+                              strokeLinecap="round"
+                            />
+                            {/* VIP Tickets - 30% */}
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r="40"
+                              fill="none"
+                              stroke="#10b981"
+                              strokeWidth="8"
+                              strokeDasharray={`${2 * Math.PI * 40}`}
+                              strokeDashoffset={`${2 * Math.PI * 40 * 0.25}`}
+                              strokeLinecap="round"
+                            />
+                            {/* Early Bird - 15% */}
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r="40"
+                              fill="none"
+                              stroke="#f59e0b"
+                              strokeWidth="8"
+                              strokeDasharray={`${2 * Math.PI * 40}`}
+                              strokeDashoffset={`${2 * Math.PI * 40 * 0.10}`}
+                              strokeLinecap="round"
+                            />
+                            {/* Promotions - 7% */}
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r="40"
+                              fill="none"
+                              stroke="#8b5cf6"
+                              strokeWidth="8"
+                              strokeDasharray={`${2 * Math.PI * 40}`}
+                              strokeDashoffset={`${2 * Math.PI * 40 * 0.03}`}
+                              strokeLinecap="round"
+                            />
+                            {/* On-site - 3% */}
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r="40"
+                              fill="none"
+                              stroke="#ec4899"
+                              strokeWidth="8"
+                              strokeDasharray={`${2 * Math.PI * 40}`}
+                              strokeDashoffset="0"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="text-center">
+                              <p className="text-2xl font-heading font-bold text-primary">{(ticketStats.revenue || 0).toLocaleString()}</p>
+                              <p className="text-xs text-muted-foreground font-heading">TND</p>
+                            </div>
+                            </div>
+                          </div>
+                          </div>
+                      
+                      {/* Legend */}
+                      <div className="space-y-2 mt-6">
+                        {[
+                          { label: 'Regular Tickets', value: '45%', color: 'hsl(var(--primary))' },
+                          { label: 'VIP Tickets', value: '30%', color: '#10b981' },
+                          { label: 'Early Bird', value: '15%', color: '#f59e0b' },
+                          { label: 'Promotions', value: '7%', color: '#8b5cf6' },
+                          { label: 'On-site Sales', value: '3%', color: '#ec4899' }
+                        ].map((item, i) => (
+                          <div key={i} className="flex items-center justify-between p-2 bg-muted/20 rounded-lg hover:bg-muted/30 transition-colors">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                              <span className="text-sm font-heading">{item.label}</span>
+                            </div>
+                            <span className="text-sm font-heading font-semibold">{item.value}</span>
+                        </div>
+                      ))}
+                        </div>
+                    </CardContent>
+                  </Card>
+                    </div>
+
+                {/* 🔶 4. Events Table Section */}
+                <Card className="bg-card rounded-2xl border-border/50 shadow-lg animate-in slide-in-from-bottom-4 duration-700 delay-1200">
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle className="text-xl font-heading font-bold flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-primary" />
+                      Events Overview
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" className="font-heading">
+                        <Download className="w-4 h-4 mr-2" />
+                        Export
+                      </Button>
+                  </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-border/50">
+                            <th className="text-left p-3 text-sm font-heading font-semibold text-muted-foreground">Event Name</th>
+                            <th className="text-left p-3 text-sm font-heading font-semibold text-muted-foreground">Date & Time</th>
+                            <th className="text-left p-3 text-sm font-heading font-semibold text-muted-foreground">Venue</th>
+                            <th className="text-right p-3 text-sm font-heading font-semibold text-muted-foreground">Tickets Sold</th>
+                            <th className="text-right p-3 text-sm font-heading font-semibold text-muted-foreground">Remaining</th>
+                            <th className="text-right p-3 text-sm font-heading font-semibold text-muted-foreground">Revenue</th>
+                            <th className="text-center p-3 text-sm font-heading font-semibold text-muted-foreground">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {events
+                            .filter(event => {
+                              if (ticketFilterStatus === 'all') return true;
+                              if (ticketFilterStatus === 'upcoming') return event.event_type === 'upcoming';
+                              if (ticketFilterStatus === 'past') return event.event_type === 'past';
+                              return true;
+                            })
+                            .filter(event => {
+                              if (!ticketSearchQuery) return true;
+                              return event.name.toLowerCase().includes(ticketSearchQuery.toLowerCase()) ||
+                                     event.venue.toLowerCase().includes(ticketSearchQuery.toLowerCase());
+                            })
+                            .map((event, index) => {
+                              const eventTickets = tickets.filter(t => t.event_id === event.id);
+                              const ticketsSold = eventTickets.reduce((sum, t) => sum + (t.quantity - t.available_quantity), 0);
+                              const totalTickets = eventTickets.reduce((sum, t) => sum + t.quantity, 0);
+                              const remaining = totalTickets - ticketsSold;
+                              const revenue = eventTickets.reduce((sum, t) => sum + ((t.quantity - t.available_quantity) * t.price), 0);
+                              
                               return (
-                                <span key={index} className="truncate max-w-[50px] text-center font-medium transition-all duration-300 group-hover:text-primary">
-                                  {ticket.ticket_type}
-                                </span>
+                                <tr 
+                                  key={event.id} 
+                                  className="border-b border-border/30 hover:bg-muted/20 transition-colors cursor-pointer"
+                                  onClick={() => {
+                                    setSelectedEventForInsights(event);
+                                    setIsEventInsightsOpen(true);
+                                  }}
+                                >
+                                  <td className="p-3">
+                                    <div className="font-heading font-semibold">{event.name}</div>
+                                    <Badge variant={event.event_type === 'upcoming' ? 'default' : 'secondary'} className="mt-1 text-xs">
+                                      {event.event_type === 'upcoming' ? 'Upcoming' : 'Past'}
+                                    </Badge>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="font-heading">{new Date(event.date).toLocaleDateString()}</div>
+                                    <div className="text-xs text-muted-foreground">20:00</div>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="font-heading">{event.venue}</div>
+                                    <div className="text-xs text-muted-foreground">{event.city}</div>
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <div className="font-heading font-semibold text-green-500">{ticketsSold}</div>
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <div className="font-heading font-semibold text-blue-500">{remaining}</div>
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <div className="font-heading font-semibold text-primary">{revenue.toLocaleString()} TND</div>
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedEventForInsights(event);
+                                          setIsEventInsightsOpen(true);
+                                        }}
+                                        className="h-8 w-8 p-0"
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingEvent(event);
+                                          setIsEventDialogOpen(true);
+                                        }}
+                                        className="h-8 w-8 p-0"
+                                      >
+                                        <Edit className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedEventForInsights(event);
+                                          setIsEventInsightsOpen(true);
+                                        }}
+                                        className="h-8 w-8 p-0"
+                                      >
+                                        <BarChart3 className="w-4 h-4" />
+                                      </Button>
+                </div>
+                                  </td>
+                                </tr>
                               );
                             })}
-                          </div>
-                        </div>
-                      </div>
+                        </tbody>
+                      </table>
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  {/* Enhanced Top Ambassadors Performance */}
-                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-right-4 duration-500 delay-600 hover:shadow-xl transition-all duration-300 group">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <Users className="w-5 h-5 mr-2 text-primary group-hover:scale-110 transition-transform duration-300" />
-                      Top Performing Ambassadors
-                    </h3>
+                {/* 🔶 5. Support & Ticket Issues Section */}
+                <Card className="bg-card rounded-2xl border-border/50 shadow-lg animate-in slide-in-from-bottom-4 duration-700 delay-1300">
+                  <CardHeader>
+                    <CardTitle className="text-xl font-heading font-bold flex items-center gap-2">
+                      <AlertCircle className="w-5 h-5 text-primary" />
+                      Support & Ticket Issues
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
                     <div className="space-y-3">
-                      {ticketStats.topAmbassadors.map((ambassador, index) => (
-                        <div key={ambassador.id} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg animate-in slide-in-from-right-4 duration-500 delay-700 hover:bg-muted/30 transition-all duration-300 transform hover:scale-105">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-primary/20">
-                              <span className="text-sm font-semibold text-primary">{index + 1}</span>
-                            </div>
-                            <div>
-                              <p className="font-medium">{ambassador.full_name}</p>
-                              <p className="text-xs text-muted-foreground">{ambassador.city}</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold text-primary transition-all duration-300 hover:scale-110">{ambassador.ticketsSold}</p>
-                            <p className="text-xs text-muted-foreground">Tickets Sold</p>
-                          </div>
+                      {ticketIssues.map((issue) => (
+                        <div 
+                          key={issue.id} 
+                          className="flex items-center justify-between p-4 bg-muted/20 rounded-xl hover:bg-muted/30 transition-all duration-300 border border-border/30"
+                        >
+                          <div className="flex items-center gap-4 flex-1">
+                            <div className={`w-3 h-3 rounded-full ${
+                              issue.priority === 'high' ? 'bg-red-500' :
+                              issue.priority === 'medium' ? 'bg-yellow-500' :
+                              'bg-green-500'
+                            }`} />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="font-heading font-semibold">{issue.customerName}</p>
+                                <Badge 
+                                  variant={issue.priority === 'high' ? 'destructive' : issue.priority === 'medium' ? 'default' : 'secondary'}
+                                  className="text-xs"
+                                >
+                                  {issue.priority.toUpperCase()}
+                                </Badge>
+                                {issue.status === 'resolved' && (
+                                  <Badge variant="outline" className="text-xs text-green-500 border-green-500">
+                                    Resolved
+                                  </Badge>
+                                )}
                         </div>
+                              <p className="text-sm text-muted-foreground font-heading">{issue.issue}</p>
+                      </div>
+                        </div>
+                          <Button
+                            variant={issue.status === 'resolved' ? 'outline' : 'default'}
+                            size="sm"
+                            onClick={() => {
+                              setTicketIssues(prev => prev.map(i => 
+                                i.id === issue.id ? { ...i, status: 'resolved' } : i
+                              ));
+                            }}
+                            className="font-heading"
+                            disabled={issue.status === 'resolved'}
+                          >
+                            {issue.status === 'resolved' ? 'Resolved' : 'Resolve'}
+                          </Button>
+                      </div>
                       ))}
-                      {ticketStats.topAmbassadors.length === 0 && (
-                        <div className="text-center py-4 text-muted-foreground">
-                          <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                          <p className="text-sm">No ambassador data for this event</p>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
 
-                {/* Ticket Type Distribution & Event Performance */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-bottom-4 duration-700 delay-600">
-                  {/* Ticket Type Distribution */}
-                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-left-4 duration-500 delay-700">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <PieChart className="w-5 h-5 mr-2 text-primary" />
-                      Ticket Type Distribution
-                    </h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between p-3 bg-muted/20 rounded-lg">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-4 h-4 bg-primary rounded-full"></div>
-                          <span>Standard Tickets</span>
-                        </div>
-                        <span className="font-semibold">65%</span>
-                      </div>
-                      <div className="flex items-center justify-between p-3 bg-muted/20 rounded-lg">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-4 h-4 bg-green-500 rounded-full"></div>
-                          <span>VIP Tickets</span>
-                        </div>
-                        <span className="font-semibold">25%</span>
-                      </div>
-                      <div className="flex items-center justify-between p-3 bg-muted/20 rounded-lg">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-4 h-4 bg-purple-500 rounded-full"></div>
-                          <span>Premium Tickets</span>
-                        </div>
-                        <span className="font-semibold">10%</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Top Selling Events */}
-                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-right-4 duration-500 delay-800">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <Calendar className="w-5 h-5 mr-2 text-primary" />
-                      Top Selling Events
-                    </h3>
-                    <div className="space-y-3">
-                      {tickets.slice(0, 5).map((ticket, index) => {
-                        const event = events.find(e => e.id === ticket.event_id);
-                        const ticketsSold = ticket.quantity - ticket.available_quantity;
-                        return (
-                          <div key={ticket.id} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg animate-in slide-in-from-right-4 duration-500 delay-900">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                                <span className="text-sm font-semibold text-primary">{index + 1}</span>
+                {/* 🔶 6. Event Insights Panel (Dialog) */}
+                <Dialog open={isEventInsightsOpen} onOpenChange={setIsEventInsightsOpen}>
+                  <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+                    {selectedEventForInsights && (
+                      <>
+                        <DialogHeader>
+                          <DialogTitle className="text-2xl font-heading font-bold text-gradient-neon">
+                            Event Insights: {selectedEventForInsights.name}
+                          </DialogTitle>
+                        </DialogHeader>
+                        
+                        <div className="space-y-6 mt-4">
+                          {/* Event Overview */}
+                          <div className="bg-muted/20 rounded-xl p-6">
+                            <h3 className="text-lg font-heading font-semibold mb-4">Event Overview</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div>
+                                <p className="text-sm text-muted-foreground font-heading">Organizer</p>
+                                <p className="font-heading font-semibold">Andiamo Events</p>
                               </div>
                               <div>
-                                <p className="font-medium">{event?.name || ticket.event_name}</p>
-                                <p className="text-xs text-muted-foreground">{event?.date} • {event?.venue}</p>
+                                <p className="text-sm text-muted-foreground font-heading">Category</p>
+                                <p className="font-heading font-semibold">Nightlife</p>
                               </div>
+                              <div>
+                                <p className="text-sm text-muted-foreground font-heading">Status</p>
+                                <Badge variant={selectedEventForInsights.event_type === 'upcoming' ? 'default' : 'secondary'}>
+                                  {selectedEventForInsights.event_type === 'upcoming' ? 'Upcoming' : 'Past'}
+                                </Badge>
                             </div>
-                            <div className="text-right">
-                              <p className="font-semibold text-primary">{ticketsSold}</p>
-                              <p className="text-xs text-muted-foreground">Tickets Sold</p>
-                            </div>
-                          </div>
-                        );
-                      })}
+                              <div>
+                                <p className="text-sm text-muted-foreground font-heading">Venue</p>
+                                <p className="font-heading font-semibold">{selectedEventForInsights.venue}</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Enhanced Quick Actions & Recent Activity */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-bottom-4 duration-700 delay-800">
-                  {/* Enhanced Quick Actions */}
-                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-left-4 duration-500 delay-900 hover:shadow-xl transition-all duration-300 group">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <Settings className="w-5 h-5 mr-2 text-primary group-hover:scale-110 transition-transform duration-300" />
-                      Quick Actions
-                    </h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      
-                      <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 transform hover:scale-105 hover:shadow-md transition-all duration-300 group">
-                        <Download className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
-                        <span className="text-xs">Export Report</span>
-                      </Button>
-                      <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 transform hover:scale-105 hover:shadow-md transition-all duration-300 group">
-                        <Mail className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
-                        <span className="text-xs">Send Notifications</span>
-                      </Button>
-                      <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 transform hover:scale-105 hover:shadow-md transition-all duration-300 group">
-                        <BarChart3 className="w-5 h-5 transition-transform duration-300 group-hover:scale-110" />
-                        <span className="text-xs">View Analytics</span>
-                      </Button>
-                      <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2 transform hover:scale-105 hover:shadow-md transition-all duration-300 group">
-                        <RefreshCw className="w-5 h-5 transition-transform duration-300 group-hover:rotate-180" />
-                        <span className="text-xs">Refresh Data</span>
-                      </Button>
-                    </div>
+                          {/* Performance Metrics */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <Card className="bg-card">
+                              <CardContent className="p-4">
+                                <p className="text-sm text-muted-foreground font-heading mb-1">Total Sales</p>
+                                <p className="text-2xl font-heading font-bold text-primary">
+                                  {tickets.filter(t => t.event_id === selectedEventForInsights.id)
+                                    .reduce((sum, t) => sum + (t.quantity - t.available_quantity), 0)}
+                                </p>
+                              </CardContent>
+                            </Card>
+                            <Card className="bg-card">
+                              <CardContent className="p-4">
+                                <p className="text-sm text-muted-foreground font-heading mb-1">Total Revenue</p>
+                                <p className="text-2xl font-heading font-bold text-green-500">
+                                  {tickets.filter(t => t.event_id === selectedEventForInsights.id)
+                                    .reduce((sum, t) => sum + ((t.quantity - t.available_quantity) * t.price), 0).toLocaleString()} TND
+                                </p>
+                              </CardContent>
+                            </Card>
+                            <Card className="bg-card">
+                              <CardContent className="p-4">
+                                <p className="text-sm text-muted-foreground font-heading mb-1">Conversion Rate</p>
+                                <p className="text-2xl font-heading font-bold text-purple-500">68%</p>
+                              </CardContent>
+                            </Card>
+                            <Card className="bg-card">
+                              <CardContent className="p-4">
+                                <p className="text-sm text-muted-foreground font-heading mb-1">Refund Requests</p>
+                                <p className="text-2xl font-heading font-bold text-orange-500">3</p>
+                              </CardContent>
+                            </Card>
                   </div>
 
-                  {/* Enhanced Recent Ticket Sales */}
-                  <div className="bg-card rounded-xl p-6 shadow-lg animate-in slide-in-from-right-4 duration-500 delay-1000 hover:shadow-xl transition-all duration-300 group">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <Clock className="w-5 h-5 mr-2 text-primary group-hover:scale-110 transition-transform duration-300" />
-                      Recent Ticket Sales
-                    </h3>
+                          {/* Top Referral Sources */}
+                          <Card>
+                            <CardHeader>
+                              <CardTitle className="text-lg font-heading">Top Referral Sources</CardTitle>
+                            </CardHeader>
+                            <CardContent>
                     <div className="space-y-3">
-                      {Array.from({ length: 5 }, (_, i) => (
-                        <div key={i} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg animate-in slide-in-from-right-4 duration-500 delay-1100 hover:bg-muted/30 transition-all duration-300 transform hover:scale-105">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-green-500/10 rounded-full flex items-center justify-center transition-all duration-300 hover:bg-green-500/20">
-                              <CheckCircle className="w-4 h-4 text-green-500 transition-transform duration-300 hover:scale-110" />
+                                {[
+                                  { source: 'Meta Ads', percentage: 35, color: 'bg-blue-500' },
+                                  { source: 'Instagram', percentage: 28, color: 'bg-pink-500' },
+                                  { source: 'Google Ads', percentage: 20, color: 'bg-green-500' },
+                                  { source: 'Direct', percentage: 12, color: 'bg-purple-500' },
+                                  { source: 'Other', percentage: 5, color: 'bg-gray-500' }
+                                ].map((item, i) => (
+                                  <div key={i} className="space-y-1">
+                                    <div className="flex items-center justify-between text-sm font-heading">
+                                      <span>{item.source}</span>
+                                      <span className="font-semibold">{item.percentage}%</span>
                             </div>
-                            <div>
-                              <p className="font-medium">VIP Ticket Sold</p>
-                              <p className="text-xs text-muted-foreground">Event Name • 2 hours ago</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold text-green-500 transition-all duration-300 hover:scale-110">$150</p>
-                            <p className="text-xs text-muted-foreground">Revenue</p>
+                                    <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                      <div 
+                                        className={`h-full ${item.color} rounded-full transition-all duration-500`}
+                                        style={{ width: `${item.percentage}%` }}
+                                      />
                           </div>
                         </div>
                       ))}
                     </div>
+                            </CardContent>
+                          </Card>
                   </div>
-                </div>
+                      </>
+                    )}
+                  </DialogContent>
+                </Dialog>
 
 
               </TabsContent>
 
               {/* Marketing Tab */}
               <TabsContent value="marketing" className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full px-2">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full px-2">
                   {/* SMS Balance Card */}
                   <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
                     <Card className="shadow-lg h-full flex flex-col">
@@ -4866,39 +5694,36 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {loadingBalance ? (
-                          <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          <div className="flex flex-col items-center justify-center py-8 space-y-3">
+                            <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+                            <p className="text-sm text-muted-foreground font-heading">
+                              {language === 'en' ? 'Checking balance...' : 'Vérification du solde...'}
+                            </p>
                           </div>
-                        ) : (
+                        ) : smsBalance?.balance ? (
                           <>
                             <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border">
                               <div className="flex-1">
-                                <p className="text-sm text-muted-foreground">{language === 'en' ? 'Current Balance' : 'Solde Actuel'}</p>
-                                {smsBalance?.balance ? (
-                                  typeof smsBalance.balance === 'object' ? (
+                                <p className="text-sm text-muted-foreground font-heading">{language === 'en' ? 'Current Balance' : 'Solde Actuel'}</p>
+                                {typeof smsBalance.balance === 'object' ? (
                                     <div className="mt-1">
-                                      <p className="text-lg font-bold text-primary">
+                                    <p className="text-2xl font-heading font-bold text-primary">
                                         {smsBalance.balance.balance || smsBalance.balance.solde || smsBalance.balance.credit || 'N/A'}
                                       </p>
                                       {smsBalance.balance.balance === 0 || smsBalance.balance.solde === 0 || smsBalance.balance.credit === 0 ? (
-                                        <p className="text-xs text-red-500 mt-1">
+                                      <p className="text-xs text-red-500 mt-1 font-heading">
                                           ⚠️ {language === 'en' ? 'Insufficient balance!' : 'Solde insuffisant!'}
                                         </p>
                                       ) : null}
                                     </div>
                                   ) : (
-                                    <p className="text-2xl font-bold text-primary mt-1">
+                                  <p className="text-2xl font-heading font-bold text-primary mt-1">
                                       {smsBalance.balance}
                                       {smsBalance.balance === '0' || smsBalance.balance === 0 ? (
                                         <span className="text-xs text-red-500 ml-2">
                                           ⚠️ {language === 'en' ? 'Insufficient!' : 'Insuffisant!'}
                                         </span>
                                       ) : null}
-                                    </p>
-                                  )
-                                ) : (
-                                  <p className="text-lg font-medium text-muted-foreground mt-1">
-                                    {language === 'en' ? 'Click to check balance' : 'Cliquez pour vérifier le solde'}
                                   </p>
                                 )}
                               </div>
@@ -4908,155 +5733,110 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               disabled={loadingBalance}
                               variant="outline"
                               size="sm"
-                              className="w-full"
+                              className="w-full font-heading"
                             >
-                              {loadingBalance ? (
-                                <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                              ) : (
                                 <RefreshCw className="w-4 h-4 mr-2" />
-                              )}
                               {language === 'en' ? 'Refresh Balance' : 'Actualiser le Solde'}
                             </Button>
                           </>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+                              <CreditCard className="w-8 h-8 text-primary" />
+                            </div>
+                            <p className="text-sm text-muted-foreground text-center font-heading">
+                              {language === 'en' 
+                                ? 'Click the button below to check your SMS balance' 
+                                : 'Cliquez sur le bouton ci-dessous pour vérifier votre solde SMS'}
+                            </p>
+                            <Button
+                              onClick={fetchSmsBalance}
+                              disabled={loadingBalance}
+                              className="w-full font-heading btn-gradient"
+                              size="lg"
+                            >
+                              <CreditCard className="w-5 h-5 mr-2" />
+                              {language === 'en' ? 'Check SMS Balance' : 'Vérifier le Solde SMS'}
+                            </Button>
+                          </div>
                         )}
                       </CardContent>
                     </Card>
                   </div>
 
-                  {/* Phone Subscribers Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 lg:col-span-2">
+                  {/* Test SMS Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200">
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Phone className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'Phone Subscribers' : 'Abonnés Téléphone'}
+                          <PhoneCall className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'Test SMS' : 'SMS Test'}
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {language === 'en' 
-                            ? `Total: ${phoneSubscribers.length} subscribers`
-                            : `Total: ${phoneSubscribers.length} abonnés`}
+                            ? 'Send a test SMS to verify the API'
+                            : 'Envoyer un SMS test pour vérifier l\'API'}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
-                        {loadingSubscribers ? (
-                          <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                        <div className="space-y-2">
+                          <Label htmlFor="testPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'} *</Label>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground font-heading">+216</span>
+                            <Input
+                              id="testPhone"
+                              type="text"
+                              value={testPhoneNumber}
+                              onChange={(e) => setTestPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                              placeholder="21234567"
+                              className="flex-1 font-heading"
+                              maxLength={8}
+                            />
                           </div>
-                        ) : (
-                          <div className="space-y-4">
-                            {/* Bulk Add Section */}
+                          <p className="text-xs text-muted-foreground font-heading">
+                            {language === 'en' ? 'Enter 8 digits (e.g., 21234567)' : 'Entrez 8 chiffres (ex: 21234567)'}
+                          </p>
+                        </div>
                             <div className="space-y-2">
-                              <Label>{language === 'en' ? 'Add Bulk Phone Numbers' : 'Ajouter des Numéros en Masse'}</Label>
+                          <Label htmlFor="testMessage">{language === 'en' ? 'Test Message' : 'Message Test'} *</Label>
                               <Textarea
-                                value={bulkPhonesInput}
-                                onChange={(e) => setBulkPhonesInput(e.target.value)}
+                            id="testMessage"
+                            value={testSmsMessage}
+                            onChange={(e) => setTestSmsMessage(e.target.value)}
                                 placeholder={language === 'en' 
-                                  ? 'Enter phone numbers (one per line or comma separated)\nExample: 21234567, 51234567\nOr:\n21234567\n51234567'
-                                  : 'Entrez les numéros de téléphone (un par ligne ou séparés par des virgules)\nExemple: 21234567, 51234567\nOu:\n21234567\n51234567'}
-                                className="min-h-[120px] text-sm bg-background text-foreground"
-                              />
-                              <div className="flex gap-2">
+                              ? 'Enter your test message here...'
+                              : 'Entrez votre message test ici...'}
+                            className="min-h-[100px] text-sm bg-background text-foreground font-heading"
+                          />
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>{language === 'en' ? 'Characters' : 'Caractères'}: {testSmsMessage.length}</span>
+                            <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(testSmsMessage.length / 160)}</span>
+                          </div>
+                        </div>
                                 <Button
-                                  onClick={handleAddBulkPhones}
-                                  disabled={addingBulkPhones || !bulkPhonesInput.trim()}
-                                  className="flex-1"
-                                >
-                                  {addingBulkPhones ? (
-                                    <>
-                                      <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                                      {language === 'en' ? 'Adding...' : 'Ajout...'}
+                          onClick={handleSendTestSms}
+                          disabled={sendingTestSms || !testPhoneNumber.trim() || !testSmsMessage.trim()}
+                          className="w-full font-heading btn-gradient"
+                          size="lg"
+                        >
+                          {sendingTestSms ? (
+                            <>
+                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                              {language === 'en' ? 'Sending...' : 'Envoi...'}
                                     </>
                                   ) : (
                                     <>
-                                      <Plus className="w-4 h-4 mr-2" />
-                                      {language === 'en' ? 'Add Numbers' : 'Ajouter les Numéros'}
+                              <Send className="w-5 h-5 mr-2" />
+                              {language === 'en' ? 'Send Test SMS' : 'Envoyer SMS Test'}
                                     </>
                                   )}
                                 </Button>
-                                <Button
-                                  onClick={fetchPhoneSubscribers}
-                                  variant="outline"
-                                  size="sm"
-                                >
-                                  <RefreshCw className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-
-                            {/* Subscribers List */}
-                            {phoneSubscribers.length === 0 ? (
-                              <div className="text-center py-8 text-muted-foreground">
-                                <p>{language === 'en' ? 'No subscribers yet' : 'Aucun abonné pour le moment'}</p>
-                              </div>
-                            ) : (
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <Label className="text-sm">
-                                    {language === 'en' ? 'Subscribers' : 'Abonnés'} ({phoneSubscribers.length})
-                                  </Label>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => {
-                                        if (selectedPhones.size === phoneSubscribers.length) {
-                                          setSelectedPhones(new Set());
-                                        } else {
-                                          setSelectedPhones(new Set(phoneSubscribers.map(sub => sub.phone_number)));
-                                        }
-                                      }}
-                                    >
-                                      {selectedPhones.size === phoneSubscribers.length 
-                                        ? (language === 'en' ? 'Deselect All' : 'Tout Désélectionner')
-                                        : (language === 'en' ? 'Select All' : 'Tout Sélectionner')}
-                                    </Button>
-                                  </div>
-                                </div>
-                                <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2">
-                                  {phoneSubscribers.map((subscriber) => (
-                                    <div
-                                      key={subscriber.id}
-                                      className={`flex items-center justify-between p-3 rounded-lg border transition-all duration-300 ${
-                                        selectedPhones.has(subscriber.phone_number)
-                                          ? 'bg-primary/10 border-primary'
-                                          : 'bg-card border-border hover:border-primary/50'
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        <input
-                                          type="checkbox"
-                                          checked={selectedPhones.has(subscriber.phone_number)}
-                                          onChange={(e) => {
-                                            const newSelected = new Set(selectedPhones);
-                                            if (e.target.checked) {
-                                              newSelected.add(subscriber.phone_number);
-                                            } else {
-                                              newSelected.delete(subscriber.phone_number);
-                                            }
-                                            setSelectedPhones(newSelected);
-                                          }}
-                                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                                        />
-                                        <div>
-                                          <p className="font-medium">+216 {subscriber.phone_number}</p>
-                                          <p className="text-xs text-muted-foreground">
-                                            {new Date(subscriber.subscribed_at).toLocaleDateString()}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </CardContent>
                     </Card>
                   </div>
 
                   {/* SMS Broadcast Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 lg:col-span-3">
+                <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400">
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -5065,8 +5845,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {language === 'en' 
-                            ? `Send message to ${selectedPhones.size > 0 ? selectedPhones.size : phoneSubscribers.length} ${selectedPhones.size > 0 ? 'selected' : 'all'} subscriber(s)`
-                            : `Envoyer un message à ${selectedPhones.size > 0 ? selectedPhones.size : phoneSubscribers.length} abonné(s) ${selectedPhones.size > 0 ? 'sélectionné(s)' : 'au total'}`}
+                            ? `Send message to all subscribers`
+                            : `Envoyer un message à tous les abonnés`}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
@@ -5100,8 +5880,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             <>
                               <Send className="w-5 h-5 mr-2" />
                               {language === 'en' 
-                                ? `Send SMS to ${selectedPhones.size > 0 ? selectedPhones.size : phoneSubscribers.length} Subscriber(s)`
-                                : `Envoyer SMS à ${selectedPhones.size > 0 ? selectedPhones.size : phoneSubscribers.length} Abonné(s)`}
+                                ? `Send SMS to All Subscribers`
+                                : `Envoyer SMS à Tous les Abonnés`}
                             </>
                           )}
                         </Button>

@@ -100,7 +100,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
             style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer' }}
             aria-label="Go to home"
           >
-            <div className="text-2xl font-orbitron font-bold text-gradient-neon">
+            <div className="text-2xl font-heading font-bold text-gradient-neon">
               ANDIAMO EVENTS
             </div>
           </button>

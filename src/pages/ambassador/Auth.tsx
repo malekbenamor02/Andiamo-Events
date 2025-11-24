@@ -196,7 +196,7 @@ const Auth = ({ language }: AuthProps) => {
     <div className="min-h-screen bg-gradient-dark flex items-center justify-center p-4">
       <Card className="w-full max-w-md glass">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-orbitron text-gradient-neon">
+          <CardTitle className="text-2xl font-heading text-gradient-neon">
             {t.login.title}
           </CardTitle>
           <p className="text-muted-foreground">

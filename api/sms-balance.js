@@ -107,7 +107,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Error fetching SMS balance:', error);
     
-    // Return success with null balance instead of error
+    // Always return 200 status with error details
     // This prevents the UI from breaking if SMS service is unavailable
     return res.status(200).json({
       success: true,
@@ -115,7 +115,8 @@ export default async function handler(req, res) {
       currency: null,
       message: 'SMS service unavailable',
       configured: false,
-      error: error?.message || 'Unknown error'
+      error: error?.message || 'Unknown error',
+      stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined
     });
   }
 }

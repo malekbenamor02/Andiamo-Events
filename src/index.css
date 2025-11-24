@@ -1,4 +1,40 @@
+/* Current Fonts */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap");
+
+/* Alternative Font Options for Testing */
+/* Option 1: Modern & Bold */
+@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Work+Sans:wght@300;400;500;600;700&display=swap");
+
+/* Option 2: Clean & Contemporary */
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=DM+Sans:wght@300;400;500;600;700&display=swap");
+
+/* Option 3: Geometric & Modern */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&display=swap");
+
+/* Option 4: Energetic & Dynamic */
+@import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap");
+
+/* Option 5: Bold & Impactful */
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800&display=swap");
+
+/* Option 6: Bold & Playful - Great for Events */
+@import url("https://fonts.googleapis.com/css2?family=Bungee&family=Raleway:wght@300;400;500;600;700;800&display=swap");
+
+/* Option 7: Energetic & Dynamic */
+@import url("https://fonts.googleapis.com/css2?family=Righteous&family=Nunito:wght@300;400;500;600;700;800&display=swap");
+
+/* Option 8: Futuristic & Modern */
+@import url("https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700;800;900&family=Rubik:wght@300;400;500;600;700;800&display=swap");
+
+/* Option 9: Bold & Impactful */
+@import url("https://fonts.googleapis.com/css2?family=Anton&family=Source+Sans+Pro:wght@300;400;600;700&display=swap");
+
+/* Option 10: Modern & Geometric */
+@import url("https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&display=swap");
+
+/* Option 11: Josefin Sans - Elegant & Modern */
+@import url("https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -153,11 +189,13 @@ All colors MUST be HSL.
 @layer base {
   * {
     @apply border-border;
+    /* Apply Josefin Sans globally to ALL elements - buttons, footer, navbar, everything */
+    font-family: "Josefin Sans", sans-serif;
   }
 
   body {
     @apply bg-background text-foreground;
-    font-family: "Inter", sans-serif;
+    font-family: "Josefin Sans", sans-serif; /* User requested - Elegant & Modern */
     font-weight: 400;
     letter-spacing: 0.025em;
     line-height: 1.6;
@@ -282,6 +320,11 @@ All colors MUST be HSL.
   /* Font Families */
   .font-orbitron {
     font-family: "Orbitron", monospace;
+  }
+  
+  .font-josefin {
+    font-family: "Josefin Sans", sans-serif;
+    font-optical-sizing: auto;
   }
 }
 

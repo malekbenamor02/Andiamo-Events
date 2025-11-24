@@ -226,3 +226,5 @@ GRANT EXECUTE ON FUNCTION get_user_journey(TEXT, TEXT) TO authenticated;
 
 
 
+
+

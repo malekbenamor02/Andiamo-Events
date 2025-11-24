@@ -417,7 +417,7 @@ const Application = ({ language }: ApplicationProps) => {
               <Heart className="w-4 h-4 text-red-400 animate-pulse" />
             </div>
           </div>
-          <h1 className="text-5xl md:text-6xl font-orbitron font-bold text-gradient-neon mb-3 animate-pulse-glow">
+          <h1 className="text-5xl md:text-6xl font-heading font-bold text-gradient-neon mb-3 animate-pulse-glow">
             {t.heroTitle}
           </h1>
           <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
@@ -442,7 +442,7 @@ const Application = ({ language }: ApplicationProps) => {
               <div className="relative bg-gradient-to-r from-primary/10 via-secondary/10 to-accent/10 p-6 border-b border-border/20">
                 <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-50" />
                 <CardHeader className="text-center pb-0 relative z-10">
-                  <CardTitle className="text-3xl font-orbitron font-bold text-gradient-neon flex items-center justify-center gap-3">
+                  <CardTitle className="text-3xl font-heading font-bold text-gradient-neon flex items-center justify-center gap-3">
                     <Sparkles className="w-6 h-6 animate-pulse" />
                     {t.formTitle}
                     <Sparkles className="w-6 h-6 animate-pulse" />
@@ -667,7 +667,7 @@ const Application = ({ language }: ApplicationProps) => {
                   <Star className="w-4 h-4 text-yellow-300 animate-spin" />
                 </div>
               </div>
-              <h2 className="text-2xl font-orbitron font-bold mb-4 flex items-center gap-2">
+              <h2 className="text-2xl font-heading font-bold mb-4 flex items-center gap-2">
                 <Sparkles className="w-5 h-5" />
                 {language === 'en' ? 'Why Join?' : 'Pourquoi rejoindre ?'}
                 <Sparkles className="w-5 h-5" />
@@ -702,6 +702,8 @@ const Application = ({ language }: ApplicationProps) => {
 };
 
 export default Application;
+
+
 
 
 

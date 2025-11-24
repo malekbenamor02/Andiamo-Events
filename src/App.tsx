@@ -27,6 +27,7 @@ import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute
 import AmbassadorApplication from "./pages/ambassador/Application";
 import PassPurchase from "./pages/PassPurchase";
 import LoadingDemo from "./pages/LoadingDemo";
+import FontTest from "./pages/FontTest";
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { FaviconLoader } from "./components/FaviconLoader";
@@ -79,6 +80,7 @@ const App = () => {
               <Route path="/privacy-policy" element={<PrivacyPolicy language={language} />} />
               <Route path="/terms" element={<Terms language={language} />} />
               <Route path="/loading-demo" element={<LoadingDemo />} />
+              <Route path="/font-test" element={<FontTest />} />
               <Route path="*" element={<NotFound />} />
               </Routes>
                 <Footer language={language} />

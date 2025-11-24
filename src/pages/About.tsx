@@ -237,7 +237,7 @@ const About = ({ language }: AboutProps) => {
                 {language === 'en' ? 'Our Story' : 'Notre Histoire'}
               </span>
             </div>
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-orbitron font-bold mb-6 text-gradient-neon leading-tight">
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-heading font-bold mb-6 text-gradient-neon leading-tight">
               {aboutContent?.title || t.hero.title}
             </h1>
             <p className="text-lg md:text-xl lg:text-2xl text-foreground/80 max-w-4xl mx-auto leading-relaxed">
@@ -262,7 +262,7 @@ const About = ({ language }: AboutProps) => {
                   <span className="text-sm font-semibold text-primary mb-3 block">
                     {language === 'en' ? 'Our Journey' : 'Notre Parcours'}
                   </span>
-                  <h2 className="text-3xl md:text-4xl lg:text-5xl font-orbitron font-bold mb-6 text-gradient-neon">
+                  <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-6 text-gradient-neon">
                     {t.story.title}
                   </h2>
                   <p className="text-base md:text-lg text-foreground/80 leading-relaxed">
@@ -271,7 +271,7 @@ const About = ({ language }: AboutProps) => {
                 </div>
                 
                 <div className="pt-6 border-t border-border/50">
-                  <h3 className="text-2xl md:text-3xl font-orbitron font-bold mb-4 text-gradient-neon">
+                  <h3 className="text-2xl md:text-3xl font-heading font-bold mb-4 text-gradient-neon">
                     {t.mission.title}
                   </h3>
                   <p className="text-base md:text-lg text-foreground/80 leading-relaxed">
@@ -357,7 +357,7 @@ const About = ({ language }: AboutProps) => {
             <span className="text-sm font-semibold text-primary mb-3 block">
               {language === 'en' ? 'What We Stand For' : 'Ce Que Nous Représentons'}
             </span>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-orbitron font-bold mb-4 text-gradient-neon">
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-4 text-gradient-neon">
               {t.values.title}
             </h2>
             <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -385,7 +385,7 @@ const About = ({ language }: AboutProps) => {
                   <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-4 md:mb-6 rounded-full bg-gradient-to-br from-primary via-secondary to-accent flex items-center justify-center transform group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shadow-lg shadow-primary/20">
                     <value.icon className="w-8 h-8 md:w-10 md:h-10 text-white" />
                   </div>
-                  <h3 className="text-lg md:text-xl font-orbitron font-bold mb-3 md:mb-4 text-primary group-hover:text-primary/90 transition-colors">
+                  <h3 className="text-lg md:text-xl font-heading font-bold mb-3 md:mb-4 text-primary group-hover:text-primary/90 transition-colors">
                     {value.title}
                   </h3>
                   <p className="text-sm md:text-base text-foreground/80 leading-relaxed">
@@ -424,7 +424,7 @@ const About = ({ language }: AboutProps) => {
           <div className="inline-block mb-6">
             <Sparkles className="w-8 h-8 text-white/80 mx-auto animate-pulse" />
           </div>
-          <h2 className="text-3xl md:text-5xl lg:text-6xl font-orbitron font-bold mb-6 md:mb-8 text-white leading-tight">
+          <h2 className="text-3xl md:text-5xl lg:text-6xl font-heading font-bold mb-6 md:mb-8 text-white leading-tight">
             {t.cta.title}
           </h2>
           <p className="text-lg md:text-xl text-white/90 mb-10 md:mb-12 max-w-2xl mx-auto leading-relaxed">

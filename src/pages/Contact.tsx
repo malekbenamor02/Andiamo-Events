@@ -262,7 +262,7 @@ const Contact = ({ language }: ContactProps) => {
                 <Heart className="w-3 h-3 text-red-400 animate-pulse" />
               </div>
             </div>
-          <h1 className="text-4xl md:text-5xl font-orbitron font-bold text-gradient-neon mb-4">
+          <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-4">
             {content.title}
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
