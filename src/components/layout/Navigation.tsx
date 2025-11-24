@@ -128,7 +128,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
               variant="ghost"
               size="sm"
               onClick={toggleLanguage}
-              className="text-foreground/80 hover:text-primary"
+              className="btn-language"
             >
               {language.toUpperCase()}
             </Button>
@@ -185,7 +185,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
                   variant="ghost"
                   size="sm"
                   onClick={toggleLanguage}
-                  className="text-foreground/80 hover:text-primary"
+                  className="btn-language"
                 >
                   {language.toUpperCase()}
                 </Button>

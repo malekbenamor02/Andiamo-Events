@@ -352,7 +352,7 @@ const Events = ({ language }: EventsProps) => {
   const hasGallery = allMedia.length > 0;
 
   return (
-    <div className="pt-16 min-h-screen bg-background">
+    <div className="pt-16 min-h-screen bg-background animate-page-intro">
       {/* Header */}
       <section className="py-20 bg-gradient-dark">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -812,7 +812,7 @@ const Events = ({ language }: EventsProps) => {
                       {selectedEvent.event_type === 'upcoming' && (
                         <div className="flex flex-col sm:flex-row gap-4">
                           <Button 
-                            className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 flex-1 py-6 text-base md:text-lg font-semibold rounded-xl"
+                            className="btn-gradient flex-1 py-6 text-base md:text-lg font-semibold"
                             onClick={() => {
                               closeModal();
                               navigate(`/pass-purchase?eventId=${selectedEvent.id}`);
@@ -824,7 +824,7 @@ const Events = ({ language }: EventsProps) => {
                           {selectedEvent.whatsapp_link && (
                             <Button
                               variant="outline"
-                              className="border-2 border-green-500 text-green-500 hover:bg-green-500 hover:text-white transition-all duration-200 flex-1 py-6 text-base md:text-lg font-semibold rounded-xl backdrop-blur-sm"
+                              className="btn-neon flex-1 py-6 text-base md:text-lg font-semibold border-green-500 text-green-500 hover:border-green-400 hover:text-green-400"
                               onClick={() => window.open(selectedEvent.whatsapp_link, '_blank')}
                             >
                               💬 {content[language].joinEvent}

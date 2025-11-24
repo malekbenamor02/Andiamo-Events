@@ -197,7 +197,7 @@ const Contact = ({ language }: ContactProps) => {
   // Content will update when data is fetched
 
   return (
-    <div className="pt-16 min-h-screen bg-background relative overflow-hidden">
+    <div className="pt-16 min-h-screen bg-background relative overflow-hidden animate-page-intro">
       {/* Floating Background Elements */}
       <div className="absolute inset-0 pointer-events-none">
         {/* Stars */}

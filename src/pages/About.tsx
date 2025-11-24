@@ -210,7 +210,7 @@ const About = ({ language }: AboutProps) => {
   return (
     <div className="min-h-screen bg-background pt-16 overflow-x-hidden">
       {/* Hero Section - Modern Redesign */}
-      <section className="relative py-20 md:py-32 overflow-hidden">
+      <section className="relative py-20 md:py-32 overflow-hidden animate-page-intro">
         {/* Enhanced animated background elements */}
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5" />
         <div className="absolute top-20 left-10 w-32 h-32 bg-primary/20 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '4s' }} />
