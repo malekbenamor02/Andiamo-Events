@@ -3520,31 +3520,54 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       const messageIdToDelete = messageToDelete.id;
       
-      // Update local state immediately for instant UI feedback
-      setContactMessages(prev => prev.filter(m => m.id !== messageIdToDelete));
-      
-      const { error } = await supabase
+      const { error, data } = await supabase
         .from('contact_messages')
         .delete()
-        .eq('id', messageIdToDelete);
+        .eq('id', messageIdToDelete)
+        .select();
       
       if (error) {
-        // Revert UI change on error
-        const { data: allMessages } = await supabase.from('contact_messages').select('*').order('created_at', { ascending: false });
-        if (allMessages) setContactMessages(allMessages);
-        throw error;
+        console.error('Delete message error:', error);
+        let errorMessage = language === 'en' ? 'Failed to delete message' : 'Échec de la suppression';
+        if (error.code === '42501' || error.message?.includes('policy') || error.message?.includes('permission')) {
+          errorMessage = language === 'en' 
+            ? 'Permission denied. Check RLS policies for "contact_messages" table.' 
+            : 'Permission refusée. Vérifiez les politiques RLS pour la table "contact_messages".';
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        throw new Error(errorMessage);
       }
+      
+      // Verify deletion was successful
+      if (!data || data.length === 0) {
+        // Check if message still exists
+        const { data: verifyData } = await supabase
+          .from('contact_messages')
+          .select('id')
+          .eq('id', messageIdToDelete)
+          .maybeSingle();
+        
+        if (verifyData) {
+          throw new Error(language === 'en' 
+            ? 'Failed to delete message. Check RLS policies.' 
+            : 'Échec de la suppression. Vérifiez les politiques RLS.');
+        }
+      }
+      
+      // Update local state after successful deletion
+      setContactMessages(prev => prev.filter(m => m.id !== messageIdToDelete));
       
       closeDeleteMessageDialog();
       toast({
         title: language === 'en' ? 'Message deleted' : 'Message supprimé',
         description: language === 'en' ? 'Contact message removed successfully.' : 'Message supprimé avec succès.',
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete message error:', err);
       toast({
         title: t.error,
-        description: language === 'en' ? 'Failed to delete message. Please try again.' : 'Échec de la suppression. Veuillez réessayer.',
+        description: err.message || (language === 'en' ? 'Failed to delete message. Please try again.' : 'Échec de la suppression. Veuillez réessayer.'),
         variant: 'destructive',
       });
     }
