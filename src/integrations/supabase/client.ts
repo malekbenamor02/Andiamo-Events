@@ -7,9 +7,8 @@ const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
   const error = new Error('Missing Supabase environment variables. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.');
-  console.error('Supabase configuration error:', error);
-  console.error('VITE_SUPABASE_URL:', SUPABASE_URL ? 'Set' : 'Missing');
-  console.error('VITE_SUPABASE_ANON_KEY:', SUPABASE_PUBLISHABLE_KEY ? 'Set' : 'Missing');
+  // Don't log sensitive info - just log that config is missing
+  console.error('Supabase configuration error: Missing required environment variables');
   throw error;
 }
 

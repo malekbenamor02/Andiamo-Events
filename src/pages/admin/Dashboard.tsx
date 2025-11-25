@@ -10,13 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
 import { uploadOGImage, deleteOGImage, fetchOGImageSettings } from "@/lib/og-image";
+import { uploadFavicon, deleteFavicon, fetchFaviconSettings, FaviconSettings } from "@/lib/favicon";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail } from "@/lib/email";
@@ -33,6 +30,10 @@ import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import { useIsMobile } from "@/hooks/use-mobile";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 
 interface AdminDashboardProps {
@@ -205,6 +206,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [ogImageSettings, setOGImageSettings] = useState<{og_image?: string; updated_at?: string}>({});
   const [loadingOGImageSettings, setLoadingOGImageSettings] = useState(false);
   const [uploadingOGImage, setUploadingOGImage] = useState(false);
+  const [faviconSettings, setFaviconSettings] = useState<FaviconSettings>({});
+  const [loadingFaviconSettings, setLoadingFaviconSettings] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState<{type: string; loading: boolean}>({type: '', loading: false});
 
   // --- Team Members State ---
   const [teamMembers, setTeamMembers] = useState([]);
@@ -563,20 +567,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Filter applications based on search term and date range
   const filteredApplications = applications.filter(application => {
-    // Search filter
     const searchLower = applicationSearchTerm.toLowerCase();
-    const matchesSearch = 
+    const matchesSearch = (
       application.full_name.toLowerCase().includes(searchLower) ||
       (application.email && application.email.toLowerCase().includes(searchLower)) ||
       application.phone_number.includes(searchLower) ||
-      application.city.toLowerCase().includes(searchLower);
-    
-    if (!matchesSearch) return false;
-    
-    // Date range filter
+      application.city.toLowerCase().includes(searchLower)
+    );
+
+    // Date range filtering
     if (applicationDateFrom || applicationDateTo) {
       const applicationDate = new Date(application.created_at);
-      applicationDate.setHours(0, 0, 0, 0); // Reset time to start of day
+      applicationDate.setHours(0, 0, 0, 0);
       
       if (applicationDateFrom) {
         const fromDate = new Date(applicationDateFrom);
@@ -586,12 +588,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       if (applicationDateTo) {
         const toDate = new Date(applicationDateTo);
-        toDate.setHours(23, 59, 59, 999); // End of day
+        toDate.setHours(23, 59, 59, 999);
         if (applicationDate > toDate) return false;
       }
     }
-    
-    return true;
+
+    return matchesSearch;
   });
 
   // Animation effect for sponsors
@@ -1290,6 +1292,95 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  // Fetch favicon settings
+  const loadFaviconSettings = async () => {
+    try {
+      setLoadingFaviconSettings(true);
+      const settings = await fetchFaviconSettings();
+      setFaviconSettings(settings);
+    } catch (error) {
+      console.error('Error fetching favicon settings:', error);
+      setFaviconSettings({});
+    } finally {
+      setLoadingFaviconSettings(false);
+    }
+  };
+
+  // Handle favicon upload
+  const handleUploadFavicon = async (file: File, type: 'favicon_ico' | 'favicon_32x32' | 'favicon_16x16' | 'apple_touch_icon') => {
+    try {
+      setUploadingFavicon({ type, loading: true });
+      const result = await uploadFavicon(file, type);
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      // Reload favicon settings
+      await loadFaviconSettings();
+
+      toast({
+        title: language === 'en' ? 'Favicon Uploaded' : 'Favicon Téléchargé',
+        description: language === 'en' 
+          ? 'Favicon uploaded successfully. Refresh the page to see the new favicon.' 
+          : 'Favicon téléchargé avec succès. Actualisez la page pour voir le nouveau favicon.',
+      });
+    } catch (error) {
+      console.error('Error uploading favicon:', error);
+      toast({
+        title: language === 'en' ? 'Upload Failed' : 'Échec du Téléchargement',
+        description: language === 'en' 
+          ? `Failed to upload favicon: ${error instanceof Error ? error.message : 'Unknown error'}` 
+          : `Échec du téléchargement: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingFavicon({ type: '', loading: false });
+    }
+  };
+
+  // Handle favicon delete
+  const handleDeleteFavicon = async (type: 'favicon_ico' | 'favicon_32x32' | 'favicon_16x16' | 'apple_touch_icon') => {
+    try {
+      const currentUrl = faviconSettings[type];
+      if (!currentUrl) {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? 'No favicon to delete' 
+            : 'Aucun favicon à supprimer',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const result = await deleteFavicon(type, currentUrl);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete favicon');
+      }
+
+      // Reload favicon settings
+      await loadFaviconSettings();
+
+      toast({
+        title: language === 'en' ? 'Favicon Deleted' : 'Favicon Supprimé',
+        description: language === 'en' 
+          ? 'Favicon deleted successfully' 
+          : 'Favicon supprimé avec succès',
+      });
+    } catch (error) {
+      console.error('Error deleting favicon:', error);
+      toast({
+        title: language === 'en' ? 'Delete Failed' : 'Échec de la Suppression',
+        description: language === 'en' 
+          ? `Failed to delete favicon: ${error instanceof Error ? error.message : 'Unknown error'}` 
+          : `Échec de la suppression: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+        variant: 'destructive',
+      });
+    }
+  };
+
   // Fetch SMS balance
   const fetchSmsBalance = async () => {
     try {
@@ -1714,6 +1805,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchSmsLogs();
       // SMS Balance check removed - user must click button to check
       await loadOGImageSettings();
+      await loadFaviconSettings();
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -2561,10 +2653,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           href={url} 
           target="_blank" 
           rel="noopener noreferrer"
-          className={`inline-flex items-center ${iconOnly ? 'justify-center' : 'space-x-2'} text-primary hover:text-primary/80 transition-all duration-300 transform hover:scale-110`}
+          className={`inline-flex items-center ${iconOnly ? 'justify-center' : 'space-x-2'} text-primary hover:text-primary/80 transition-colors duration-300 transform hover:scale-110`}
           title="View Instagram Profile"
         >
-          <Instagram className={`${iconOnly ? 'w-5 h-5' : 'w-4 h-4'}`} />
+          <Instagram className="w-4 h-4" />
           {!iconOnly && <span className="text-sm">Instagram Profile</span>}
         </a>
       );
@@ -4138,7 +4230,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   </div>
                 </div>
 
-                {/* Search Bar and Date Filter */}
+                {/* Search Bar and Date Filters */}
                 <div className="space-y-4 animate-in slide-in-from-bottom-4 fade-in duration-700 delay-500">
                   <div className="relative">
                     <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
@@ -4150,20 +4242,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     />
                   </div>
                   
-                  {/* Date Range Filter */}
-                  <div className="flex flex-col sm:flex-row gap-4 items-end">
-                    <div className="flex-1 sm:flex-initial">
-                      <Label className="text-sm text-muted-foreground mb-2 block">From Date</Label>
+                  {/* Date Range Filters */}
+                  <div className="flex flex-wrap gap-4 items-center">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium text-muted-foreground">From Date:</Label>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
                             className={cn(
-                              "w-full justify-start text-left font-normal transition-all duration-300 hover:scale-105",
+                              "w-[200px] justify-start text-left font-normal border-border bg-card hover:bg-muted/50 transition-all duration-300",
                               !applicationDateFrom && "text-muted-foreground"
                             )}
                           >
-                            <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                            <CalendarIcon className="mr-2 h-4 w-4" />
                             {applicationDateFrom ? (
                               format(applicationDateFrom, "PPP")
                             ) : (
@@ -4171,29 +4263,30 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             )}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 bg-card border-border" align="start">
+                        <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
                             selected={applicationDateFrom}
-                            onSelect={setApplicationDateFrom}
+                            onSelect={(date) => setApplicationDateFrom(date)}
                             initialFocus
                           />
                         </PopoverContent>
                       </Popover>
                     </div>
-                    <div className="flex-1 sm:flex-initial">
-                      <Label className="text-sm text-muted-foreground mb-2 block">To Date</Label>
+                    
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium text-muted-foreground">To Date:</Label>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
                             className={cn(
-                              "w-full justify-start text-left font-normal transition-all duration-300 hover:scale-105",
+                              "w-[200px] justify-start text-left font-normal border-border bg-card hover:bg-muted/50 transition-all duration-300",
                               !applicationDateTo && "text-muted-foreground"
                             )}
                             disabled={!applicationDateFrom}
                           >
-                            <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                            <CalendarIcon className="mr-2 h-4 w-4" />
                             {applicationDateTo ? (
                               format(applicationDateTo, "PPP")
                             ) : (
@@ -4201,25 +4294,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             )}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 bg-card border-border" align="start">
+                        <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
                             selected={applicationDateTo}
-                            onSelect={setApplicationDateTo}
+                            onSelect={(date) => setApplicationDateTo(date)}
                             disabled={(date) => applicationDateFrom ? date < applicationDateFrom : false}
                             initialFocus
                           />
                         </PopoverContent>
                       </Popover>
                     </div>
+                    
                     {(applicationDateFrom || applicationDateTo) && (
                       <Button
-                        variant="outline"
+                        variant="ghost"
+                        size="sm"
                         onClick={() => {
                           setApplicationDateFrom(undefined);
                           setApplicationDateTo(undefined);
                         }}
-                        className="transform hover:scale-105 transition-all duration-300"
+                        className="text-muted-foreground hover:text-foreground transition-all duration-300"
                       >
                         <X className="w-4 h-4 mr-2" />
                         Clear Dates
@@ -6742,16 +6837,244 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 </p>
                               )}
                               {ogImageSettings.og_image && (
-                                <Alert className="mt-4">
+                                <Alert className="mt-4 bg-blue-500/10 border-blue-500/20 text-blue-200">
                                   <AlertCircle className="h-4 w-4" />
-                                  <AlertDescription className="text-xs">
-                                    {language === 'en' 
-                                      ? 'After uploading a new image, social media platforms may show the old cached image. To fix this: 1) Wait 5-10 minutes for changes to propagate, 2) Use Facebook Sharing Debugger or Twitter Card Validator to clear cache, 3) Share the link again.'
-                                      : 'Après avoir téléchargé une nouvelle image, les plateformes de médias sociaux peuvent afficher l\'ancienne image mise en cache. Pour corriger cela : 1) Attendez 5-10 minutes, 2) Utilisez Facebook Sharing Debugger ou Twitter Card Validator pour vider le cache, 3) Partagez à nouveau le lien.'}
+                                  <AlertDescription className="text-xs space-y-2">
+                                    <p>
+                                      {language === 'en' 
+                                        ? 'After uploading a new image, social media platforms may show the old cached image. To fix this:'
+                                        : 'Après avoir téléchargé une nouvelle image, les plateformes de médias sociaux peuvent afficher l\'ancienne image mise en cache. Pour corriger cela :'}
+                                    </p>
+                                    <ol className="list-decimal list-inside space-y-1 ml-2">
+                                      <li>{language === 'en' ? 'Wait 5-10 minutes for changes to propagate' : 'Attendez 5-10 minutes pour que les changements se propagent'}</li>
+                                      <li>{language === 'en' ? 'Use Facebook Sharing Debugger (developers.facebook.com/tools/debug/) to clear cache' : 'Utilisez Facebook Sharing Debugger (developers.facebook.com/tools/debug/) pour vider le cache'}</li>
+                                      <li>{language === 'en' ? 'For Instagram: The image may take 24-48 hours to update due to caching. Try sharing the link in a new conversation.' : 'Pour Instagram : L\'image peut prendre 24-48 heures pour se mettre à jour en raison de la mise en cache. Essayez de partager le lien dans une nouvelle conversation.'}</li>
+                                      <li>{language === 'en' ? 'Verify the image URL is accessible: ' : 'Vérifiez que l\'URL de l\'image est accessible : '}
+                                        <a 
+                                          href={ogImageSettings.og_image} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="text-primary hover:underline break-all"
+                                        >
+                                          {ogImageSettings.og_image.length > 50 ? `${ogImageSettings.og_image.substring(0, 50)}...` : ogImageSettings.og_image}
+                                        </a>
+                                      </li>
+                                    </ol>
                                   </AlertDescription>
                                 </Alert>
                               )}
                             </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Favicon Management Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Image className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'Favicon Management' : 'Gestion des Favicons'}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">
+                          {language === 'en' 
+                            ? 'Upload favicons that appear in browser tabs and bookmarks. Different sizes are used for different contexts.' 
+                            : 'Téléchargez des favicons qui apparaissent dans les onglets du navigateur et les signets. Différentes tailles sont utilisées pour différents contextes.'}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        {loadingFaviconSettings ? (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                          </div>
+                        ) : (
+                          <div className="space-y-6">
+                            {/* Favicon ICO (16x16) */}
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold flex items-center gap-2">
+                                <Image className="w-4 h-4" />
+                                {language === 'en' ? 'Favicon ICO (16x16)' : 'Favicon ICO (16x16)'}
+                                <span className="text-xs text-muted-foreground font-normal">
+                                  {language === 'en' ? '(Browser tab icon)' : '(Icône d\'onglet du navigateur)'}
+                                </span>
+                              </Label>
+                              <FileUpload
+                                onFileSelect={(file) => {
+                                  if (file) {
+                                    handleUploadFavicon(file, 'favicon_ico');
+                                  }
+                                }}
+                                onUrlChange={() => {}}
+                                accept="image/x-icon,image/vnd.microsoft.icon,.ico"
+                                label={uploadingFavicon.type === 'favicon_ico' && uploadingFavicon.loading ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload ICO Favicon' : 'Télécharger le Favicon ICO')}
+                                maxSize={1 * 1024 * 1024}
+                                currentUrl={faviconSettings.favicon_ico}
+                              />
+                              {faviconSettings.favicon_ico && (
+                                <div className="mt-2 flex items-center gap-4 p-3 bg-muted/30 rounded-lg">
+                                  <img 
+                                    src={faviconSettings.favicon_ico} 
+                                    alt="Favicon ICO" 
+                                    className="w-8 h-8 object-contain flex-shrink-0 border border-border/50 rounded" 
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-muted-foreground break-all">{faviconSettings.favicon_ico}</p>
+                                  </div>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteFavicon('favicon_ico')}
+                                    className="flex-shrink-0"
+                                  >
+                                    <Trash2 className="w-3 h-3 mr-2" />
+                                    {language === 'en' ? 'Delete' : 'Supprimer'}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Favicon 32x32 */}
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold flex items-center gap-2">
+                                <Image className="w-4 h-4" />
+                                {language === 'en' ? 'Favicon PNG (32x32)' : 'Favicon PNG (32x32)'}
+                                <span className="text-xs text-muted-foreground font-normal">
+                                  {language === 'en' ? '(High DPI displays)' : '(Écrans haute résolution)'}
+                                </span>
+                              </Label>
+                              <FileUpload
+                                onFileSelect={(file) => {
+                                  if (file) {
+                                    handleUploadFavicon(file, 'favicon_32x32');
+                                  }
+                                }}
+                                onUrlChange={() => {}}
+                                accept="image/png"
+                                label={uploadingFavicon.type === 'favicon_32x32' && uploadingFavicon.loading ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload 32x32 Favicon' : 'Télécharger le Favicon 32x32')}
+                                maxSize={1 * 1024 * 1024}
+                                currentUrl={faviconSettings.favicon_32x32}
+                              />
+                              {faviconSettings.favicon_32x32 && (
+                                <div className="mt-2 flex items-center gap-4 p-3 bg-muted/30 rounded-lg">
+                                  <img 
+                                    src={faviconSettings.favicon_32x32} 
+                                    alt="Favicon 32x32" 
+                                    className="w-8 h-8 object-contain flex-shrink-0 border border-border/50 rounded" 
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-muted-foreground break-all">{faviconSettings.favicon_32x32}</p>
+                                  </div>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteFavicon('favicon_32x32')}
+                                    className="flex-shrink-0"
+                                  >
+                                    <Trash2 className="w-3 h-3 mr-2" />
+                                    {language === 'en' ? 'Delete' : 'Supprimer'}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Favicon 16x16 */}
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold flex items-center gap-2">
+                                <Image className="w-4 h-4" />
+                                {language === 'en' ? 'Favicon PNG (16x16)' : 'Favicon PNG (16x16)'}
+                                <span className="text-xs text-muted-foreground font-normal">
+                                  {language === 'en' ? '(Standard displays)' : '(Écrans standard)'}
+                                </span>
+                              </Label>
+                              <FileUpload
+                                onFileSelect={(file) => {
+                                  if (file) {
+                                    handleUploadFavicon(file, 'favicon_16x16');
+                                  }
+                                }}
+                                onUrlChange={() => {}}
+                                accept="image/png"
+                                label={uploadingFavicon.type === 'favicon_16x16' && uploadingFavicon.loading ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload 16x16 Favicon' : 'Télécharger le Favicon 16x16')}
+                                maxSize={1 * 1024 * 1024}
+                                currentUrl={faviconSettings.favicon_16x16}
+                              />
+                              {faviconSettings.favicon_16x16 && (
+                                <div className="mt-2 flex items-center gap-4 p-3 bg-muted/30 rounded-lg">
+                                  <img 
+                                    src={faviconSettings.favicon_16x16} 
+                                    alt="Favicon 16x16" 
+                                    className="w-8 h-8 object-contain flex-shrink-0 border border-border/50 rounded" 
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-muted-foreground break-all">{faviconSettings.favicon_16x16}</p>
+                                  </div>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteFavicon('favicon_16x16')}
+                                    className="flex-shrink-0"
+                                  >
+                                    <Trash2 className="w-3 h-3 mr-2" />
+                                    {language === 'en' ? 'Delete' : 'Supprimer'}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Apple Touch Icon */}
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold flex items-center gap-2">
+                                <Image className="w-4 h-4" />
+                                {language === 'en' ? 'Apple Touch Icon (180x180)' : 'Icône Apple Touch (180x180)'}
+                                <span className="text-xs text-muted-foreground font-normal">
+                                  {language === 'en' ? '(iOS home screen)' : '(Écran d\'accueil iOS)'}
+                                </span>
+                              </Label>
+                              <FileUpload
+                                onFileSelect={(file) => {
+                                  if (file) {
+                                    handleUploadFavicon(file, 'apple_touch_icon');
+                                  }
+                                }}
+                                onUrlChange={() => {}}
+                                accept="image/png"
+                                label={uploadingFavicon.type === 'apple_touch_icon' && uploadingFavicon.loading ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload Apple Touch Icon' : 'Télécharger l\'Icône Apple Touch')}
+                                maxSize={2 * 1024 * 1024}
+                                currentUrl={faviconSettings.apple_touch_icon}
+                              />
+                              {faviconSettings.apple_touch_icon && (
+                                <div className="mt-2 flex items-center gap-4 p-3 bg-muted/30 rounded-lg">
+                                  <img 
+                                    src={faviconSettings.apple_touch_icon} 
+                                    alt="Apple Touch Icon" 
+                                    className="w-12 h-12 object-contain flex-shrink-0 border border-border/50 rounded" 
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-muted-foreground break-all">{faviconSettings.apple_touch_icon}</p>
+                                  </div>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handleDeleteFavicon('apple_touch_icon')}
+                                    className="flex-shrink-0"
+                                  >
+                                    <Trash2 className="w-3 h-3 mr-2" />
+                                    {language === 'en' ? 'Delete' : 'Supprimer'}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            <Alert className="bg-blue-500/10 border-blue-500/20 text-blue-200">
+                              <AlertCircle className="h-4 w-4" />
+                              <AlertDescription className="text-xs">
+                                {language === 'en' 
+                                  ? 'After uploading new favicons, you may need to hard refresh your browser (Ctrl+Shift+R or Cmd+Shift+R) to see the changes. Browsers cache favicons aggressively.' 
+                                  : 'Après avoir téléchargé de nouveaux favicons, vous devrez peut-être actualiser votre navigateur (Ctrl+Shift+R ou Cmd+Shift+R) pour voir les changements. Les navigateurs mettent en cache les favicons de manière agressive.'}
+                              </AlertDescription>
+                            </Alert>
                           </div>
                         )}
                       </CardContent>

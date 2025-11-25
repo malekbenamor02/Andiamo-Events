@@ -43,14 +43,39 @@ export const OGImageLoader = () => {
           twitterImageMeta.setAttribute('content', defaultOGImage);
           document.head.appendChild(twitterImageMeta);
         } else {
-          // Use OG image from database with cache-busting timestamp
-          const ogImageUrl = addCacheBuster(settings.og_image, settings.updated_at);
+          // Ensure the URL is absolute (full URL with protocol)
+          let ogImageUrl = settings.og_image;
+          if (!ogImageUrl.startsWith('http://') && !ogImageUrl.startsWith('https://')) {
+            // If relative URL, make it absolute
+            ogImageUrl = ogImageUrl.startsWith('/') 
+              ? `${window.location.origin}${ogImageUrl}`
+              : `${window.location.origin}/${ogImageUrl}`;
+          }
+          
+          // Add cache-busting timestamp
+          ogImageUrl = addCacheBuster(ogImageUrl, settings.updated_at);
+          
+          // Remove any existing OG image meta tags (including width, height, type)
+          const existingOGTags = document.querySelectorAll('meta[property^="og:image"]');
+          existingOGTags.forEach(tag => tag.remove());
           
           // Add OG image meta tag
           const ogImageMeta = document.createElement('meta');
           ogImageMeta.setAttribute('property', 'og:image');
           ogImageMeta.setAttribute('content', ogImageUrl);
           document.head.appendChild(ogImageMeta);
+
+          // Add OG image secure URL (required by some platforms)
+          const ogImageSecureMeta = document.createElement('meta');
+          ogImageSecureMeta.setAttribute('property', 'og:image:secure_url');
+          ogImageSecureMeta.setAttribute('content', ogImageUrl);
+          document.head.appendChild(ogImageSecureMeta);
+
+          // Add OG image type
+          const ogImageTypeMeta = document.createElement('meta');
+          ogImageTypeMeta.setAttribute('property', 'og:image:type');
+          ogImageTypeMeta.setAttribute('content', 'image/jpeg');
+          document.head.appendChild(ogImageTypeMeta);
 
           // Add Twitter image meta tag
           const twitterImageMeta = document.createElement('meta');

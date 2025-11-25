@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { sanitizeObject } from './sanitize';
 
 export interface OGImageSettings {
   og_image?: string;
@@ -59,7 +60,7 @@ export const uploadOGImage = async (
       });
 
     if (error) {
-      console.error('OG image upload error:', error);
+      console.error('OG image upload error:', sanitizeObject(error));
       return {
         url: '',
         path: '',
@@ -87,7 +88,7 @@ export const uploadOGImage = async (
       updated_at: timestamp // Store timestamp for cache-busting
     };
 
-    const { error: updateError } = await supabase
+    const { error: updateError, data: updateData } = await supabase
       .from('site_content')
       .upsert({
         key: 'og_image_settings',
@@ -98,11 +99,29 @@ export const uploadOGImage = async (
       });
 
     if (updateError) {
-      console.error('Error updating OG image settings:', updateError);
+      console.error('Error updating OG image settings:', sanitizeObject(updateError));
+      console.error('Update data:', sanitizeObject(updateData));
+      console.error('Settings being saved:', sanitizeObject(updatedSettings));
       return {
         url: urlData.publicUrl,
         path: filePath,
-        error: updateError.message
+        error: updateError.message || 'Failed to save OG image settings to database'
+      };
+    }
+
+    // Verify the save was successful
+    const { data: verifyData, error: verifyError } = await supabase
+      .from('site_content')
+      .select('content')
+      .eq('key', 'og_image_settings')
+      .single();
+
+    if (verifyError || !verifyData) {
+      console.error('Failed to verify OG image settings save:', sanitizeObject(verifyError));
+      return {
+        url: urlData.publicUrl,
+        path: filePath,
+        error: 'Uploaded but failed to verify save. Please refresh and check.'
       };
     }
 
@@ -112,7 +131,7 @@ export const uploadOGImage = async (
     };
 
   } catch (error) {
-    console.error('OG image upload failed:', error);
+    console.error('OG image upload failed:', sanitizeObject(error));
     return {
       url: '',
       path: '',
@@ -191,7 +210,7 @@ export const deleteOGImage = async (
     return { success: true };
 
   } catch (error) {
-    console.error('Error deleting OG image:', error);
+    console.error('Error deleting OG image:', sanitizeObject(error));
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -219,7 +238,7 @@ export const fetchOGImageSettings = async (): Promise<OGImageSettings> => {
         console.log('OG image settings not found, returning empty settings');
         return {};
       }
-      console.error('Error fetching OG image settings:', error);
+      console.error('Error fetching OG image settings:', sanitizeObject(error));
       return {};
     }
 

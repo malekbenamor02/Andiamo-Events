@@ -30,11 +30,18 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="color-scheme" content="dark light">
+      <meta name="supported-color-schemes" content="dark light">
       <title>Welcome to Andiamo Events</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
       <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
       <style>
+        /* Force dark mode colors - prevent email clients from overriding */
+        :root {
+          color-scheme: dark light;
+          supported-color-schemes: dark light;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
           font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
@@ -302,6 +309,46 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           margin-bottom: 10px;
           letter-spacing: 1px;
         }
+        /* Dark mode support - ensure colors work in both light and dark modes */
+        @media (prefers-color-scheme: dark) {
+          body {
+            background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important;
+            color: #e0e0e0 !important;
+          }
+          .email-wrapper {
+            background: hsl(218, 23%, 12%) !important;
+          }
+          .content {
+            background: hsl(218, 23%, 12%) !important;
+            color: #e0e0e0 !important;
+          }
+          .greeting {
+            color: #ffffff !important;
+          }
+          .intro-text, .message-text {
+            color: #d0d0d0 !important;
+          }
+          .credentials-card, .features-card, .appreciation-card, .future-opportunity {
+            background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%) !important;
+          }
+          .footer {
+            background: hsl(218, 23%, 8%) !important;
+          }
+          .footer-text {
+            color: #888 !important;
+          }
+        }
+        /* Light mode fallback - ensure readability if dark mode is disabled */
+        @media (prefers-color-scheme: light) {
+          body {
+            background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important;
+            color: #e0e0e0 !important;
+          }
+          .email-wrapper {
+            background: hsl(218, 23%, 12%) !important;
+          }
+        }
+        /* Mobile responsive */
         @media only screen and (max-width: 600px) {
           .email-wrapper {
             border-radius: 0;
@@ -321,8 +368,8 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
         }
       </style>
     </head>
-    <body>
-      <div class="email-wrapper">
+    <body style="background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important; color: #e0e0e0 !important; padding: 20px; margin: 0; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
+      <div class="email-wrapper" style="background: hsl(218, 23%, 12%) !important; max-width: 600px; margin: 0 auto; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(185, 85, 211, 0.1);">
         <div class="header">
           <div class="header-content">
             <div class="logo">ANDIAMO EVENTS</div>
@@ -331,7 +378,7 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           </div>
         </div>
         
-        <div class="content">
+        <div class="content" style="background: hsl(218, 23%, 12%) !important; color: #e0e0e0 !important; padding: 40px;">
           <p class="greeting">Dear <strong>${ambassador.fullName}</strong>,</p>
           
           <p class="intro-text">
@@ -388,11 +435,11 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           </div>
         </div>
         
-        <div class="footer">
+        <div class="footer" style="background: hsl(218, 23%, 8%) !important; padding: 30px 40px; text-align: center; border-top: 1px solid hsl(218, 23%, 20%);">
           <div class="footer-brand">ANDIAMO EVENTS</div>
-          <p class="footer-text">© 2024 Andiamo Events. All rights reserved.</p>
-          <p class="footer-text">Tunisia's Premier Nightlife Experience</p>
-          <p class="footer-text" style="margin-top: 15px;">
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">© 2024 Andiamo Events. All rights reserved.</p>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">Tunisia's Premier Nightlife Experience</p>
+          <p class="footer-text" style="margin-top: 15px; color: #888 !important; font-size: 13px; margin: 0;">
             <a href="mailto:contact@andiamo.com" class="email-copy" onclick="navigator.clipboard.writeText('contact@andiamo.com'); this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z\'/></svg> Copied!'; setTimeout(() => { this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z\'/></svg> Copy Email'; }, 2000); return false;">
               <svg class="email-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -425,11 +472,18 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="color-scheme" content="dark light">
+      <meta name="supported-color-schemes" content="dark light">
       <title>Application Update - Andiamo Events</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
       <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
       <style>
+        /* Force dark mode colors - prevent email clients from overriding */
+        :root {
+          color-scheme: dark light;
+          supported-color-schemes: dark light;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
           font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
@@ -577,6 +631,46 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           margin-bottom: 10px;
           letter-spacing: 1px;
         }
+        /* Dark mode support - ensure colors work in both light and dark modes */
+        @media (prefers-color-scheme: dark) {
+          body {
+            background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important;
+            color: #e0e0e0 !important;
+          }
+          .email-wrapper {
+            background: hsl(218, 23%, 12%) !important;
+          }
+          .content {
+            background: hsl(218, 23%, 12%) !important;
+            color: #e0e0e0 !important;
+          }
+          .greeting {
+            color: #ffffff !important;
+          }
+          .message-text {
+            color: #d0d0d0 !important;
+          }
+          .appreciation-card, .future-opportunity {
+            background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%) !important;
+          }
+          .footer {
+            background: hsl(218, 23%, 8%) !important;
+          }
+          .footer-text {
+            color: #888 !important;
+          }
+        }
+        /* Light mode fallback - ensure readability if dark mode is disabled */
+        @media (prefers-color-scheme: light) {
+          body {
+            background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important;
+            color: #e0e0e0 !important;
+          }
+          .email-wrapper {
+            background: hsl(218, 23%, 12%) !important;
+          }
+        }
+        /* Mobile responsive */
         @media only screen and (max-width: 600px) {
           .email-wrapper {
             border-radius: 0;
@@ -596,8 +690,8 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
         }
       </style>
     </head>
-    <body>
-      <div class="email-wrapper">
+    <body style="background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important; color: #e0e0e0 !important; padding: 20px; margin: 0; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
+      <div class="email-wrapper" style="background: hsl(218, 23%, 12%) !important; max-width: 600px; margin: 0 auto; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(185, 85, 211, 0.1);">
         <div class="header">
           <div class="header-content">
             <div class="logo">ANDIAMO EVENTS</div>
@@ -606,7 +700,7 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           </div>
         </div>
         
-        <div class="content">
+        <div class="content" style="background: hsl(218, 23%, 12%) !important; color: #e0e0e0 !important; padding: 40px;">
           <p class="greeting">Dear <strong>${ambassador.fullName}</strong>,</p>
           
           <p class="message-text">
@@ -640,11 +734,11 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           </div>
         </div>
         
-        <div class="footer">
+        <div class="footer" style="background: hsl(218, 23%, 8%) !important; padding: 30px 40px; text-align: center; border-top: 1px solid hsl(218, 23%, 20%);">
           <div class="footer-brand">ANDIAMO EVENTS</div>
-          <p class="footer-text">© 2024 Andiamo Events. All rights reserved.</p>
-          <p class="footer-text">Tunisia's Premier Nightlife Experience</p>
-          <p class="footer-text" style="margin-top: 15px;">
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">© 2024 Andiamo Events. All rights reserved.</p>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">Tunisia's Premier Nightlife Experience</p>
+          <p class="footer-text" style="margin-top: 15px; color: #888 !important; font-size: 13px; margin: 0;">
             <a href="mailto:contact@andiamo.com" class="email-copy" onclick="navigator.clipboard.writeText('contact@andiamo.com'); this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z\'/></svg> Copied!'; setTimeout(() => { this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z\'/></svg> Copy Email'; }, 2000); return false;">
               <svg class="email-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>

@@ -2,6 +2,26 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import { logger } from './lib/logger'
+import { sanitizeConsoleArgs, sanitizeObject, sanitizeString } from './lib/sanitize'
+
+// Early error handler to catch errors before main setup
+const suppressBrowserExtensionError = (error: any) => {
+  const errorString = String(error?.message || error || '');
+  return errorString.includes("message channel closed") ||
+         errorString.includes("asynchronous response") ||
+         errorString.includes("A listener indicated an asynchronous response") ||
+         errorString.includes("Extension context invalidated") ||
+         errorString.includes("message channel closed before a response was received");
+};
+
+// Set up early promise rejection handler
+window.addEventListener('unhandledrejection', (event) => {
+  if (suppressBrowserExtensionError(event.reason)) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+}, { capture: true });
 
 // Global error handlers to catch all errors
 const setupErrorHandlers = async () => {
@@ -13,10 +33,13 @@ const setupErrorHandlers = async () => {
     // Suppress harmless browser extension errors
     if (errorMessage.includes("message channel closed") ||
         errorMessage.includes("asynchronous response") ||
+        errorMessage.includes("A listener indicated an asynchronous response") ||
         errorMessage.includes("Extension context invalidated") ||
+        errorMessage.includes("message channel closed before a response was received") ||
         filename.includes("chrome-extension://") ||
         filename.includes("moz-extension://") ||
-        filename.includes("safari-extension://")) {
+        filename.includes("safari-extension://") ||
+        filename.includes("edge-extension://")) {
       event.preventDefault();
       event.stopPropagation();
       // Completely suppress - don't log to console at all
@@ -34,16 +57,17 @@ const setupErrorHandlers = async () => {
       return;
     }
 
-    // Log real errors
-    logger.error('JavaScript Error', event.error || new Error(errorMessage), {
+    // Log real errors (sanitized)
+    const sanitizedError = event.error ? sanitizeObject(event.error) : new Error(sanitizeString(errorMessage));
+    logger.error('JavaScript Error', sanitizedError, {
       category: 'error',
-      details: {
+      details: sanitizeObject({
         filename: event.filename,
         lineno: event.lineno,
         colno: event.colno,
         message: errorMessage,
         type: 'ErrorEvent'
-      }
+      })
     });
   });
 
@@ -56,9 +80,13 @@ const setupErrorHandlers = async () => {
     if (typeof errorMessage === 'string' &&
         (errorMessage.includes("message channel closed") ||
          errorMessage.includes("asynchronous response") ||
+         errorMessage.includes("A listener indicated an asynchronous response") ||
          errorMessage.includes("Extension context invalidated") ||
+         errorMessage.includes("message channel closed before a response was received") ||
          errorString.includes("message channel closed") ||
-         errorString.includes("asynchronous response"))) {
+         errorString.includes("asynchronous response") ||
+         errorString.includes("A listener indicated an asynchronous response") ||
+         errorString.includes("message channel closed before a response was received"))) {
       event.preventDefault();
       event.stopPropagation();
       // Completely suppress - don't log to console at all
@@ -77,13 +105,13 @@ const setupErrorHandlers = async () => {
       return;
     }
 
-    // Log real errors
-    logger.error('Unhandled Promise Rejection', event.reason, {
+    // Log real errors (sanitized)
+    logger.error('Unhandled Promise Rejection', sanitizeObject(event.reason), {
       category: 'error',
-      details: {
+      details: sanitizeObject({
         message: errorMessage,
         type: 'PromiseRejectionEvent'
-      }
+      })
     });
   });
 
@@ -95,20 +123,21 @@ const setupErrorHandlers = async () => {
       const response = await originalFetch(...args);
       const duration = Date.now() - startTime;
       
-      // Log API errors (4xx, 5xx)
+      // Log API errors (4xx, 5xx) - sanitize URL to remove credentials
       if (!response.ok) {
         const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+        const sanitizedUrl = sanitizeString(url);
         logger.error(`API Error: ${response.status} ${response.statusText}`, new Error(`${response.status} ${response.statusText}`), {
           category: 'api_call',
-          details: {
-            url,
+          details: sanitizeObject({
+            url: sanitizedUrl,
             method: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
             status: response.status,
             statusText: response.statusText,
             duration
-          },
+          }),
           requestMethod: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
-          requestPath: url,
+          requestPath: sanitizedUrl,
           responseStatus: response.status
         });
       }
@@ -118,24 +147,27 @@ const setupErrorHandlers = async () => {
       const duration = Date.now() - startTime;
       const url = typeof args[0] === 'string' ? args[0] : args[0].url;
       
-      logger.error('Fetch Error', error, {
+      const sanitizedUrl = sanitizeString(url);
+      logger.error('Fetch Error', sanitizeObject(error), {
         category: 'api_call',
-        details: {
-          url,
+        details: sanitizeObject({
+          url: sanitizedUrl,
           method: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
           duration
-        },
+        }),
         requestMethod: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
-        requestPath: url
+        requestPath: sanitizedUrl
       });
       
       throw error;
     }
   };
 
-  // Log console errors (but suppress harmless ones)
+  // Log console errors (but suppress harmless ones and sanitize sensitive data)
   const originalConsoleError = console.error;
   console.error = (...args: any[]) => {
+    // Sanitize all arguments before processing
+    const sanitizedArgs = sanitizeConsoleArgs(args);
     // Try to extract error information
     const errorString = args.map(arg => {
       if (arg instanceof Error) return arg.message;
@@ -146,7 +178,9 @@ const setupErrorHandlers = async () => {
     // Suppress harmless browser extension errors
     if (errorString.includes("message channel closed") ||
         errorString.includes("asynchronous response") ||
-        errorString.includes("Extension context invalidated")) {
+        errorString.includes("A listener indicated an asynchronous response") ||
+        errorString.includes("Extension context invalidated") ||
+        errorString.includes("message channel closed before a response was received")) {
       // Don't log to console or logger
       return;
     }
@@ -161,18 +195,18 @@ const setupErrorHandlers = async () => {
       return;
     }
 
-    // Log real errors to console
-    originalConsoleError.apply(console, args);
+    // Log real errors to console (sanitized)
+    originalConsoleError.apply(console, sanitizedArgs);
     
     // Don't log if it's already a logging error to avoid infinite loops
     if (!errorString.includes('Failed to log activity') && 
         !errorString.includes('Error in logActivity')) {
       logger.warning('Console Error', {
         category: 'error',
-        details: {
-          message: errorString,
-          args: args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg))
-        }
+        details: sanitizeObject({
+          message: sanitizeString(errorString),
+          args: sanitizedArgs.map(arg => typeof arg === 'object' ? JSON.stringify(sanitizeObject(arg)) : sanitizeString(String(arg)))
+        })
       });
     }
   };
@@ -232,10 +266,10 @@ if ('serviceWorker' in navigator) {
         updateViaCache: 'none'
       });
       
-      console.log('SW registered: ', registration);
+      // Don't log registration object (may contain sensitive info)
       logger.info('Service Worker registered', {
         category: 'system',
-        details: { scope: registration.scope }
+        details: { scope: sanitizeString(registration.scope) }
       });
       
       // Only check for updates once per session to prevent loops
@@ -244,10 +278,9 @@ if ('serviceWorker' in navigator) {
         sessionStorage.setItem('sw-update-checked', 'true');
       }
     } catch (registrationError) {
-      console.log('SW registration failed: ', registrationError);
-      logger.error('Service Worker registration failed', registrationError, {
+      logger.error('Service Worker registration failed', sanitizeObject(registrationError), {
         category: 'system',
-        details: { error: String(registrationError) }
+        details: sanitizeObject({ error: sanitizeString(String(registrationError)) })
       });
     }
   });

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { sanitizeObject, sanitizeString } from "./sanitize";
 
 export type LogType = 'info' | 'warning' | 'error' | 'success' | 'action';
 export type LogCategory = 
@@ -65,22 +66,29 @@ export const logActivity = async (
       // Ignore IP fetching errors
     }
 
-    // Insert log into database
+    // Sanitize all data before logging
+    const sanitizedMessage = sanitizeString(message);
+    const sanitizedDetails = Object.keys(details).length > 0 ? sanitizeObject(details) : null;
+    const sanitizedPageUrl = pageUrl ? sanitizeString(pageUrl) : undefined;
+    const sanitizedRequestPath = requestPath ? sanitizeString(requestPath) : undefined;
+    const sanitizedErrorStack = errorStack ? sanitizeString(errorStack) : undefined;
+    
+    // Insert log into database (all sensitive data sanitized)
     const { error } = await supabase
       .from('site_logs')
       .insert({
         log_type: logType,
         category,
-        message,
-        details: Object.keys(details).length > 0 ? details : null,
+        message: sanitizedMessage,
+        details: sanitizedDetails,
         user_type: userType,
         ip_address: ipAddress,
         user_agent: userAgent,
-        page_url: pageUrl,
+        page_url: sanitizedPageUrl,
         request_method: requestMethod,
-        request_path: requestPath,
+        request_path: sanitizedRequestPath,
         response_status: responseStatus,
-        error_stack: errorStack
+        error_stack: sanitizedErrorStack
       });
 
     if (error) {
@@ -104,11 +112,12 @@ export const logger = {
     logActivity('warning', message, options),
   
   error: (message: string, error?: Error | unknown, options?: LogOptions) => {
-    const errorStack = error instanceof Error ? error.stack : String(error);
+    const errorStack = error instanceof Error ? sanitizeString(error.stack || '') : sanitizeString(String(error));
     return logActivity('error', message, {
       ...options,
       errorStack,
-      category: options?.category || 'error'
+      category: options?.category || 'error',
+      details: options?.details ? sanitizeObject(options.details) : undefined
     });
   },
   

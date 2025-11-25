@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { sanitizeObject } from './sanitize';
 
 export interface FaviconSettings {
   favicon_ico?: string;
@@ -29,7 +30,7 @@ export const uploadFavicon = async (
       });
 
     if (error) {
-      console.error('Favicon upload error:', error);
+      console.error('Favicon upload error:', sanitizeObject(error));
       return {
         url: '',
         path: '',
@@ -55,7 +56,7 @@ export const uploadFavicon = async (
       [type]: urlData.publicUrl
     };
 
-    const { error: updateError } = await supabase
+    const { error: updateError, data: updateData } = await supabase
       .from('site_content')
       .upsert({
         key: 'favicon_settings',
@@ -66,11 +67,29 @@ export const uploadFavicon = async (
       });
 
     if (updateError) {
-      console.error('Error updating favicon settings:', updateError);
+      console.error('Error updating favicon settings:', sanitizeObject(updateError));
+      console.error('Update data:', sanitizeObject(updateData));
+      console.error('Settings being saved:', sanitizeObject(updatedSettings));
       return {
         url: urlData.publicUrl,
         path: filePath,
-        error: updateError.message
+        error: updateError.message || 'Failed to save favicon settings to database'
+      };
+    }
+
+    // Verify the save was successful
+    const { data: verifyData, error: verifyError } = await supabase
+      .from('site_content')
+      .select('content')
+      .eq('key', 'favicon_settings')
+      .single();
+
+    if (verifyError || !verifyData) {
+      console.error('Failed to verify favicon settings save:', sanitizeObject(verifyError));
+      return {
+        url: urlData.publicUrl,
+        path: filePath,
+        error: 'Uploaded but failed to verify save. Please refresh and check.'
       };
     }
 
@@ -80,7 +99,7 @@ export const uploadFavicon = async (
     };
 
   } catch (error) {
-    console.error('Favicon upload failed:', error);
+    console.error('Favicon upload failed:', sanitizeObject(error));
     return {
       url: '',
       path: '',
@@ -160,7 +179,7 @@ export const deleteFavicon = async (
     return { success: true };
 
   } catch (error) {
-    console.error('Error deleting favicon:', error);
+    console.error('Error deleting favicon:', sanitizeObject(error));
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -188,7 +207,7 @@ export const fetchFaviconSettings = async (): Promise<FaviconSettings> => {
         console.log('Favicon settings not found, returning empty settings');
         return {};
       }
-      console.error('Error fetching favicon settings:', error);
+      console.error('Error fetching favicon settings:', sanitizeObject(error));
       return {};
     }
 
