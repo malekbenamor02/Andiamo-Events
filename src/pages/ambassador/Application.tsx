@@ -219,43 +219,118 @@ const Application = ({ language }: ApplicationProps) => {
       const ENABLE_DUPLICATE_CHECK = true;
       
       if (ENABLE_DUPLICATE_CHECK) {
-        const { data: existingAmb, error: ambError } = await supabase
+        // Check for duplicate phone number in ambassadors
+        const { data: existingAmbByPhone, error: ambPhoneError } = await supabase
           .from('ambassadors')
           .select('id, status')
           .eq('phone', formData.phoneNumber)
           .maybeSingle();
         
-        const { data: existingApp, error: appError } = await supabase
+        // Check for duplicate email in ambassadors (if email provided)
+        let existingAmbByEmail = null;
+        let ambEmailError = null;
+        if (sanitizedEmail && sanitizedEmail.trim() !== '') {
+          const emailResult = await supabase
+            .from('ambassadors')
+            .select('id, status')
+            .eq('email', sanitizedEmail)
+            .maybeSingle();
+          existingAmbByEmail = emailResult.data;
+          ambEmailError = emailResult.error;
+        }
+        
+        // Check for duplicate phone number in applications
+        const { data: existingAppByPhone, error: appPhoneError } = await supabase
           .from('ambassador_applications')
           .select('id, status')
           .eq('phone_number', formData.phoneNumber)
           .in('status', ['pending', 'approved'])
           .maybeSingle();
 
-        const queryFailed = (ambError && (ambError.code === '42501' || ambError.message?.includes('permission') || ambError.message?.includes('policy'))) ||
-                           (appError && (appError.code === '42501' || appError.message?.includes('permission') || appError.message?.includes('policy')));
+        // Check for duplicate email in applications (if email provided)
+        let existingAppByEmail = null;
+        let appEmailError = null;
+        if (sanitizedEmail && sanitizedEmail.trim() !== '') {
+          const emailResult = await supabase
+            .from('ambassador_applications')
+            .select('id, status')
+            .eq('email', sanitizedEmail)
+            .in('status', ['pending', 'approved'])
+            .maybeSingle();
+          existingAppByEmail = emailResult.data;
+          appEmailError = emailResult.error;
+        }
+
+        const queryFailed = (ambPhoneError && (ambPhoneError.code === '42501' || ambPhoneError.message?.includes('permission') || ambPhoneError.message?.includes('policy'))) ||
+                           (ambEmailError && (ambEmailError.code === '42501' || ambEmailError.message?.includes('permission') || ambEmailError.message?.includes('policy'))) ||
+                           (appPhoneError && (appPhoneError.code === '42501' || appPhoneError.message?.includes('permission') || appPhoneError.message?.includes('policy'))) ||
+                           (appEmailError && (appEmailError.code === '42501' || appEmailError.message?.includes('permission') || appEmailError.message?.includes('policy')));
         
         if (queryFailed) {
-          // Continue with application
+          // Continue with application if policies aren't set up
         } else {
-          if (existingAmb && !ambError) {
+          // Check phone duplicates in ambassadors
+          if (existingAmbByPhone && !ambPhoneError) {
             toast({
-              title: 'Already Applied', 
-              description: existingAmb.status === 'approved' 
-                ? 'You are already an approved ambassador.' 
-                : 'You have already applied. Your application is being reviewed.', 
+              title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
+              description: language === 'en'
+                ? (existingAmbByPhone.status === 'approved' 
+                  ? 'You are already an approved ambassador.' 
+                  : 'You have already applied. Your application is being reviewed.')
+                : (existingAmbByPhone.status === 'approved' 
+                  ? 'Vous êtes déjà un ambassadeur approuvé.' 
+                  : 'Vous avez déjà candidaté. Votre candidature est en cours d\'examen.'), 
               variant: 'destructive' 
             });
             setIsSubmitting(false);
             return;
           }
 
-          if (existingApp && !appError) {
+          // Check email duplicates in ambassadors
+          if (existingAmbByEmail && !ambEmailError) {
             toast({
-              title: 'Already Applied', 
-              description: existingApp.status === 'approved' 
-                ? 'Your application has already been approved.' 
-                : 'You have already submitted an application. Please wait for review.', 
+              title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
+              description: language === 'en'
+                ? (existingAmbByEmail.status === 'approved' 
+                  ? 'This email is already registered as an approved ambassador.' 
+                  : 'This email is already registered. Your application is being reviewed.')
+                : (existingAmbByEmail.status === 'approved' 
+                  ? 'Cet email est déjà enregistré comme ambassadeur approuvé.' 
+                  : 'Cet email est déjà enregistré. Votre candidature est en cours d\'examen.'), 
+              variant: 'destructive' 
+            });
+            setIsSubmitting(false);
+            return;
+          }
+
+          // Check phone duplicates in applications
+          if (existingAppByPhone && !appPhoneError) {
+            toast({
+              title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
+              description: language === 'en'
+                ? (existingAppByPhone.status === 'approved' 
+                  ? 'Your application has already been approved.' 
+                  : 'You have already submitted an application. Please wait for review.')
+                : (existingAppByPhone.status === 'approved' 
+                  ? 'Votre candidature a déjà été approuvée.' 
+                  : 'Vous avez déjà soumis une candidature. Veuillez attendre l\'examen.'), 
+              variant: 'destructive' 
+            });
+            setIsSubmitting(false);
+            return;
+          }
+
+          // Check email duplicates in applications
+          if (existingAppByEmail && !appEmailError) {
+            toast({
+              title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
+              description: language === 'en'
+                ? (existingAppByEmail.status === 'approved' 
+                  ? 'An application with this email has already been approved.' 
+                  : 'An application with this email already exists. Please wait for review.')
+                : (existingAppByEmail.status === 'approved' 
+                  ? 'Une candidature avec cet email a déjà été approuvée.' 
+                  : 'Une candidature avec cet email existe déjà. Veuillez attendre l\'examen.'), 
               variant: 'destructive' 
             });
             setIsSubmitting(false);

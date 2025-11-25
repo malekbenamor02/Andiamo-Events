@@ -8,18 +8,15 @@ const urlsToCache = [
 
 // Install event
 self.addEventListener('install', (event) => {
-  // Don't skip waiting immediately to prevent refresh loops
-  // Let the old service worker finish before activating new one
+  // Don't skip waiting - let the old service worker finish naturally
+  // This prevents automatic page refreshes
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Opened cache');
         return cache.addAll(urlsToCache);
       })
-      .then(() => {
-        // Only skip waiting after cache is ready
-        return self.skipWaiting();
-      })
+      // Don't call skipWaiting() - this prevents automatic refresh
   );
 });
 
@@ -32,7 +29,7 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname === '/' || 
       url.pathname === '/index.html' ||
       url.pathname.startsWith('/api/') || 
-      url.hostname.includes('supabase') ||
+      url.hostname.includes('supabase.co') ||
       url.pathname.endsWith('.js') ||
       url.pathname.endsWith('.mjs') ||
       url.pathname.endsWith('.ts') ||
@@ -42,7 +39,19 @@ self.addEventListener('fetch', (event) => {
       event.request.destination === 'style' ||
       event.request.destination === 'document') {
     // Always fetch from network for HTML, scripts, styles, and API calls
-    event.respondWith(fetch(event.request));
+    // Don't catch errors - let them propagate naturally, but handle gracefully
+    event.respondWith(
+      fetch(event.request).catch(err => {
+        // Log error but don't block - return a failed response
+        console.warn('Service worker fetch error (non-critical):', err);
+        // Return a response that indicates network failure
+        return new Response(null, { 
+          status: 0, 
+          statusText: 'Network Error',
+          headers: { 'Content-Type': 'text/plain' }
+        });
+      })
+    );
     return;
   }
   
@@ -79,8 +88,9 @@ self.addEventListener('activate', (event) => {
         })
       );
     }).then(() => {
-      // Take control of all pages immediately
-      return self.clients.claim();
+      // Don't claim clients immediately - this prevents automatic refresh
+      // Clients will be claimed naturally when they navigate
+      // return self.clients.claim(); // Commented out to prevent auto-refresh
     })
   );
 }); 

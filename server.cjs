@@ -254,7 +254,7 @@ app.get('/api/verify-admin', requireAdminAuth, async (req, res) => {
     // Verify admin exists in database and is active
     const { data: admin, error } = await supabase
       .from('admins')
-      .select('id, email, name, is_active')
+      .select('id, email, name, role, is_active')
       .eq('id', req.admin.id)
       .eq('email', req.admin.email)
       .eq('is_active', true)
@@ -264,10 +264,119 @@ app.get('/api/verify-admin', requireAdminAuth, async (req, res) => {
       return res.status(401).json({ valid: false, error: 'Invalid admin' });
     }
 
-    res.json({ valid: true, admin: { id: admin.id, email: admin.email, name: admin.name } });
+    res.json({ valid: true, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role } });
   } catch (error) {
     console.error('Token verification error:', error);
     res.status(401).json({ valid: false, error: 'Invalid token' });
+  }
+});
+
+// Admin update application status endpoint (approve/reject)
+// GET handler for testing
+app.get('/api/admin-update-application', (req, res) => {
+  res.status(405).json({ 
+    error: 'Method not allowed',
+    message: 'This endpoint only accepts POST requests. Use POST with applicationId and status in the body.',
+    example: {
+      method: 'POST',
+      url: '/api/admin-update-application',
+      body: {
+        applicationId: 'uuid-here',
+        status: 'approved' // or 'rejected'
+      }
+    }
+  });
+});
+
+// POST handler for actual updates
+app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { applicationId, status } = req.body;
+
+    if (!applicationId || !status) {
+      return res.status(400).json({ error: 'applicationId and status are required' });
+    }
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'status must be "approved" or "rejected"' });
+    }
+
+    // Update application status (using anon key - RLS policies should allow this)
+    // If RLS blocks it, we'll get a clear error message
+    console.log('Attempting to update application:', { applicationId, status, adminId: req.admin.id });
+    
+    // Update application status
+    // Note: Don't include updated_at if column doesn't exist
+    // The column will be added by running FIX_ADD_UPDATED_AT_COLUMN.sql
+    let updateData, updateError;
+    
+    // Try with updated_at first
+    const result = await supabase
+      .from('ambassador_applications')
+      .update({ 
+        status: status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', applicationId)
+      .select();
+    
+    updateData = result.data;
+    updateError = result.error;
+    
+    // If error is about missing updated_at column, try without it
+    if (updateError && updateError.message?.includes('updated_at')) {
+      console.log('updated_at column not found, updating without it');
+      const retryResult = await supabase
+        .from('ambassador_applications')
+        .update({ status: status })
+        .eq('id', applicationId)
+        .select();
+      
+      updateData = retryResult.data;
+      updateError = retryResult.error;
+    }
+    
+    console.log('Update result:', { 
+      updateData, 
+      updateError: updateError ? {
+        message: updateError.message,
+        code: updateError.code,
+        details: updateError.details,
+        hint: updateError.hint
+      } : null, 
+      applicationId, 
+      status 
+    });
+
+    if (updateError) {
+      console.error('Error updating application:', updateError);
+      return res.status(500).json({ 
+        error: 'Failed to update application',
+        details: updateError.message,
+        code: updateError.code
+      });
+    }
+
+    if (!updateData || updateData.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      data: updateData[0],
+      message: `Application ${status} successfully`
+    });
+
+  } catch (error) {
+    console.error('Admin update application error:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
   }
 });
 

@@ -169,13 +169,8 @@ CREATE POLICY "ambassadors_insert" ON public.ambassadors
   FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "ambassadors_update" ON public.ambassadors
-  FOR UPDATE USING (
-    (SELECT auth.uid())::uuid = id OR
-    EXISTS (
-      SELECT 1 FROM public.admins 
-      WHERE id = (SELECT auth.uid())
-    )
-  );
+  FOR UPDATE USING (true)
+  WITH CHECK (true);
 
 -- ============================================
 -- CLIENTS TABLE

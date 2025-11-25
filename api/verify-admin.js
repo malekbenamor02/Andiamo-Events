@@ -62,7 +62,7 @@ export default async function handler(req, res) {
     // Verify admin exists in database and is active
     const { data: admin, error } = await supabase
       .from('admins')
-      .select('id, email, name, is_active')
+      .select('id, email, name, role, is_active')
       .eq('id', decoded.id)
       .eq('email', decoded.email)
       .eq('is_active', true)
@@ -72,7 +72,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ valid: false, error: 'Invalid admin' });
     }
 
-    res.status(200).json({ valid: true, admin: { id: admin.id, email: admin.email, name: admin.name } });
+    res.status(200).json({ valid: true, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role } });
   } catch (error) {
     console.error('Token verification error:', error);
     res.status(401).json({ valid: false, error: 'Invalid token' });

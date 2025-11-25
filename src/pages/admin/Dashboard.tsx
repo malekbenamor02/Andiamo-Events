@@ -16,7 +16,7 @@ import { uploadOGImage, deleteOGImage, fetchOGImageSettings } from "@/lib/og-ima
 import { uploadFavicon, deleteFavicon, fetchFaviconSettings, FaviconSettings } from "@/lib/favicon";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail } from "@/lib/email";
+import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, createAdminCredentialsEmail } from "@/lib/email";
 import {
   CheckCircle, XCircle, Clock, Users, TrendingUp, DollarSign, LogOut,
   Plus, Edit, Trash2, Calendar as CalendarIcon, MapPin, Phone, Mail, User, Settings,
@@ -126,6 +126,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
+  const [currentAdminRole, setCurrentAdminRole] = useState<string | null>(null);
+  const [admins, setAdmins] = useState<Array<{id: string; name: string; email: string; phone?: string; role: string; is_active: boolean; created_at: string}>>([]);
+  const [isAddAdminDialogOpen, setIsAddAdminDialogOpen] = useState(false);
+  const [newAdminData, setNewAdminData] = useState({ name: '', email: '', phone: '' });
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
   // Add state for email recovery
@@ -1730,6 +1734,318 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  // Fetch current admin role
+  useEffect(() => {
+    const fetchCurrentAdminRole = async () => {
+      try {
+        const response = await fetch('/api/verify-admin', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Admin role data:', data); // Debug log
+          if (data.valid && data.admin) {
+            const role = data.admin.role || 'admin';
+            console.log('Setting admin role to:', role); // Debug log
+            console.log('Full admin object:', data.admin); // Debug log
+            setCurrentAdminRole(role);
+            
+            // Show alert if role is not super_admin but user expects it
+            if (role !== 'super_admin') {
+              console.warn('⚠️ Current role is:', role, '- Expected: super_admin');
+              console.warn('💡 If you should be super_admin, run FIX_SUPER_ADMIN_ROLE.sql and log out/in');
+            }
+          } else {
+            console.warn('Admin data not valid or missing:', data);
+          }
+        } else {
+          console.error('Failed to verify admin, status:', response.status);
+        }
+      } catch (error) {
+        console.error('Error fetching admin role:', error);
+      }
+    };
+    
+    fetchCurrentAdminRole();
+    
+    // Also refetch role periodically in case it was updated
+    const interval = setInterval(fetchCurrentAdminRole, 30000); // Every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch all admins (only for super_admin)
+  const fetchAdmins = async () => {
+    if (currentAdminRole !== 'super_admin') return;
+    
+    try {
+      // Try to fetch with phone first, fallback to without phone if column doesn't exist
+      let { data, error } = await supabase
+        .from('admins')
+        .select('id, name, email, phone, role, is_active, created_at')
+        .order('created_at', { ascending: false });
+      
+      // If error is about missing column, try without phone
+      if (error && (error.message?.includes('column') || error.code === '42703')) {
+        const { data: dataWithoutPhone, error: errorWithoutPhone } = await supabase
+          .from('admins')
+          .select('id, name, email, role, is_active, created_at')
+          .order('created_at', { ascending: false });
+        
+        if (!errorWithoutPhone) {
+          data = dataWithoutPhone;
+          error = null;
+        }
+      }
+      
+      if (error) {
+        console.error('Error fetching admins:', error);
+      } else {
+        setAdmins(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching admins:', error);
+    }
+  };
+
+  // Add new admin
+  const handleAddAdmin = async () => {
+    if (!newAdminData.name || !newAdminData.email) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' ? 'Name and email are required' : 'Le nom et l\'email sont requis',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setProcessingId('new-admin');
+    
+    try {
+      // Generate password
+      const password = generatePassword();
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Create admin account
+      // Build insert payload - only include phone if column exists
+      const insertPayload: any = {
+        name: newAdminData.name,
+        email: newAdminData.email,
+        password: hashedPassword,
+        role: 'admin',
+        is_active: true,
+      };
+      
+      // Only include phone if it's provided (column might not exist)
+      if (newAdminData.phone && newAdminData.phone.trim() !== '') {
+        insertPayload.phone = newAdminData.phone;
+      }
+      
+      const { data: newAdmin, error: createError } = await supabase
+        .from('admins')
+        .insert(insertPayload)
+        .select()
+        .single();
+      
+      // If error is about missing phone column, try without it
+      if (createError && createError.message?.includes('phone')) {
+        console.log('Phone column not found, creating admin without phone');
+        const { data: retryAdmin, error: retryError } = await supabase
+          .from('admins')
+          .insert({
+            name: newAdminData.name,
+            email: newAdminData.email,
+            password: hashedPassword,
+            role: 'admin',
+            is_active: true,
+          })
+          .select()
+          .single();
+        
+        if (retryError) {
+          throw retryError;
+        }
+        
+        // Use retry result
+        if (!retryAdmin) {
+          throw new Error('Failed to create admin account');
+        }
+        
+        // Continue with email sending using retryAdmin
+        const emailConfig = createAdminCredentialsEmail(
+          {
+            name: newAdminData.name,
+            email: newAdminData.email,
+            phone: newAdminData.phone || undefined,
+            password: password
+          },
+          `${window.location.origin}/admin/login`
+        );
+
+        const emailSent = await sendEmail(emailConfig);
+
+        if (emailSent) {
+          toast({
+            title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+            description: language === 'en' 
+              ? `Admin account created successfully. Credentials sent to ${newAdminData.email}`
+              : `Compte admin créé avec succès. Identifiants envoyés à ${newAdminData.email}`,
+          });
+        } else {
+          toast({
+            title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+            description: language === 'en' 
+              ? 'Admin account created, but email failed to send. Password: ' + password
+              : 'Compte admin créé, mais l\'email a échoué. Mot de passe: ' + password,
+            variant: 'default',
+          });
+        }
+
+        // Reset form and close dialog
+        setNewAdminData({ name: '', email: '', phone: '' });
+        setIsAddAdminDialogOpen(false);
+        
+        // Refresh admins list
+        await fetchAdmins();
+        setProcessingId(null);
+        return;
+      }
+
+      if (createError) {
+        // If error is about missing phone column, try without it
+        if (createError.message?.includes('phone')) {
+          console.log('Phone column not found, creating admin without phone');
+          const { data: retryAdmin, error: retryError } = await supabase
+            .from('admins')
+            .insert({
+              name: newAdminData.name,
+              email: newAdminData.email,
+              password: hashedPassword,
+              role: 'admin',
+              is_active: true,
+            })
+            .select()
+            .single();
+          
+          if (retryError) throw retryError;
+          if (!retryAdmin) throw new Error('Failed to create admin account');
+          
+          // Use retry result for email sending
+          const emailConfig = createAdminCredentialsEmail(
+            {
+              name: newAdminData.name,
+              email: newAdminData.email,
+              phone: newAdminData.phone || undefined,
+              password: password
+            },
+            `${window.location.origin}/admin/login`
+          );
+
+          const emailSent = await sendEmail(emailConfig);
+
+          if (emailSent) {
+            toast({
+              title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+              description: language === 'en' 
+                ? `Admin account created successfully. Credentials sent to ${newAdminData.email}`
+                : `Compte admin créé avec succès. Identifiants envoyés à ${newAdminData.email}`,
+            });
+          } else {
+            toast({
+              title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+              description: language === 'en' 
+                ? 'Admin account created, but email failed to send. Password: ' + password
+                : 'Compte admin créé, mais l\'email a échoué. Mot de passe: ' + password,
+              variant: 'default',
+            });
+          }
+
+          // Reset form and close dialog
+          setNewAdminData({ name: '', email: '', phone: '' });
+          setIsAddAdminDialogOpen(false);
+          
+          // Refresh admins list
+          await fetchAdmins();
+          setProcessingId(null);
+          return;
+        }
+        throw createError;
+      }
+      
+      if (!newAdmin) throw new Error('Failed to create admin account');
+
+      // Send credentials email
+      const emailConfig = createAdminCredentialsEmail(
+        {
+          name: newAdminData.name,
+          email: newAdminData.email,
+          phone: newAdminData.phone,
+          password: password
+        },
+        `${window.location.origin}/admin/login`
+      );
+
+      const emailSent = await sendEmail(emailConfig);
+
+      if (emailSent) {
+        toast({
+          title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+          description: language === 'en' 
+            ? `Admin account created successfully. Credentials sent to ${newAdminData.email}`
+            : `Compte admin créé avec succès. Identifiants envoyés à ${newAdminData.email}`,
+        });
+      } else {
+        toast({
+          title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+          description: language === 'en' 
+            ? 'Admin account created, but email failed to send. Password: ' + password
+            : 'Compte admin créé, mais l\'email a échoué. Mot de passe: ' + password,
+          variant: 'default',
+        });
+      }
+
+      // Reset form and close dialog
+      setNewAdminData({ name: '', email: '', phone: '' });
+      setIsAddAdminDialogOpen(false);
+      
+      // Refresh admins list
+      await fetchAdmins();
+    } catch (error: any) {
+      console.error('Error creating admin:', error);
+      
+      // Provide more specific error message
+      let errorMessage = language === 'en' ? 'Failed to create admin account' : 'Échec de la création du compte admin';
+      
+      if (error?.code === '42501' || error?.message?.includes('policy') || error?.message?.includes('permission')) {
+        errorMessage = language === 'en' 
+          ? 'Permission denied. Please run FIX_ADMIN_INSERT_POLICY.sql in Supabase SQL Editor.'
+          : 'Permission refusée. Veuillez exécuter FIX_ADMIN_INSERT_POLICY.sql dans l\'éditeur SQL Supabase.';
+      } else if (error?.code === '23505' || error?.message?.includes('duplicate') || error?.message?.includes('unique')) {
+        errorMessage = language === 'en' 
+          ? 'An admin with this email already exists.'
+          : 'Un admin avec cet email existe déjà.';
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  // Fetch admins when role is super_admin
+  useEffect(() => {
+    if (currentAdminRole === 'super_admin') {
+      fetchAdmins();
+    }
+  }, [currentAdminRole]);
+
   const fetchAllData = async () => {
     try {
       setLoading(true);
@@ -1876,13 +2192,48 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         ambassadorId = newAmbassador.id;
       }
 
-      // Update application status
-      const { error: updateError } = await supabase
-        .from('ambassador_applications')
-        .update({ status: 'approved' })
-        .eq('id', application.id);
+      // Update application status via API route (bypasses RLS)
+      const response = await fetch('/api/admin-update-application', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          applicationId: application.id,
+          status: 'approved'
+        })
+      });
 
-      if (updateError) throw updateError;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Error updating application status:', errorData);
+        let errorMessage = language === 'en' ? 'Failed to approve application' : 'Échec de l\'approbation';
+        if (errorData.details) {
+          errorMessage = errorData.details;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      const updateData = result.data ? [result.data] : null;
+
+      // Verify the update worked
+      if (!updateData || updateData.length === 0) {
+        // Check if application still exists and what its status is
+        const { data: verifyData } = await supabase
+          .from('ambassador_applications')
+          .select('id, status')
+          .eq('id', application.id)
+          .single();
+        
+        if (verifyData && verifyData.status !== 'approved') {
+          console.error('Application status was not updated. Current status:', verifyData.status);
+          throw new Error(`Failed to update application status. Current status: ${verifyData.status}. Check RLS policies.`);
+        }
+      }
 
       // Send approval email with credentials (plain password)
       const emailConfig = createApprovalEmail(
@@ -1920,7 +2271,34 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           : "Approval successful, but email failed to send",
       });
 
-      fetchAllData();
+      // Update the application in the local state immediately for instant UI feedback
+      setApplications(prev => prev.map(app => 
+        app.id === application.id 
+          ? { ...app, status: 'approved' as const }
+          : app
+      ));
+
+      // Also update ambassadors list if a new one was created
+      if (!existingAmbassador) {
+        // Refresh ambassadors to include the new one
+        const { data: newAmbassadors } = await supabase
+          .from('ambassadors')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (newAmbassadors) {
+          setAmbassadors(newAmbassadors);
+        }
+      } else {
+        // Update existing ambassador in the list
+        setAmbassadors(prev => prev.map(amb => 
+          amb.id === ambassadorId
+            ? { ...amb, status: 'approved', updated_at: new Date().toISOString() }
+            : amb
+        ));
+      }
+
+      // Then refresh all data to ensure consistency
+      await fetchAllData();
 
     } catch (error) {
       console.error('Error approving application:', error);
@@ -2215,12 +2593,48 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setProcessingId(application.id);
     
     try {
-      const { error } = await supabase
-        .from('ambassador_applications')
-        .update({ status: 'rejected' })
-        .eq('id', application.id);
+      // Update application status via API route (bypasses RLS)
+      const response = await fetch('/api/admin-update-application', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          applicationId: application.id,
+          status: 'rejected'
+        })
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Error updating application status:', errorData);
+        let errorMessage = language === 'en' ? 'Failed to reject application' : 'Échec du rejet';
+        if (errorData.details) {
+          errorMessage = errorData.details;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      const updateData = result.data ? [result.data] : null;
+
+      // Verify the update worked
+      if (!updateData || updateData.length === 0) {
+        // Check if application still exists and what its status is
+        const { data: verifyData } = await supabase
+          .from('ambassador_applications')
+          .select('id, status')
+          .eq('id', application.id)
+          .single();
+        
+        if (verifyData && verifyData.status !== 'rejected') {
+          console.error('Application status was not updated. Current status:', verifyData.status);
+          throw new Error(`Failed to update application status. Current status: ${verifyData.status}. Check RLS policies.`);
+        }
+      }
 
       const emailConfig = createRejectionEmail({
         fullName: application.full_name,
@@ -2236,7 +2650,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         description: emailSent ? t.emailSent : "Rejection successful, but email failed to send",
       });
 
-      fetchAllData();
+      // Update the application in the local state immediately for instant UI feedback
+      setApplications(prev => prev.map(app => 
+        app.id === application.id 
+          ? { ...app, status: 'rejected' as const }
+          : app
+      ));
+
+      // Then refresh all data to ensure consistency
+      await fetchAllData();
 
     } catch (error) {
       console.error('Error rejecting application:', error);
@@ -2326,8 +2748,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         description: language === 'en' ? "Event saved successfully" : "Événement enregistré avec succès",
       });
 
+      // Update local state immediately for instant UI feedback
+      if (event.id) {
+        // Update existing event in the list
+        setEvents(prev => prev.map(e => 
+          e.id === event.id
+            ? { ...event, poster_url: posterUrl, updated_at: new Date().toISOString() }
+            : e
+        ));
+      } else {
+        // For new events, we need to fetch to get the ID
+        // But update optimistically
+        const newEvent = { ...event, poster_url: posterUrl, id: 'temp-' + Date.now() };
+        setEvents(prev => [newEvent, ...prev]);
+      }
+
       setEditingEvent(null);
-      fetchAllData();
+      setIsEventDialogOpen(false);
+      
+      // Refresh all data to ensure consistency
+      await fetchAllData();
 
     } catch (error) {
       console.error('Error saving event:', error, error?.message, error?.details);
@@ -2361,6 +2801,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (error) throw error;
       } else {
         // Create new ambassador
+        const plainPassword = ambassador.password || generatePassword();
+        // Hash the password before saving
+        const hashedPassword = await bcrypt.hash(plainPassword, 10);
+        
         const { error } = await supabase
           .from('ambassadors')
           .insert({
@@ -2368,9 +2812,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             phone: ambassador.phone,
             email: ambassador.email,
             city: ambassador.city,
-            password: ambassador.password || generatePassword(),
-            status: ambassador.status,
-            commission_rate: ambassador.commission_rate
+            password: hashedPassword, // Store hashed password
+            status: ambassador.status || 'pending',
+            commission_rate: ambassador.commission_rate || 10
           });
 
         if (error) throw error;
@@ -2381,8 +2825,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         description: language === 'en' ? "Ambassador saved successfully" : "Ambassadeur enregistré avec succès",
       });
 
+      // Update local state immediately for instant UI feedback
+      if (ambassador.id) {
+        // Update existing ambassador in the list
+        setAmbassadors(prev => prev.map(amb => 
+          amb.id === ambassador.id
+            ? { ...ambassador, updated_at: new Date().toISOString() }
+            : amb
+        ));
+      } else {
+        // For new ambassadors, we need to fetch to get the ID
+        // But update optimistically
+        const newAmbassador = { ...ambassador, id: 'temp-' + Date.now(), created_at: new Date().toISOString() };
+        setAmbassadors(prev => [newAmbassador, ...prev]);
+      }
+
       setEditingAmbassador(null);
-      fetchAllData();
+      setIsAmbassadorDialogOpen(false);
+      
+      // Refresh all data to ensure consistency
+      await fetchAllData();
 
     } catch (error) {
       console.error('Error saving ambassador:', error);
@@ -2416,6 +2878,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         throw error;
       }
 
+      // Update local state immediately for instant UI feedback
+      setEvents(prev => prev.filter(e => e.id !== eventToDelete.id));
+
       // Verify deletion by checking if the event still exists
       const { data: verifyData, error: verifyError } = await supabase
         .from('events')
@@ -2430,16 +2895,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           description: language === 'en' ? "Event deleted successfully" : "Événement supprimé avec succès",
         });
       } else if (verifyData) {
-        // Event still exists - deletion failed
+        // Event still exists - deletion failed, revert UI
+        setEvents(prev => [...prev, eventToDelete].sort((a, b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        ));
         console.error('Event still exists after deletion attempt');
         toast({
           title: t.error,
           description: language === 'en' ? "Event deletion failed - please check RLS policies" : "Échec de la suppression - vérifiez les politiques RLS",
           variant: "destructive",
         });
+        return; // Don't continue if deletion failed
       }
 
-      fetchAllData();
+      // Refresh all data to ensure consistency
+      await fetchAllData();
 
     } catch (error) {
       console.error('Error deleting event:', error);
@@ -2466,12 +2936,39 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (fetchError) throw fetchError;
 
       // Delete the ambassador
-      const { error: deleteError } = await supabase
+      const { data: deleteData, error: deleteError } = await supabase
         .from('ambassadors')
         .delete()
-        .eq('id', ambassadorId);
+        .eq('id', ambassadorId)
+        .select();
 
-      if (deleteError) throw deleteError;
+      if (deleteError) {
+        console.error('Delete ambassador error:', deleteError);
+        // Provide more specific error message
+        let errorMessage = language === 'en' ? 'Failed to delete ambassador' : 'Échec de la suppression de l\'ambassadeur';
+        if (deleteError.code === '42501' || deleteError.message?.includes('policy') || deleteError.message?.includes('permission')) {
+          errorMessage = language === 'en' 
+            ? 'Permission denied. Please run the migration 20250131000002-fix-ambassador-delete-policy.sql in Supabase SQL Editor.'
+            : 'Permission refusée. Veuillez exécuter la migration 20250131000002-fix-ambassador-delete-policy.sql dans l\'éditeur SQL Supabase.';
+        } else if (deleteError.message) {
+          errorMessage = deleteError.message;
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Verify deletion
+      if (!deleteData || deleteData.length === 0) {
+        // Check if ambassador still exists
+        const { data: verifyData } = await supabase
+          .from('ambassadors')
+          .select('id')
+          .eq('id', ambassadorId)
+          .single();
+        
+        if (verifyData) {
+          throw new Error('Deletion failed - ambassador still exists. Check RLS policies.');
+        }
+      }
 
       // Delete the corresponding application completely
       if (ambassador) {
@@ -2486,18 +2983,44 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
       }
 
+      // Verify deletion was successful before updating UI
+      const { data: verifyData } = await supabase
+        .from('ambassadors')
+        .select('id')
+        .eq('id', ambassadorId)
+        .single();
+
+      if (verifyData) {
+        // Ambassador still exists - deletion failed
+        throw new Error('Deletion failed - ambassador still exists. Please check RLS policies.');
+      }
+
+      // Update local state immediately for instant UI feedback
+      setAmbassadors(prev => prev.filter(amb => amb.id !== ambassadorId));
+      setApplications(prev => prev.filter(app => 
+        app.phone_number !== ambassador?.phone && app.email !== ambassador?.email
+      ));
+
       toast({
         title: language === 'en' ? "Ambassador deleted" : "Ambassadeur supprimé",
         description: language === 'en' ? "Ambassador and application deleted successfully" : "Ambassadeur et candidature supprimés avec succès",
       });
-      fetchAllData();
+      
+      // Close delete dialog
+      setAmbassadorToDelete(null);
+      
+      // Refresh all data to ensure consistency
+      await fetchAllData();
     } catch (error) {
       console.error('Error deleting ambassador:', error);
+      const errorMessage = error instanceof Error ? error.message : (language === 'en' ? "Failed to delete ambassador" : "Échec de la suppression");
       toast({
-        title: t.error,
-        description: language === 'en' ? "Failed to delete ambassador" : "Échec de la suppression",
+        title: language === 'en' ? "Error" : "Erreur",
+        description: errorMessage,
         variant: "destructive",
       });
+      // Revert UI changes on error
+      await fetchAllData();
     }
     setAmbassadorToDelete(null);
   };
@@ -2563,19 +3086,36 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         error = updateError;
         affectedRows = Array.isArray(updateData) ? updateData.length : 0;
       }
-      // Refresh sponsors
-      const { data: sponsorsData } = await supabase.from('sponsors').select('*').order('created_at', { ascending: true });
-      setSponsors(sponsorsData);
+      // Update local state immediately for instant UI feedback
+      if (isNew && affectedRows > 0) {
+        // Add new sponsor to the list
+        const newSponsor = { ...sponsorData, id: sponsorId, created_at: new Date().toISOString() };
+        setSponsors(prev => [...prev, newSponsor].sort((a, b) => 
+          new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+        ));
+      } else if (!isNew && affectedRows > 0) {
+        // Update existing sponsor in the list
+        setSponsors(prev => prev.map(s => 
+          s.id === sponsorId
+            ? { ...s, ...sponsorData, updated_at: new Date().toISOString() }
+            : s
+        ));
+      }
+      
       if ((isNew && affectedRows > 0) || (!isNew && affectedRows > 0)) {
         closeSponsorDialog();
         toast({
-          title: 'Sponsor saved',
-          description: 'Sponsor details updated successfully.',
+          title: language === 'en' ? 'Sponsor saved' : 'Sponsor enregistré',
+          description: language === 'en' ? 'Sponsor details updated successfully.' : 'Détails du sponsor mis à jour avec succès.',
         });
       } else {
+        // Refresh from database if update failed
+        const { data: sponsorsData } = await supabase.from('sponsors').select('*').order('created_at', { ascending: true });
+        if (sponsorsData) setSponsors(sponsorsData);
+        
         toast({
-          title: 'Error',
-          description: 'No sponsor was updated. Please check your data.',
+          title: t.error,
+          description: language === 'en' ? 'No sponsor was updated. Please check your data.' : 'Aucun sponsor n\'a été mis à jour. Veuillez vérifier vos données.',
           variant: 'destructive',
         });
       }
@@ -2600,10 +3140,50 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
   const handleDeleteSponsor = async () => {
     if (!sponsorToDelete) return;
-    await supabase.from('sponsors').delete().eq('id', sponsorToDelete.id);
-    await supabase.from('event_sponsors').delete().eq('sponsor_id', sponsorToDelete.id);
-    setSponsors(sponsors.filter(s => s.id !== sponsorToDelete.id));
-    closeDeleteDialog();
+    
+    try {
+      // Update local state immediately for instant UI feedback
+      const sponsorIdToDelete = sponsorToDelete.id;
+      setSponsors(prev => prev.filter(s => s.id !== sponsorIdToDelete));
+      
+      // Delete from database
+      const { error: sponsorError } = await supabase
+        .from('sponsors')
+        .delete()
+        .eq('id', sponsorIdToDelete);
+      
+      if (sponsorError) {
+        // Revert UI change on error
+        const { data: allSponsors } = await supabase.from('sponsors').select('*').order('created_at', { ascending: true });
+        if (allSponsors) setSponsors(allSponsors);
+        throw sponsorError;
+      }
+      
+      // Delete associated event sponsors
+      const { error: eventSponsorError } = await supabase
+        .from('event_sponsors')
+        .delete()
+        .eq('sponsor_id', sponsorIdToDelete);
+      
+      if (eventSponsorError) {
+        console.error('Error deleting event sponsors:', eventSponsorError);
+        // Don't throw here as the sponsor was already deleted
+      }
+      
+      toast({
+        title: language === 'en' ? "Sponsor deleted" : "Sponsor supprimé",
+        description: language === 'en' ? "Sponsor deleted successfully" : "Sponsor supprimé avec succès",
+      });
+      
+      closeDeleteDialog();
+    } catch (error) {
+      console.error('Error deleting sponsor:', error);
+      toast({
+        title: t.error,
+        description: language === 'en' ? "Failed to delete sponsor" : "Échec de la suppression du sponsor",
+        variant: "destructive",
+      });
+    }
   };
 
 
@@ -2845,19 +3425,36 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         error = updateError;
         affectedRows = Array.isArray(updateData) ? updateData.length : 0;
       }
-      // Refresh team members
-      const { data: teamDataList } = await supabase.from('team_members').select('*').order('created_at', { ascending: true });
-      setTeamMembers(teamDataList);
+      // Update local state immediately for instant UI feedback
+      if (isNew && affectedRows > 0) {
+        // Add new team member to the list
+        const newMember = { ...teamData, id: teamMemberId, created_at: new Date().toISOString() };
+        setTeamMembers(prev => [...prev, newMember].sort((a, b) => 
+          new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+        ));
+      } else if (!isNew && affectedRows > 0) {
+        // Update existing team member in the list
+        setTeamMembers(prev => prev.map(m => 
+          m.id === teamMemberId
+            ? { ...m, ...teamData, updated_at: new Date().toISOString() }
+            : m
+        ));
+      }
+      
       if ((isNew && affectedRows > 0) || (!isNew && affectedRows > 0)) {
         closeTeamDialog();
         toast({
-          title: 'Team member saved',
-          description: 'Team member details updated successfully.',
+          title: language === 'en' ? 'Team member saved' : 'Membre enregistré',
+          description: language === 'en' ? 'Team member details updated successfully.' : 'Détails du membre mis à jour avec succès.',
         });
       } else {
+        // Refresh from database if update failed
+        const { data: teamDataList } = await supabase.from('team_members').select('*').order('created_at', { ascending: true });
+        if (teamDataList) setTeamMembers(teamDataList);
+        
         toast({
-          title: 'Error',
-          description: 'No team member was updated. Please check your data.',
+          title: t.error,
+          description: language === 'en' ? 'No team member was updated. Please check your data.' : 'Aucun membre n\'a été mis à jour. Veuillez vérifier vos données.',
           variant: 'destructive',
         });
       }
@@ -2872,19 +3469,35 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
   const handleDeleteTeamMember = async () => {
     if (!teamMemberToDelete) return;
+    
     try {
-      await supabase.from('team_members').delete().eq('id', teamMemberToDelete.id);
-      setTeamMembers(teamMembers.filter(m => m.id !== teamMemberToDelete.id));
+      const memberIdToDelete = teamMemberToDelete.id;
+      
+      // Update local state immediately for instant UI feedback
+      setTeamMembers(prev => prev.filter(m => m.id !== memberIdToDelete));
+      
+      const { error } = await supabase
+        .from('team_members')
+        .delete()
+        .eq('id', memberIdToDelete);
+      
+      if (error) {
+        // Revert UI change on error
+        const { data: allMembers } = await supabase.from('team_members').select('*').order('created_at', { ascending: true });
+        if (allMembers) setTeamMembers(allMembers);
+        throw error;
+      }
+      
       closeDeleteTeamDialog();
       toast({
-        title: 'Team member deleted',
-        description: 'Team member removed successfully.',
+        title: language === 'en' ? 'Team member deleted' : 'Membre supprimé',
+        description: language === 'en' ? 'Team member removed successfully.' : 'Membre supprimé avec succès.',
       });
     } catch (err) {
       console.error('Delete team member error:', err);
       toast({
-        title: 'Error',
-        description: 'Failed to delete team member. Please try again.',
+        title: t.error,
+        description: language === 'en' ? 'Failed to delete team member. Please try again.' : 'Échec de la suppression. Veuillez réessayer.',
         variant: 'destructive',
       });
     }
@@ -2903,19 +3516,35 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const handleDeleteMessage = async () => {
     if (!messageToDelete) return;
+    
     try {
-      await supabase.from('contact_messages').delete().eq('id', messageToDelete.id);
-      setContactMessages(contactMessages.filter(m => m.id !== messageToDelete.id));
+      const messageIdToDelete = messageToDelete.id;
+      
+      // Update local state immediately for instant UI feedback
+      setContactMessages(prev => prev.filter(m => m.id !== messageIdToDelete));
+      
+      const { error } = await supabase
+        .from('contact_messages')
+        .delete()
+        .eq('id', messageIdToDelete);
+      
+      if (error) {
+        // Revert UI change on error
+        const { data: allMessages } = await supabase.from('contact_messages').select('*').order('created_at', { ascending: false });
+        if (allMessages) setContactMessages(allMessages);
+        throw error;
+      }
+      
       closeDeleteMessageDialog();
       toast({
-        title: 'Message deleted',
-        description: 'Contact message removed successfully.',
+        title: language === 'en' ? 'Message deleted' : 'Message supprimé',
+        description: language === 'en' ? 'Contact message removed successfully.' : 'Message supprimé avec succès.',
       });
     } catch (err) {
       console.error('Delete message error:', err);
       toast({
-        title: 'Error',
-        description: 'Failed to delete message. Please try again.',
+        title: t.error,
+        description: language === 'en' ? 'Failed to delete message. Please try again.' : 'Échec de la suppression. Veuillez réessayer.',
         variant: 'destructive',
       });
     }
@@ -3166,9 +3795,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <Users2 className={`w-4 h-4 transition-transform duration-300 ${activeTab === "team" ? "animate-pulse" : ""}`} />
                 <span>Team</span>
               </button>
+              {/* Debug: Show current role */}
+              {process.env.NODE_ENV === 'development' && (
+                <div className="px-3 py-2 text-xs text-muted-foreground">
+                  Role: {currentAdminRole || 'loading...'}
+                </div>
+              )}
+              {currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => setActiveTab("admins")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-700 ${
+                    activeTab === "admins" 
+                      ? "bg-primary text-primary-foreground shadow-lg" 
+                      : "hover:bg-accent hover:shadow-md"
+                  }`}
+                >
+                  <User className={`w-4 h-4 transition-transform duration-300 ${activeTab === "admins" ? "animate-pulse" : ""}`} />
+                  <span>{language === 'en' ? 'Admins' : 'Administrateurs'}</span>
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab("contact")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-700 ${
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-${currentAdminRole === 'super_admin' ? '800' : '700'} ${
                   activeTab === "contact" 
                     ? "bg-primary text-primary-foreground shadow-lg" 
                     : "hover:bg-accent hover:shadow-md"
@@ -4022,6 +4670,148 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   </div>
                 )}
               </TabsContent>
+
+              {/* Admins Management Tab - Only visible to super_admin */}
+              {currentAdminRole === 'super_admin' && (
+                <TabsContent value="admins" className="space-y-6">
+                  <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
+                    <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+                      {language === 'en' ? 'Admin Management' : 'Gestion des Administrateurs'}
+                    </h2>
+                    <Dialog open={isAddAdminDialogOpen} onOpenChange={setIsAddAdminDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button 
+                          onClick={() => {
+                            setNewAdminData({ name: '', email: '', phone: '' });
+                            setIsAddAdminDialogOpen(true);
+                          }}
+                          className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
+                        >
+                          <Plus className="w-4 h-4 mr-2 animate-pulse" />
+                          {language === 'en' ? 'Add Admin' : 'Ajouter un Admin'}
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-2xl animate-in zoom-in-95 duration-300">
+                        <DialogHeader>
+                          <DialogTitle>
+                            {language === 'en' ? 'Add New Admin' : 'Ajouter un Nouvel Admin'}
+                          </DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="adminName">{language === 'en' ? 'Name' : 'Nom'}</Label>
+                            <Input
+                              id="adminName"
+                              value={newAdminData.name}
+                              onChange={(e) => setNewAdminData({ ...newAdminData, name: e.target.value })}
+                              placeholder={language === 'en' ? 'Enter admin name' : 'Entrez le nom de l\'admin'}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="adminEmail">{language === 'en' ? 'Email' : 'Email'}</Label>
+                            <Input
+                              id="adminEmail"
+                              type="email"
+                              value={newAdminData.email}
+                              onChange={(e) => setNewAdminData({ ...newAdminData, email: e.target.value })}
+                              placeholder={language === 'en' ? 'Enter admin email' : 'Entrez l\'email de l\'admin'}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="adminPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'}</Label>
+                            <Input
+                              id="adminPhone"
+                              type="tel"
+                              value={newAdminData.phone}
+                              onChange={(e) => setNewAdminData({ ...newAdminData, phone: e.target.value })}
+                              placeholder={language === 'en' ? 'Enter phone number (optional)' : 'Entrez le numéro de téléphone (optionnel)'}
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2 pt-4">
+                            <Button
+                              variant="outline"
+                              onClick={() => setIsAddAdminDialogOpen(false)}
+                            >
+                              {language === 'en' ? 'Cancel' : 'Annuler'}
+                            </Button>
+                            <Button
+                              onClick={handleAddAdmin}
+                              disabled={processingId === 'new-admin'}
+                            >
+                              {processingId === 'new-admin' ? (
+                                <>
+                                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                  {language === 'en' ? 'Creating...' : 'Création...'}
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-4 h-4 mr-2" />
+                                  {language === 'en' ? 'Create Admin' : 'Créer l\'Admin'}
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+
+                  <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-300">
+                    <CardHeader>
+                      <CardTitle>{language === 'en' ? 'All Admins' : 'Tous les Admins'}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{language === 'en' ? 'Name' : 'Nom'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Email' : 'Email'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Phone' : 'Téléphone'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Role' : 'Rôle'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {admins.map((admin) => (
+                            <TableRow key={admin.id}>
+                              <TableCell className="font-medium">{admin.name}</TableCell>
+                              <TableCell>{admin.email}</TableCell>
+                              <TableCell>{admin.phone || '-'}</TableCell>
+                              <TableCell>
+                                <Badge variant={admin.role === 'super_admin' ? 'default' : 'secondary'}>
+                                  {admin.role === 'super_admin' 
+                                    ? (language === 'en' ? 'Super Admin' : 'Super Admin')
+                                    : (language === 'en' ? 'Admin' : 'Admin')}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={admin.is_active ? 'default' : 'destructive'}>
+                                  {admin.is_active 
+                                    ? (language === 'en' ? 'Active' : 'Actif')
+                                    : (language === 'en' ? 'Inactive' : 'Inactif')}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                {new Date(admin.created_at).toLocaleDateString()}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          {admins.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                {language === 'en' ? 'No admins found' : 'Aucun admin trouvé'}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              )}
 
 
               

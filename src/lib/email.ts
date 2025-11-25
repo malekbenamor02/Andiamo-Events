@@ -822,6 +822,314 @@ export const createPasswordResetEmail = (ambassador: AmbassadorData, resetToken:
 };
 
 // Generate secure password
+interface AdminData {
+  name: string;
+  email: string;
+  phone?: string;
+  password: string;
+}
+
+export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string): EmailConfig => {
+  const subject = "🔐 Your Andiamo Events Admin Account Credentials";
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="color-scheme" content="dark light">
+      <meta name="supported-color-schemes" content="dark light">
+      <title>Admin Account - Andiamo Events</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
+      <style>
+        :root {
+          color-scheme: dark light;
+          supported-color-schemes: dark light;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+          line-height: 1.7; 
+          color: #e0e0e0; 
+          background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%);
+          padding: 20px;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+        .email-wrapper {
+          max-width: 600px;
+          margin: 0 auto;
+          background: hsl(218, 23%, 12%);
+          border-radius: 16px;
+          overflow: hidden;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(185, 85, 211, 0.1);
+        }
+        .header {
+          background: linear-gradient(135deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 50%, hsl(330, 100%, 65%) 100%);
+          padding: 50px 40px;
+          text-align: center;
+          position: relative;
+          overflow: hidden;
+        }
+        .header::before {
+          content: '';
+          position: absolute;
+          top: -50%;
+          left: -50%;
+          width: 200%;
+          height: 200%;
+          background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+          animation: pulse 4s ease-in-out infinite;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.1); }
+        }
+        .header-content {
+          position: relative;
+          z-index: 1;
+        }
+        .logo {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 28px;
+          font-weight: 700;
+          letter-spacing: 2px;
+          color: #ffffff;
+          margin-bottom: 15px;
+          text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+        .header h1 {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 32px;
+          font-weight: 700;
+          color: #ffffff;
+          margin: 15px 0 10px;
+          text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        .content {
+          padding: 40px;
+          background: hsl(218, 23%, 12%);
+        }
+        .greeting {
+          font-size: 18px;
+          color: #ffffff;
+          margin-bottom: 25px;
+          font-weight: 500;
+        }
+        .greeting strong {
+          color: hsl(285, 85%, 65%);
+          font-weight: 600;
+        }
+        .intro-text {
+          font-size: 16px;
+          color: #d0d0d0;
+          margin-bottom: 30px;
+          line-height: 1.8;
+        }
+        .credentials-card {
+          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
+          border: 1px solid hsl(285, 85%, 65%, 0.3);
+          border-radius: 12px;
+          padding: 25px;
+          margin: 30px 0;
+          box-shadow: 0 0 20px rgba(185, 85, 211, 0.1), inset 0 0 20px rgba(185, 85, 211, 0.05);
+        }
+        .credentials-card h3 {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 18px;
+          color: hsl(195, 100%, 50%);
+          margin-bottom: 20px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .credential-item {
+          margin: 15px 0;
+          font-size: 15px;
+          color: #e0e0e0;
+        }
+        .credential-item strong {
+          color: #ffffff;
+          display: block;
+          margin-bottom: 5px;
+          font-weight: 600;
+        }
+        .credential-value {
+          background: hsl(218, 23%, 8%);
+          padding: 10px 15px;
+          border-radius: 8px;
+          font-family: 'Courier New', monospace;
+          color: hsl(195, 100%, 50%);
+          border: 1px solid hsl(195, 100%, 50%, 0.2);
+          display: inline-block;
+          margin-top: 5px;
+        }
+        .button-container {
+          text-align: center;
+          margin: 35px 0;
+        }
+        .cta-button {
+          display: inline-block;
+          background: linear-gradient(135deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 100%);
+          color: #ffffff;
+          padding: 16px 40px;
+          text-decoration: none;
+          border-radius: 10px;
+          font-weight: 600;
+          font-size: 16px;
+          letter-spacing: 0.5px;
+          box-shadow: 0 4px 20px rgba(185, 85, 211, 0.4), 0 0 30px rgba(0, 195, 255, 0.2);
+          transition: all 0.3s ease;
+          text-transform: uppercase;
+          font-family: 'Orbitron', sans-serif;
+        }
+        .security-notice {
+          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
+          border-left: 4px solid hsl(330, 100%, 65%);
+          border-radius: 12px;
+          padding: 20px;
+          margin: 30px 0;
+          box-shadow: 0 0 20px rgba(255, 0, 0, 0.1);
+        }
+        .security-notice h3 {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 18px;
+          color: hsl(330, 100%, 65%);
+          margin-bottom: 15px;
+        }
+        .security-notice p {
+          color: #d0d0d0;
+          font-size: 14px;
+          line-height: 1.6;
+        }
+        .closing {
+          margin-top: 35px;
+          padding-top: 30px;
+          border-top: 1px solid hsl(218, 23%, 20%);
+          color: #d0d0d0;
+          font-size: 15px;
+          line-height: 1.8;
+        }
+        .signature {
+          margin-top: 20px;
+          color: #ffffff;
+          font-weight: 600;
+        }
+        .signature strong {
+          color: hsl(285, 85%, 65%);
+          font-family: 'Orbitron', sans-serif;
+        }
+        .footer {
+          background: hsl(218, 23%, 8%);
+          padding: 30px 40px;
+          text-align: center;
+          border-top: 1px solid hsl(218, 23%, 20%);
+        }
+        .footer-text {
+          color: #888;
+          font-size: 13px;
+          margin: 0;
+        }
+        .footer-brand {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 14px;
+          color: hsl(285, 85%, 65%);
+          margin-bottom: 10px;
+          letter-spacing: 1px;
+        }
+        @media only screen and (max-width: 600px) {
+          .email-wrapper {
+            border-radius: 0;
+          }
+          .header {
+            padding: 40px 25px;
+          }
+          .header h1 {
+            font-size: 24px;
+          }
+          .content {
+            padding: 30px 25px;
+          }
+        }
+      </style>
+    </head>
+    <body style="background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important; color: #e0e0e0 !important; padding: 20px; margin: 0;">
+      <div class="email-wrapper" style="background: hsl(218, 23%, 12%) !important; max-width: 600px; margin: 0 auto; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(185, 85, 211, 0.1);">
+        <div class="header">
+          <div class="header-content">
+            <div class="logo">ANDIAMO EVENTS</div>
+            <h1>🔐 Admin Account Created</h1>
+            <h2 style="font-size: 18px; font-weight: 400; color: rgba(255, 255, 255, 0.95); margin-top: 10px;">Your Admin Dashboard Access</h2>
+          </div>
+        </div>
+        
+        <div class="content" style="background: hsl(218, 23%, 12%) !important; color: #e0e0e0 !important; padding: 40px;">
+          <p class="greeting">Dear <strong>${admin.name}</strong>,</p>
+          
+          <p class="intro-text">
+            Your admin account for Andiamo Events has been successfully created. You now have access to the admin dashboard where you can manage events, ambassadors, applications, and more.
+          </p>
+          
+          <div class="credentials-card">
+            <h3>🔑 Your Login Credentials</h3>
+            <div class="credential-item">
+              <strong>Email:</strong>
+              <div class="credential-value">${admin.email}</div>
+            </div>
+            <div class="credential-item">
+              <strong>Password:</strong>
+              <div class="credential-value">${admin.password}</div>
+            </div>
+            ${admin.phone ? `
+            <div class="credential-item">
+              <strong>Phone:</strong>
+              <div class="credential-value">${admin.phone}</div>
+            </div>
+            ` : ''}
+          </div>
+          
+          <div class="security-notice">
+            <h3>⚠️ Security Notice</h3>
+            <p>
+              <strong>Important:</strong> Please change your password after your first login for security purposes. Keep your credentials confidential and never share them with anyone.
+            </p>
+          </div>
+          
+          <div class="button-container">
+            <a href="${loginUrl}" class="cta-button">Access Admin Dashboard</a>
+          </div>
+          
+          <div class="closing">
+            <p>If you have any questions or need assistance, please contact the super admin.</p>
+            
+            <p class="signature">
+              Best regards,<br>
+              <strong>The Andiamo Team</strong>
+            </p>
+          </div>
+        </div>
+        
+        <div class="footer" style="background: hsl(218, 23%, 8%) !important; padding: 30px 40px; text-align: center; border-top: 1px solid hsl(218, 23%, 20%);">
+          <div class="footer-brand">ANDIAMO EVENTS</div>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">© 2024 Andiamo Events. All rights reserved.</p>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">Tunisia's Premier Nightlife Experience</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return {
+    from: import.meta.env.VITE_GMAIL_FROM || 'Andiamo Events <noreply@andiamo.com>',
+    to: admin.email,
+    subject,
+    html
+  };
+};
+
 export const generatePassword = (): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
   let password = '';

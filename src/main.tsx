@@ -272,9 +272,25 @@ if ('serviceWorker' in navigator) {
         details: { scope: sanitizeString(registration.scope) }
       });
       
+      // Prevent automatic page refresh on service worker update
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            // Don't force reload - let user continue browsing
+            // Only reload if user explicitly wants to (they can refresh manually)
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New service worker is ready, but don't auto-reload
+              console.log('New service worker available, but not forcing reload');
+            }
+          });
+        }
+      });
+      
       // Only check for updates once per session to prevent loops
       if (!sessionStorage.getItem('sw-update-checked')) {
-        registration.update();
+        // Don't force update check on mobile - it can cause refresh issues
+        // registration.update(); // Commented out to prevent auto-refresh on mobile
         sessionStorage.setItem('sw-update-checked', 'true');
       }
     } catch (registrationError) {
