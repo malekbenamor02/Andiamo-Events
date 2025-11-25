@@ -24,7 +24,7 @@ Run this SQL in Supabase SQL Editor:
 INSERT INTO admins (name, email, password, role, is_active) 
 VALUES (
   'Super Admin', 
-  'malekbenamor02@icloud', 
+  'malekbenamor02@icloud.com', 
   '$2b$10$hlJ786UOHTIgrT5ooIHmdOKpufV/4xQ5QHUvtx7IPbfs75MXfjCD6',
   'super_admin',
   true
@@ -37,7 +37,7 @@ SET
 ```
 
 **Login Credentials:**
-- Email: `malekbenamor02@icloud`
+- Email: `malekbenamor02@icloud.com`
 - Password: `022006`
 
 ## Step 2: Features
@@ -60,7 +60,7 @@ SET
 
 1. **Login as Super Admin**
    - Go to `/admin/login`
-   - Use email: `malekbenamor02@icloud`
+   - Use email: `malekbenamor02@icloud.com`
    - Use password: `022006`
 
 2. **Access Admin Management**

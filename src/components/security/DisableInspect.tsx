@@ -190,9 +190,17 @@ const DisableInspect = () => {
     };
 
     // Detect DevTools opening (multiple methods)
+    // DISABLED ON MOBILE - causes false positives due to browser UI
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
     let devToolsOpen = false;
     
     const detectDevTools = () => {
+      // Skip DevTools detection on mobile devices
+      if (isMobile) {
+        return;
+      }
+      
       const widthThreshold = window.outerWidth - window.innerWidth > 160;
       const heightThreshold = window.outerHeight - window.innerHeight > 160;
       
@@ -201,18 +209,22 @@ const DisableInspect = () => {
           devToolsOpen = true;
           // Clear console when DevTools is detected
           console.clear();
-          // Redirect to home page
-          if (window.location.pathname !== '/') {
-            window.location.href = '/';
-          }
+          // DON'T redirect - just clear console
+          // Redirecting causes issues on mobile browsers
+          // if (window.location.pathname !== '/') {
+          //   window.location.href = '/';
+          // }
         }
       } else {
         devToolsOpen = false;
       }
     };
 
-    // Monitor for DevTools
-    const devToolsCheckInterval = setInterval(detectDevTools, 500);
+    // Monitor for DevTools (only on desktop)
+    let devToolsCheckInterval: NodeJS.Timeout | null = null;
+    if (!isMobile) {
+      devToolsCheckInterval = setInterval(detectDevTools, 500);
+    }
 
     // Disable console methods
     const disableConsole = () => {
@@ -268,6 +280,7 @@ const DisableInspect = () => {
       // Clear DevTools check interval
       if (devToolsCheckInterval) {
         clearInterval(devToolsCheckInterval);
+        devToolsCheckInterval = null;
       }
     };
   }, []);

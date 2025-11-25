@@ -1,6 +1,6 @@
 // Service Worker for Andiamo Events Scanner
-// Updated cache version to force refresh
-const CACHE_NAME = 'andiamo-events-scanner-v2';
+// Updated cache version to prevent refresh loops
+const CACHE_NAME = 'andiamo-events-scanner-v3';
 const urlsToCache = [
   '/manifest.json',
   '/placeholder.svg'
