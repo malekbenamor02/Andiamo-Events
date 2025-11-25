@@ -315,7 +315,7 @@ const Footer = ({ language }: FooterProps) => {
                 rel="noopener noreferrer"
                 className="font-semibold text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1 ml-1"
               >
-                Malek Ben Amo
+                Malek Ben Amor
                 <Instagram className="w-4 h-4 ml-1" />
               </a>
             </p>
