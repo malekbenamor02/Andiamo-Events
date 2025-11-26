@@ -98,6 +98,8 @@ const setupErrorHandlers = async () => {
          errorMessage.includes("A listener indicated an asynchronous response") ||
          errorMessage.includes("Extension context invalidated") ||
          errorMessage.includes("message channel closed before a response was received") ||
+         errorMessage.includes("Could not establish connection") ||
+         errorMessage.includes("Receiving end does not exist") ||
          errorString.includes("message channel closed") ||
          errorString.includes("asynchronous response") ||
          errorString.includes("A listener indicated an asynchronous response") ||
