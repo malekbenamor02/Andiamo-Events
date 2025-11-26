@@ -24,10 +24,41 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { email, password } = req.body;
+    const { email, password, recaptchaToken } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password required' });
+    }
+
+    // Verify reCAPTCHA
+    if (!recaptchaToken) {
+      return res.status(400).json({ error: 'reCAPTCHA verification required' });
+    }
+
+    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || '6LeEYhgsAAAAADTmLFws26HY-xbGWH1T8PPCnvia';
+    
+    try {
+      const verifyResponse = await fetch(`https://www.google.com/recaptcha/api/siteverify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
+      });
+
+      const verifyData = await verifyResponse.json();
+      
+      if (!verifyData.success) {
+        console.error('reCAPTCHA verification failed:', verifyData);
+        return res.status(400).json({ 
+          error: 'reCAPTCHA verification failed',
+          details: 'Please complete the reCAPTCHA verification and try again.'
+        });
+      }
+    } catch (recaptchaError) {
+      console.error('reCAPTCHA verification error:', recaptchaError);
+      // Don't block login if reCAPTCHA service is unavailable, but log it
+      console.warn('reCAPTCHA verification service unavailable, proceeding with login');
     }
 
     // Check if environment variables are set

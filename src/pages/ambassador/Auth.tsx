@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Eye, EyeOff, User, Lock, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
+import ReCAPTCHA from "react-google-recaptcha";
 
 interface AuthProps {
   language: 'en' | 'fr';
@@ -32,8 +33,12 @@ const Auth = ({ language }: AuthProps) => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  
+  const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LeEYhgsAAAAAEX8CtfuwSlpDnhGWyaFjgIn40fc';
 
   // Form states
   const [loginData, setLoginData] = useState({
@@ -120,7 +125,44 @@ const Auth = ({ language }: AuthProps) => {
     e.preventDefault();
     setIsLoading(true);
 
+    // Check if reCAPTCHA is completed
+    if (!recaptchaToken) {
+      toast({
+        title: language === 'en' ? "Verification Required" : "Vérification requise",
+        description: language === 'en' ? 'Please complete the reCAPTCHA verification' : 'Veuillez compléter la vérification reCAPTCHA',
+        variant: "destructive",
+      });
+      setIsLoading(false);
+      return;
+    }
+
     try {
+      // Verify reCAPTCHA on server
+      const verifyResponse = await fetch('/api/verify-recaptcha', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ recaptchaToken })
+      });
+
+      if (!verifyResponse.ok) {
+        const errorData = await verifyResponse.json().catch(() => ({}));
+        toast({
+          title: language === 'en' ? "Verification Failed" : "Échec de la vérification",
+          description: language === 'en' 
+            ? 'reCAPTCHA verification failed. Please try again.' 
+            : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.',
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        if (recaptchaRef.current) {
+          recaptchaRef.current.reset();
+          setRecaptchaToken(null);
+        }
+        return;
+      }
+
       // Fetch ambassador by phone number
       const { data: ambassadors, error } = await supabase
         .from('ambassadors')
@@ -187,7 +229,16 @@ const Auth = ({ language }: AuthProps) => {
       });
     } finally {
       setIsLoading(false);
+      // Reset reCAPTCHA after attempt
+      if (recaptchaRef.current) {
+        recaptchaRef.current.reset();
+        setRecaptchaToken(null);
+      }
     }
+  };
+
+  const handleRecaptchaChange = (token: string | null) => {
+    setRecaptchaToken(token);
   };
 
 
@@ -245,7 +296,16 @@ const Auth = ({ language }: AuthProps) => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full btn-gradient" disabled={isLoading}>
+            <div className="flex justify-center">
+              <ReCAPTCHA
+                ref={recaptchaRef}
+                sitekey={RECAPTCHA_SITE_KEY}
+                onChange={handleRecaptchaChange}
+                theme="dark"
+              />
+            </div>
+
+            <Button type="submit" className="w-full btn-gradient" disabled={isLoading || !recaptchaToken}>
               {isLoading ? t.login.loading : t.login.submit}
             </Button>
           </form>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Eye, EyeOff, Lock, User, Mail, ArrowLeft, Sparkles, AlertCircle, Settin
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { logger } from "@/lib/logger";
+import ReCAPTCHA from "react-google-recaptcha";
 
 interface AdminLoginProps {
   language: 'en' | 'fr';
@@ -21,8 +22,12 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  
+  const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LeEYhgsAAAAAEX8CtfuwSlpDnhGWyaFjgIn40fc';
 
   const t = {
     en: {
@@ -52,6 +57,18 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     setLoading(true);
     setError("");
 
+    // Check if reCAPTCHA is completed
+    if (!recaptchaToken) {
+      setError(language === 'en' ? 'Please complete the reCAPTCHA verification' : 'Veuillez compléter la vérification reCAPTCHA');
+      toast({
+        title: language === 'en' ? "Verification Required" : "Vérification requise",
+        description: language === 'en' ? 'Please complete the reCAPTCHA verification' : 'Veuillez compléter la vérification reCAPTCHA',
+        variant: "destructive",
+      });
+      setLoading(false);
+      return;
+    }
+
     try {
       // Call the Vercel API route for admin login
       const response = await fetch('/api/admin-login', {
@@ -62,7 +79,8 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         credentials: 'include', // Important: This allows cookies to be set
         body: JSON.stringify({
           email,
-          password
+          password,
+          recaptchaToken
         })
       });
 
@@ -165,7 +183,16 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       });
     } finally {
       setLoading(false);
+      // Reset reCAPTCHA after attempt
+      if (recaptchaRef.current) {
+        recaptchaRef.current.reset();
+        setRecaptchaToken(null);
+      }
     }
+  };
+
+  const handleRecaptchaChange = (token: string | null) => {
+    setRecaptchaToken(token);
   };
 
   // Show mobile restriction message if accessed from mobile device
@@ -315,10 +342,19 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                 </div>
               </div>
               
+              <div className="flex justify-center">
+                <ReCAPTCHA
+                  ref={recaptchaRef}
+                  sitekey={RECAPTCHA_SITE_KEY}
+                  onChange={handleRecaptchaChange}
+                  theme="dark"
+                />
+              </div>
+              
               <Button
                 type="submit"
                 className="w-full h-12 btn-gradient text-lg font-semibold relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
-                disabled={loading}
+                disabled={loading || !recaptchaToken}
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
                   {loading ? (
