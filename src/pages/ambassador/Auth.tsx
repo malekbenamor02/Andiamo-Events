@@ -38,13 +38,11 @@ const Auth = ({ language }: AuthProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
   
-  // Get reCAPTCHA site key from environment or use fallback
-  const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LeEYhgsAAAAAEX8CtfuwSlpDnhGWyaFjgIn40fc';
+  // Get reCAPTCHA site key from environment
+  const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   
-  // Debug: Log the key being used (first 10 chars only for security)
-  if (import.meta.env.DEV) {
-    console.log('reCAPTCHA Site Key (first 10 chars):', RECAPTCHA_SITE_KEY.substring(0, 10) + '...');
-    console.log('Environment variable loaded:', !!import.meta.env.VITE_RECAPTCHA_SITE_KEY);
+  if (!RECAPTCHA_SITE_KEY) {
+    console.error('VITE_RECAPTCHA_SITE_KEY is not set in environment variables');
   }
 
   // Form states
@@ -303,16 +301,26 @@ const Auth = ({ language }: AuthProps) => {
               </div>
             </div>
 
-            <div className="flex justify-center">
-              <ReCAPTCHA
-                ref={recaptchaRef}
-                sitekey={RECAPTCHA_SITE_KEY}
-                onChange={handleRecaptchaChange}
-                theme="dark"
-              />
-            </div>
+            {RECAPTCHA_SITE_KEY ? (
+              <div className="flex justify-center">
+                <ReCAPTCHA
+                  ref={recaptchaRef}
+                  sitekey={RECAPTCHA_SITE_KEY}
+                  onChange={handleRecaptchaChange}
+                  theme="dark"
+                />
+              </div>
+            ) : (
+              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-md text-center">
+                <p className="text-sm text-destructive">
+                  {language === 'en' 
+                    ? 'reCAPTCHA is not configured. Please set VITE_RECAPTCHA_SITE_KEY in environment variables.'
+                    : 'reCAPTCHA n\'est pas configuré. Veuillez définir VITE_RECAPTCHA_SITE_KEY dans les variables d\'environnement.'}
+                </p>
+              </div>
+            )}
 
-            <Button type="submit" className="w-full btn-gradient" disabled={isLoading || !recaptchaToken}>
+            <Button type="submit" className="w-full btn-gradient" disabled={isLoading || !recaptchaToken || !RECAPTCHA_SITE_KEY}>
               {isLoading ? t.login.loading : t.login.submit}
             </Button>
           </form>

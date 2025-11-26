@@ -98,7 +98,15 @@ app.post('/api/admin-login', async (req, res) => {
       return res.status(400).json({ error: 'reCAPTCHA verification required' });
     }
 
-    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || '6LeEYhgsAAAAADTmLFws26HY-xbGWH1T8PPCnvia';
+    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+    
+    if (!RECAPTCHA_SECRET_KEY) {
+      console.error('RECAPTCHA_SECRET_KEY is not set in environment variables');
+      return res.status(500).json({ 
+        error: 'Server configuration error',
+        details: 'reCAPTCHA secret key is not configured. Please set RECAPTCHA_SECRET_KEY in environment variables.'
+      });
+    }
     
     try {
       const verifyResponse = await fetch(`https://www.google.com/recaptcha/api/siteverify`, {
@@ -120,8 +128,10 @@ app.post('/api/admin-login', async (req, res) => {
       }
     } catch (recaptchaError) {
       console.error('reCAPTCHA verification error:', recaptchaError);
-      // Don't block login if reCAPTCHA service is unavailable, but log it
-      console.warn('reCAPTCHA verification service unavailable, proceeding with login');
+      return res.status(500).json({ 
+        error: 'reCAPTCHA verification service unavailable',
+        details: 'Unable to verify reCAPTCHA. Please try again later.'
+      });
     }
     
     // Fetch admin by email
@@ -204,7 +214,16 @@ app.post('/api/verify-recaptcha', async (req, res) => {
       return res.status(400).json({ error: 'reCAPTCHA token is required' });
     }
 
-    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || '6LeEYhgsAAAAADTmLFws26HY-xbGWH1T8PPCnvia';
+    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+    
+    if (!RECAPTCHA_SECRET_KEY) {
+      console.error('RECAPTCHA_SECRET_KEY is not set in environment variables');
+      return res.status(500).json({ 
+        success: false,
+        error: 'Server configuration error',
+        details: 'reCAPTCHA secret key is not configured. Please set RECAPTCHA_SECRET_KEY in environment variables.'
+      });
+    }
 
     // Verify with Google reCAPTCHA API
     const verifyResponse = await fetch(`https://www.google.com/recaptcha/api/siteverify`, {

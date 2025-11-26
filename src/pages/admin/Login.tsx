@@ -27,13 +27,11 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
   
-  // Get reCAPTCHA site key from environment or use fallback
-  const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LeEYhgsAAAAAEX8CtfuwSlpDnhGWyaFjgIn40fc';
+  // Get reCAPTCHA site key from environment
+  const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   
-  // Debug: Log the key being used (first 10 chars only for security)
-  if (import.meta.env.DEV) {
-    console.log('reCAPTCHA Site Key (first 10 chars):', RECAPTCHA_SITE_KEY.substring(0, 10) + '...');
-    console.log('Environment variable loaded:', !!import.meta.env.VITE_RECAPTCHA_SITE_KEY);
+  if (!RECAPTCHA_SITE_KEY) {
+    console.error('VITE_RECAPTCHA_SITE_KEY is not set in environment variables');
   }
 
   const t = {
@@ -349,19 +347,30 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                 </div>
               </div>
               
-              <div className="flex justify-center">
-                <ReCAPTCHA
-                  ref={recaptchaRef}
-                  sitekey={RECAPTCHA_SITE_KEY}
-                  onChange={handleRecaptchaChange}
-                  theme="dark"
-                />
-              </div>
+              {RECAPTCHA_SITE_KEY ? (
+                <div className="flex justify-center">
+                  <ReCAPTCHA
+                    ref={recaptchaRef}
+                    sitekey={RECAPTCHA_SITE_KEY}
+                    onChange={handleRecaptchaChange}
+                    theme="dark"
+                  />
+                </div>
+              ) : (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {language === 'en' 
+                      ? 'reCAPTCHA is not configured. Please set VITE_RECAPTCHA_SITE_KEY in environment variables.'
+                      : 'reCAPTCHA n\'est pas configuré. Veuillez définir VITE_RECAPTCHA_SITE_KEY dans les variables d\'environnement.'}
+                  </AlertDescription>
+                </Alert>
+              )}
               
               <Button
                 type="submit"
                 className="w-full h-12 btn-gradient text-lg font-semibold relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
-                disabled={loading || !recaptchaToken}
+                disabled={loading || !recaptchaToken || !RECAPTCHA_SITE_KEY}
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
                   {loading ? (

@@ -8,13 +8,15 @@ Add these environment variables to your `.env` file and Vercel project settings:
 
 ### Frontend (Vite)
 ```
-VITE_RECAPTCHA_SITE_KEY=6LeEYhgsAAAAAEX8CtfuwSlpDnhGWyaFjgIn40fc
+VITE_RECAPTCHA_SITE_KEY=your_site_key_here
 ```
 
 ### Backend (Server/Vercel)
 ```
-RECAPTCHA_SECRET_KEY=6LeEYhgsAAAAADTmLFws26HY-xbGWH1T8PPCnvia
+RECAPTCHA_SECRET_KEY=your_secret_key_here
 ```
+
+**Note:** Replace `your_site_key_here` and `your_secret_key_here` with your actual reCAPTCHA keys from Google reCAPTCHA console.
 
 ## Vercel Configuration
 
