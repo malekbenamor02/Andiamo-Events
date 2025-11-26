@@ -32,17 +32,56 @@ const Auth = ({ language }: AuthProps) => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
-  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   
   // Get reCAPTCHA site key from environment
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   
-  if (!RECAPTCHA_SITE_KEY) {
-    console.error('VITE_RECAPTCHA_SITE_KEY is not set in environment variables');
-  }
+  useEffect(() => {
+    if (!RECAPTCHA_SITE_KEY) {
+      console.error('VITE_RECAPTCHA_SITE_KEY is not set in environment variables');
+      return;
+    }
+
+    // Only inject script once
+    if (window.grecaptcha) {
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+
+    return () => {
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+  }, [RECAPTCHA_SITE_KEY]);
+
+  const executeRecaptcha = async (): Promise<string | null> => {
+    if (!RECAPTCHA_SITE_KEY || !window.grecaptcha) {
+      return null;
+    }
+
+    try {
+      // Wait for grecaptcha to finish loading before executing
+      if (window.grecaptcha.ready) {
+        await new Promise<void>((resolve) => {
+          window.grecaptcha.ready(() => resolve());
+        });
+      }
+
+      const token = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'ambassador_auth' });
+      return token;
+    } catch (error) {
+      console.error('reCAPTCHA execution error:', error);
+      return null;
+    }
+  };
 
   // Form states
   const [loginData, setLoginData] = useState({

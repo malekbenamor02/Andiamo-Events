@@ -32,3 +32,5 @@ WHERE tablename = 'contact_messages'
   AND cmd = 'DELETE'
 ORDER BY policyname;
 
+
+

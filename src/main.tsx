@@ -27,17 +27,32 @@ window.addEventListener('unhandledrejection', (event) => {
 
 // Global error handlers to catch all errors
 const setupErrorHandlers = async () => {
-  // Suppress Chrome intervention warnings (slow network, etc.)
+  // Wrap console.warn once so we can both suppress noisy logs and capture real ones
   const originalConsoleWarn = console.warn;
   console.warn = (...args: any[]) => {
-    const message = args.join(' ');
-    // Suppress Chrome intervention warnings
-    if (message.includes('[Intervention]') || 
-        message.includes('Slow network is detected') ||
-        message.includes('Fallback font will be used')) {
-      return; // Suppress these warnings
+    const warningString = args.map(arg => {
+      if (typeof arg === 'string') return arg;
+      return JSON.stringify(arg);
+    }).join(' ');
+
+    // Suppress Chrome intervention warnings (slow network, etc.)
+    if (warningString.includes('[Intervention]') || 
+        warningString.includes('Slow network is detected') ||
+        warningString.includes('Fallback font will be used')) {
+      return;
     }
+
     originalConsoleWarn.apply(console, args);
+
+    // Don't log if it's already a logging warning
+    if (!warningString.includes('Failed to log activity')) {
+      logger.warning('Console Warning', {
+        category: 'error',
+        details: {
+          message: warningString
+        }
+      });
+    }
   };
 
   // Handle JavaScript errors
@@ -228,26 +243,6 @@ const setupErrorHandlers = async () => {
     }
   };
 
-  // Log console warnings
-  const originalConsoleWarn = console.warn;
-  console.warn = (...args: any[]) => {
-    originalConsoleWarn.apply(console, args);
-    
-    const warningString = args.map(arg => {
-      if (typeof arg === 'string') return arg;
-      return JSON.stringify(arg);
-    }).join(' ');
-
-    // Don't log if it's already a logging warning
-    if (!warningString.includes('Failed to log activity')) {
-      logger.warning('Console Warning', {
-        category: 'error',
-        details: {
-          message: warningString
-        }
-      });
-    }
-  };
 };
 
 // Setup error handlers before rendering

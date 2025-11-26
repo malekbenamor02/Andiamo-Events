@@ -61,3 +61,5 @@ Get-Content .gitignore | Select-String -Pattern "\.env"
 - **If secrets were exposed**, rotate them immediately
 - **Consider using environment variables** in your hosting platform (Vercel, etc.)
 
+
+
