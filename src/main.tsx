@@ -11,7 +11,9 @@ const suppressBrowserExtensionError = (error: any) => {
          errorString.includes("asynchronous response") ||
          errorString.includes("A listener indicated an asynchronous response") ||
          errorString.includes("Extension context invalidated") ||
-         errorString.includes("message channel closed before a response was received");
+         errorString.includes("message channel closed before a response was received") ||
+         errorString.includes("Could not establish connection") ||
+         errorString.includes("Receiving end does not exist");
 };
 
 // Set up early promise rejection handler
@@ -25,6 +27,19 @@ window.addEventListener('unhandledrejection', (event) => {
 
 // Global error handlers to catch all errors
 const setupErrorHandlers = async () => {
+  // Suppress Chrome intervention warnings (slow network, etc.)
+  const originalConsoleWarn = console.warn;
+  console.warn = (...args: any[]) => {
+    const message = args.join(' ');
+    // Suppress Chrome intervention warnings
+    if (message.includes('[Intervention]') || 
+        message.includes('Slow network is detected') ||
+        message.includes('Fallback font will be used')) {
+      return; // Suppress these warnings
+    }
+    originalConsoleWarn.apply(console, args);
+  };
+
   // Handle JavaScript errors
   window.addEventListener('error', (event: ErrorEvent) => {
     const errorMessage = event.message || 'Unknown error';
