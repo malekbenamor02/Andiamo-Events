@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +8,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Eye, EyeOff, User, Lock, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
-import ReCAPTCHA from "react-google-recaptcha";
 
 interface AuthProps {
   language: 'en' | 'fr';
@@ -130,11 +129,15 @@ const Auth = ({ language }: AuthProps) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Check if reCAPTCHA is completed
+    // Execute reCAPTCHA v3
+    const recaptchaToken = await executeRecaptcha();
+    
     if (!recaptchaToken) {
       toast({
-        title: language === 'en' ? "Verification Required" : "Vérification requise",
-        description: language === 'en' ? 'Please complete the reCAPTCHA verification' : 'Veuillez compléter la vérification reCAPTCHA',
+        title: language === 'en' ? "Verification Failed" : "Échec de la vérification",
+        description: language === 'en' 
+          ? 'reCAPTCHA verification failed. Please try again.' 
+          : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.',
         variant: "destructive",
       });
       setIsLoading(false);
@@ -161,10 +164,6 @@ const Auth = ({ language }: AuthProps) => {
           variant: "destructive",
         });
         setIsLoading(false);
-        if (recaptchaRef.current) {
-          recaptchaRef.current.reset();
-          setRecaptchaToken(null);
-        }
         return;
       }
 
@@ -234,16 +233,7 @@ const Auth = ({ language }: AuthProps) => {
       });
     } finally {
       setIsLoading(false);
-      // Reset reCAPTCHA after attempt
-      if (recaptchaRef.current) {
-        recaptchaRef.current.reset();
-        setRecaptchaToken(null);
-      }
     }
-  };
-
-  const handleRecaptchaChange = (token: string | null) => {
-    setRecaptchaToken(token);
   };
 
 
@@ -301,16 +291,7 @@ const Auth = ({ language }: AuthProps) => {
               </div>
             </div>
 
-            {RECAPTCHA_SITE_KEY ? (
-              <div className="flex justify-center">
-                <ReCAPTCHA
-                  ref={recaptchaRef}
-                  sitekey={RECAPTCHA_SITE_KEY}
-                  onChange={handleRecaptchaChange}
-                  theme="dark"
-                />
-              </div>
-            ) : (
+            {!RECAPTCHA_SITE_KEY && (
               <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-md text-center">
                 <p className="text-sm text-destructive">
                   {language === 'en' 
@@ -320,7 +301,7 @@ const Auth = ({ language }: AuthProps) => {
               </div>
             )}
 
-            <Button type="submit" className="w-full btn-gradient" disabled={isLoading || !recaptchaToken || !RECAPTCHA_SITE_KEY}>
+            <Button type="submit" className="w-full btn-gradient" disabled={isLoading || !RECAPTCHA_SITE_KEY}>
               {isLoading ? t.login.loading : t.login.submit}
             </Button>
           </form>

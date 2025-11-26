@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,6 @@ import { Eye, EyeOff, Lock, User, Mail, ArrowLeft, Sparkles, AlertCircle, Settin
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { logger } from "@/lib/logger";
-import ReCAPTCHA from "react-google-recaptcha";
 
 interface AdminLoginProps {
   language: 'en' | 'fr';
@@ -22,17 +21,53 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
-  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   
   // Get reCAPTCHA site key from environment
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   
-  if (!RECAPTCHA_SITE_KEY) {
-    console.error('VITE_RECAPTCHA_SITE_KEY is not set in environment variables');
-  }
+  // Load reCAPTCHA v3 script
+  useEffect(() => {
+    if (!RECAPTCHA_SITE_KEY) {
+      console.error('VITE_RECAPTCHA_SITE_KEY is not set in environment variables');
+      return;
+    }
+
+    // Check if script is already loaded
+    if (window.grecaptcha) {
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+
+    return () => {
+      // Cleanup script on unmount
+      const existingScript = document.querySelector(`script[src*="recaptcha/api.js"]`);
+      if (existingScript) {
+        document.body.removeChild(existingScript);
+      }
+    };
+  }, [RECAPTCHA_SITE_KEY]);
+
+  // Execute reCAPTCHA v3
+  const executeRecaptcha = async (): Promise<string | null> => {
+    if (!RECAPTCHA_SITE_KEY || !window.grecaptcha) {
+      return null;
+    }
+
+    try {
+      const token = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'login' });
+      return token;
+    } catch (error) {
+      console.error('reCAPTCHA execution error:', error);
+      return null;
+    }
+  };
 
   const t = {
     en: {
@@ -62,12 +97,14 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     setLoading(true);
     setError("");
 
-    // Check if reCAPTCHA is completed
+    // Execute reCAPTCHA v3
+    const recaptchaToken = await executeRecaptcha();
+    
     if (!recaptchaToken) {
-      setError(language === 'en' ? 'Please complete the reCAPTCHA verification' : 'Veuillez compléter la vérification reCAPTCHA');
+      setError(language === 'en' ? 'reCAPTCHA verification failed. Please try again.' : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.');
       toast({
-        title: language === 'en' ? "Verification Required" : "Vérification requise",
-        description: language === 'en' ? 'Please complete the reCAPTCHA verification' : 'Veuillez compléter la vérification reCAPTCHA',
+        title: language === 'en' ? "Verification Failed" : "Échec de la vérification",
+        description: language === 'en' ? 'reCAPTCHA verification failed. Please try again.' : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.',
         variant: "destructive",
       });
       setLoading(false);
@@ -188,16 +225,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       });
     } finally {
       setLoading(false);
-      // Reset reCAPTCHA after attempt
-      if (recaptchaRef.current) {
-        recaptchaRef.current.reset();
-        setRecaptchaToken(null);
-      }
     }
-  };
-
-  const handleRecaptchaChange = (token: string | null) => {
-    setRecaptchaToken(token);
   };
 
   // Show mobile restriction message if accessed from mobile device
@@ -347,16 +375,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                 </div>
               </div>
               
-              {RECAPTCHA_SITE_KEY ? (
-                <div className="flex justify-center">
-                  <ReCAPTCHA
-                    ref={recaptchaRef}
-                    sitekey={RECAPTCHA_SITE_KEY}
-                    onChange={handleRecaptchaChange}
-                    theme="dark"
-                  />
-                </div>
-              ) : (
+              {!RECAPTCHA_SITE_KEY && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
@@ -370,7 +389,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
               <Button
                 type="submit"
                 className="w-full h-12 btn-gradient text-lg font-semibold relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
-                disabled={loading || !recaptchaToken || !RECAPTCHA_SITE_KEY}
+                disabled={loading || !RECAPTCHA_SITE_KEY}
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
                   {loading ? (
