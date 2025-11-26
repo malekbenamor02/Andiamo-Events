@@ -38,7 +38,14 @@ const Auth = ({ language }: AuthProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
   
+  // Get reCAPTCHA site key from environment or use fallback
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LeEYhgsAAAAAEX8CtfuwSlpDnhGWyaFjgIn40fc';
+  
+  // Debug: Log the key being used (first 10 chars only for security)
+  if (import.meta.env.DEV) {
+    console.log('reCAPTCHA Site Key (first 10 chars):', RECAPTCHA_SITE_KEY.substring(0, 10) + '...');
+    console.log('Environment variable loaded:', !!import.meta.env.VITE_RECAPTCHA_SITE_KEY);
+  }
 
   // Form states
   const [loginData, setLoginData] = useState({
