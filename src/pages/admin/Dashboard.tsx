@@ -51,6 +51,8 @@ interface AmbassadorApplication {
   motivation?: string;
   status: string;
   created_at: string;
+  reapply_delay_date?: string; // Date when rejected/removed applicants can reapply (30 days after rejection/removal)
+  manually_added?: boolean; // Indicator for manually added ambassadors
 }
 
 interface Event {
@@ -88,6 +90,7 @@ interface Ambassador {
   password?: string;
   created_at: string;
   updated_at: string;
+  age?: number; // Age from corresponding application
 }
 
 interface PassPurchase {
@@ -132,11 +135,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [newAdminData, setNewAdminData] = useState({ name: '', email: '', phone: '' });
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
-  // Add state for email recovery
+  // Add state for email recovery and status tracking
   const [emailFailedApplications, setEmailFailedApplications] = useState<Set<string>>(new Set());
+  const [emailSentApplications, setEmailSentApplications] = useState<Set<string>>(new Set());
+  const [emailStatus, setEmailStatus] = useState<Record<string, 'sent' | 'failed' | 'pending'>>({});
   const [ambassadorCredentials, setAmbassadorCredentials] = useState<Record<string, { username: string; password: string }>>({});
 
   const [editingAmbassador, setEditingAmbassador] = useState<Ambassador | null>(null);
+  const [newAmbassadorForm, setNewAmbassadorForm] = useState({
+    full_name: '',
+    age: '',
+    phone_number: '',
+    email: '',
+    city: '',
+    social_link: ''
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
@@ -146,6 +159,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
   const [isAmbassadorDialogOpen, setIsAmbassadorDialogOpen] = useState(false);
+  
+  // Validation errors state for ambassador form
+  const [ambassadorErrors, setAmbassadorErrors] = useState<{
+    full_name?: string;
+    email?: string;
+    phone?: string;
+    password?: string;
+    city?: string;
+  }>({});
 
   const [sponsors, setSponsors] = useState([]);
   const [editingSponsor, setEditingSponsor] = useState(null);
@@ -203,7 +225,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [addingBulkPhones, setAddingBulkPhones] = useState(false);
   const [smsBalance, setSmsBalance] = useState<any>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
-  const [smsLogs, setSmsLogs] = useState<Array<{id: string; phone_number: string; message: string; status: string; error_message?: string; sent_at?: string; created_at: string}>>([]);
+  const [smsLogs, setSmsLogs] = useState<Array<{id: string; phone_number: string; message: string; status: string; error_message?: string; sent_at?: string; created_at: string; api_response?: any}>>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [siteLogs, setSiteLogs] = useState<Array<{id: string; log_type: string; category: string; message: string; details: any; user_type: string; created_at: string}>>([]);
   const [loadingSiteLogs, setLoadingSiteLogs] = useState(false);
@@ -570,6 +592,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }, [activeTab, hasApplicationsAnimated, applications, applicationSearchTerm]);
 
   // Filter applications based on search term and date range
+  // Show all applications (pending, approved, rejected, removed) - full history
   const filteredApplications = applications.filter(application => {
     const searchLower = applicationSearchTerm.toLowerCase();
     const matchesSearch = (
@@ -894,7 +917,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         .from('site_content')
         .upsert({
           key: 'hero_section',
-          content: updatedContent,
+          content: updatedContent as any,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'key'
@@ -1048,7 +1071,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         .from('site_content')
         .upsert({
           key: 'about_section',
-          content: updatedContent,
+          content: updatedContent as any,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'key'
@@ -1145,13 +1168,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchPhoneSubscribers = async () => {
     try {
       setLoadingSubscribers(true);
+      // Note: phone_subscribers table may not exist in schema
+      // Using RPC or direct query as fallback
       const { data, error } = await supabase
-        .from('phone_subscribers')
+        .from('phone_subscribers' as any)
         .select('*')
         .order('subscribed_at', { ascending: false });
 
-      if (error) throw error;
-      setPhoneSubscribers(data || []);
+      if (error) {
+        console.warn('phone_subscribers table not found, skipping:', error);
+        setPhoneSubscribers([]);
+        return;
+      }
+      setPhoneSubscribers((data || []) as unknown as Array<{id: string; phone_number: string; subscribed_at: string}>);
     } catch (error) {
       console.error('Error fetching phone subscribers:', error);
       setPhoneSubscribers([]);
@@ -1164,14 +1193,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchSmsLogs = async () => {
     try {
       setLoadingLogs(true);
+      // Note: sms_logs table may not exist in schema
       const { data, error } = await supabase
-        .from('sms_logs')
+        .from('sms_logs' as any)
         .select('*')
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (error) throw error;
-      setSmsLogs(data || []);
+      if (error) {
+        console.warn('sms_logs table not found, skipping:', error);
+        setSmsLogs([]);
+        return;
+      }
+      setSmsLogs((data || []) as unknown as Array<{id: string; phone_number: string; message: string; status: string; error_message?: string; sent_at?: string; created_at: string; api_response?: any}>);
     } catch (error) {
       console.error('Error fetching SMS logs:', error);
       setSmsLogs([]);
@@ -1184,14 +1218,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchSiteLogs = async () => {
     try {
       setLoadingSiteLogs(true);
+      // Note: site_logs table may not exist in schema
       const { data, error } = await supabase
-        .from('site_logs')
+        .from('site_logs' as any)
         .select('*')
         .order('created_at', { ascending: false })
         .limit(500);
 
-      if (error) throw error;
-      setSiteLogs(data || []);
+      if (error) {
+        console.warn('site_logs table not found, skipping:', error);
+        setSiteLogs([]);
+        return;
+      }
+      setSiteLogs((data || []) as unknown as Array<{id: string; log_type: string; category: string; message: string; details: any; user_type: string; created_at: string}>);
     } catch (error) {
       console.error('Error fetching site logs:', error);
       setSiteLogs([]);
@@ -1793,8 +1832,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           .select('id, name, email, role, is_active, created_at')
           .order('created_at', { ascending: false });
         
-        if (!errorWithoutPhone) {
-          data = dataWithoutPhone;
+        if (!errorWithoutPhone && dataWithoutPhone) {
+          // Map data without phone to include optional phone field
+          data = dataWithoutPhone.map(admin => ({ ...admin, phone: undefined })) as unknown as typeof data;
           error = null;
         }
       }
@@ -1802,7 +1842,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (error) {
         console.error('Error fetching admins:', error);
       } else {
-        setAdmins(data || []);
+        setAdmins((data || []) as unknown as Array<{id: string; name: string; email: string; phone?: string; role: string; is_active: boolean; created_at: string}>);
       }
     } catch (error) {
       console.error('Error fetching admins:', error);
@@ -2235,7 +2275,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
       }
 
+      // Store credentials for potential resend (before email attempt)
+      setAmbassadorCredentials(prev => ({
+        ...prev,
+        [application.id]: {
+          username: username,
+          password: password
+        }
+      }));
+
+      // Set email status to pending
+      setEmailStatus(prev => ({
+        ...prev,
+        [application.id]: 'pending'
+      }));
+
       // Send approval email with credentials (plain password)
+      let emailSent = false;
+      let emailError: string | null = null;
+      
+      try {
       const emailConfig = createApprovalEmail(
         {
           fullName: application.full_name,
@@ -2248,28 +2307,71 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         ambassadorId // Pass ambassador ID for tracking
       );
 
-      const emailSent = await sendEmail(emailConfig);
+        emailSent = await sendEmail(emailConfig);
 
-      // Store credentials for potential resend
-      setAmbassadorCredentials(prev => ({
+        if (emailSent) {
+          // Track successful email
+          setEmailSentApplications(prev => new Set([...prev, application.id]));
+          setEmailFailedApplications(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(application.id);
+            return newSet;
+          });
+          setEmailStatus(prev => ({
         ...prev,
-        [application.id]: {
-          username: username,
-          password: password
-        }
+            [application.id]: 'sent'
       }));
-
-      if (!emailSent) {
-        // Track failed email applications
+        } else {
+          // Track failed email
         setEmailFailedApplications(prev => new Set([...prev, application.id]));
+          setEmailSentApplications(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(application.id);
+            return newSet;
+          });
+          setEmailStatus(prev => ({
+            ...prev,
+            [application.id]: 'failed'
+          }));
+          emailError = 'Email delivery failed. Please use the Resend Email button to retry.';
+        }
+      } catch (error) {
+        // Track failed email with error details
+        emailError = error instanceof Error ? error.message : 'Unknown error occurred';
+        setEmailFailedApplications(prev => new Set([...prev, application.id]));
+        setEmailSentApplications(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(application.id);
+          return newSet;
+        });
+        setEmailStatus(prev => ({
+          ...prev,
+          [application.id]: 'failed'
+        }));
+        console.error('Error sending approval email:', error);
       }
 
+      // Show appropriate toast notification
+      if (emailSent) {
       toast({
         title: t.approvalSuccess,
-        description: emailSent 
-          ? `${t.emailSent} - Credentials sent to ${application.email}`
-          : "Approval successful, but email failed to send",
-      });
+          description: `${t.emailSent} - Credentials sent to ${application.email || application.phone_number}`,
+        });
+      } else {
+        toast({
+          title: t.approvalSuccess,
+          description: emailError || "Application approved, but email failed to send. Use 'Resend Email' button to retry.",
+          variant: "default",
+        });
+        // Show additional warning toast
+        toast({
+          title: language === 'en' ? '⚠️ Email Delivery Failed' : '⚠️ Échec de l\'envoi de l\'email',
+          description: language === 'en' 
+            ? `The approval email could not be sent to ${application.email || application.phone_number}. Please use the 'Resend Email' button to retry.`
+            : `L'email d'approbation n'a pas pu être envoyé à ${application.email || application.phone_number}. Veuillez utiliser le bouton 'Renvoyer l'email' pour réessayer.`,
+          variant: "destructive",
+        });
+      }
 
       // Update the application in the local state immediately for instant UI feedback
       setApplications(prev => prev.map(app => 
@@ -2317,15 +2419,92 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setProcessingId(application.id);
     
     try {
-      const credentials = ambassadorCredentials[application.id];
-      if (!credentials) {
+      // Find the ambassador first
+      const { data: ambassador } = await supabase
+        .from('ambassadors')
+        .select('id')
+        .eq('phone', application.phone_number)
+        .maybeSingle();
+
+      if (!ambassador) {
         toast({
           title: t.error,
-          description: language === 'en' ? "No credentials found for this application" : "Aucune information d'identification trouvée",
+          description: language === 'en' 
+            ? "Ambassador not found. The application may need to be approved again." 
+            : "Ambassadeur introuvable. La candidature devra peut-être être approuvée à nouveau.",
           variant: "destructive",
         });
+        setProcessingId(null);
         return;
       }
+
+      // Check if this is a manually added ambassador
+      const isManual = application.manually_added;
+      // For manually added, we need to find the actual application record
+      let actualApplicationId = application.id;
+      if (isManual) {
+        // Find the application record for this manually added ambassador
+        const { data: appRecord } = await supabase
+          .from('ambassador_applications')
+          .select('id')
+          .eq('phone_number', application.phone_number)
+          .eq('status', 'approved')
+          .eq('manually_added', true)
+          .maybeSingle();
+        if (appRecord) {
+          actualApplicationId = appRecord.id;
+        }
+      }
+
+      // Check if we have credentials in state, if not, generate new ones
+      let credentials = ambassadorCredentials[actualApplicationId];
+      let password = credentials?.password;
+      let needsPasswordUpdate = false;
+
+      if (!credentials || !password) {
+        // Generate new credentials
+        password = generatePassword();
+        const hashedPassword = await bcrypt.hash(password, 10);
+        
+        // Update ambassador's password in database
+        const { error: updateError } = await supabase
+          .from('ambassadors')
+          .update({ 
+            password: hashedPassword,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', ambassador.id);
+
+        if (updateError) {
+          console.error('Error updating ambassador password:', updateError);
+          toast({
+            title: t.error,
+            description: language === 'en' 
+              ? "Failed to update ambassador password. Please try again." 
+              : "Échec de la mise à jour du mot de passe de l'ambassadeur. Veuillez réessayer.",
+            variant: "destructive",
+          });
+          setProcessingId(null);
+          return;
+        }
+
+        // Store new credentials in state
+        credentials = {
+          username: application.phone_number,
+          password: password
+        };
+        setAmbassadorCredentials(prev => ({
+          ...prev,
+          [actualApplicationId]: credentials!
+        }));
+        needsPasswordUpdate = true;
+      }
+
+      // Set status to pending
+      setEmailStatus(prev => ({
+        ...prev,
+        [actualApplicationId]: 'pending'
+      }));
 
       const emailConfig = createApprovalEmail(
         {
@@ -2333,36 +2512,109 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           phone: application.phone_number,
           email: application.email,
           city: application.city,
-          password: credentials.password
+          password: password
         },
-        `${window.location.origin}/ambassador/auth`
+        `${window.location.origin}/ambassador/auth`,
+        ambassador.id
       );
 
-      const emailSent = await sendEmail(emailConfig);
+      let emailSent = false;
+      let emailError: string | null = null;
 
-      if (emailSent) {
-        setEmailFailedApplications(prev => {
+      try {
+        emailSent = await sendEmail(emailConfig);
+
+        if (emailSent) {
+          // Update status to sent
+          setEmailSentApplications(prev => new Set([...prev, actualApplicationId]));
+          setEmailFailedApplications(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(actualApplicationId);
+            return newSet;
+          });
+          setEmailStatus(prev => ({
+            ...prev,
+            [actualApplicationId]: 'sent'
+          }));
+
+          toast({
+            title: language === 'en' ? "✅ Email Sent Successfully" : "✅ Email envoyé avec succès",
+            description: language === 'en' 
+              ? needsPasswordUpdate
+                ? `Approval email with new credentials has been successfully delivered to ${application.email || application.phone_number}`
+                : `Approval email has been successfully delivered to ${application.email || application.phone_number}`
+              : needsPasswordUpdate
+                ? `L'email d'approbation avec de nouvelles identifiants a été envoyé avec succès à ${application.email || application.phone_number}`
+                : `L'email d'approbation a été envoyé avec succès à ${application.email || application.phone_number}`,
+          });
+        } else {
+          // Update status to failed
+          setEmailFailedApplications(prev => new Set([...prev, actualApplicationId]));
+          setEmailSentApplications(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(actualApplicationId);
+            return newSet;
+          });
+          setEmailStatus(prev => ({
+            ...prev,
+            [actualApplicationId]: 'failed'
+          }));
+          emailError = 'Email delivery failed. Please check the email address and try again.';
+
+          toast({
+            title: language === 'en' ? "❌ Email Failed to Send" : "❌ Échec de l'envoi de l'email",
+            description: language === 'en' 
+              ? `The email could not be sent to ${application.email || application.phone_number}. Please verify the email address and try again.`
+              : `L'email n'a pas pu être envoyé à ${application.email || application.phone_number}. Veuillez vérifier l'adresse email et réessayer.`,
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        emailError = error instanceof Error ? error.message : 'Unknown error occurred';
+        setEmailFailedApplications(prev => new Set([...prev, actualApplicationId]));
+        setEmailSentApplications(prev => {
           const newSet = new Set(prev);
-          newSet.delete(application.id);
+          newSet.delete(actualApplicationId);
           return newSet;
         });
-        
+        setEmailStatus(prev => ({
+          ...prev,
+          [actualApplicationId]: 'failed'
+        }));
+
         toast({
-          title: language === 'en' ? "Email sent successfully" : "Email envoyé avec succès",
-          description: language === 'en' ? `Credentials sent to ${application.email}` : `Informations d'identification envoyées à ${application.email}`,
-        });
-      } else {
-        toast({
-          title: language === 'en' ? "Email failed to send" : "Échec de l'envoi d'email",
-          description: language === 'en' ? "Please try again or copy credentials manually" : "Veuillez réessayer ou copier les informations manuellement",
+          title: language === 'en' ? "❌ Email Error" : "❌ Erreur d'email",
+          description: language === 'en' 
+            ? `Failed to send email: ${emailError}`
+            : `Échec de l'envoi de l'email : ${emailError}`,
           variant: "destructive",
         });
       }
     } catch (error) {
       console.error('Error resending email:', error);
+      // Try to find the actual application ID for manually added
+      let actualApplicationId = application.id;
+      if (application.manually_added) {
+        const { data: appRecord } = await supabase
+          .from('ambassador_applications')
+          .select('id')
+          .eq('phone_number', application.phone_number)
+          .eq('status', 'approved')
+          .eq('manually_added', true)
+          .maybeSingle();
+        if (appRecord) {
+          actualApplicationId = appRecord.id;
+        }
+      }
+      setEmailStatus(prev => ({
+        ...prev,
+        [actualApplicationId]: 'failed'
+      }));
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to resend email" : "Échec de la nouvelle tentative d'envoi",
+        description: language === 'en' 
+          ? "An unexpected error occurred while resending the email. Please try again."
+          : "Une erreur inattendue s'est produite lors de la nouvelle tentative d'envoi. Veuillez réessayer.",
         variant: "destructive",
       });
     } finally {
@@ -2561,7 +2813,44 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Function to copy credentials to clipboard
   const copyCredentials = async (application: AmbassadorApplication) => {
     try {
-      const credentials = ambassadorCredentials[application.id];
+      // Check if this is a manually added ambassador
+      const isManual = application.manually_added;
+      let actualApplicationId = application.id;
+      
+      if (isManual) {
+        // Find the application record for this manually added ambassador
+        const { data: appRecord } = await supabase
+          .from('ambassador_applications')
+          .select('id')
+          .eq('phone_number', application.phone_number)
+          .eq('status', 'approved')
+          .eq('manually_added', true)
+          .maybeSingle();
+        if (appRecord) {
+          actualApplicationId = appRecord.id;
+        }
+      }
+
+      let credentials = ambassadorCredentials[actualApplicationId];
+      
+      // If credentials not found, try to get from ambassador
+      if (!credentials) {
+        const { data: ambassador } = await supabase
+          .from('ambassadors')
+          .select('id, phone')
+          .eq('phone', application.phone_number)
+          .maybeSingle();
+        
+        if (ambassador) {
+          // Generate new credentials for display
+          const password = generatePassword();
+          credentials = {
+            username: application.phone_number,
+            password: password
+          };
+        }
+      }
+
       if (!credentials) {
         toast({
           title: t.error,
@@ -2593,7 +2882,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setProcessingId(application.id);
     
     try {
-      // Update application status via API route (bypasses RLS)
+      // Calculate reapply delay date (30 days from now)
+      const REAPPLY_DELAY_DAYS = 30;
+      const reapplyDelayDate = new Date();
+      reapplyDelayDate.setDate(reapplyDelayDate.getDate() + REAPPLY_DELAY_DAYS);
+
+      // Update application status and reapply_delay_date via API route (bypasses RLS)
       const response = await fetch('/api/admin-update-application', {
         method: 'POST',
         headers: {
@@ -2602,7 +2896,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         credentials: 'include',
         body: JSON.stringify({
           applicationId: application.id,
-          status: 'rejected'
+          status: 'rejected',
+          reapply_delay_date: reapplyDelayDate.toISOString()
         })
       });
 
@@ -2781,13 +3076,43 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  // Validation functions
+  const validateEmail = (email: string): boolean => {
+    if (!email) return false;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validatePhone = (phone: string): boolean => {
+    if (!phone) return false;
+    // Remove all non-digit characters
+    const cleanedPhone = phone.replace(/\D/g, '');
+    // Check if it's exactly 8 digits and starts with 2, 4, 9, or 5
+    return cleanedPhone.length === 8 && /^[2495]/.test(cleanedPhone);
+  };
+
+  const validatePassword = (password: string): boolean => {
+    if (!password) return false;
+    // Password must be at least 6 characters
+    return password.length >= 6;
+  };
+
   const handleSaveAmbassador = async (ambassador: Ambassador) => {
     try {
+      // For editing existing ambassadors, use the old logic
       if (ambassador.id) {
+        // Validate age if provided
+        if (ambassador.age !== undefined && (ambassador.age < 16 || ambassador.age > 99)) {
+          toast({
+            title: language === 'en' ? "Validation Error" : "Erreur de validation",
+            description: language === 'en' ? "Age must be between 16 and 99" : "L'âge doit être entre 16 et 99",
+            variant: "destructive",
+          });
+          return;
+        }
+
         // Update existing ambassador
-        const { error } = await supabase
-          .from('ambassadors')
-          .update({
+        const updateData: any = {
             full_name: ambassador.full_name,
             phone: ambassador.phone,
             email: ambassador.email,
@@ -2795,55 +3120,317 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             status: ambassador.status,
             commission_rate: ambassador.commission_rate,
             updated_at: new Date().toISOString()
-          })
-          .eq('id', ambassador.id);
+        };
 
-        if (error) throw error;
-      } else {
-        // Create new ambassador
-        const plainPassword = ambassador.password || generatePassword();
+        // Only update password if it's provided and different
+        if (ambassador.password && ambassador.password.trim()) {
+          if (!validatePassword(ambassador.password)) {
+            toast({
+              title: language === 'en' ? "Validation Error" : "Erreur de validation",
+              description: language === 'en' ? "Password must be at least 6 characters long" : "Le mot de passe doit contenir au moins 6 caractères",
+              variant: "destructive",
+            });
+            return;
+          }
         // Hash the password before saving
-        const hashedPassword = await bcrypt.hash(plainPassword, 10);
+          updateData.password = await bcrypt.hash(ambassador.password, 10);
+        }
         
         const { error } = await supabase
           .from('ambassadors')
-          .insert({
-            full_name: ambassador.full_name,
-            phone: ambassador.phone,
-            email: ambassador.email,
-            city: ambassador.city,
-            password: hashedPassword, // Store hashed password
-            status: ambassador.status || 'pending',
-            commission_rate: ambassador.commission_rate || 10
-          });
+          .update(updateData)
+          .eq('id', ambassador.id);
 
         if (error) throw error;
-      }
+
+        // Update age in corresponding application record(s) if age was provided
+        // This ensures age is synchronized between ambassador and application records
+        if (ambassador.age !== undefined && ambassador.age !== null) {
+          // Find all application records for this ambassador (by phone number)
+          // Update all statuses to ensure complete synchronization
+          const { error: appUpdateError } = await supabase
+            .from('ambassador_applications')
+            .update({ age: ambassador.age })
+            .eq('phone_number', ambassador.phone);
+
+          if (appUpdateError) {
+            console.error('Error updating application age:', appUpdateError);
+            // Don't fail the whole operation, just log the error
+            toast({
+              title: language === 'en' ? "Warning" : "Avertissement",
+              description: language === 'en' 
+                ? "Ambassador updated, but age synchronization with application may have failed" 
+                : "Ambassadeur mis à jour, mais la synchronisation de l'âge avec la candidature a peut-être échoué",
+              variant: "default",
+            });
+          }
+        }
 
       toast({
         title: t.ambassadorSaved,
-        description: language === 'en' ? "Ambassador saved successfully" : "Ambassadeur enregistré avec succès",
-      });
+          description: language === 'en' ? "Ambassador updated successfully" : "Ambassadeur mis à jour avec succès",
+        });
 
-      // Update local state immediately for instant UI feedback
-      if (ambassador.id) {
-        // Update existing ambassador in the list
-        setAmbassadors(prev => prev.map(amb => 
-          amb.id === ambassador.id
-            ? { ...ambassador, updated_at: new Date().toISOString() }
-            : amb
-        ));
-      } else {
-        // For new ambassadors, we need to fetch to get the ID
-        // But update optimistically
-        const newAmbassador = { ...ambassador, id: 'temp-' + Date.now(), created_at: new Date().toISOString() };
-        setAmbassadors(prev => [newAmbassador, ...prev]);
+        setEditingAmbassador(null);
+        setIsAmbassadorDialogOpen(false);
+        await fetchAllData();
+        return;
       }
 
+      // For new ambassadors, use the new form data
+      const errors: typeof ambassadorErrors = {};
+      let hasErrors = false;
+
+      // Validate required fields
+      if (!newAmbassadorForm.full_name || !newAmbassadorForm.full_name.trim()) {
+        errors.full_name = language === 'en' ? "Full name is required" : "Le nom complet est requis";
+        hasErrors = true;
+      }
+
+      if (!newAmbassadorForm.age || !newAmbassadorForm.age.trim()) {
+        errors.full_name = language === 'en' ? "Age is required" : "L'âge est requis";
+        hasErrors = true;
+      } else if (isNaN(parseInt(newAmbassadorForm.age)) || parseInt(newAmbassadorForm.age) < 16 || parseInt(newAmbassadorForm.age) > 99) {
+        errors.full_name = language === 'en' ? "Age must be between 16 and 99" : "L'âge doit être entre 16 et 99";
+        hasErrors = true;
+      }
+
+      // Validate email
+      if (!newAmbassadorForm.email || !newAmbassadorForm.email.trim()) {
+        errors.email = language === 'en' ? "Email is required" : "L'email est requis";
+        hasErrors = true;
+      } else if (!validateEmail(newAmbassadorForm.email)) {
+        errors.email = language === 'en' ? "Please enter a valid email address" : "Veuillez entrer une adresse email valide";
+        hasErrors = true;
+      }
+
+      // Validate phone
+      if (!newAmbassadorForm.phone_number || !newAmbassadorForm.phone_number.trim()) {
+        errors.phone = language === 'en' ? "Phone number is required" : "Le numéro de téléphone est requis";
+        hasErrors = true;
+      } else if (!validatePhone(newAmbassadorForm.phone_number)) {
+        errors.phone = language === 'en' ? "Phone number must be 8 digits starting with 2, 4, 9, or 5" : "Le numéro de téléphone doit contenir 8 chiffres commençant par 2, 4, 9 ou 5";
+        hasErrors = true;
+      }
+
+      // Validate city
+      if (!newAmbassadorForm.city || !newAmbassadorForm.city.trim()) {
+        errors.city = language === 'en' ? "City is required" : "La ville est requise";
+        hasErrors = true;
+      }
+
+      if (hasErrors) {
+        setAmbassadorErrors(errors);
+        toast({
+          title: language === 'en' ? "Validation Error" : "Erreur de validation",
+          description: language === 'en' ? "Please fix the errors in the form" : "Veuillez corriger les erreurs dans le formulaire",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Check for duplicate phone or email
+      const { data: existingAmbByPhone } = await supabase
+        .from('ambassadors')
+        .select('id')
+        .eq('phone', newAmbassadorForm.phone_number)
+        .maybeSingle();
+
+      if (existingAmbByPhone) {
+        toast({
+          title: language === 'en' ? "Duplicate Phone Number" : "Numéro de téléphone dupliqué",
+          description: language === 'en' ? "An ambassador with this phone number already exists" : "Un ambassadeur avec ce numéro de téléphone existe déjà",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (newAmbassadorForm.email) {
+        const { data: existingAmbByEmail } = await supabase
+          .from('ambassadors')
+          .select('id')
+          .eq('email', newAmbassadorForm.email)
+          .maybeSingle();
+
+        if (existingAmbByEmail) {
+          toast({
+            title: language === 'en' ? "Duplicate Email" : "Email dupliqué",
+            description: language === 'en' ? "An ambassador with this email already exists" : "Un ambassadeur avec cet email existe déjà",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
+      setProcessingId('new-ambassador');
+
+      // Generate username and password
+      const username = newAmbassadorForm.phone_number;
+      const password = generatePassword();
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Clean phone number
+      const cleanedPhone = newAmbassadorForm.phone_number.replace(/\D/g, '');
+
+      // Create ambassador
+      const { data: newAmbassador, error: createError } = await supabase
+        .from('ambassadors')
+        .insert({
+          full_name: newAmbassadorForm.full_name.trim(),
+          phone: cleanedPhone,
+          email: newAmbassadorForm.email.trim().toLowerCase(),
+          city: newAmbassadorForm.city.trim(),
+          password: hashedPassword,
+          status: 'approved',
+          commission_rate: 10,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (createError) throw createError;
+      if (!newAmbassador) throw new Error('Failed to create ambassador');
+
+      // Create application record with approved status and manual indicator
+      const { error: appError } = await supabase
+        .from('ambassador_applications')
+        .insert({
+          full_name: newAmbassadorForm.full_name.trim(),
+          age: parseInt(newAmbassadorForm.age),
+          phone_number: cleanedPhone,
+          email: newAmbassadorForm.email.trim().toLowerCase(),
+          city: newAmbassadorForm.city.trim(),
+          social_link: newAmbassadorForm.social_link?.trim() || null,
+          motivation: language === 'en' ? 'Manually added by admin' : 'Ajouté manuellement par l\'administrateur',
+          status: 'approved',
+          manually_added: true
+        });
+
+      if (appError) {
+        console.error('Error creating application record:', appError);
+        // Don't fail the whole operation if application creation fails
+      }
+
+      // Find the application record we just created to get its ID
+      const { data: createdApp } = await supabase
+        .from('ambassador_applications')
+        .select('id')
+        .eq('phone_number', cleanedPhone)
+        .eq('status', 'approved')
+        .eq('manually_added', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const applicationId = createdApp?.id || newAmbassador.id;
+
+      // Store credentials for email sending
+      setAmbassadorCredentials(prev => ({
+        ...prev,
+        [applicationId]: {
+          username: username,
+          password: password
+        }
+      }));
+
+      // Set email status to pending
+      setEmailStatus(prev => ({
+        ...prev,
+        [applicationId]: 'pending'
+      }));
+
+      // Send approval email
+      let emailSent = false;
+      let emailError: string | null = null;
+
+      try {
+        const emailConfig = createApprovalEmail(
+          {
+            fullName: newAmbassadorForm.full_name.trim(),
+            phone: cleanedPhone,
+            email: newAmbassadorForm.email.trim().toLowerCase(),
+            city: newAmbassadorForm.city.trim(),
+            password: password
+          },
+          `${window.location.origin}/ambassador/auth`,
+          newAmbassador.id
+        );
+
+        emailSent = await sendEmail(emailConfig);
+
+        if (emailSent) {
+          setEmailSentApplications(prev => new Set([...prev, applicationId]));
+          setEmailFailedApplications(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(applicationId);
+            return newSet;
+          });
+          setEmailStatus(prev => ({
+            ...prev,
+            [applicationId]: 'sent'
+          }));
+      } else {
+          setEmailFailedApplications(prev => new Set([...prev, applicationId]));
+          setEmailSentApplications(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(applicationId);
+            return newSet;
+          });
+          setEmailStatus(prev => ({
+            ...prev,
+            [applicationId]: 'failed'
+          }));
+          emailError = 'Email delivery failed. Please use the Resend Email button to retry.';
+        }
+      } catch (error) {
+        emailError = error instanceof Error ? error.message : 'Unknown error occurred';
+        setEmailFailedApplications(prev => new Set([...prev, applicationId]));
+        setEmailStatus(prev => ({
+          ...prev,
+          [applicationId]: 'failed'
+        }));
+        console.error('Error sending approval email:', error);
+      }
+
+      // Show appropriate toast notifications
+      if (emailSent) {
+        toast({
+          title: language === 'en' ? "✅ Ambassador Added Successfully" : "✅ Ambassadeur ajouté avec succès",
+          description: language === 'en' 
+            ? `Ambassador created and approval email sent to ${newAmbassadorForm.email}`
+            : `Ambassadeur créé et email d'approbation envoyé à ${newAmbassadorForm.email}`,
+        });
+      } else {
+        toast({
+          title: language === 'en' ? "✅ Ambassador Added" : "✅ Ambassadeur ajouté",
+          description: emailError || (language === 'en' 
+            ? "Ambassador created, but email failed to send. Use 'Resend Email' button to retry."
+            : "Ambassadeur créé, mais l'email n'a pas pu être envoyé. Utilisez le bouton 'Renvoyer Email' pour réessayer."),
+          variant: "default",
+        });
+        toast({
+          title: language === 'en' ? '⚠️ Email Delivery Failed' : '⚠️ Échec de l\'envoi de l\'email',
+          description: language === 'en' 
+            ? `The approval email could not be sent to ${newAmbassadorForm.email}. Please use the 'Resend Email' button to retry.`
+            : `L'email d'approbation n'a pas pu être envoyé à ${newAmbassadorForm.email}. Veuillez utiliser le bouton 'Renvoyer Email' pour réessayer.`,
+          variant: "destructive",
+        });
+      }
+
+      // Reset form
+      setNewAmbassadorForm({
+        full_name: '',
+        age: '',
+        phone_number: '',
+        email: '',
+        city: '',
+        social_link: ''
+      });
       setEditingAmbassador(null);
       setIsAmbassadorDialogOpen(false);
+      setAmbassadorErrors({});
       
-      // Refresh all data to ensure consistency
+      // Refresh all data
       await fetchAllData();
 
     } catch (error) {
@@ -2853,6 +3440,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         description: language === 'en' ? "Failed to save ambassador" : "Échec de l'enregistrement",
         variant: "destructive",
       });
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -2970,16 +3559,78 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
       }
 
-      // Delete the corresponding application completely
+      // Find and update the corresponding application status to 'removed'
+      let applicationId: string | null = null;
       if (ambassador) {
-        const { error: deleteAppError } = await supabase
+        // First, find the application by phone or email
+        let applicationData: { id: string } | null = null;
+        
+        if (ambassador.email && ambassador.email.trim() !== '') {
+          // Search by phone OR email, prefer approved status
+          const result = await supabase
           .from('ambassador_applications')
-          .delete()
-          .or(`phone_number.eq.${ambassador.phone},email.eq.${ambassador.email}`);
+            .select('id')
+            .eq('status', 'approved')
+            .or(`phone_number.eq.${ambassador.phone},email.eq.${ambassador.email}`)
+            .maybeSingle();
+          applicationData = result.data;
+          if (result.error && result.error.code !== 'PGRST116') {
+            console.error('Error finding application:', result.error);
+          }
+        } else {
+          // Search by phone only, prefer approved status
+          const result = await supabase
+            .from('ambassador_applications')
+            .select('id')
+            .eq('phone_number', ambassador.phone)
+            .eq('status', 'approved')
+            .maybeSingle();
+          applicationData = result.data;
+          if (result.error && result.error.code !== 'PGRST116') {
+            console.error('Error finding application:', result.error);
+          }
+        }
+        
+        if (applicationData) {
+          applicationId = applicationData.id;
+          
+          // Calculate reapply delay date (30 days from now)
+          const REAPPLY_DELAY_DAYS = 30;
+          const reapplyDelayDate = new Date();
+          reapplyDelayDate.setDate(reapplyDelayDate.getDate() + REAPPLY_DELAY_DAYS);
+          
+          // Update application status to 'removed' and set reapply_delay_date
+          const { error: updateAppError } = await supabase
+            .from('ambassador_applications')
+            .update({
+              status: 'removed',
+              reapply_delay_date: reapplyDelayDate.toISOString()
+            })
+            .eq('id', applicationId);
 
-        if (deleteAppError) {
-          console.error('Error deleting application:', deleteAppError);
-          // Don't throw here as the ambassador was already deleted
+          if (updateAppError) {
+            console.error('Error updating application status to removed:', updateAppError);
+            // Try alternative update method
+            if (ambassador.email && ambassador.email.trim() !== '') {
+              await supabase
+                .from('ambassador_applications')
+                .update({
+                  status: 'removed',
+                  reapply_delay_date: reapplyDelayDate.toISOString()
+                })
+                .eq('status', 'approved')
+                .or(`phone_number.eq.${ambassador.phone},email.eq.${ambassador.email}`);
+            } else {
+              await supabase
+                .from('ambassador_applications')
+                .update({
+                  status: 'removed',
+                  reapply_delay_date: reapplyDelayDate.toISOString()
+                })
+                .eq('phone_number', ambassador.phone)
+                .eq('status', 'approved');
+            }
+          }
         }
       }
 
@@ -2997,13 +3648,31 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       // Update local state immediately for instant UI feedback
       setAmbassadors(prev => prev.filter(amb => amb.id !== ambassadorId));
-      setApplications(prev => prev.filter(app => 
-        app.phone_number !== ambassador?.phone && app.email !== ambassador?.email
-      ));
+      
+      // Update application status in local state if found
+      if (applicationId) {
+        setApplications(prev => prev.map(app => 
+          app.id === applicationId 
+            ? { ...app, status: 'removed' as const }
+            : app
+        ));
+      } else if (ambassador) {
+        // Fallback: update by phone/email match
+        setApplications(prev => prev.map(app => {
+          const phoneMatch = app.phone_number === ambassador.phone;
+          const emailMatch = ambassador.email && app.email && app.email === ambassador.email;
+          if ((phoneMatch || emailMatch) && app.status === 'approved') {
+            return { ...app, status: 'removed' as const };
+          }
+          return app;
+        }));
+      }
 
       toast({
-        title: language === 'en' ? "Ambassador deleted" : "Ambassadeur supprimé",
-        description: language === 'en' ? "Ambassador and application deleted successfully" : "Ambassadeur et candidature supprimés avec succès",
+        title: language === 'en' ? "Ambassador Removed" : "Ambassadeur Retiré",
+        description: language === 'en' 
+          ? "Ambassador removed from active list. Application status updated to 'removed' to preserve history." 
+          : "Ambassadeur retiré de la liste active. Statut de la candidature mis à jour à 'retiré' pour préserver l'historique.",
       });
       
       // Close delete dialog
@@ -3023,6 +3692,135 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchAllData();
     }
     setAmbassadorToDelete(null);
+  };
+
+  // Find ambassadors without corresponding applications
+  const getAmbassadorsWithoutApplications = () => {
+    return ambassadors.filter(amb => {
+      return !applications.some(app => 
+        app.status === 'approved' && 
+        (app.phone_number === amb.phone || 
+         (app.email && amb.email && app.email === amb.email))
+      );
+    });
+  };
+
+  // Create application records for ambassadors that don't have them
+  const handleCreateApplicationsForAmbassadors = async () => {
+    try {
+      const ambassadorsWithoutApps = getAmbassadorsWithoutApplications();
+      
+      if (ambassadorsWithoutApps.length === 0) {
+        toast({
+          title: language === 'en' ? "All Ambassadors Have Applications" : "Tous les Ambassadeurs ont des Candidatures",
+          description: language === 'en' 
+            ? "All ambassadors have corresponding approved applications." 
+            : "Tous les ambassadeurs ont des candidatures approuvées correspondantes.",
+        });
+        return;
+      }
+
+      // Create application records for each ambassador
+      const applicationsToCreate = ambassadorsWithoutApps.map(amb => ({
+        full_name: amb.full_name,
+        age: 0, // Default age, can be updated later
+        phone_number: amb.phone,
+        email: amb.email || '',
+        city: amb.city,
+        social_link: '',
+        motivation: language === 'en' 
+          ? 'Ambassador created directly (application record created retroactively)' 
+          : 'Ambassadeur créé directement (candidature créée rétroactivement)',
+        status: 'approved',
+        created_at: amb.created_at || new Date().toISOString()
+      }));
+
+      const { error: insertError } = await supabase
+        .from('ambassador_applications')
+        .insert(applicationsToCreate);
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      toast({
+        title: language === 'en' ? "Applications Created" : "Candidatures Créées",
+        description: language === 'en' 
+          ? `Created ${ambassadorsWithoutApps.length} application record(s) for ambassadors.` 
+          : `${ambassadorsWithoutApps.length} candidature(s) créée(s) pour les ambassadeurs.`,
+      });
+
+      // Refresh data
+      await fetchAllData();
+    } catch (error) {
+      console.error('Error creating applications for ambassadors:', error);
+      toast({
+        title: language === 'en' ? "Error" : "Erreur",
+        description: language === 'en' 
+          ? "Failed to create application records." 
+          : "Échec de la création des candidatures.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Clean up orphaned approved applications (approved but no corresponding ambassador)
+  const handleCleanupOrphanedApplications = async () => {
+    try {
+      // Find all approved applications
+      const approvedApps = applications.filter(app => app.status === 'approved');
+      
+      // Find orphaned applications (approved but no corresponding ambassador)
+      const orphanedApps = approvedApps.filter(app => {
+        return !ambassadors.some(amb => 
+          amb.phone === app.phone_number || 
+          (app.email && amb.email && amb.email === app.email)
+        );
+      });
+
+      if (orphanedApps.length === 0) {
+        toast({
+          title: language === 'en' ? "No Orphaned Applications" : "Aucune Candidature Orpheline",
+          description: language === 'en' 
+            ? "All approved applications have corresponding ambassadors." 
+            : "Toutes les candidatures approuvées ont des ambassadeurs correspondants.",
+        });
+        return;
+      }
+
+      // Delete orphaned applications
+      const orphanedIds = orphanedApps.map(app => app.id);
+      const { error: deleteError } = await supabase
+        .from('ambassador_applications')
+        .delete()
+        .in('id', orphanedIds);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      // Update local state
+      setApplications(prev => prev.filter(app => !orphanedIds.includes(app.id)));
+
+      toast({
+        title: language === 'en' ? "Cleanup Complete" : "Nettoyage Terminé",
+        description: language === 'en' 
+          ? `Deleted ${orphanedApps.length} orphaned approved application(s).` 
+          : `${orphanedApps.length} candidature(s) orpheline(s) supprimée(s).`,
+      });
+
+      // Refresh data
+      await fetchAllData();
+    } catch (error) {
+      console.error('Error cleaning up orphaned applications:', error);
+      toast({
+        title: language === 'en' ? "Error" : "Erreur",
+        description: language === 'en' 
+          ? "Failed to clean up orphaned applications." 
+          : "Échec du nettoyage des candidatures orphelines.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Add/Edit Sponsor Dialog logic
@@ -3215,6 +4013,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return <div className="w-3 h-3 rounded-full bg-green-500" title={t.approved} />;
       case 'rejected':
         return <div className="w-3 h-3 rounded-full bg-red-500" title={t.rejected} />;
+      case 'removed':
+        return <div className="w-3 h-3 rounded-full bg-gray-500" title={language === 'en' ? 'Removed' : 'Retiré'} />;
       default:
         return <div className="w-3 h-3 rounded-full bg-yellow-500" title={t.pending} />;
     }
@@ -3307,7 +4107,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   const pendingApplications = applications.filter(app => app.status === 'pending');
-  const approvedCount = applications.filter(app => app.status === 'approved').length;
+  // Count approved applications that have corresponding ambassadors (1:1 relationship)
+  const approvedCount = applications.filter(app => 
+    app.status === 'approved' && 
+    ambassadors.some(amb => 
+      amb.phone === app.phone_number || 
+      (app.email && amb.email && app.email === amb.email)
+    )
+  ).length;
   const rejectedCount = applications.filter(app => app.status === 'rejected').length;
 
   useEffect(() => {
@@ -4848,6 +5655,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       <Button 
                         onClick={() => {
                           setEditingAmbassador({} as Ambassador);
+                            setAmbassadorErrors({});
                           setIsAmbassadorDialogOpen(true);
                         }}
                         className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
@@ -4862,44 +5670,106 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           {editingAmbassador?.id ? 'Edit Ambassador' : 'Add New Ambassador'}
                         </DialogTitle>
                       </DialogHeader>
+                      {editingAmbassador?.id ? (
+                        // Edit form for existing ambassadors
                       <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-700 delay-300">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
-                            <Label htmlFor="ambassadorName">{t.ambassadorName}</Label>
+                              <Label htmlFor="ambassadorName">{t.ambassadorName} <span className="text-destructive">*</span></Label>
                             <Input
                               id="ambassadorName"
                               value={editingAmbassador?.full_name || ''}
-                              onChange={(e) => setEditingAmbassador(prev => ({ ...prev, full_name: e.target.value }))}
-                              className="transition-all duration-300 focus:scale-105"
-                            />
+                                onChange={(e) => {
+                                  setEditingAmbassador(prev => ({ ...prev, full_name: e.target.value }));
+                                  if (ambassadorErrors.full_name) {
+                                    setAmbassadorErrors(prev => ({ ...prev, full_name: undefined }));
+                                  }
+                                }}
+                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.full_name ? 'border-destructive' : ''}`}
+                                required
+                              />
+                              {ambassadorErrors.full_name && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.full_name}</p>
+                              )}
                           </div>
                           <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
-                            <Label htmlFor="ambassadorPhone">{t.ambassadorPhone}</Label>
+                              <Label htmlFor="ambassadorAge">{language === 'en' ? 'Age' : 'Âge'} <span className="text-destructive">*</span></Label>
+                            <Input
+                              id="ambassadorAge"
+                              type="number"
+                              min="16"
+                              max="99"
+                              value={editingAmbassador?.age || ''}
+                                onChange={(e) => {
+                                  const ageValue = e.target.value;
+                                  setEditingAmbassador(prev => ({ ...prev, age: ageValue ? parseInt(ageValue) : undefined }));
+                                }}
+                                className="transition-all duration-300 focus:scale-105"
+                                required
+                              />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
+                              <Label htmlFor="ambassadorPhone">{t.ambassadorPhone} <span className="text-destructive">*</span></Label>
                             <Input
                               id="ambassadorPhone"
                               value={editingAmbassador?.phone || ''}
-                              onChange={(e) => setEditingAmbassador(prev => ({ ...prev, phone: e.target.value }))}
-                              className="transition-all duration-300 focus:scale-105"
-                            />
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  const digitsOnly = value.replace(/\D/g, '');
+                                  const limited = digitsOnly.slice(0, 8);
+                                  setEditingAmbassador(prev => ({ ...prev, phone: limited }));
+                                  if (ambassadorErrors.phone) {
+                                    setAmbassadorErrors(prev => ({ ...prev, phone: undefined }));
+                                  }
+                                }}
+                                placeholder="24951234"
+                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.phone ? 'border-destructive' : ''}`}
+                                required
+                              />
+                              {ambassadorErrors.phone && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.phone}</p>
+                              )}
                           </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <Label htmlFor="ambassadorEmail">{t.ambassadorEmail}</Label>
+                              <Label htmlFor="ambassadorEmail">{t.ambassadorEmail} <span className="text-destructive">*</span></Label>
                             <Input
                               id="ambassadorEmail"
                               type="email"
                               value={editingAmbassador?.email || ''}
-                              onChange={(e) => setEditingAmbassador(prev => ({ ...prev, email: e.target.value }))}
-                            />
+                                onChange={(e) => {
+                                  setEditingAmbassador(prev => ({ ...prev, email: e.target.value }));
+                                  if (ambassadorErrors.email) {
+                                    setAmbassadorErrors(prev => ({ ...prev, email: undefined }));
+                                  }
+                                }}
+                                className={ambassadorErrors.email ? 'border-destructive' : ''}
+                                required
+                              />
+                              {ambassadorErrors.email && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.email}</p>
+                              )}
                           </div>
                           <div>
-                            <Label htmlFor="ambassadorCity">{t.ambassadorCity}</Label>
+                              <Label htmlFor="ambassadorCity">{t.ambassadorCity} <span className="text-destructive">*</span></Label>
                             <Input
                               id="ambassadorCity"
                               value={editingAmbassador?.city || ''}
-                              onChange={(e) => setEditingAmbassador(prev => ({ ...prev, city: e.target.value }))}
-                            />
+                                onChange={(e) => {
+                                  setEditingAmbassador(prev => ({ ...prev, city: e.target.value }));
+                                  if (ambassadorErrors.city) {
+                                    setAmbassadorErrors(prev => ({ ...prev, city: undefined }));
+                                  }
+                                }}
+                                className={ambassadorErrors.city ? 'border-destructive' : ''}
+                                required
+                              />
+                              {ambassadorErrors.city && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.city}</p>
+                              )}
                           </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -4909,19 +5779,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               id="ambassadorCommission"
                               type="number"
                               step="0.01"
+                                min="0"
+                                max="100"
                               value={editingAmbassador?.commission_rate || ''}
                               onChange={(e) => setEditingAmbassador(prev => ({ ...prev, commission_rate: parseFloat(e.target.value) || 0 }))}
                             />
                           </div>
-                          <div className="animate-in slide-in-from-left-4 duration-500 delay-700">
+                            <div>
                             <Label htmlFor="ambassadorPassword">{t.ambassadorPassword}</Label>
                             <div className="relative">
                               <Input
                                 id="ambassadorPassword"
                                 type={showPassword ? "text" : "password"}
                                 value={editingAmbassador?.password || ''}
-                                onChange={(e) => setEditingAmbassador(prev => ({ ...prev, password: e.target.value }))}
-                                className="transition-all duration-300 focus:scale-105"
+                                  onChange={(e) => {
+                                    setEditingAmbassador(prev => ({ ...prev, password: e.target.value }));
+                                    if (ambassadorErrors.password) {
+                                      setAmbassadorErrors(prev => ({ ...prev, password: undefined }));
+                                    }
+                                  }}
+                                  className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.password ? 'border-destructive' : ''}`}
+                                  placeholder={language === 'en' ? 'Leave empty to keep current password' : 'Laisser vide pour garder le mot de passe actuel'}
                               />
                               <button
                                 type="button"
@@ -4931,34 +5809,198 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 {showPassword ? <EyeOff className="w-4 h-4 animate-pulse" /> : <Eye className="w-4 h-4 animate-pulse" />}
                               </button>
                             </div>
+                              {ambassadorErrors.password && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.password}</p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {language === 'en' ? 'Leave empty to keep current password' : 'Laisser vide pour garder le mot de passe actuel'}
+                              </p>
                           </div>
                         </div>
                       </div>
+                      ) : (
+                        // New ambassador form (matches application form)
+                        <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-700 delay-300">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
+                              <Label htmlFor="newAmbassadorName">{language === 'en' ? 'Full Name' : 'Nom Complet'} <span className="text-destructive">*</span></Label>
+                              <Input
+                                id="newAmbassadorName"
+                                value={newAmbassadorForm.full_name}
+                                onChange={(e) => {
+                                  setNewAmbassadorForm(prev => ({ ...prev, full_name: e.target.value }));
+                                  if (ambassadorErrors.full_name) {
+                                    setAmbassadorErrors(prev => ({ ...prev, full_name: undefined }));
+                                  }
+                                }}
+                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.full_name ? 'border-destructive' : ''}`}
+                                required
+                              />
+                              {ambassadorErrors.full_name && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.full_name}</p>
+                              )}
+                            </div>
+                            <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
+                              <Label htmlFor="newAmbassadorAge">{language === 'en' ? 'Age' : 'Âge'} <span className="text-destructive">*</span></Label>
+                              <Input
+                                id="newAmbassadorAge"
+                                type="number"
+                                min="16"
+                                max="99"
+                                value={newAmbassadorForm.age}
+                                onChange={(e) => {
+                                  setNewAmbassadorForm(prev => ({ ...prev, age: e.target.value }));
+                                  if (ambassadorErrors.full_name) {
+                                    setAmbassadorErrors(prev => ({ ...prev, full_name: undefined }));
+                                  }
+                                }}
+                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.full_name ? 'border-destructive' : ''}`}
+                                required
+                              />
+                              {ambassadorErrors.full_name && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.full_name}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="newAmbassadorPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'} <span className="text-destructive">*</span></Label>
+                              <Input
+                                id="newAmbassadorPhone"
+                                type="tel"
+                                value={newAmbassadorForm.phone_number}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  const digitsOnly = value.replace(/\D/g, '');
+                                  const limited = digitsOnly.slice(0, 8);
+                                  setNewAmbassadorForm(prev => ({ ...prev, phone_number: limited }));
+                                  if (ambassadorErrors.phone) {
+                                    setAmbassadorErrors(prev => ({ ...prev, phone: undefined }));
+                                  }
+                                }}
+                                placeholder="24951234"
+                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.phone ? 'border-destructive' : ''}`}
+                                required
+                              />
+                              {ambassadorErrors.phone && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.phone}</p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {language === 'en' ? '8 digits starting with 2, 4, 9, or 5' : '8 chiffres commençant par 2, 4, 9 ou 5'}
+                              </p>
+                            </div>
+                            <div>
+                              <Label htmlFor="newAmbassadorEmail">{language === 'en' ? 'Email' : 'Email'} <span className="text-destructive">*</span></Label>
+                              <Input
+                                id="newAmbassadorEmail"
+                                type="email"
+                                value={newAmbassadorForm.email}
+                                onChange={(e) => {
+                                  setNewAmbassadorForm(prev => ({ ...prev, email: e.target.value }));
+                                  if (ambassadorErrors.email) {
+                                    setAmbassadorErrors(prev => ({ ...prev, email: undefined }));
+                                  }
+                                }}
+                                className={ambassadorErrors.email ? 'border-destructive' : ''}
+                                required
+                              />
+                              {ambassadorErrors.email && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.email}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="newAmbassadorCity">{language === 'en' ? 'City' : 'Ville'} <span className="text-destructive">*</span></Label>
+                              <Input
+                                id="newAmbassadorCity"
+                                value={newAmbassadorForm.city}
+                                onChange={(e) => {
+                                  setNewAmbassadorForm(prev => ({ ...prev, city: e.target.value }));
+                                  if (ambassadorErrors.city) {
+                                    setAmbassadorErrors(prev => ({ ...prev, city: undefined }));
+                                  }
+                                }}
+                                className={ambassadorErrors.city ? 'border-destructive' : ''}
+                                required
+                              />
+                              {ambassadorErrors.city && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.city}</p>
+                              )}
+                            </div>
+                            <div>
+                              <Label htmlFor="newAmbassadorSocial">{language === 'en' ? 'Instagram Link' : 'Lien Instagram'}</Label>
+                              <Input
+                                id="newAmbassadorSocial"
+                                type="url"
+                                value={newAmbassadorForm.social_link}
+                                onChange={(e) => setNewAmbassadorForm(prev => ({ ...prev, social_link: e.target.value }))}
+                                placeholder="https://instagram.com/username"
+                                className="transition-all duration-300 focus:scale-105"
+                              />
+                            </div>
+                          </div>
+                          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                            <p className="text-sm text-blue-900 dark:text-blue-100">
+                              {language === 'en' 
+                                ? '📧 An approval email with login credentials will be automatically sent to the ambassador after creation.'
+                                : '📧 Un email d\'approbation avec les identifiants de connexion sera automatiquement envoyé à l\'ambassadeur après la création.'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-800">
                         <DialogClose asChild>
                           <Button 
                             variant="outline"
                             className="transform hover:scale-105 transition-all duration-300"
+                            onClick={() => {
+                              setNewAmbassadorForm({
+                                full_name: '',
+                                age: '',
+                                phone_number: '',
+                                email: '',
+                                city: '',
+                                social_link: ''
+                              });
+                              setAmbassadorErrors({});
+                            }}
                           >
                             {t.cancel}
                           </Button>
                         </DialogClose>
                         <Button 
                           onClick={async () => {
+                            if (editingAmbassador?.id) {
                             await handleSaveAmbassador(editingAmbassador);
+                            } else {
+                              await handleSaveAmbassador({} as Ambassador);
+                            }
+                            if (!editingAmbassador?.id) {
                             setIsAmbassadorDialogOpen(false);
+                            }
                           }}
+                          disabled={processingId === 'new-ambassador'}
                           className="transform hover:scale-105 transition-all duration-300"
                         >
+                          {processingId === 'new-ambassador' ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              {language === 'en' ? 'Creating...' : 'Création...'}
+                            </>
+                          ) : (
+                            <>
                           <Save className="w-4 h-4 mr-2 animate-pulse" />
                           {t.save}
+                            </>
+                          )}
                         </Button>
                       </div>
                     </DialogContent>
                   </Dialog>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {ambassadors.map((ambassador, index) => (
+                  {ambassadors.filter(amb => amb.status === 'approved').map((ambassador, index) => (
                     <Card 
                       key={ambassador.id}
                       className={`transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg ${
@@ -5002,8 +6044,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           <Button 
                             size="sm" 
                             variant="outline" 
-                            onClick={() => {
-                              setEditingAmbassador(ambassador);
+                            onClick={async () => {
+                              // Fetch age from corresponding application
+                              let ambassadorAge: number | undefined;
+                              const { data: appData } = await supabase
+                                .from('ambassador_applications')
+                                .select('age')
+                                .eq('phone_number', ambassador.phone)
+                                .eq('status', 'approved')
+                                .order('created_at', { ascending: false })
+                                .limit(1)
+                                .maybeSingle();
+                              
+                              if (appData) {
+                                ambassadorAge = appData.age;
+                              }
+                              
+                              setEditingAmbassador({ ...ambassador, age: ambassadorAge });
+                              setAmbassadorErrors({});
                               setIsAmbassadorDialogOpen(true);
                             }}
                             className="transform hover:scale-105 transition-all duration-300"
@@ -5036,10 +6094,42 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               <TabsContent value="applications" className="space-y-6">
                 <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
                   <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">Ambassador Applications</h2>
-                  <div className="animate-in slide-in-from-right-4 duration-1000 delay-300">
+                  <div className="flex items-center gap-3 animate-in slide-in-from-right-4 duration-1000 delay-300">
                     <Badge className="bg-blue-500 animate-pulse">
                       {filteredApplications.length} Applications
                     </Badge>
+                    {getAmbassadorsWithoutApplications().length > 0 && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleCreateApplicationsForAmbassadors}
+                        className="text-xs bg-green-600 hover:bg-green-700"
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        {language === 'en' 
+                          ? `Create ${getAmbassadorsWithoutApplications().length} Missing Application(s)`
+                          : `Créer ${getAmbassadorsWithoutApplications().length} Candidature(s) Manquante(s)`}
+                      </Button>
+                    )}
+                    {applications.filter(app => app.status === 'approved' && !ambassadors.some(amb => 
+                      amb.phone === app.phone_number || (app.email && amb.email && amb.email === app.email)
+                    )).length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCleanupOrphanedApplications}
+                        className="text-xs"
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" />
+                        {language === 'en' 
+                          ? `Cleanup ${applications.filter(app => app.status === 'approved' && !ambassadors.some(amb => 
+                              amb.phone === app.phone_number || (app.email && amb.email && amb.email === app.email)
+                            )).length} Orphaned`
+                          : `Nettoyer ${applications.filter(app => app.status === 'approved' && !ambassadors.some(amb => 
+                              amb.phone === app.phone_number || (app.email && amb.email && amb.email === app.email)
+                            )).length} Orphelines`}
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -5196,8 +6286,31 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center">
+                            <div className="flex items-center gap-2">
                               {getStatusBadge(application.status)}
+                              {application.status === 'approved' && (
+                                <div className="flex items-center" title={
+                                  emailStatus[application.id] === 'sent' 
+                                    ? (language === 'en' ? 'Email sent successfully' : 'Email envoyé avec succès')
+                                    : emailStatus[application.id] === 'failed'
+                                    ? (language === 'en' ? 'Email failed to send' : 'Échec de l\'envoi de l\'email')
+                                    : emailStatus[application.id] === 'pending'
+                                    ? (language === 'en' ? 'Email sending...' : 'Envoi de l\'email...')
+                                    : (language === 'en' ? 'Email status unknown' : 'Statut de l\'email inconnu')
+                                }>
+                                  {emailStatus[application.id] === 'sent' ? (
+                                    <CheckCircle className="w-4 h-4 text-green-500" />
+                                  ) : emailStatus[application.id] === 'failed' ? (
+                                    <XCircle className="w-4 h-4 text-red-500" />
+                                  ) : emailStatus[application.id] === 'pending' ? (
+                                    <div className="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+                                  ) : emailFailedApplications.has(application.id) ? (
+                                    <XCircle className="w-4 h-4 text-red-500" />
+                                  ) : (
+                                    <Mail className="w-4 h-4 text-muted-foreground" />
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -5208,6 +6321,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-col gap-1">
+                              {application.manually_added && (
+                                <Badge variant="outline" className="text-xs w-fit">
+                                  {language === 'en' ? '👤 Manual' : '👤 Manuel'}
+                                </Badge>
+                              )}
                               {application.motivation && (
                                 <div className="group relative">
                                   <FileText className="w-4 h-4 text-primary cursor-help" />
@@ -5267,23 +6385,46 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   </Button>
                                 </>
                               )}
-                              {application.status === 'approved' && emailFailedApplications.has(application.id) && (
+                              {application.status === 'approved' && (
                                 <div className="flex gap-1">
                                   <Button 
                                     onClick={() => resendEmail(application)}
                                     disabled={processingId === application.id}
                                     size="sm"
-                                    className="bg-blue-600 hover:bg-blue-700 transform hover:scale-105 transition-all duration-300"
+                                    className={`transform hover:scale-105 transition-all duration-300 ${
+                                      emailStatus[application.id] === 'failed' 
+                                        ? 'bg-red-600 hover:bg-red-700' 
+                                        : emailStatus[application.id] === 'sent'
+                                        ? 'bg-green-600 hover:bg-green-700'
+                                        : 'bg-blue-600 hover:bg-blue-700'
+                                    }`}
+                                    title={
+                                      emailStatus[application.id] === 'failed'
+                                        ? (language === 'en' ? 'Email failed - Click to resend' : 'Échec de l\'email - Cliquez pour renvoyer')
+                                        : emailStatus[application.id] === 'sent'
+                                        ? (language === 'en' ? 'Email sent - Click to resend' : 'Email envoyé - Cliquez pour renvoyer')
+                                        : (language === 'en' ? 'Resend approval email' : 'Renvoyer l\'email d\'approbation')
+                                    }
                                   >
                                     {processingId === application.id ? (
                                       <>
                                         <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
-                                        Sending...
+                                        {language === 'en' ? 'Sending...' : 'Envoi...'}
+                                      </>
+                                    ) : emailStatus[application.id] === 'failed' ? (
+                                      <>
+                                        <AlertCircle className="w-3 h-3 mr-1" />
+                                        {language === 'en' ? 'Resend Email' : 'Renvoyer Email'}
+                                      </>
+                                    ) : emailStatus[application.id] === 'sent' ? (
+                                      <>
+                                        <Mail className="w-3 h-3 mr-1" />
+                                        {language === 'en' ? 'Resend Email' : 'Renvoyer Email'}
                                       </>
                                     ) : (
                                       <>
                                         <Mail className="w-3 h-3 mr-1" />
-                                        Resend
+                                        {language === 'en' ? 'Resend Email' : 'Renvoyer Email'}
                                       </>
                                     )}
                                   </Button>
@@ -5292,9 +6433,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     size="sm"
                                     variant="outline"
                                     className="transform hover:scale-105 transition-all duration-300"
+                                    title={language === 'en' ? 'Copy credentials to clipboard' : 'Copier les identifiants dans le presse-papiers'}
                                   >
                                     <Copy className="w-3 h-3 mr-1" />
-                                    Copy
+                                    {language === 'en' ? 'Copy' : 'Copier'}
                                   </Button>
                                 </div>
                               )}
@@ -6435,7 +7577,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             .filter(event => {
                               if (ticketFilterStatus === 'all') return true;
                               if (ticketFilterStatus === 'upcoming') return event.event_type === 'upcoming';
-                              if (ticketFilterStatus === 'past') return event.event_type === 'past';
+                              if (ticketFilterStatus === 'past') return event.event_type === 'gallery';
                               return true;
                             })
                             .filter(event => {
@@ -6945,7 +8087,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               </div>
                             ) : (
                               <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">
-                                {smsLogs.map((log) => (
+                                {smsLogs.map((log) => {
+                                  const logWithApiResponse = log as typeof log & { api_response?: any };
+                                  return (
                                   <div
                                     key={log.id}
                                     className={`p-4 rounded-lg border transition-all duration-300 ${
@@ -6984,15 +8128,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                             <strong>{language === 'en' ? 'Error' : 'Erreur'}:</strong> {log.error_message}
                                           </div>
                                         )}
-                                        {log.api_response && (
+                                        {logWithApiResponse.api_response && (
                                           <details className="mt-2">
                                             <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
                                               {language === 'en' ? 'View API Response' : 'Voir Réponse API'}
                                             </summary>
                                             <pre className="mt-1 p-2 bg-muted/50 rounded text-xs overflow-auto max-h-32">
-                                              {typeof log.api_response === 'string' 
-                                                ? log.api_response 
-                                                : JSON.stringify(log.api_response, null, 2)}
+                                              {typeof logWithApiResponse.api_response === 'string' 
+                                                ? logWithApiResponse.api_response 
+                                                : JSON.stringify(logWithApiResponse.api_response, null, 2)}
                                             </pre>
                                           </details>
                                         )}
@@ -7004,7 +8148,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                       </div>
                                     </div>
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                           </>
@@ -7360,6 +8505,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     handleUploadHeroImage(file);
                                   }
                                 }}
+                                onUrlChange={() => {}}
                                 accept="image/*"
                                 maxSize={10}
                                 label={uploadingHeroImage ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : t.uploadHeroImage}
@@ -7486,6 +8632,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     handleUploadAboutImage(file);
                                   }
                                 }}
+                                onUrlChange={() => {}}
                                 accept="image/*"
                                 maxSize={10}
                                 label={uploadingAboutImage ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload About Image' : 'Télécharger une Image')}

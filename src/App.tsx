@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Navigation from "./components/layout/Navigation";
 import Footer from "./components/layout/Footer";
 import MaintenanceMode from "./components/layout/MaintenanceMode";
@@ -26,8 +26,6 @@ import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute
 
 import AmbassadorApplication from "./pages/ambassador/Application";
 import PassPurchase from "./pages/PassPurchase";
-import LoadingDemo from "./pages/LoadingDemo";
-import FontTest from "./pages/FontTest";
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { FaviconLoader } from "./components/FaviconLoader";
@@ -79,8 +77,6 @@ const App = () => {
               <Route path="/contact" element={<Contact language={language} />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy language={language} />} />
               <Route path="/terms" element={<Terms language={language} />} />
-              <Route path="/loading-demo" element={<LoadingDemo />} />
-              <Route path="/font-test" element={<FontTest />} />
               <Route path="*" element={<NotFound />} />
               </Routes>
                 <Footer language={language} />

@@ -197,6 +197,7 @@ const Application = ({ language }: ApplicationProps) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      // Validate phone number format
       const phoneRegex = /^[2594][0-9]{7}$/;
       if (!phoneRegex.test(formData.phoneNumber)) {
         toast({
@@ -210,127 +211,130 @@ const Application = ({ language }: ApplicationProps) => {
         return;
       }
 
+      // Sanitize all inputs
       const sanitizedFullName = DOMPurify.sanitize(formData.fullName);
       const sanitizedEmail = DOMPurify.sanitize(formData.email);
       const sanitizedCity = DOMPurify.sanitize(formData.city);
       const sanitizedSocialLink = DOMPurify.sanitize(formData.socialLink);
       const sanitizedMotivation = DOMPurify.sanitize(formData.motivation);
+
+      // Check for duplicate phone number in active ambassadors (approved ambassadors)
+      const { data: existingAmbByPhone } = await supabase
+        .from('ambassadors')
+        .select('id')
+        .eq('phone', formData.phoneNumber)
+        .maybeSingle();
       
-      const ENABLE_DUPLICATE_CHECK = true;
-      
-      if (ENABLE_DUPLICATE_CHECK) {
-        // Check for duplicate phone number in ambassadors
-        const { data: existingAmbByPhone, error: ambPhoneError } = await supabase
+      if (existingAmbByPhone) {
+        toast({
+          title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
+          description: language === 'en'
+            ? 'This phone number is already registered as an approved ambassador.' 
+            : 'Ce numéro de téléphone est déjà enregistré comme ambassadeur approuvé.', 
+          variant: 'destructive' 
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Check for duplicate email in active ambassadors (if email provided)
+      if (sanitizedEmail && sanitizedEmail.trim() !== '') {
+        const { data: existingAmbByEmail } = await supabase
           .from('ambassadors')
-          .select('id, status')
-          .eq('phone', formData.phoneNumber)
+          .select('id')
+          .eq('email', sanitizedEmail)
           .maybeSingle();
         
-        // Check for duplicate email in ambassadors (if email provided)
-        let existingAmbByEmail = null;
-        let ambEmailError = null;
-        if (sanitizedEmail && sanitizedEmail.trim() !== '') {
-          const emailResult = await supabase
-            .from('ambassadors')
-            .select('id, status')
-            .eq('email', sanitizedEmail)
-            .maybeSingle();
-          existingAmbByEmail = emailResult.data;
-          ambEmailError = emailResult.error;
+        if (existingAmbByEmail) {
+          toast({
+            title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
+            description: language === 'en'
+              ? 'This email is already registered as an approved ambassador.' 
+              : 'Cet email est déjà enregistré comme ambassadeur approuvé.', 
+            variant: 'destructive' 
+          });
+          setIsSubmitting(false);
+          return;
         }
-        
-        // Check for duplicate phone number in applications
-        const { data: existingAppByPhone, error: appPhoneError } = await supabase
+      }
+      
+      // Check for duplicate phone number in applications (pending or approved)
+      const { data: existingAppByPhone } = await supabase
+        .from('ambassador_applications')
+        .select('id, status')
+        .eq('phone_number', formData.phoneNumber)
+        .in('status', ['pending', 'approved'])
+        .maybeSingle();
+
+      if (existingAppByPhone) {
+        // If approved, check if there's still an active ambassador
+        if (existingAppByPhone.status === 'approved') {
+          const { data: activeAmbassador } = await supabase
+            .from('ambassadors')
+            .select('id')
+            .eq('phone', formData.phoneNumber)
+            .maybeSingle();
+          
+          if (activeAmbassador) {
+            toast({
+              title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
+              description: language === 'en'
+                ? 'An application with this phone number has already been approved and an active ambassador account exists.' 
+                : 'Une candidature avec ce numéro de téléphone a déjà été approuvée et un compte ambassadeur actif existe.', 
+              variant: 'destructive' 
+            });
+            setIsSubmitting(false);
+            return;
+          }
+        } else {
+          // Application is pending
+          toast({
+            title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
+            description: language === 'en'
+              ? 'You have already submitted an application. Please wait for review.'
+              : 'Vous avez déjà soumis une candidature. Veuillez attendre l\'examen.', 
+            variant: 'destructive' 
+          });
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // Check for duplicate email in applications (if email provided)
+      if (sanitizedEmail && sanitizedEmail.trim() !== '') {
+        const { data: existingAppByEmail } = await supabase
           .from('ambassador_applications')
           .select('id, status')
-          .eq('phone_number', formData.phoneNumber)
+          .eq('email', sanitizedEmail)
           .in('status', ['pending', 'approved'])
           .maybeSingle();
 
-        // Check for duplicate email in applications (if email provided)
-        let existingAppByEmail = null;
-        let appEmailError = null;
-        if (sanitizedEmail && sanitizedEmail.trim() !== '') {
-          const emailResult = await supabase
-            .from('ambassador_applications')
-            .select('id, status')
-            .eq('email', sanitizedEmail)
-            .in('status', ['pending', 'approved'])
-            .maybeSingle();
-          existingAppByEmail = emailResult.data;
-          appEmailError = emailResult.error;
-        }
-
-        const queryFailed = (ambPhoneError && (ambPhoneError.code === '42501' || ambPhoneError.message?.includes('permission') || ambPhoneError.message?.includes('policy'))) ||
-                           (ambEmailError && (ambEmailError.code === '42501' || ambEmailError.message?.includes('permission') || ambEmailError.message?.includes('policy'))) ||
-                           (appPhoneError && (appPhoneError.code === '42501' || appPhoneError.message?.includes('permission') || appPhoneError.message?.includes('policy'))) ||
-                           (appEmailError && (appEmailError.code === '42501' || appEmailError.message?.includes('permission') || appEmailError.message?.includes('policy')));
-        
-        if (queryFailed) {
-          // Continue with application if policies aren't set up
-        } else {
-          // Check phone duplicates in ambassadors
-          if (existingAmbByPhone && !ambPhoneError) {
+        if (existingAppByEmail) {
+          if (existingAppByEmail.status === 'approved') {
+            const { data: activeAmbassador } = await supabase
+              .from('ambassadors')
+              .select('id')
+              .eq('email', sanitizedEmail)
+              .maybeSingle();
+            
+            if (activeAmbassador) {
+              toast({
+                title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
+                description: language === 'en'
+                  ? 'An application with this email has already been approved and an active ambassador account exists.' 
+                  : 'Une candidature avec cet email a déjà été approuvée et un compte ambassadeur actif existe.', 
+                variant: 'destructive' 
+              });
+              setIsSubmitting(false);
+              return;
+            }
+          } else {
+            // Application is pending
             toast({
               title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
               description: language === 'en'
-                ? (existingAmbByPhone.status === 'approved' 
-                  ? 'You are already an approved ambassador.' 
-                  : 'You have already applied. Your application is being reviewed.')
-                : (existingAmbByPhone.status === 'approved' 
-                  ? 'Vous êtes déjà un ambassadeur approuvé.' 
-                  : 'Vous avez déjà candidaté. Votre candidature est en cours d\'examen.'), 
-              variant: 'destructive' 
-            });
-            setIsSubmitting(false);
-            return;
-          }
-
-          // Check email duplicates in ambassadors
-          if (existingAmbByEmail && !ambEmailError) {
-            toast({
-              title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
-              description: language === 'en'
-                ? (existingAmbByEmail.status === 'approved' 
-                  ? 'This email is already registered as an approved ambassador.' 
-                  : 'This email is already registered. Your application is being reviewed.')
-                : (existingAmbByEmail.status === 'approved' 
-                  ? 'Cet email est déjà enregistré comme ambassadeur approuvé.' 
-                  : 'Cet email est déjà enregistré. Votre candidature est en cours d\'examen.'), 
-              variant: 'destructive' 
-            });
-            setIsSubmitting(false);
-            return;
-          }
-
-          // Check phone duplicates in applications
-          if (existingAppByPhone && !appPhoneError) {
-            toast({
-              title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
-              description: language === 'en'
-                ? (existingAppByPhone.status === 'approved' 
-                  ? 'Your application has already been approved.' 
-                  : 'You have already submitted an application. Please wait for review.')
-                : (existingAppByPhone.status === 'approved' 
-                  ? 'Votre candidature a déjà été approuvée.' 
-                  : 'Vous avez déjà soumis une candidature. Veuillez attendre l\'examen.'), 
-              variant: 'destructive' 
-            });
-            setIsSubmitting(false);
-            return;
-          }
-
-          // Check email duplicates in applications
-          if (existingAppByEmail && !appEmailError) {
-            toast({
-              title: language === 'en' ? 'Already Applied' : 'Déjà Candidaté', 
-              description: language === 'en'
-                ? (existingAppByEmail.status === 'approved' 
-                  ? 'An application with this email has already been approved.' 
-                  : 'An application with this email already exists. Please wait for review.')
-                : (existingAppByEmail.status === 'approved' 
-                  ? 'Une candidature avec cet email a déjà été approuvée.' 
-                  : 'Une candidature avec cet email existe déjà. Veuillez attendre l\'examen.'), 
+                ? 'An application with this email already exists and is pending review. Please wait for the review to complete.'
+                : 'Une candidature avec cet email existe déjà et est en attente d\'examen. Veuillez attendre la fin de l\'examen.', 
               variant: 'destructive' 
             });
             setIsSubmitting(false);
@@ -339,6 +343,72 @@ const Application = ({ language }: ApplicationProps) => {
         }
       }
 
+      // Check for rejected or removed applications and verify reapply delay (30 days)
+      const REAPPLY_DELAY_DAYS = 30;
+      const now = new Date();
+      const delayDate = new Date(now.getTime() - (REAPPLY_DELAY_DAYS * 24 * 60 * 60 * 1000));
+
+      // Check by phone
+      const { data: rejectedAppByPhone } = await supabase
+        .from('ambassador_applications')
+        .select('id, status, reapply_delay_date')
+        .eq('phone_number', formData.phoneNumber)
+        .in('status', ['rejected', 'removed'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (rejectedAppByPhone) {
+        const canReapply = !rejectedAppByPhone.reapply_delay_date || 
+          new Date(rejectedAppByPhone.reapply_delay_date) <= now;
+        
+        if (!canReapply) {
+          const delayUntil = new Date(rejectedAppByPhone.reapply_delay_date);
+          const daysRemaining = Math.ceil((delayUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          toast({
+            title: language === 'en' ? 'Cannot Reapply Yet' : 'Ne Peut Pas Re-candidater Encore', 
+            description: language === 'en'
+              ? `You can reapply in ${daysRemaining} day(s). Please wait until ${delayUntil.toLocaleDateString()}.`
+              : `Vous pouvez re-candidater dans ${daysRemaining} jour(s). Veuillez attendre jusqu'au ${delayUntil.toLocaleDateString()}.`, 
+            variant: 'destructive' 
+          });
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // Check by email
+      if (sanitizedEmail && sanitizedEmail.trim() !== '') {
+        const { data: rejectedAppByEmail } = await supabase
+          .from('ambassador_applications')
+          .select('id, status, reapply_delay_date')
+          .eq('email', sanitizedEmail)
+          .in('status', ['rejected', 'removed'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (rejectedAppByEmail) {
+          const canReapply = !rejectedAppByEmail.reapply_delay_date || 
+            new Date(rejectedAppByEmail.reapply_delay_date) <= now;
+          
+          if (!canReapply) {
+            const delayUntil = new Date(rejectedAppByEmail.reapply_delay_date);
+            const daysRemaining = Math.ceil((delayUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            toast({
+              title: language === 'en' ? 'Cannot Reapply Yet' : 'Ne Peut Pas Re-candidater Encore', 
+              description: language === 'en'
+                ? `You can reapply in ${daysRemaining} day(s). Please wait until ${delayUntil.toLocaleDateString()}.`
+                : `Vous pouvez re-candidater dans ${daysRemaining} jour(s). Veuillez attendre jusqu'au ${delayUntil.toLocaleDateString()}.`, 
+              variant: 'destructive' 
+            });
+            setIsSubmitting(false);
+            return;
+          }
+        }
+      }
+
+      // All checks passed, insert new application
       const { error } = await supabase
         .from('ambassador_applications')
         .insert({
@@ -348,11 +418,25 @@ const Application = ({ language }: ApplicationProps) => {
           email: sanitizedEmail,
           city: sanitizedCity,
           social_link: sanitizedSocialLink,
-          motivation: sanitizedMotivation,
+          motivation: sanitizedMotivation || null, // Motivation is optional
           status: 'pending'
         });
 
-      if (error) throw error;
+      if (error) {
+        // If it's a unique constraint error, provide a more helpful message
+        if (error.code === '23505' || error.message?.includes('unique constraint') || error.message?.includes('duplicate key')) {
+          toast({
+            title: language === 'en' ? 'Application Already Exists' : 'Candidature Existe Déjà',
+            description: language === 'en'
+              ? 'An application with this phone number or email already exists. Please contact support if you believe this is an error.'
+              : 'Une candidature avec ce numéro de téléphone ou cet email existe déjà. Veuillez contacter le support si vous pensez qu\'il s\'agit d\'une erreur.',
+            variant: 'destructive',
+          });
+          setIsSubmitting(false);
+          return;
+        }
+        throw error;
+      }
 
       logFormSubmission('Ambassador Application', true, {
         fullName: sanitizedFullName,
@@ -676,6 +760,7 @@ const Application = ({ language }: ApplicationProps) => {
                           value={formData.motivation} 
                           onChange={e => setFormData({ ...formData, motivation: e.target.value })} 
                           className="min-h-[140px] resize-y bg-background/50 border-border/50 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 group-hover:border-orange-500/50"
+                          placeholder={language === 'en' ? 'Optional: Tell us why you want to be an ambassador' : 'Optionnel : Dites-nous pourquoi vous voulez être ambassadeur'}
                         />
                       </div>
                     </div>

@@ -63,6 +63,16 @@ const Auth = ({ language }: AuthProps) => {
   }, [RECAPTCHA_SITE_KEY]);
 
   const executeRecaptcha = async (): Promise<string | null> => {
+    // Check if we're on localhost and reCAPTCHA is disabled for localhost
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const disableRecaptchaLocalhost = import.meta.env.VITE_DISABLE_RECAPTCHA_LOCALHOST === 'true';
+    
+    if (isLocalhost && disableRecaptchaLocalhost) {
+      // Return a dummy token for localhost development
+      console.log('⚠️  reCAPTCHA bypassed for localhost development');
+      return 'localhost-bypass-token';
+    }
+    
     if (!RECAPTCHA_SITE_KEY || !window.grecaptcha) {
       return null;
     }
@@ -297,7 +307,7 @@ const Auth = ({ language }: AuthProps) => {
                 <Input
                   id="login-phone"
                   type="tel"
-                  placeholder="+216 XX XXX XXX"
+                  placeholder="XX XXX XXX"
                   value={loginData.phone}
                   onChange={(e) => setLoginData({...loginData, phone: e.target.value})}
                   className="pl-10"

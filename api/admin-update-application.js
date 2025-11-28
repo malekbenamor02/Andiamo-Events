@@ -72,23 +72,31 @@ export default async function handler(req, res) {
     }
 
     // Get request body
-    const { applicationId, status } = req.body;
+    const { applicationId, status, reapply_delay_date } = req.body;
 
     if (!applicationId || !status) {
       return res.status(400).json({ error: 'applicationId and status are required' });
     }
 
-    if (!['approved', 'rejected'].includes(status)) {
-      return res.status(400).json({ error: 'status must be "approved" or "rejected"' });
+    if (!['approved', 'rejected', 'removed'].includes(status)) {
+      return res.status(400).json({ error: 'status must be "approved", "rejected", or "removed"' });
+    }
+
+    // Build update object
+    const updateFields = {
+      status: status,
+      updated_at: new Date().toISOString()
+    };
+
+    // Add reapply_delay_date if provided (for rejected or removed status)
+    if (reapply_delay_date) {
+      updateFields.reapply_delay_date = reapply_delay_date;
     }
 
     // Update application status using service role (bypasses RLS)
     const { data: updateData, error: updateError } = await supabase
       .from('ambassador_applications')
-      .update({ 
-        status: status,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateFields)
       .eq('id', applicationId)
       .select();
 
