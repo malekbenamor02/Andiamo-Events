@@ -95,7 +95,19 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Middleware to handle Vercel serverless function paths
+// Vercel strips the /api prefix, so we need to add it back for route matching
+app.use((req, res, next) => {
+  // If running on Vercel and path doesn't start with /api, add it
+  if ((process.env.VERCEL === '1' || process.env.VERCEL_URL) && !req.path.startsWith('/api')) {
+    req.url = '/api' + req.url;
+    req.path = '/api' + req.path;
+  }
+  next();
+});
 
 // Configure SMTP transporter using environment variables
 const transporter = nodemailer.createTransport({
@@ -136,9 +148,25 @@ app.post('/api/send-email', async (req, res) => {
   }
 });
 
+// Test endpoint to verify serverless function is working
+app.get('/api/test', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'API is working',
+    vercel: process.env.VERCEL === '1',
+    vercelUrl: process.env.VERCEL_URL,
+    nodeEnv: process.env.NODE_ENV,
+    hasSupabase: !!supabase,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Admin login endpoint
 app.post('/api/admin-login', async (req, res) => {
   try {
+    // Log for debugging
+    console.log('Admin login attempt:', { email: req.body.email, hasPassword: !!req.body.password });
+    
     if (!supabase) {
       console.error('Supabase not configured');
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -147,6 +175,7 @@ app.post('/api/admin-login', async (req, res) => {
     const { email, password, recaptchaToken } = req.body;
     
     if (!email || !password) {
+      console.log('Missing email or password');
       return res.status(400).json({ error: 'Email and password required' });
     }
 
@@ -198,6 +227,7 @@ app.post('/api/admin-login', async (req, res) => {
     }
     
     // Fetch admin by email
+    console.log('Fetching admin from Supabase for email:', email);
     const { data: admin, error } = await supabase
       .from('admins')
       .select('*')
@@ -206,13 +236,15 @@ app.post('/api/admin-login', async (req, res) => {
       
     if (error) {
       console.error('Supabase error:', error);
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Invalid credentials', details: error.message });
     }
     
     if (!admin) {
       console.log('Admin not found for email:', email);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+    
+    console.log('Admin found:', { id: admin.id, email: admin.email, hasPassword: !!admin.password });
     
     if (!admin.password) {
       console.error('Admin has no password field');
@@ -222,15 +254,20 @@ app.post('/api/admin-login', async (req, res) => {
     // Compare password
     let isMatch;
     try {
+      console.log('Comparing password...');
       isMatch = await bcrypt.compare(password, admin.password);
+      console.log('Password match result:', isMatch);
     } catch (bcryptError) {
       console.error('Bcrypt comparison error:', bcryptError);
       return res.status(500).json({ error: 'Server error', details: 'Password verification failed' });
     }
     
     if (!isMatch) {
+      console.log('Password does not match for email:', email);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+    
+    console.log('Password verified successfully for email:', email);
     
     // Generate JWT (1 hour fixed session - expiration encoded in token)
     // The session countdown starts from login and continues regardless of user activity
