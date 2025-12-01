@@ -2363,4 +2363,11 @@ app.post('/api/test-email', async (req, res) => {
   }
 });
 
-app.listen(process.env.PORT || 8082, () => console.log('API server running on port', process.env.PORT || 8082));
+// Export app for Vercel serverless functions
+// If running as standalone server, start listening
+if (require.main === module) {
+  app.listen(process.env.PORT || 8082, () => console.log('API server running on port', process.env.PORT || 8082));
+}
+
+// Export app for use in serverless functions
+module.exports = app;
