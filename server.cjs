@@ -348,7 +348,8 @@ app.post('/api/admin-login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    console.log('Password verified successfully for email:', email);
+    console.log('✅ Password verified successfully for email:', email);
+    console.log('🔵 Generating JWT token...');
     
     // Generate JWT (1 hour fixed session - expiration encoded in token)
     // The session countdown starts from login and continues regardless of user activity
