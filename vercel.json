@@ -9,6 +9,9 @@
     "api/[...].js": {
       "maxDuration": 30
     },
+    "api/admin-login.js": {
+      "maxDuration": 30
+    },
     "api/admin-login-simple.js": {
       "maxDuration": 30
     },
