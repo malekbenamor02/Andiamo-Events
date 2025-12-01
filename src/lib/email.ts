@@ -440,7 +440,7 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">© 2024 Andiamo Events. All rights reserved.</p>
           <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">Tunisia's Premier Nightlife Experience</p>
           <p class="footer-text" style="margin-top: 15px; color: #888 !important; font-size: 13px; margin: 0;">
-            <a href="mailto:contact@andiamo.com" class="email-copy" onclick="navigator.clipboard.writeText('contact@andiamo.com'); this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z\'/></svg> Copied!'; setTimeout(() => { this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z\'/></svg> Copy Email'; }, 2000); return false;">
+            <a href="mailto:support@andiamoevents.com" class="email-copy" onclick="navigator.clipboard.writeText('support@andiamoevents.com'); this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z\'/></svg> Copied!'; setTimeout(() => { this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z\'/></svg> Copy Email'; }, 2000); return false;">
               <svg class="email-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -456,8 +456,8 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
   `;
 
   return {
-    from: import.meta.env.VITE_GMAIL_FROM || 'Andiamo Events <noreply@andiamo.com>',
-    to: ambassador.email || 'noreply@andiamo.com',
+    from: 'Andiamo Events <support@andiamoevents.com>',
+    to: ambassador.email || 'support@andiamoevents.com',
     subject,
     html
   };
@@ -739,7 +739,7 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">© 2024 Andiamo Events. All rights reserved.</p>
           <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">Tunisia's Premier Nightlife Experience</p>
           <p class="footer-text" style="margin-top: 15px; color: #888 !important; font-size: 13px; margin: 0;">
-            <a href="mailto:contact@andiamo.com" class="email-copy" onclick="navigator.clipboard.writeText('contact@andiamo.com'); this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z\'/></svg> Copied!'; setTimeout(() => { this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z\'/></svg> Copy Email'; }, 2000); return false;">
+            <a href="mailto:support@andiamoevents.com" class="email-copy" onclick="navigator.clipboard.writeText('support@andiamoevents.com'); this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z\'/></svg> Copied!'; setTimeout(() => { this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z\'/></svg> Copy Email'; }, 2000); return false;">
               <svg class="email-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -754,8 +754,8 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
   `;
 
   return {
-    from: import.meta.env.VITE_GMAIL_FROM || 'Andiamo Events <noreply@andiamo.com>',
-    to: ambassador.email || 'noreply@andiamo.com',
+    from: 'Andiamo Events <support@andiamoevents.com>',
+    to: ambassador.email || 'support@andiamoevents.com',
     subject,
     html
   };
@@ -814,8 +814,8 @@ export const createPasswordResetEmail = (ambassador: AmbassadorData, resetToken:
   `;
 
   return {
-    from: import.meta.env.VITE_GMAIL_FROM || 'Andiamo Events <noreply@andiamo.com>',
-    to: ambassador.email || 'noreply@andiamo.com',
+    from: 'Andiamo Events <support@andiamoevents.com>',
+    to: ambassador.email || 'support@andiamoevents.com',
     subject,
     html
   };
@@ -1123,7 +1123,7 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
   `;
 
   return {
-    from: import.meta.env.VITE_GMAIL_FROM || 'Andiamo Events <noreply@andiamo.com>',
+    from: 'Andiamo Events <support@andiamoevents.com>',
     to: admin.email,
     subject,
     html
@@ -1139,7 +1139,439 @@ export const generatePassword = (): string => {
   return password;
 };
 
-// Email sending function with Gmail SMTP implementation
+// Order completion email data interface
+interface OrderCompletionData {
+  customerName: string;
+  orderId: string;
+  eventName: string;
+  ambassadorName: string;
+  passes: Array<{
+    passType: string;
+    quantity: number;
+    price: number;
+  }>;
+  totalAmount: number;
+  qrCode?: string;
+  ticketNumber?: string;
+  referenceNumber?: string;
+  supportContactUrl?: string;
+}
+
+export const createOrderCompletionEmail = (orderData: OrderCompletionData): EmailConfig => {
+  const subject = "✅ Order Confirmation - Your Pass Purchase is Complete!";
+  
+  // Build passes list HTML
+  const passesListHtml = orderData.passes.map(pass => `
+    <tr style="border-bottom: 1px solid hsl(218, 23%, 20%);">
+      <td style="padding: 12px 0; color: #e0e0e0; font-size: 15px;">${pass.passType}</td>
+      <td style="padding: 12px 0; color: #e0e0e0; font-size: 15px; text-align: center;">${pass.quantity}</td>
+      <td style="padding: 12px 0; color: hsl(195, 100%, 50%); font-size: 15px; text-align: right; font-weight: 600;">${pass.price.toFixed(2)} TND</td>
+    </tr>
+  `).join('');
+
+  // Build digital ticket section if available
+  const digitalTicketSection = (orderData.qrCode || orderData.ticketNumber || orderData.referenceNumber) ? `
+    <div class="ticket-card" style="background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%); border: 1px solid hsl(285, 85%, 65%, 0.3); border-radius: 12px; padding: 25px; margin: 30px 0; box-shadow: 0 0 20px rgba(185, 85, 211, 0.1);">
+      <h3 style="font-family: 'Orbitron', sans-serif; font-size: 18px; color: hsl(195, 100%, 50%); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+        🎫 Your Digital Ticket
+      </h3>
+      ${orderData.qrCode ? `
+        <div style="text-align: center; margin: 20px 0;">
+          <img src="${orderData.qrCode}" alt="QR Code" style="max-width: 200px; height: auto; border-radius: 8px; border: 2px solid hsl(195, 100%, 50%, 0.3);" />
+          <p style="color: #d0d0d0; font-size: 14px; margin-top: 10px;">Scan this QR code at the event entrance</p>
+        </div>
+      ` : ''}
+      ${orderData.ticketNumber ? `
+        <div style="margin: 15px 0;">
+          <strong style="color: #ffffff; display: block; margin-bottom: 5px; font-weight: 600;">Ticket Number:</strong>
+          <span class="credential-value" style="background: hsl(218, 23%, 8%); padding: 10px 15px; border-radius: 8px; font-family: 'Courier New', monospace; color: hsl(195, 100%, 50%); border: 1px solid hsl(195, 100%, 50%, 0.2); display: inline-block; margin-top: 5px;">${orderData.ticketNumber}</span>
+        </div>
+      ` : ''}
+      ${orderData.referenceNumber ? `
+        <div style="margin: 15px 0;">
+          <strong style="color: #ffffff; display: block; margin-bottom: 5px; font-weight: 600;">Reference Number:</strong>
+          <span class="credential-value" style="background: hsl(218, 23%, 8%); padding: 10px 15px; border-radius: 8px; font-family: 'Courier New', monospace; color: hsl(195, 100%, 50%); border: 1px solid hsl(195, 100%, 50%, 0.2); display: inline-block; margin-top: 5px;">${orderData.referenceNumber}</span>
+        </div>
+      ` : ''}
+    </div>
+  ` : '';
+
+  const supportUrl = orderData.supportContactUrl || `${window.location.origin}/contact`;
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="color-scheme" content="dark light">
+      <meta name="supported-color-schemes" content="dark light">
+      <title>Order Confirmation - Andiamo Events</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
+      <style>
+        :root {
+          color-scheme: dark light;
+          supported-color-schemes: dark light;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+          line-height: 1.7; 
+          color: #e0e0e0; 
+          background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%);
+          padding: 20px;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+        .email-wrapper {
+          max-width: 600px;
+          margin: 0 auto;
+          background: hsl(218, 23%, 12%);
+          border-radius: 16px;
+          overflow: hidden;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(185, 85, 211, 0.1);
+        }
+        .header {
+          background: linear-gradient(135deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 50%, hsl(330, 100%, 65%) 100%);
+          padding: 50px 40px;
+          text-align: center;
+          position: relative;
+          overflow: hidden;
+        }
+        .header::before {
+          content: '';
+          position: absolute;
+          top: -50%;
+          left: -50%;
+          width: 200%;
+          height: 200%;
+          background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+          animation: pulse 4s ease-in-out infinite;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.1); }
+        }
+        .header-content {
+          position: relative;
+          z-index: 1;
+        }
+        .logo {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 28px;
+          font-weight: 700;
+          letter-spacing: 2px;
+          color: #ffffff;
+          margin-bottom: 15px;
+          text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+        .header h1 {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 32px;
+          font-weight: 700;
+          color: #ffffff;
+          margin: 15px 0 10px;
+          text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        .content {
+          padding: 40px;
+          background: hsl(218, 23%, 12%);
+        }
+        .greeting {
+          font-size: 18px;
+          color: #ffffff;
+          margin-bottom: 25px;
+          font-weight: 500;
+        }
+        .greeting strong {
+          color: hsl(285, 85%, 65%);
+          font-weight: 600;
+        }
+        .intro-text {
+          font-size: 16px;
+          color: #d0d0d0;
+          margin-bottom: 30px;
+          line-height: 1.8;
+        }
+        .order-info-card {
+          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
+          border: 1px solid hsl(285, 85%, 65%, 0.3);
+          border-radius: 12px;
+          padding: 25px;
+          margin: 30px 0;
+          box-shadow: 0 0 20px rgba(185, 85, 211, 0.1), inset 0 0 20px rgba(185, 85, 211, 0.05);
+        }
+        .order-info-card h3 {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 18px;
+          color: hsl(195, 100%, 50%);
+          margin-bottom: 20px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .info-item {
+          margin: 15px 0;
+          font-size: 15px;
+          color: #e0e0e0;
+        }
+        .info-item strong {
+          color: #ffffff;
+          display: block;
+          margin-bottom: 5px;
+          font-weight: 600;
+        }
+        .info-value {
+          background: hsl(218, 23%, 8%);
+          padding: 10px 15px;
+          border-radius: 8px;
+          font-family: 'Courier New', monospace;
+          color: hsl(195, 100%, 50%);
+          border: 1px solid hsl(195, 100%, 50%, 0.2);
+          display: inline-block;
+          margin-top: 5px;
+        }
+        .passes-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 20px 0;
+        }
+        .passes-table th {
+          text-align: left;
+          padding: 12px 0;
+          color: hsl(285, 85%, 65%);
+          font-weight: 600;
+          font-size: 14px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          border-bottom: 2px solid hsl(285, 85%, 65%, 0.3);
+        }
+        .passes-table td {
+          padding: 12px 0;
+          color: #e0e0e0;
+          font-size: 15px;
+        }
+        .total-row {
+          border-top: 2px solid hsl(285, 85%, 65%, 0.3);
+          margin-top: 10px;
+          padding-top: 15px;
+        }
+        .total-row td {
+          font-weight: 700;
+          font-size: 18px;
+          color: hsl(195, 100%, 50%);
+          padding-top: 15px;
+        }
+        .payment-confirmation {
+          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
+          border-left: 4px solid hsl(195, 100%, 50%);
+          border-radius: 12px;
+          padding: 25px;
+          margin: 30px 0;
+          box-shadow: 0 0 20px rgba(0, 195, 255, 0.1);
+        }
+        .payment-confirmation h3 {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 18px;
+          color: hsl(195, 100%, 50%);
+          margin-bottom: 15px;
+        }
+        .payment-confirmation p {
+          color: #d0d0d0;
+          font-size: 15px;
+          line-height: 1.8;
+          margin: 0;
+        }
+        .support-section {
+          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
+          border-radius: 12px;
+          padding: 25px;
+          margin: 30px 0;
+          border: 1px solid hsl(285, 85%, 65%, 0.2);
+          box-shadow: 0 0 20px rgba(185, 85, 211, 0.05);
+        }
+        .support-section h3 {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 18px;
+          color: hsl(285, 85%, 65%);
+          margin-bottom: 15px;
+        }
+        .support-section p {
+          color: #d0d0d0;
+          font-size: 15px;
+          line-height: 1.8;
+          margin: 0 0 15px 0;
+        }
+        .support-link {
+          display: inline-block;
+          color: hsl(195, 100%, 50%);
+          text-decoration: none;
+          font-weight: 600;
+          padding: 10px 20px;
+          border: 1px solid hsl(195, 100%, 50%, 0.3);
+          border-radius: 8px;
+          transition: all 0.3s ease;
+        }
+        .support-link:hover {
+          background: hsl(195, 100%, 50%, 0.1);
+          border-color: hsl(195, 100%, 50%);
+        }
+        .closing {
+          margin-top: 35px;
+          padding-top: 30px;
+          border-top: 1px solid hsl(218, 23%, 20%);
+          color: #d0d0d0;
+          font-size: 15px;
+          line-height: 1.8;
+        }
+        .signature {
+          margin-top: 20px;
+          color: #ffffff;
+          font-weight: 600;
+        }
+        .signature strong {
+          color: hsl(285, 85%, 65%);
+          font-family: 'Orbitron', sans-serif;
+        }
+        .footer {
+          background: hsl(218, 23%, 8%);
+          padding: 30px 40px;
+          text-align: center;
+          border-top: 1px solid hsl(218, 23%, 20%);
+        }
+        .footer-text {
+          color: #888;
+          font-size: 13px;
+          margin: 0;
+        }
+        .footer-brand {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 14px;
+          color: hsl(285, 85%, 65%);
+          margin-bottom: 10px;
+          letter-spacing: 1px;
+        }
+        @media only screen and (max-width: 600px) {
+          .email-wrapper {
+            border-radius: 0;
+          }
+          .header {
+            padding: 40px 25px;
+          }
+          .header h1 {
+            font-size: 24px;
+          }
+          .content {
+            padding: 30px 25px;
+          }
+          .logo {
+            font-size: 22px;
+          }
+        }
+      </style>
+    </head>
+    <body style="background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important; color: #e0e0e0 !important; padding: 20px; margin: 0; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
+      <div class="email-wrapper" style="background: hsl(218, 23%, 12%) !important; max-width: 600px; margin: 0 auto; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(185, 85, 211, 0.1);">
+        <div class="header">
+          <div class="header-content">
+            <div class="logo">ANDIAMO EVENTS</div>
+            <h1>✅ Order Confirmed!</h1>
+            <h2 style="font-size: 18px; font-weight: 400; color: rgba(255, 255, 255, 0.95); margin-top: 10px;">Your Pass Purchase is Complete</h2>
+          </div>
+        </div>
+        
+        <div class="content" style="background: hsl(218, 23%, 12%) !important; color: #e0e0e0 !important; padding: 40px;">
+          <p class="greeting">Dear <strong>${orderData.customerName}</strong>,</p>
+          
+          <p class="intro-text">
+            We're excited to confirm that your pass purchase has been successfully processed! Your payment has been received in cash by our ambassador, and your order is now fully validated.
+          </p>
+          
+          <div class="order-info-card">
+            <h3>📋 Order Details</h3>
+            <div class="info-item">
+              <strong>Order ID:</strong>
+              <span class="info-value">${orderData.orderId}</span>
+            </div>
+            <div class="info-item">
+              <strong>Event:</strong>
+              <span style="color: hsl(195, 100%, 50%); font-weight: 600;">${orderData.eventName}</span>
+            </div>
+            <div class="info-item">
+              <strong>Delivered by:</strong>
+              <span style="color: hsl(285, 85%, 65%); font-weight: 600;">${orderData.ambassadorName}</span>
+            </div>
+          </div>
+
+          <div class="order-info-card">
+            <h3>🎫 Passes Purchased</h3>
+            <table class="passes-table">
+              <thead>
+                <tr>
+                  <th>Pass Type</th>
+                  <th style="text-align: center;">Quantity</th>
+                  <th style="text-align: right;">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${passesListHtml}
+                <tr class="total-row">
+                  <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
+                  <td style="text-align: right;"><strong>${orderData.totalAmount.toFixed(2)} TND</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          ${digitalTicketSection}
+
+          <div class="payment-confirmation">
+            <h3>💳 Payment Confirmation</h3>
+            <p>
+              Your payment of <strong style="color: hsl(195, 100%, 50%);">${orderData.totalAmount.toFixed(2)} TND</strong> has been successfully received in cash by our ambassador <strong>${orderData.ambassadorName}</strong>. Your order is now fully validated and confirmed.
+            </p>
+          </div>
+
+          <div class="support-section">
+            <h3>💬 Need Help?</h3>
+            <p>
+              If you have any questions about your order, need to verify your purchase, or require assistance, please don't hesitate to contact our support team.
+            </p>
+            <a href="${supportUrl}" class="support-link">Contact Support</a>
+          </div>
+          
+          <div class="closing">
+            <p>Thank you for choosing Andiamo Events! We look forward to seeing you at the event.</p>
+            
+            <p class="signature">
+              Best regards,<br>
+              <strong>The Andiamo Team</strong>
+            </p>
+          </div>
+        </div>
+        
+        <div class="footer" style="background: hsl(218, 23%, 8%) !important; padding: 30px 40px; text-align: center; border-top: 1px solid hsl(218, 23%, 20%);">
+          <div class="footer-brand">ANDIAMO EVENTS</div>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">© 2024 Andiamo Events. All rights reserved.</p>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">Tunisia's Premier Nightlife Experience</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return {
+    from: 'Andiamo Events <support@andiamoevents.com>',
+    to: '', // Will be set by the caller
+    subject,
+    html
+  };
+};
+
+
+// Email sending function with SMTP implementation
 export const sendEmail = async (emailConfig: EmailConfig): Promise<boolean> => {
   try {
     // For client-side, you'll need to use a service like EmailJS or a backend API

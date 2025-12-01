@@ -1,0 +1,46 @@
+===========================================
+POLICY 2: Service Role Upload
+===========================================
+Policy name: Service role can upload ticket QR codes
+Allowed operation: INSERT
+Target roles: service_role
+USING expression:
+bucket_id = 'tickets' AND auth.role() = 'service_role'
+WITH CHECK expression:
+bucket_id = 'tickets' AND auth.role() = 'service_role'
+
+===========================================
+POLICY 3: Service Role Update
+===========================================
+Policy name: Service role can update ticket QR codes
+Allowed operation: UPDATE
+Target roles: service_role
+USING expression:
+bucket_id = 'tickets' AND auth.role() = 'service_role'
+WITH CHECK expression:
+bucket_id = 'tickets' AND auth.role() = 'service_role'
+
+===========================================
+POLICY 4: Service Role Delete
+===========================================
+Policy name: Service role can delete ticket QR codes
+Allowed operation: DELETE
+Target roles: service_role
+USING expression:
+bucket_id = 'tickets' AND auth.role() = 'service_role'
+
+===========================================
+ALTERNATIVE: Single Policy (Easier)
+===========================================
+If you prefer one policy instead of three separate ones:
+
+Policy name: Service role full access to tickets
+Allowed operation: ALL
+Target roles: service_role
+USING expression:
+bucket_id = 'tickets' AND auth.role() = 'service_role'
+WITH CHECK expression:
+bucket_id = 'tickets' AND auth.role() = 'service_role'
+
+This single policy replaces policies 2, 3, and 4 above.
+

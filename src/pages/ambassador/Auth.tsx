@@ -39,6 +39,17 @@ const Auth = ({ language }: AuthProps) => {
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   
   useEffect(() => {
+    // Skip loading reCAPTCHA on localhost
+    const isLocalhost = window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1' ||
+                       window.location.hostname === '0.0.0.0' ||
+                       window.location.hostname.includes('localhost');
+    
+    if (isLocalhost) {
+      console.log('⚠️  Skipping reCAPTCHA script load on localhost');
+      return;
+    }
+
     if (!RECAPTCHA_SITE_KEY) {
       console.error('VITE_RECAPTCHA_SITE_KEY is not set in environment variables');
       return;
@@ -63,11 +74,13 @@ const Auth = ({ language }: AuthProps) => {
   }, [RECAPTCHA_SITE_KEY]);
 
   const executeRecaptcha = async (): Promise<string | null> => {
-    // Check if we're on localhost and reCAPTCHA is disabled for localhost
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const disableRecaptchaLocalhost = import.meta.env.VITE_DISABLE_RECAPTCHA_LOCALHOST === 'true';
+    // Check if we're on localhost - automatically bypass for localhost
+    const isLocalhost = window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1' ||
+                       window.location.hostname === '0.0.0.0' ||
+                       window.location.hostname.includes('localhost');
     
-    if (isLocalhost && disableRecaptchaLocalhost) {
+    if (isLocalhost) {
       // Return a dummy token for localhost development
       console.log('⚠️  reCAPTCHA bypassed for localhost development');
       return 'localhost-bypass-token';
@@ -340,7 +353,17 @@ const Auth = ({ language }: AuthProps) => {
               </div>
             </div>
 
-            {!RECAPTCHA_SITE_KEY && (
+            {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+              <div className="p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-md text-center">
+                <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                  {language === 'en' 
+                    ? '⚠️ Development mode: reCAPTCHA is disabled on localhost'
+                    : '⚠️ Mode développement : reCAPTCHA est désactivé sur localhost'}
+                </p>
+              </div>
+            )}
+
+            {!RECAPTCHA_SITE_KEY && (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') && (
               <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-md text-center">
                 <p className="text-sm text-destructive">
                   {language === 'en' 
@@ -350,7 +373,7 @@ const Auth = ({ language }: AuthProps) => {
               </div>
             )}
 
-            <Button type="submit" className="w-full btn-gradient" disabled={isLoading || !RECAPTCHA_SITE_KEY}>
+            <Button type="submit" className="w-full btn-gradient" disabled={isLoading}>
               {isLoading ? t.login.loading : t.login.submit}
             </Button>
           </form>

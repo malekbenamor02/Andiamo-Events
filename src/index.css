@@ -393,6 +393,16 @@ All colors MUST be HSL.
     display: none;
   }
   
+  /* Hide scrollbar for mobile tabs but keep scrolling */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
   /* Font Families */
   .font-orbitron {
     font-family: "Orbitron", monospace;

@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Wrench, RefreshCw } from "lucide-react";
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import { isExcludedFromMaintenance } from "@/lib/maintenanceMode";
 
 interface MaintenanceModeProps {
   children: React.ReactNode;
@@ -90,10 +91,11 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
     );
   }
 
-  // Check if current path is admin route - allow admin access during maintenance
-  const isAdminRoute = location.pathname.startsWith('/admin');
+  // Check if current path should be excluded from maintenance mode
+  // Admin and Ambassador dashboard routes are always accessible
+  const isExcluded = isExcludedFromMaintenance(location.pathname);
 
-  if (isMaintenanceMode && !isAdminRoute) {
+  if (isMaintenanceMode && !isExcluded) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
         {/* Background gradient matching site theme */}

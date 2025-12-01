@@ -30,7 +30,7 @@ A modern nightlife events website with ambassador management system, built with 
 - **Styling**: Tailwind CSS, Shadcn/ui components
 - **Backend**: Express.js, Node.js
 - **Database**: Supabase (PostgreSQL)
-- **Email**: Gmail SMTP with Nodemailer
+- **Email**: SMTP with Nodemailer
 - **Routing**: React Router DOM
 - **State Management**: React Query
 
@@ -58,20 +58,19 @@ npm install
    VITE_SUPABASE_URL=your_supabase_url_here
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
    
-   # Gmail SMTP Configuration
-   GMAIL_USER=your_gmail@gmail.com
-   GMAIL_APP_PASSWORD=your_gmail_app_password_here
-   GMAIL_FROM=andiamo@yourdomain.com
+   # Email SMTP Configuration
+   EMAIL_USER=support@andiamoevents.com
+   EMAIL_PASS=your_email_password_here
+   EMAIL_HOST=mail.routing.net
+   EMAIL_PORT=587
    
    # Server Configuration
    PORT=3001
    ```
 
-4. **Set up Gmail App Password**
-   - Go to your Google Account settings
-   - Enable 2-factor authentication
-   - Generate an App Password for "Mail"
-   - Use this password in `GMAIL_APP_PASSWORD`
+4. **Set up Email Configuration**
+   - Configure your SMTP email credentials
+   - Set `EMAIL_USER`, `EMAIL_PASS`, `EMAIL_HOST`, and `EMAIL_PORT` in your `.env` file
 
 5. **Set up Supabase**
    - Create a new Supabase project
@@ -114,7 +113,7 @@ npm run build
 
 ## 📧 Email System
 
-The system uses Gmail SMTP for sending:
+The system uses SMTP for sending:
 - **Approval Emails**: When ambassadors are approved
 - **Rejection Emails**: When applications are rejected
 - **Password Reset**: For forgotten passwords
@@ -147,9 +146,10 @@ Deploy the Express server to:
 |----------|-------------|----------|
 | `VITE_SUPABASE_URL` | Supabase project URL | ✅ |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anonymous key | ✅ |
-| `GMAIL_USER` | Gmail address for sending emails | ✅ |
-| `GMAIL_APP_PASSWORD` | Gmail app password | ✅ |
-| `GMAIL_FROM` | From email address | ✅ |
+| `EMAIL_USER` | Email address for sending emails | ✅ |
+| `EMAIL_PASS` | Email password | ✅ |
+| `EMAIL_HOST` | SMTP host server | ✅ |
+| `EMAIL_PORT` | SMTP port (default: 587) | ✅ |
 | `PORT` | Backend server port | ❌ (default: 3001) |
 
 ## 🤝 Contributing
@@ -166,4 +166,4 @@ This project is licensed under the MIT License.
 
 ## 🆘 Support
 
-For support, email support@andiamo.com or create an issue in the repository.
+For support, email support@andiamoevents.com or create an issue in the repository.

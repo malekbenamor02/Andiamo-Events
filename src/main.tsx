@@ -156,7 +156,8 @@ const setupErrorHandlers = async () => {
       const duration = Date.now() - startTime;
       
       // Log API errors (4xx, 5xx) - sanitize URL to remove credentials
-      if (!response.ok) {
+      // Skip logging 404 errors for missing resources (images, assets) as they're often expected
+      if (!response.ok && response.status !== 404) {
         const url = typeof args[0] === 'string' ? args[0] : args[0].url;
         const sanitizedUrl = sanitizeString(url);
         logger.error(`API Error: ${response.status} ${response.statusText}`, new Error(`${response.status} ${response.statusText}`), {
@@ -180,16 +181,25 @@ const setupErrorHandlers = async () => {
       const url = typeof args[0] === 'string' ? args[0] : args[0].url;
       
       const sanitizedUrl = sanitizeString(url);
-      logger.error('Fetch Error', sanitizeObject(error), {
-        category: 'api_call',
-        details: sanitizeObject({
-          url: sanitizedUrl,
-          method: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
-          duration
-        }),
-        requestMethod: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
-        requestPath: sanitizedUrl
-      });
+      
+      // Don't log service worker fetch errors or network errors that are expected
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isServiceWorkerError = sanitizedUrl.includes('sw.js') || errorMessage.includes('Failed to fetch');
+      const isNetworkError = errorMessage.includes('NetworkError') || errorMessage.includes('Network request failed');
+      
+      // Only log unexpected errors (not service worker or handled network errors)
+      if (!isServiceWorkerError && !isNetworkError) {
+        logger.error('Fetch Error', sanitizeObject(error), {
+          category: 'api_call',
+          details: sanitizeObject({
+            url: sanitizedUrl,
+            method: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
+            duration
+          }),
+          requestMethod: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
+          requestPath: sanitizedUrl
+        });
+      }
       
       throw error;
     }

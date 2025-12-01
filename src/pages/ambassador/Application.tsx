@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,6 +13,7 @@ import { User, Star, Users, Sparkles, Zap, Heart, Mail, Phone, MapPin, Instagram
 // @ts-ignore
 import DOMPurify from 'dompurify';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import { CITIES, SOUSSE_VILLES } from '@/lib/constants';
 
 interface ApplicationProps {
   language: 'en' | 'fr';
@@ -24,9 +26,12 @@ const Application = ({ language }: ApplicationProps) => {
     phoneNumber: '',
     email: '',
     city: '',
+    ville: '',
     socialLink: '',
     motivation: ''
   });
+  
+  const isSousse = formData.city === 'Sousse';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
@@ -205,6 +210,45 @@ const Application = ({ language }: ApplicationProps) => {
           description: language === 'en' 
             ? 'Phone number must be 8 digits starting with 2, 5, 9, or 4.' 
             : 'Le numéro de téléphone doit être 8 chiffres commençant par 2, 5, 9, ou 4.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validate city is selected
+      if (!formData.city || !CITIES.includes(formData.city as any)) {
+        toast({
+          title: language === 'en' ? 'City Required' : 'Ville Requise',
+          description: language === 'en' 
+            ? 'Please select a city from the list.' 
+            : 'Veuillez sélectionner une ville dans la liste.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validate ville is required for Sousse
+      if (formData.city === 'Sousse' && (!formData.ville || !SOUSSE_VILLES.includes(formData.ville as any))) {
+        toast({
+          title: language === 'en' ? 'Ville Required' : 'Quartier Requis',
+          description: language === 'en' 
+            ? 'Please select a ville (neighborhood) for Sousse.' 
+            : 'Veuillez sélectionner un quartier pour Sousse.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validate Instagram link starts with Instagram URL
+      if (formData.socialLink && !formData.socialLink.trim().startsWith('https://www.instagram.com/') && !formData.socialLink.trim().startsWith('https://instagram.com/')) {
+        toast({
+          title: language === 'en' ? 'Invalid Instagram Link' : 'Lien Instagram Invalide',
+          description: language === 'en' 
+            ? 'Instagram link must start with https://www.instagram.com/ or https://instagram.com/' 
+            : 'Le lien Instagram doit commencer par https://www.instagram.com/ ou https://instagram.com/',
           variant: 'destructive',
         });
         setIsSubmitting(false);
@@ -417,6 +461,7 @@ const Application = ({ language }: ApplicationProps) => {
           phone_number: formData.phoneNumber,
           email: sanitizedEmail,
           city: sanitizedCity,
+          ville: formData.city === 'Sousse' ? DOMPurify.sanitize(formData.ville) : null,
           social_link: sanitizedSocialLink,
           motivation: sanitizedMotivation || null, // Motivation is optional
           status: 'pending'
@@ -713,19 +758,56 @@ const Application = ({ language }: ApplicationProps) => {
                         <div className="p-1.5 rounded-lg bg-red-500/10 group-hover:bg-red-500/20 transition-colors">
                           <MapPin className="w-4 h-4 text-red-500" />
                         </div>
-                        {t.city}
+                        {t.city} <span className="text-destructive">*</span>
                       </Label>
                       <div className="relative">
-                        <Input 
-                          id="city" 
+                        <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-red-500 transition-colors pointer-events-none z-20" />
+                        <Select 
                           value={formData.city} 
-                          onChange={e => setFormData({ ...formData, city: e.target.value })} 
-                          required 
-                          className="pl-12 h-12 bg-background/50 border-border/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all duration-300 group-hover:border-red-500/50"
-                        />
-                        <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-red-500 transition-colors" />
+                          onValueChange={(value) => {
+                            setFormData({ ...formData, city: value, ville: value === 'Sousse' ? formData.ville : '' });
+                          }}
+                          required
+                        >
+                          <SelectTrigger className="pl-12 h-12 bg-background/50 border-border/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all duration-300 group-hover:border-red-500/50 relative z-10 w-full">
+                            <SelectValue placeholder={language === 'en' ? 'Select a city' : 'Sélectionner une ville'} />
+                          </SelectTrigger>
+                          <SelectContent className="z-[9999]" position="popper">
+                            {CITIES.map((city) => (
+                              <SelectItem key={city} value={city}>{city}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
+                    
+                    {isSousse && (
+                      <div className="space-y-2 md:col-span-2 group animate-in slide-in-from-top-4 fade-in duration-300">
+                        <Label htmlFor="ville" className="flex items-center gap-2 text-sm font-semibold text-foreground/90">
+                          <div className="p-1.5 rounded-lg bg-orange-500/10 group-hover:bg-orange-500/20 transition-colors">
+                            <MapPin className="w-4 h-4 text-orange-500" />
+                          </div>
+                          {language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'} <span className="text-destructive">*</span>
+                        </Label>
+                        <div className="relative">
+                          <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-orange-500 transition-colors pointer-events-none z-20" />
+                          <Select 
+                            value={formData.ville} 
+                            onValueChange={(value) => setFormData({ ...formData, ville: value })}
+                            required
+                          >
+                            <SelectTrigger className="pl-12 h-12 bg-background/50 border-border/50 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 group-hover:border-orange-500/50 relative z-10 w-full">
+                              <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
+                            </SelectTrigger>
+                            <SelectContent className="z-[9999]" position="popper">
+                              {SOUSSE_VILLES.map((ville) => (
+                                <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
                     
                     <div className="space-y-2 md:col-span-2 group">
                       <Label htmlFor="socialLink" className="flex items-center gap-2 text-sm font-semibold text-foreground/90">
@@ -741,10 +823,16 @@ const Application = ({ language }: ApplicationProps) => {
                           value={formData.socialLink} 
                           onChange={e => setFormData({ ...formData, socialLink: e.target.value })} 
                           required 
+                          placeholder="https://www.instagram.com/username"
                           className="pl-12 h-12 bg-background/50 border-border/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 transition-all duration-300 group-hover:border-pink-500/50"
                         />
                         <Instagram className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-pink-500 transition-colors" />
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        {language === 'en' 
+                          ? 'Must start with https://www.instagram.com/ or https://instagram.com/' 
+                          : 'Doit commencer par https://www.instagram.com/ ou https://instagram.com/'}
+                      </p>
                     </div>
                     
                     <div className="space-y-2 md:col-span-2 group">

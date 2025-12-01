@@ -1,7 +1,28 @@
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 
+/**
+ * DisableInspect Component
+ * 
+ * Disables right-click context menu and developer tools shortcuts
+ * on public pages for security. Allows full access on admin and ambassador dashboards.
+ */
 const DisableInspect = () => {
+  const location = useLocation();
+  
+  // Check if current route is admin or ambassador dashboard
+  const isAdminDashboard = location.pathname.startsWith('/admin') && location.pathname !== '/admin/login';
+  const isAmbassadorDashboard = location.pathname.startsWith('/ambassador/dashboard');
+  
+  // Allow inspect/console on admin and ambassador dashboards
+  const allowInspect = isAdminDashboard || isAmbassadorDashboard;
+
   useEffect(() => {
+    // Skip all restrictions if we're on admin/ambassador dashboard
+    if (allowInspect) {
+      return;
+    }
+
     // Disable right-click context menu
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
@@ -207,13 +228,8 @@ const DisableInspect = () => {
       if (widthThreshold || heightThreshold) {
         if (!devToolsOpen) {
           devToolsOpen = true;
-          // Clear console when DevTools is detected
-          console.clear();
-          // DON'T redirect - just clear console
-          // Redirecting causes issues on mobile browsers
-          // if (window.location.pathname !== '/') {
-          //   window.location.href = '/';
-          // }
+          // Console clearing disabled - keeping console logs visible
+          // console.clear();
         }
       } else {
         devToolsOpen = false;
@@ -238,14 +254,11 @@ const DisableInspect = () => {
       });
     };
 
-    // Disable debugger
+    // Disable debugger (disabled - cannot redefine debugger statement)
     const disableDebugger = () => {
-      const originalDebugger = window.Debug;
-      Object.defineProperty(window, 'debugger', {
-        get: () => originalDebugger,
-        set: () => {},
-        configurable: false
-      });
+      // The 'debugger' keyword is a JavaScript statement, not a property
+      // It cannot be disabled by redefining window properties
+      // This function is kept as a no-op to maintain compatibility
     };
 
     // Add event listeners
@@ -283,10 +296,9 @@ const DisableInspect = () => {
         devToolsCheckInterval = null;
       }
     };
-  }, []);
+  }, [allowInspect, location.pathname]);
 
   return null;
 };
 
 export default DisableInspect;
-

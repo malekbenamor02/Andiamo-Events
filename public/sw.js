@@ -42,12 +42,12 @@ self.addEventListener('fetch', (event) => {
     // Don't catch errors - let them propagate naturally, but handle gracefully
     event.respondWith(
       fetch(event.request).catch(err => {
-        // Log error but don't block - return a failed response
+        // Log error but don't block - return a proper error response
         console.warn('Service worker fetch error (non-critical):', err);
-        // Return a response that indicates network failure
-        return new Response(null, { 
-          status: 0, 
-          statusText: 'Network Error',
+        // Return a proper HTTP error response (503 Service Unavailable)
+        return new Response('Network Error', { 
+          status: 503, 
+          statusText: 'Service Unavailable',
           headers: { 'Content-Type': 'text/plain' }
         });
       })

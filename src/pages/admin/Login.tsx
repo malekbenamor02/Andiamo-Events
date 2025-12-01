@@ -54,18 +54,19 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     };
   }, [RECAPTCHA_SITE_KEY]);
 
-  // Execute reCAPTCHA v3 (skip in localhost if disabled)
+  // Execute reCAPTCHA v3
   const executeRecaptcha = async (): Promise<string | null> => {
-    // Check if we're on localhost and reCAPTCHA is disabled for localhost
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const disableRecaptchaLocalhost = import.meta.env.VITE_DISABLE_RECAPTCHA_LOCALHOST === 'true';
+    // Bypass reCAPTCHA on localhost for development
+    const isLocalhost = window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1' ||
+                       window.location.hostname.startsWith('192.168.') ||
+                       window.location.hostname.startsWith('10.0.');
     
-    if (isLocalhost && disableRecaptchaLocalhost) {
-      // Return a dummy token for localhost development
+    if (isLocalhost) {
       console.log('⚠️  reCAPTCHA bypassed for localhost development');
       return 'localhost-bypass-token';
     }
-    
+
     if (!RECAPTCHA_SITE_KEY || !window.grecaptcha) {
       return null;
     }
@@ -107,10 +108,16 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     setLoading(true);
     setError("");
 
-    // Execute reCAPTCHA v3
+    // Execute reCAPTCHA v3 (bypassed on localhost)
     const recaptchaToken = await executeRecaptcha();
     
-    if (!recaptchaToken) {
+    // Only require reCAPTCHA if not on localhost
+    const isLocalhost = window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1' ||
+                       window.location.hostname.startsWith('192.168.') ||
+                       window.location.hostname.startsWith('10.0.');
+    
+    if (!isLocalhost && !recaptchaToken) {
       setError(language === 'en' ? 'reCAPTCHA verification failed. Please try again.' : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.');
       toast({
         title: language === 'en' ? "Verification Failed" : "Échec de la vérification",
@@ -344,7 +351,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                     required
                     autoComplete="email"
                     className="w-full pl-10 h-12 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
-                    placeholder="admin@andiamo.com"
+                    placeholder="admin@andiamoevents.com"
                   />
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <div className="absolute inset-0 rounded-md pointer-events-none opacity-0 group-hover:opacity-10 transition-opacity duration-300 bg-gradient-to-r from-primary/20 to-secondary/20" />
@@ -399,7 +406,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
               <Button
                 type="submit"
                 className="w-full h-12 btn-gradient text-lg font-semibold relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
-                disabled={loading || !RECAPTCHA_SITE_KEY}
+                disabled={loading || (!RECAPTCHA_SITE_KEY && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.hostname.startsWith('192.168.') && !window.location.hostname.startsWith('10.0.'))}
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
                   {loading ? (

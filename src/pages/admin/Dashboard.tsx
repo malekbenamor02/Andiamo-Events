@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,6 +17,7 @@ import { uploadFavicon, deleteFavicon, fetchFaviconSettings, FaviconSettings } f
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, createAdminCredentialsEmail } from "@/lib/email";
+import { fetchSalesSettings, updateSalesSettings } from "@/lib/salesSettings";
 import {
   CheckCircle, XCircle, Clock, Users, TrendingUp, DollarSign, LogOut,
   Plus, Edit, Trash2, Calendar as CalendarIcon, MapPin, Phone, Mail, User, Settings,
@@ -24,7 +25,7 @@ import {
   Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
   PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
   Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Database,
-  Search, Filter, MoreVertical, ExternalLink, Ticket, TrendingDown, Percent, Target
+  Search, Filter, MoreVertical, ExternalLink, Ticket, TrendingDown, Percent, Target, Package
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
@@ -32,8 +33,10 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { CITIES, SOUSSE_VILLES } from "@/lib/constants";
 
 
 interface AdminDashboardProps {
@@ -47,6 +50,7 @@ interface AmbassadorApplication {
   phone_number: string;
   email?: string; // Make email optional since it might not exist in database yet
   city: string;
+  ville?: string; // Ville (neighborhood) - only for Sousse
   social_link?: string;
   motivation?: string;
   status: string;
@@ -85,6 +89,7 @@ interface Ambassador {
   phone: string;
   email?: string;
   city: string;
+  ville?: string;
   status: string;
   commission_rate: number;
   password?: string;
@@ -148,6 +153,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     phone_number: '',
     email: '',
     city: '',
+    ville: '',
     social_link: ''
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -167,6 +173,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     phone?: string;
     password?: string;
     city?: string;
+    ville?: string;
   }>({});
 
   const [sponsors, setSponsors] = useState([]);
@@ -299,6 +306,71 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               { id: '2', customerName: 'Jane Smith', issue: 'Refund request', priority: 'medium', status: 'open' },
               { id: '3', customerName: 'Mike Johnson', issue: 'Duplicate charge', priority: 'high', status: 'resolved' }
             ]);
+
+  // Ambassador Sales System state
+  const [codOrders, setCodOrders] = useState<any[]>([]);
+  const [manualOrders, setManualOrders] = useState<any[]>([]);
+  const [allAmbassadorOrders, setAllAmbassadorOrders] = useState<any[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [selectedOrderAmbassador, setSelectedOrderAmbassador] = useState<any>(null);
+  const [emailDeliveryLogs, setEmailDeliveryLogs] = useState<any[]>([]);
+  const [loadingEmailLogs, setLoadingEmailLogs] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [isOrderDetailsOpen, setIsOrderDetailsOpen] = useState(false);
+  const [orderLogs, setOrderLogs] = useState<any[]>([]);
+  const [roundRobinData, setRoundRobinData] = useState<any[]>([]);
+  const [performanceReports, setPerformanceReports] = useState<any>(null);
+  const [salesSystemTab, setSalesSystemTab] = useState('cod-orders');
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [loadingRoundRobin, setLoadingRoundRobin] = useState(false);
+  const [loadingPerformance, setLoadingPerformance] = useState(false);
+
+  // Online Orders state
+  const [onlineOrders, setOnlineOrders] = useState<any[]>([]);
+  const [selectedOnlineOrder, setSelectedOnlineOrder] = useState<any>(null);
+  const [isOnlineOrderDetailsOpen, setIsOnlineOrderDetailsOpen] = useState(false);
+  const [loadingOnlineOrders, setLoadingOnlineOrders] = useState(false);
+  const [onlineOrderFilters, setOnlineOrderFilters] = useState({
+    status: 'all',
+    city: 'all',
+    passType: 'all',
+    dateFrom: null as Date | null,
+    dateTo: null as Date | null
+  });
+
+  // COD Orders filters
+  const [codOrderFilters, setCodOrderFilters] = useState({
+    status: 'all',
+    city: 'all',
+    ville: 'all',
+    passType: 'all',
+    ambassador: 'all',
+    dateFrom: null as Date | null,
+    dateTo: null as Date | null
+  });
+
+  // All Orders filters
+  const [allOrderFilters, setAllOrderFilters] = useState({
+    status: 'all',
+    city: 'all',
+    ville: 'all',
+    passType: 'all',
+    source: 'all',
+    ambassador: 'all',
+    dateFrom: null as Date | null,
+    dateTo: null as Date | null
+  });
+
+  // Manual Orders filters
+  const [manualOrderFilters, setManualOrderFilters] = useState({
+    status: 'all',
+    city: 'all',
+    ville: 'all',
+    passType: 'all',
+    ambassador: 'all',
+    dateFrom: null as Date | null,
+    dateTo: null as Date | null
+  });
 
   const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(2 * 60 * 60); // 2 hours in seconds
 
@@ -765,26 +837,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }, [selectedEventId, tickets, ambassadors]);
 
   // Fetch functions - defined before fetchAllData to avoid hoisting issues
-  const fetchSalesSettings = async () => {
+  const fetchSalesSettingsData = async () => {
     try {
-      const { data, error } = await supabase
-        .from('site_content')
-        .select('content')
-        .eq('key', 'sales_settings')
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching sales settings:', error);
-        return;
-      }
-
-      if (data && data.content) {
-        const settings = data.content as { enabled?: boolean };
-        setSalesEnabled(settings.enabled !== false); // Default to true if not set
-      } else {
-        // Default to enabled if no setting exists
-        setSalesEnabled(true);
-      }
+      const settings = await fetchSalesSettings();
+      setSalesEnabled(settings.enabled);
     } catch (error) {
       console.error('Error fetching sales settings:', error);
     }
@@ -1009,6 +1065,533 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Handle reorder hero images
   const handleReorderHeroImages = async (newOrder: HeroImage[]) => {
     await saveHeroImages(newOrder);
+  };
+
+  // Fetch Ambassador Sales System data
+  const fetchAmbassadorSalesData = async () => {
+    setLoadingOrders(true);
+    try {
+      // First, fetch all ambassadors to create name mapping
+      const { data: allAmbassadorsData, error: ambassadorsError } = await (supabase as any)
+        .from('ambassadors')
+        .select('id, full_name, ville, status, city')
+        .eq('status', 'approved');
+      
+      if (ambassadorsError) throw ambassadorsError;
+      
+      // Create ambassador name mapping
+      const ambassadorNameMap = new Map<string, string>();
+      (allAmbassadorsData || []).forEach((amb: any) => {
+        ambassadorNameMap.set(amb.id, amb.full_name);
+      });
+
+      // Fetch COD orders
+      const { data: codData, error: codError } = await (supabase as any)
+        .from('orders')
+        .select('*')
+        .eq('source', 'platform_cod')
+        .order('created_at', { ascending: false });
+
+      if (codError) throw codError;
+
+      // Fetch manual orders
+      const { data: manualData, error: manualError } = await (supabase as any)
+        .from('orders')
+        .select('*')
+        .eq('source', 'ambassador_manual')
+        .order('created_at', { ascending: false });
+
+      if (manualError) throw manualError;
+
+      // Fetch all ambassador orders (COD + manual)
+      const { data: allData, error: allError } = await (supabase as any)
+        .from('orders')
+        .select('*')
+        .in('source', ['platform_cod', 'ambassador_manual'])
+        .order('created_at', { ascending: false });
+
+      if (allError) throw allError;
+
+      // Enrich orders with ambassador names
+      const enrichedCodOrders = (codData || []).map((order: any) => ({
+        ...order,
+        ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || 'Unknown') : null
+      }));
+      setCodOrders(enrichedCodOrders);
+      
+      const enrichedManualOrders = (manualData || []).map((order: any) => ({
+        ...order,
+        ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || 'Unknown') : null
+      }));
+      setManualOrders(enrichedManualOrders);
+      
+      const enrichedAllOrders = (allData || []).map((order: any) => ({
+        ...order,
+        ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || 'Unknown') : null
+      }));
+      setAllAmbassadorOrders(enrichedAllOrders);
+
+      // Fetch order logs
+      const { data: logsData, error: logsError } = await (supabase as any)
+        .from('order_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (logsError) throw logsError;
+      setOrderLogs(logsData || []);
+
+      // Fetch round robin data - get all villes from ambassadors and calculate active counts
+      // Filter ambassadors for Sousse only for round robin
+      const allAmbassadors = (allAmbassadorsData || []).filter((amb: any) => amb.city === 'Sousse');
+
+      // Get unique villes from ambassadors
+      const uniqueVilles = [...new Set((allAmbassadors || []).map(a => (a as any).ville).filter(Boolean))].sort();
+
+      // Fetch round robin tracker data
+      const { data: trackerData, error: trackerError } = await (supabase as any)
+        .from('round_robin_tracker')
+        .select('*');
+
+      if (trackerError) throw trackerError;
+
+      // Build round robin data with active ambassador counts
+      const roundRobinDataWithCounts = await Promise.all(
+        uniqueVilles.map(async (villeName: string) => {
+          // Count active ambassadors for this ville
+          const activeCount = (allAmbassadors || []).filter(
+            (a: any) => a.ville === villeName && a.status === 'approved'
+          ).length;
+
+          // Get tracker data for this ville
+          const tracker = (trackerData || []).find((t: any) => t.ville === villeName);
+
+          // Get last assigned ambassador name
+          let lastAssigned = 'None';
+          if (tracker?.last_assigned_ambassador_id) {
+            const lastAmb = (allAmbassadors || []).find((a: any) => a.id === tracker.last_assigned_ambassador_id);
+            lastAssigned = lastAmb?.full_name || 'Unknown';
+          }
+
+          // Get next ambassador using the function
+          let nextAmbassador = 'N/A';
+          try {
+            const { data: nextAmb } = await (supabase as any).rpc('get_next_ambassador_for_ville', {
+              p_ville: villeName
+            });
+            if (nextAmb && nextAmb.length > 0) {
+              nextAmbassador = nextAmb[0].ambassador_name || 'N/A';
+            }
+          } catch (error) {
+            console.error('Error getting next ambassador:', error);
+          }
+
+          return {
+            ville: villeName,
+            active_ambassadors: activeCount,
+            last_assigned: lastAssigned,
+            next_ambassador: nextAmbassador,
+            rotation_mode: tracker?.rotation_mode || 'automatic',
+            last_assigned_ambassador_id: tracker?.last_assigned_ambassador_id,
+            last_assigned_at: tracker?.last_assigned_at
+          };
+        })
+      );
+
+      setRoundRobinData(roundRobinDataWithCounts);
+
+      // Calculate performance reports
+      await fetchPerformanceReports();
+    } catch (error: any) {
+      // Only log to console if it's not a network error (to avoid duplicate logs)
+      if (error?.message && !error.message.includes('Failed to fetch') && !error.message.includes('NetworkError')) {
+        console.error('Error fetching ambassador sales data:', error);
+      }
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' ? 'Failed to fetch sales data' : 'Échec de la récupération des données de vente',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+
+  // Fetch online orders
+  const fetchOnlineOrders = async () => {
+    setLoadingOnlineOrders(true);
+    try {
+      let query = (supabase as any)
+        .from('orders')
+        .select('*')
+        .eq('source', 'platform_online')
+        .order('created_at', { ascending: false });
+
+      // Apply filters
+      if (onlineOrderFilters.status !== 'all') {
+        query = query.eq('payment_status', onlineOrderFilters.status);
+      }
+      if (onlineOrderFilters.city !== 'all') {
+        query = query.eq('city', onlineOrderFilters.city);
+      }
+      if (onlineOrderFilters.passType !== 'all') {
+        query = query.eq('pass_type', onlineOrderFilters.passType);
+      }
+      if (onlineOrderFilters.dateFrom) {
+        query = query.gte('created_at', onlineOrderFilters.dateFrom.toISOString());
+      }
+      if (onlineOrderFilters.dateTo) {
+        const dateTo = new Date(onlineOrderFilters.dateTo);
+        dateTo.setHours(23, 59, 59, 999);
+        query = query.lte('created_at', dateTo.toISOString());
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      setOnlineOrders(data || []);
+    } catch (error: any) {
+      console.error('Error fetching online orders:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Échec du chargement des commandes en ligne'),
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingOnlineOrders(false);
+    }
+  };
+
+  const fetchOnlineOrdersWithFilters = async (filters: typeof onlineOrderFilters) => {
+    setLoadingOnlineOrders(true);
+    try {
+      let query = (supabase as any)
+        .from('orders')
+        .select('*')
+        .eq('source', 'platform_online')
+        .order('created_at', { ascending: false });
+
+      // Apply filters
+      if (filters.status !== 'all') {
+        query = query.eq('payment_status', filters.status);
+      }
+      if (filters.city !== 'all') {
+        query = query.eq('city', filters.city);
+      }
+      if (filters.passType !== 'all') {
+        query = query.eq('pass_type', filters.passType);
+      }
+      if (filters.dateFrom) {
+        query = query.gte('created_at', filters.dateFrom.toISOString());
+      }
+      if (filters.dateTo) {
+        const dateTo = new Date(filters.dateTo);
+        dateTo.setHours(23, 59, 59, 999);
+        query = query.lte('created_at', dateTo.toISOString());
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      setOnlineOrders(data || []);
+    } catch (error: any) {
+      console.error('Error fetching online orders:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Échec du chargement des commandes en ligne'),
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingOnlineOrders(false);
+    }
+  };
+
+  // Admin order management functions
+  const handleAssignOrder = async (orderId: string, ville: string) => {
+    try {
+      const response = await fetch('/api/assign-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ order_id: orderId, ville })
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast({
+          title: language === 'en' ? 'Success' : 'Succès',
+          description: language === 'en' 
+            ? `Order assigned to ${data.ambassador?.full_name || 'ambassador'}` 
+            : `Commande assignée à ${data.ambassador?.full_name || 'ambassadeur'}`,
+          variant: 'default'
+        });
+        fetchAmbassadorSalesData();
+        if (selectedOrder?.id === orderId) {
+          setIsOrderDetailsOpen(false);
+        }
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (error: any) {
+      console.error('Error assigning order:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to assign order' : 'Échec de l\'assignation de la commande'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleAcceptOrderAsAdmin = async (orderId: string) => {
+    try {
+      const { error } = await (supabase as any)
+        .from('orders')
+        .update({
+          status: 'ACCEPTED',
+          accepted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      // Log the acceptance
+      await (supabase as any)
+        .from('order_logs')
+        .insert({
+          order_id: orderId,
+          action: 'accepted',
+          performed_by: null,
+          performed_by_type: 'admin',
+          details: { admin_action: true }
+        });
+
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' ? 'Order accepted' : 'Commande acceptée',
+        variant: 'default'
+      });
+      fetchAmbassadorSalesData();
+      if (selectedOrder?.id === orderId) {
+        setIsOrderDetailsOpen(false);
+      }
+    } catch (error: any) {
+      console.error('Error accepting order:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to accept order' : 'Échec de l\'acceptation de la commande'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleCompleteOrderAsAdmin = async (orderId: string) => {
+    try {
+      const { error } = await (supabase as any)
+        .from('orders')
+        .update({
+          status: 'COMPLETED',
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      // Log the completion
+      await (supabase as any)
+        .from('order_logs')
+        .insert({
+          order_id: orderId,
+          action: 'completed',
+          performed_by: null,
+          performed_by_type: 'admin',
+          details: { admin_action: true }
+        });
+
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' ? 'Order completed' : 'Commande terminée',
+        variant: 'default'
+      });
+      fetchAmbassadorSalesData();
+      if (selectedOrder?.id === orderId) {
+        setIsOrderDetailsOpen(false);
+      }
+    } catch (error: any) {
+      console.error('Error completing order:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to complete order' : 'Échec de la finalisation de la commande'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleBulkAssignPendingOrders = async () => {
+    if (!confirm(language === 'en' 
+      ? 'Assign all PENDING_AMBASSADOR orders using round robin? This may take a moment.' 
+      : 'Assigner toutes les commandes PENDING_AMBASSADOR en utilisant le tourniquet ? Cela peut prendre un moment.')) {
+      return;
+    }
+
+    try {
+      // Get all pending orders with ville
+      const { data: pendingOrders, error } = await (supabase as any)
+        .from('orders')
+        .select('id, ville')
+        .eq('status', 'PENDING_AMBASSADOR')
+        .eq('source', 'platform_cod')
+        .not('ville', 'is', null);
+
+      if (error) throw error;
+
+      if (!pendingOrders || pendingOrders.length === 0) {
+        toast({
+          title: language === 'en' ? 'Info' : 'Info',
+          description: language === 'en' ? 'No pending orders to assign' : 'Aucune commande en attente à assigner',
+          variant: 'default'
+        });
+        return;
+      }
+
+      let assignedCount = 0;
+      for (const order of pendingOrders) {
+        try {
+          const response = await fetch('/api/assign-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ order_id: (order as any).id, ville: (order as any).ville })
+          });
+          const data = await response.json();
+          if (data.success) {
+            assignedCount++;
+          }
+        } catch (err) {
+          console.error(`Error assigning order ${order.id}:`, err);
+        }
+      }
+
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' 
+          ? `Assigned ${assignedCount} out of ${pendingOrders.length} orders` 
+          : `${assignedCount} commandes assignées sur ${pendingOrders.length}`,
+        variant: 'default'
+      });
+      fetchAmbassadorSalesData();
+    } catch (error: any) {
+      console.error('Error bulk assigning orders:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to assign orders' : 'Échec de l\'assignation des commandes'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+
+  // Update online order payment status
+  const updateOnlineOrderStatus = async (orderId: string, newStatus: 'PENDING_PAYMENT' | 'PAID' | 'FAILED' | 'REFUNDED') => {
+    try {
+      const { error } = await (supabase as any)
+        .from('orders')
+        .update({ payment_status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      // Log the action
+      await (supabase as any).from('order_logs').insert({
+        order_id: orderId,
+        action: 'status_changed',
+        performed_by_type: 'admin',
+        details: {
+          old_payment_status: selectedOnlineOrder?.payment_status,
+          new_payment_status: newStatus,
+          action: `Marked as ${newStatus}`
+        }
+      });
+
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' ? `Order status updated to ${newStatus}` : `Statut de la commande mis à jour vers ${newStatus}`,
+        variant: "default",
+      });
+
+      // Refresh orders
+      await fetchOnlineOrders();
+      if (selectedOnlineOrder?.id === orderId) {
+        const updatedOrder = onlineOrders.find(o => o.id === orderId);
+        if (updatedOrder) {
+          setSelectedOnlineOrder({ ...updatedOrder, payment_status: newStatus });
+        }
+      }
+    } catch (error: any) {
+      console.error('Error updating order status:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to update order status' : 'Échec de la mise à jour du statut'),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const fetchPerformanceReports = async () => {
+    setLoadingPerformance(true);
+    try {
+      // Fetch all orders (ambassador + online)
+      const { data: allOrders } = await (supabase as any)
+        .from('orders')
+        .select('*');
+
+      if (!allOrders) return;
+
+      // Separate ambassador orders and online orders
+      const ambassadorOrders = (allOrders as any[]).filter((o: any) => 
+        o.source === 'platform_cod' || o.source === 'ambassador_manual'
+      );
+      const onlineOrders = (allOrders as any[]).filter((o: any) => o.source === 'platform_online');
+
+      // Total orders (all sources)
+      const total = allOrders.length;
+      
+      // Completed orders: 
+      // - For ambassador orders: status === 'COMPLETED'
+      // - For online orders: payment_status === 'PAID'
+      const completedAmbassador = ambassadorOrders.filter((o: any) => 
+        o.status?.toUpperCase() === 'COMPLETED'
+      ).length;
+      const completedOnline = onlineOrders.filter((o: any) => 
+        o.payment_status === 'PAID'
+      ).length;
+      const totalCompleted = completedAmbassador + completedOnline;
+      
+      const successRate = total > 0 ? ((totalCompleted / total) * 100).toFixed(1) : '0';
+
+      // Calculate average response time (only for ambassador orders with assigned/accepted)
+      const acceptedOrders = ambassadorOrders.filter((o: any) => o.accepted_at && o.assigned_at);
+      const avgResponseTime = acceptedOrders.length > 0
+        ? (acceptedOrders.reduce((sum: number, o: any) => {
+            const assigned = new Date(o.assigned_at).getTime();
+            const accepted = new Date(o.accepted_at).getTime();
+            return sum + (accepted - assigned);
+          }, 0) / acceptedOrders.length / 1000 / 60).toFixed(1)
+        : '0';
+
+      setPerformanceReports({
+        totalOrders: total,
+        totalCompleted,
+        completedAmbassador,
+        completedOnline,
+        successRate,
+        avgResponseTime
+      });
+    } catch (error) {
+      console.error('Error fetching performance reports:', error);
+    } finally {
+      setLoadingPerformance(false);
+    }
   };
 
   // Fetch about images
@@ -1784,11 +2367,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         
         if (response.ok) {
           const data = await response.json();
-          console.log('Admin role data:', data); // Debug log
+          // Debug logs removed - uncomment if needed for debugging
+          // console.log('Admin role data:', data);
           if (data.valid && data.admin) {
             const role = data.admin.role || 'admin';
-            console.log('Setting admin role to:', role); // Debug log
-            console.log('Full admin object:', data.admin); // Debug log
+            // console.log('Setting admin role to:', role);
+            // console.log('Full admin object:', data.admin);
             setCurrentAdminRole(role);
             
             // Show alert if role is not super_admin but user expects it
@@ -2130,11 +2714,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       // Fetch sales for all ambassadors
       if (ambassadorsData && ambassadorsData.length > 0) {
-        const { data: salesData, error: salesError } = await supabase
+        const { data: salesData, error: salesError } = await (supabase as any)
           .from('clients')
           .select('ambassador_id, standard_tickets, vip_tickets');
         if (salesError) {
-          console.error('Error fetching ambassador sales:', salesError);
+          // Only log if it's not a handled error (e.g., table doesn't exist is expected)
+          if (salesError.code !== '42P01' && salesError.code !== 'PGRST116') {
+            console.error('Error fetching ambassador sales:', salesError);
+          }
           setAmbassadorSales({});
         } else {
           // Aggregate sales by ambassador_id
@@ -2151,8 +2738,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setAmbassadorSales({});
       }
 
-      // Fetch sales settings
-      await fetchSalesSettings();
+      await fetchSalesSettingsData();
       await fetchMaintenanceSettings();
       await fetchAmbassadorApplicationSettings();
       await fetchHeroImages();
@@ -2444,13 +3030,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       let actualApplicationId = application.id;
       if (isManual) {
         // Find the application record for this manually added ambassador
-        const { data: appRecord } = await supabase
+        const result: any = await (supabase as any)
           .from('ambassador_applications')
           .select('id')
           .eq('phone_number', application.phone_number)
           .eq('status', 'approved')
           .eq('manually_added', true)
           .maybeSingle();
+        const appRecord = result?.data || result;
         if (appRecord) {
           actualApplicationId = appRecord.id;
         }
@@ -2595,13 +3182,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Try to find the actual application ID for manually added
       let actualApplicationId = application.id;
       if (application.manually_added) {
-        const { data: appRecord } = await supabase
+        const result: any = await (supabase as any)
           .from('ambassador_applications')
           .select('id')
           .eq('phone_number', application.phone_number)
           .eq('status', 'approved')
           .eq('manually_added', true)
           .maybeSingle();
+        const appRecord = result?.data || result;
         if (appRecord) {
           actualApplicationId = appRecord.id;
         }
@@ -2622,29 +3210,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-
-  // Update sales settings - using direct Supabase (old method)
-  const updateSalesSettings = async (enabled: boolean) => {
+  const updateSalesSettingsData = async (enabled: boolean) => {
     setLoadingSalesSettings(true);
     try {
-      const { error } = await supabase
-        .from('site_content')
-        .upsert({
-          key: 'sales_settings',
-          content: { enabled },
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'key'
-        });
-
-      if (error) {
-        // If RLS blocks it, provide helpful error
-        if (error.code === '42501' || error.message?.includes('policy')) {
-          throw new Error('Permission denied. Please run FIX_SALES_SETTINGS.sql in Supabase SQL Editor to enable admin updates.');
-        }
-        throw error;
-      }
-
+      await updateSalesSettings(enabled);
       setSalesEnabled(enabled);
       toast({
         title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
@@ -2652,9 +3221,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           ? (language === 'en' ? 'Sales are now enabled for ambassadors' : 'Les ventes sont maintenant activées pour les ambassadeurs')
           : (language === 'en' ? 'Sales are now disabled for ambassadors' : 'Les ventes sont maintenant désactivées pour les ambassadeurs'),
       });
-      
-      // Refresh the settings to ensure sync
-      await fetchSalesSettings();
+      await fetchSalesSettingsData();
     } catch (error: any) {
       console.error('Error updating sales settings:', error);
       const errorMessage = error.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres');
@@ -3117,6 +3684,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             phone: ambassador.phone,
             email: ambassador.email,
             city: ambassador.city,
+            ville: ambassador.ville || null,
             status: ambassador.status,
             commission_rate: ambassador.commission_rate,
             updated_at: new Date().toISOString()
@@ -3178,7 +3746,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       // For new ambassadors, use the new form data
-      const errors: typeof ambassadorErrors = {};
+      const errors: {
+        full_name?: string;
+        email?: string;
+        phone?: string;
+        password?: string;
+        city?: string;
+        ville?: string;
+      } = {};
       let hasErrors = false;
 
       // Validate required fields
@@ -3216,6 +3791,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Validate city
       if (!newAmbassadorForm.city || !newAmbassadorForm.city.trim()) {
         errors.city = language === 'en' ? "City is required" : "La ville est requise";
+        hasErrors = true;
+      } else if (!CITIES.includes(newAmbassadorForm.city as any)) {
+        errors.city = language === 'en' ? "Please select a valid city from the list" : "Veuillez sélectionner une ville valide dans la liste";
+        hasErrors = true;
+      }
+
+      // Validate ville is required for Sousse
+      if (newAmbassadorForm.city === 'Sousse' && (!newAmbassadorForm.ville || !SOUSSE_VILLES.includes(newAmbassadorForm.ville as any))) {
+        errors.ville = language === 'en' ? "Ville (neighborhood) is required for Sousse" : "Le quartier est requis pour Sousse";
         hasErrors = true;
       }
 
@@ -3280,6 +3864,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           phone: cleanedPhone,
           email: newAmbassadorForm.email.trim().toLowerCase(),
           city: newAmbassadorForm.city.trim(),
+          ville: newAmbassadorForm.city === 'Sousse' ? newAmbassadorForm.ville.trim() : null,
           password: hashedPassword,
           status: 'approved',
           commission_rate: 10,
@@ -3300,6 +3885,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           phone_number: cleanedPhone,
           email: newAmbassadorForm.email.trim().toLowerCase(),
           city: newAmbassadorForm.city.trim(),
+          ville: newAmbassadorForm.city === 'Sousse' ? newAmbassadorForm.ville.trim() : null,
           social_link: newAmbassadorForm.social_link?.trim() || null,
           motivation: language === 'en' ? 'Manually added by admin' : 'Ajouté manuellement par l\'administrateur',
           status: 'approved',
@@ -3312,7 +3898,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       // Find the application record we just created to get its ID
-      const { data: createdApp } = await supabase
+      const result: any = await (supabase as any)
         .from('ambassador_applications')
         .select('id')
         .eq('phone_number', cleanedPhone)
@@ -3321,6 +3907,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+      const createdApp = (result?.data || result) as { id: string } | null;
 
       const applicationId = createdApp?.id || newAmbassador.id;
 
@@ -3424,6 +4011,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         phone_number: '',
         email: '',
         city: '',
+        ville: '',
         social_link: ''
       });
       setEditingAmbassador(null);
@@ -4018,6 +4606,162 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       default:
         return <div className="w-3 h-3 rounded-full bg-yellow-500" title={t.pending} />;
     }
+  };
+
+  // Get status color and label for small circle indicators
+  const getOrderStatusInfo = (status: string): { color: string; label: string } => {
+    const normalizedStatus = (status || '').toUpperCase();
+    
+    // Status color and label mapping
+    const statusConfig: Record<string, { color: string; label: string }> = {
+      // Completed statuses - Green
+      'COMPLETED': {
+        color: 'bg-green-500',
+        label: language === 'en' ? 'Completed' : 'Terminé'
+      },
+      'MANUAL_COMPLETED': {
+        color: 'bg-green-500',
+        label: language === 'en' ? 'Manual Completed' : 'Terminé Manuel'
+      },
+      
+      // Accepted statuses - Purple
+      'ACCEPTED': {
+        color: 'bg-purple-500',
+        label: language === 'en' ? 'Accepted' : 'Accepté'
+      },
+      'MANUAL_ACCEPTED': {
+        color: 'bg-purple-500',
+        label: language === 'en' ? 'Manual Accepted' : 'Accepté Manuel'
+      },
+      
+      // Pending statuses - Cyan/Blue
+      'PENDING_AMBASSADOR': {
+        color: 'bg-cyan-500',
+        label: language === 'en' ? 'Pending Ambassador' : 'En Attente Ambassadeur'
+      },
+      'AUTO_REASSIGNED': {
+        color: 'bg-cyan-500',
+        label: language === 'en' ? 'Auto Reassigned' : 'Réassigné Auto'
+      },
+      'PENDING': {
+        color: 'bg-cyan-500',
+        label: language === 'en' ? 'Pending' : 'En Attente'
+      },
+      'PENDING_PAYMENT': {
+        color: 'bg-yellow-500',
+        label: language === 'en' ? 'Pending Payment' : 'Paiement en Attente'
+      },
+      'ASSIGNED': {
+        color: 'bg-blue-500',
+        label: language === 'en' ? 'Assigned' : 'Assigné'
+      },
+      
+      // Cancelled statuses - Red
+      'CANCELLED': {
+        color: 'bg-red-500',
+        label: language === 'en' ? 'Cancelled' : 'Annulé'
+      },
+      'CANCELLED_BY_AMBASSADOR': {
+        color: 'bg-red-500',
+        label: language === 'en' ? 'Cancelled by Ambassador' : 'Annulé par Ambassadeur'
+      },
+      'CANCELLED_BY_ADMIN': {
+        color: 'bg-red-500',
+        label: language === 'en' ? 'Cancelled by Admin' : 'Annulé par Admin'
+      },
+      
+      // Payment statuses
+      'PAID': {
+        color: 'bg-green-500',
+        label: language === 'en' ? 'Paid' : 'Payé'
+      },
+      'FAILED': {
+        color: 'bg-red-500',
+        label: language === 'en' ? 'Failed' : 'Échoué'
+      },
+      'REFUNDED': {
+        color: 'bg-orange-500',
+        label: language === 'en' ? 'Refunded' : 'Remboursé'
+      },
+      
+      // Other statuses
+      'ON_HOLD': {
+        color: 'bg-yellow-500',
+        label: language === 'en' ? 'On Hold' : 'En Attente'
+      },
+      'IGNORED': {
+        color: 'bg-gray-500',
+        label: language === 'en' ? 'Ignored' : 'Ignoré'
+      },
+      'FRAUD_SUSPECT': {
+        color: 'bg-red-600',
+        label: language === 'en' ? 'Fraud Suspect' : 'Fraude Suspecte'
+      },
+      'FRAUD_FLAGGED': {
+        color: 'bg-orange-500',
+        label: language === 'en' ? 'Fraud Flagged' : 'Signalé comme Fraude'
+      }
+    };
+    
+    const config = statusConfig[normalizedStatus] || {
+      color: 'bg-gray-500',
+      label: status || (language === 'en' ? 'Unknown' : 'Inconnu')
+    };
+    
+    return config;
+  };
+
+  // Small circle status indicator component with tooltip
+  const OrderStatusIndicator = ({ status }: { status: string }) => {
+    const statusInfo = getOrderStatusInfo(status);
+    const [showTooltip, setShowTooltip] = useState(false);
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+    
+    const handleMouseEnter = () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      setShowTooltip(true);
+    };
+    
+    const handleMouseLeave = () => {
+      timeoutRef.current = setTimeout(() => {
+        setShowTooltip(false);
+      }, 100);
+    };
+    
+    React.useEffect(() => {
+      return () => {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+      };
+    }, []);
+    
+    return (
+      <div
+        className="relative inline-flex items-center justify-center"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <div
+          className={cn(
+            "w-3 h-3 rounded-full cursor-help shadow-sm",
+            statusInfo.color
+          )}
+        />
+        {showTooltip && (
+          <div
+            className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-50 px-2 py-1 bg-popover border border-border rounded-md shadow-lg text-sm font-medium whitespace-nowrap pointer-events-none"
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
+            {statusInfo.label}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Helper function to detect Instagram URLs
@@ -4667,6 +5411,38 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <span>Ticket Management</span>
               </button>
               <button
+                onClick={() => {
+                  setActiveTab("ambassador-sales");
+                  if (codOrders.length === 0) {
+                    fetchAmbassadorSalesData();
+                  }
+                }}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-825 ${
+                  activeTab === "ambassador-sales" 
+                    ? "bg-primary text-primary-foreground shadow-lg" 
+                    : "hover:bg-accent hover:shadow-md"
+                }`}
+              >
+                <Package className={`w-4 h-4 transition-transform duration-300 ${activeTab === "ambassador-sales" ? "animate-pulse" : ""}`} />
+                <span>{language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("online-orders");
+                  if (onlineOrders.length === 0) {
+                    fetchOnlineOrders();
+                  }
+                }}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
+                  activeTab === "online-orders" 
+                    ? "bg-primary text-primary-foreground shadow-lg" 
+                    : "hover:bg-accent hover:shadow-md"
+                }`}
+              >
+                <CreditCard className={`w-4 h-4 transition-transform duration-300 ${activeTab === "online-orders" ? "animate-pulse" : ""}`} />
+                <span>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</span>
+              </button>
+              <button
                 onClick={() => setActiveTab("marketing")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
                   activeTab === "marketing" 
@@ -4695,7 +5471,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </button>
               <button
                 onClick={() => setActiveTab("settings")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-900 ${
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-925 ${
                   activeTab === "settings" 
                     ? "bg-primary text-primary-foreground shadow-lg" 
                     : "hover:bg-accent hover:shadow-md"
@@ -5755,23 +6531,61 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           </div>
                           <div>
                               <Label htmlFor="ambassadorCity">{t.ambassadorCity} <span className="text-destructive">*</span></Label>
-                            <Input
-                              id="ambassadorCity"
+                            <Select
                               value={editingAmbassador?.city || ''}
-                                onChange={(e) => {
-                                  setEditingAmbassador(prev => ({ ...prev, city: e.target.value }));
-                                  if (ambassadorErrors.city) {
-                                    setAmbassadorErrors(prev => ({ ...prev, city: undefined }));
-                                  }
-                                }}
-                                className={ambassadorErrors.city ? 'border-destructive' : ''}
-                                required
-                              />
+                              onValueChange={(value) => {
+                                setEditingAmbassador(prev => ({ 
+                                  ...prev, 
+                                  city: value,
+                                  ville: value === 'Sousse' ? prev?.ville : ''
+                                }));
+                                if (ambassadorErrors.city) {
+                                  setAmbassadorErrors(prev => ({ ...prev, city: undefined }));
+                                }
+                              }}
+                            >
+                              <SelectTrigger className={ambassadorErrors.city ? 'border-destructive' : ''}>
+                                <SelectValue placeholder={language === 'en' ? 'Select a city' : 'Sélectionner une ville'} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {CITIES.map((city) => (
+                                  <SelectItem key={city} value={city}>{city}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                               {ambassadorErrors.city && (
                                 <p className="text-sm text-destructive mt-1">{ambassadorErrors.city}</p>
                               )}
                           </div>
                         </div>
+                        {editingAmbassador?.city === 'Sousse' && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="ambassadorVille">{language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'} <span className="text-destructive">*</span></Label>
+                              <Select
+                                value={editingAmbassador?.ville || ''}
+                                onValueChange={(value) => {
+                                  setEditingAmbassador(prev => ({ ...prev, ville: value }));
+                                  if (ambassadorErrors.ville) {
+                                    setAmbassadorErrors(prev => ({ ...prev, ville: undefined }));
+                                  }
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {SOUSSE_VILLES.map((ville) => (
+                                    <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {ambassadorErrors.ville && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.ville}</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <Label htmlFor="ambassadorCommission">{t.ambassadorCommission}</Label>
@@ -5912,18 +6726,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <Label htmlFor="newAmbassadorCity">{language === 'en' ? 'City' : 'Ville'} <span className="text-destructive">*</span></Label>
-                              <Input
-                                id="newAmbassadorCity"
+                              <Select
                                 value={newAmbassadorForm.city}
-                                onChange={(e) => {
-                                  setNewAmbassadorForm(prev => ({ ...prev, city: e.target.value }));
+                                onValueChange={(value) => {
+                                  setNewAmbassadorForm(prev => ({ 
+                                    ...prev, 
+                                    city: value,
+                                    ville: value === 'Sousse' ? prev.ville : ''
+                                  }));
                                   if (ambassadorErrors.city) {
                                     setAmbassadorErrors(prev => ({ ...prev, city: undefined }));
                                   }
                                 }}
-                                className={ambassadorErrors.city ? 'border-destructive' : ''}
-                                required
-                              />
+                              >
+                                <SelectTrigger className={ambassadorErrors.city ? 'border-destructive' : ''}>
+                                  <SelectValue placeholder={language === 'en' ? 'Select a city' : 'Sélectionner une ville'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {CITIES.map((city) => (
+                                    <SelectItem key={city} value={city}>{city}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                               {ambassadorErrors.city && (
                                 <p className="text-sm text-destructive mt-1">{ambassadorErrors.city}</p>
                               )}
@@ -5935,11 +6759,44 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 type="url"
                                 value={newAmbassadorForm.social_link}
                                 onChange={(e) => setNewAmbassadorForm(prev => ({ ...prev, social_link: e.target.value }))}
-                                placeholder="https://instagram.com/username"
+                                placeholder="https://www.instagram.com/username"
                                 className="transition-all duration-300 focus:scale-105"
                               />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {language === 'en' 
+                                  ? 'Must start with https://www.instagram.com/ or https://instagram.com/' 
+                                  : 'Doit commencer par https://www.instagram.com/ ou https://instagram.com/'}
+                              </p>
                             </div>
                           </div>
+                          {newAmbassadorForm.city === 'Sousse' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="newAmbassadorVille">{language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'} <span className="text-destructive">*</span></Label>
+                                <Select
+                                  value={newAmbassadorForm.ville}
+                                  onValueChange={(value) => {
+                                    setNewAmbassadorForm(prev => ({ ...prev, ville: value }));
+                                    if (ambassadorErrors.ville) {
+                                      setAmbassadorErrors(prev => ({ ...prev, ville: undefined }));
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className={ambassadorErrors.ville ? 'border-destructive' : ''}>
+                                    <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {SOUSSE_VILLES.map((ville) => (
+                                      <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                {ambassadorErrors.ville && (
+                                  <p className="text-sm text-destructive mt-1">{ambassadorErrors.ville}</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
                           <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                             <p className="text-sm text-blue-900 dark:text-blue-100">
                               {language === 'en' 
@@ -5961,6 +6818,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 phone_number: '',
                                 email: '',
                                 city: '',
+                                ville: '',
                                 social_link: ''
                               });
                               setAmbassadorErrors({});
@@ -6235,6 +7093,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         <TableHead className="font-semibold">Phone</TableHead>
                         <TableHead className="font-semibold">Email</TableHead>
                         <TableHead className="font-semibold">City</TableHead>
+                        <TableHead className="font-semibold">{language === 'en' ? 'Ville' : 'Quartier'}</TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
                         <TableHead className="font-semibold">Applied</TableHead>
                         <TableHead className="font-semibold">Details</TableHead>
@@ -6284,6 +7143,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               <MapPin className="w-3 h-3 text-muted-foreground" />
                               <span>{application.city}</span>
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              // Show ville if available
+                              if (application.ville) {
+                                return <span className="text-sm">{application.ville}</span>;
+                              }
+                              // If no ville but city is Sousse, try to get it from corresponding ambassador
+                              if (application.city === 'Sousse') {
+                                // Try to find matching ambassador
+                                const matchingAmbassador = ambassadors.find(amb => 
+                                  amb.phone === application.phone_number || 
+                                  (application.email && amb.email === application.email)
+                                );
+                                if (matchingAmbassador?.ville) {
+                                  return <span className="text-sm text-muted-foreground italic">{matchingAmbassador.ville}*</span>;
+                                }
+                              }
+                              return <span className="text-muted-foreground text-xs">-</span>;
+                            })()}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
@@ -7841,6 +8720,1445 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
               </TabsContent>
 
+              {/* Online Orders Tab */}
+              <TabsContent value="online-orders" className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</CardTitle>
+                      <Button onClick={fetchOnlineOrders} variant="outline" size="sm">
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        {language === 'en' ? 'Refresh' : 'Actualiser'}
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Filters */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                      <Select
+                        value={onlineOrderFilters.status}
+                        onValueChange={(value) => {
+                          const newFilters = { ...onlineOrderFilters, status: value };
+                          setOnlineOrderFilters(newFilters);
+                          fetchOnlineOrdersWithFilters(newFilters);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={language === 'en' ? 'Payment Status' : 'Statut de Paiement'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{language === 'en' ? 'All Statuses' : 'Tous les Statuts'}</SelectItem>
+                          <SelectItem value="PENDING_PAYMENT">{language === 'en' ? 'Pending Payment' : 'Paiement en Attente'}</SelectItem>
+                          <SelectItem value="PAID">{language === 'en' ? 'Paid' : 'Payé'}</SelectItem>
+                          <SelectItem value="FAILED">{language === 'en' ? 'Failed' : 'Échoué'}</SelectItem>
+                          <SelectItem value="REFUNDED">{language === 'en' ? 'Refunded' : 'Remboursé'}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={onlineOrderFilters.city}
+                        onValueChange={(value) => {
+                          const newFilters = { ...onlineOrderFilters, city: value };
+                          setOnlineOrderFilters(newFilters);
+                          // Fetch immediately with new filter
+                          fetchOnlineOrdersWithFilters(newFilters);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={language === 'en' ? 'City' : 'Ville'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{language === 'en' ? 'All Cities' : 'Toutes les Villes'}</SelectItem>
+                          {CITIES.map(city => (
+                            <SelectItem key={city} value={city}>{city}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={onlineOrderFilters.passType}
+                        onValueChange={(value) => {
+                          const newFilters = { ...onlineOrderFilters, passType: value };
+                          setOnlineOrderFilters(newFilters);
+                          fetchOnlineOrdersWithFilters(newFilters);
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={language === 'en' ? 'Pass Type' : 'Type de Pass'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{language === 'en' ? 'All Types' : 'Tous les Types'}</SelectItem>
+                          <SelectItem value="standard">{language === 'en' ? 'Standard' : 'Standard'}</SelectItem>
+                          <SelectItem value="vip">{language === 'en' ? 'VIP' : 'VIP'}</SelectItem>
+                          <SelectItem value="mixed">{language === 'en' ? 'Mixed' : 'Mixte'}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <div className="flex gap-2">
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" className="w-full">
+                              <CalendarIcon className="w-4 h-4 mr-2" />
+                              {language === 'en' ? 'Date Range' : 'Plage de Dates'}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <div className="p-4 space-y-4">
+                              <div>
+                                <Label>{language === 'en' ? 'From' : 'De'}</Label>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                      {onlineOrderFilters.dateFrom ? format(onlineOrderFilters.dateFrom, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0">
+                                    <Calendar
+                                      mode="single"
+                                      selected={onlineOrderFilters.dateFrom || undefined}
+                                      onSelect={(date) => {
+                                        const newFilters = { ...onlineOrderFilters, dateFrom: date || null };
+                                        setOnlineOrderFilters(newFilters);
+                                        fetchOnlineOrdersWithFilters(newFilters);
+                                      }}
+                                      initialFocus
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                              <div>
+                                <Label>{language === 'en' ? 'To' : 'À'}</Label>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                      {onlineOrderFilters.dateTo ? format(onlineOrderFilters.dateTo, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0">
+                                    <Calendar
+                                      mode="single"
+                                      selected={onlineOrderFilters.dateTo || undefined}
+                                      onSelect={(date) => {
+                                        const newFilters = { ...onlineOrderFilters, dateTo: date || null };
+                                        setOnlineOrderFilters(newFilters);
+                                        fetchOnlineOrdersWithFilters(newFilters);
+                                      }}
+                                      initialFocus
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const newFilters = { ...onlineOrderFilters, dateFrom: null, dateTo: null };
+                                  setOnlineOrderFilters(newFilters);
+                                  fetchOnlineOrdersWithFilters(newFilters);
+                                }}
+                                className="w-full"
+                              >
+                                {language === 'en' ? 'Clear Dates' : 'Effacer les Dates'}
+                              </Button>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    </div>
+
+                    {/* Orders Table */}
+                    {loadingOnlineOrders ? (
+                      <div className="text-center py-8">
+                        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                        <p className="text-muted-foreground">{language === 'en' ? 'Loading orders...' : 'Chargement des commandes...'}</p>
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{language === 'en' ? 'Customer Name' : 'Nom du Client'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Phone' : 'Téléphone'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Email' : 'Email'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Passes' : 'Passes'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Total Price' : 'Prix Total'}</TableHead>
+                            <TableHead>{language === 'en' ? 'City' : 'Ville'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Ville' : 'Quartier'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Payment Status' : 'Statut Paiement'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {onlineOrders.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                                {language === 'en' ? 'No online orders found' : 'Aucune commande en ligne trouvée'}
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            onlineOrders.map((order) => {
+                              // Parse passes from notes if available
+                              let passesDisplay = `${order.quantity}x ${order.pass_type?.toUpperCase() || 'STANDARD'}`;
+                              if (order.pass_type === 'mixed' && order.notes) {
+                                try {
+                                  const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+                                  if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
+                                    passesDisplay = notesData.all_passes
+                                      .map((p: any) => `${p.quantity}x ${p.passType?.toUpperCase() || 'STANDARD'}`)
+                                      .join(', ');
+                                  }
+                                } catch (e) {
+                                  // Fall through to default
+                                }
+                              }
+
+                              // Truncate email for display (aggressive truncation to save space)
+                              const email = order.user_email || order.email || 'N/A';
+                              const truncateEmail = (email: string) => {
+                                if (email === 'N/A' || !email.includes('@')) return email;
+                                const [local, domain] = email.split('@');
+                                if (!domain) return email.length > 12 ? email.substring(0, 9) + '...' : email;
+                                // Very aggressive: first 6 chars of local + ...@ + first 8 chars of domain
+                                const truncatedLocal = local.length > 6 ? local.substring(0, 6) + '..' : local;
+                                const truncatedDomain = domain.length > 8 ? domain.substring(0, 8) + '..' : domain;
+                                return `${truncatedLocal}@${truncatedDomain}`;
+                              };
+
+                              const handleCopyEmail = async (email: string) => {
+                                if (email === 'N/A') return;
+                                try {
+                                  await navigator.clipboard.writeText(email);
+                                  toast({
+                                    title: language === 'en' ? 'Copied!' : 'Copié!',
+                                    description: language === 'en' ? 'Email copied to clipboard' : 'Email copié dans le presse-papiers',
+                                    variant: "default",
+                                  });
+                                } catch (err) {
+                                  console.error('Failed to copy email:', err);
+                                }
+                              };
+
+                              return (
+                                <TableRow key={order.id}>
+                                  <TableCell>{order.user_name || order.customer_name || 'N/A'}</TableCell>
+                                  <TableCell>{order.user_phone || order.phone || 'N/A'}</TableCell>
+                                  <TableCell>
+                                    <div 
+                                      className="flex items-center gap-2 cursor-pointer hover:text-primary transition-colors group"
+                                      onClick={() => handleCopyEmail(email)}
+                                      title={email !== 'N/A' ? (language === 'en' ? 'Click to copy email' : 'Cliquer pour copier l\'email') : ''}
+                                    >
+                                      <span className="text-sm">{truncateEmail(email)}</span>
+                                      {email !== 'N/A' && (
+                                        <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-sm">{passesDisplay}</TableCell>
+                                  <TableCell>{order.total_price?.toFixed(2) || '0.00'} TND</TableCell>
+                                  <TableCell>{order.city || 'N/A'}</TableCell>
+                                  <TableCell>{order.ville || '-'}</TableCell>
+                                  <TableCell>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <div
+                                            className={cn(
+                                              "w-3 h-3 rounded-full cursor-help transition-opacity hover:opacity-80",
+                                              order.payment_status === 'PAID' ? 'bg-green-500' :
+                                              order.payment_status === 'FAILED' ? 'bg-red-500' :
+                                              order.payment_status === 'REFUNDED' ? 'bg-gray-500' :
+                                              'bg-yellow-500'
+                                            )}
+                                          />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>
+                                            {(() => {
+                                              const status = order.payment_status || 'PENDING_PAYMENT';
+                                              const statusMap: Record<string, string> = {
+                                                'PENDING_PAYMENT': language === 'en' ? 'Pending Payment' : 'Paiement en Attente',
+                                                'PAID': language === 'en' ? 'Paid' : 'Payé',
+                                                'FAILED': language === 'en' ? 'Failed' : 'Échoué',
+                                                'REFUNDED': language === 'en' ? 'Refunded' : 'Remboursé'
+                                              };
+                                              return statusMap[status] || status;
+                                            })()}
+                                          </p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </TableCell>
+                                  <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
+                                  <TableCell>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setSelectedOnlineOrder(order);
+                                        setIsOnlineOrderDetailsOpen(true);
+                                      }}
+                                    >
+                                      <Eye className="w-4 h-4 mr-2" />
+                                      {language === 'en' ? 'View' : 'Voir'}
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Ambassador Sales System Tab */}
+              <TabsContent value="ambassador-sales" className="space-y-6">
+                <Tabs value={salesSystemTab} onValueChange={setSalesSystemTab} className="w-full">
+                  <TabsList className="grid w-full grid-cols-6">
+                    <TabsTrigger value="cod-orders">{language === 'en' ? 'COD Orders' : 'Commandes COD'}</TabsTrigger>
+                    <TabsTrigger value="manual-orders">{language === 'en' ? 'Manual Orders' : 'Commandes Manuelles'}</TabsTrigger>
+                    <TabsTrigger value="all-orders">{language === 'en' ? 'All Orders' : 'Toutes les Commandes'}</TabsTrigger>
+                    <TabsTrigger value="round-robin">{language === 'en' ? 'Round Robin' : 'Tourniquet'}</TabsTrigger>
+                    <TabsTrigger value="order-logs">{language === 'en' ? 'Order Logs' : 'Journaux'}</TabsTrigger>
+                    <TabsTrigger value="performance">{language === 'en' ? 'Performance' : 'Performance'}</TabsTrigger>
+                  </TabsList>
+
+                  {/* COD Orders */}
+                  <TabsContent value="cod-orders" className="mt-6">
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <CardTitle>{language === 'en' ? 'COD Orders' : 'Commandes Paiement à la Livraison'}</CardTitle>
+                          <div className="flex gap-2">
+                            <Button 
+                              onClick={handleBulkAssignPendingOrders} 
+                              variant="default" 
+                              size="sm"
+                              className="bg-primary"
+                            >
+                              <Users className="w-4 h-4 mr-2" />
+                              {language === 'en' ? 'Assign All Pending' : 'Assigner Tous les En Attente'}
+                            </Button>
+                            <Button onClick={fetchAmbassadorSalesData} variant="outline" size="sm">
+                              <RefreshCw className="w-4 h-4 mr-2" />
+                              {language === 'en' ? 'Refresh' : 'Actualiser'}
+                            </Button>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {/* Filters */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                          <Select
+                            value={codOrderFilters.status}
+                            onValueChange={(value) => {
+                              setCodOrderFilters({ ...codOrderFilters, status: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Status' : 'Statut'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Statuses' : 'Tous les Statuts'}</SelectItem>
+                              <SelectItem value="PENDING_AMBASSADOR">{language === 'en' ? 'Pending Ambassador' : 'En Attente d\'Ambassadeur'}</SelectItem>
+                              <SelectItem value="ASSIGNED">{language === 'en' ? 'Assigned' : 'Assigné'}</SelectItem>
+                              <SelectItem value="ACCEPTED">{language === 'en' ? 'Accepted' : 'Accepté'}</SelectItem>
+                              <SelectItem value="COMPLETED">{language === 'en' ? 'Completed' : 'Terminé'}</SelectItem>
+                              <SelectItem value="CANCELLED">{language === 'en' ? 'Cancelled' : 'Annulé'}</SelectItem>
+                              <SelectItem value="CANCELLED_BY_AMBASSADOR">{language === 'en' ? 'Cancelled by Ambassador' : 'Annulé par l\'Ambassadeur'}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={codOrderFilters.city}
+                            onValueChange={(value) => {
+                              setCodOrderFilters({ ...codOrderFilters, city: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'City' : 'Ville'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Cities' : 'Toutes les Villes'}</SelectItem>
+                              {CITIES.map(city => (
+                                <SelectItem key={city} value={city}>{city}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={codOrderFilters.ville}
+                            onValueChange={(value) => {
+                              setCodOrderFilters({ ...codOrderFilters, ville: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Ville/Quarter' : 'Ville/Quartier'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Quarters' : 'Tous les Quartiers'}</SelectItem>
+                              {SOUSSE_VILLES.map(ville => (
+                                <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={codOrderFilters.passType}
+                            onValueChange={(value) => {
+                              setCodOrderFilters({ ...codOrderFilters, passType: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Pass Type' : 'Type de Pass'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Types' : 'Tous les Types'}</SelectItem>
+                              <SelectItem value="standard">{language === 'en' ? 'Standard' : 'Standard'}</SelectItem>
+                              <SelectItem value="vip">{language === 'en' ? 'VIP' : 'VIP'}</SelectItem>
+                              <SelectItem value="mixed">{language === 'en' ? 'Mixed' : 'Mixte'}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={codOrderFilters.ambassador}
+                            onValueChange={(value) => {
+                              setCodOrderFilters({ ...codOrderFilters, ambassador: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Ambassador' : 'Ambassadeur'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Ambassadors' : 'Tous les Ambassadeurs'}</SelectItem>
+                              {[...new Set(codOrders.map(o => o.ambassador_name).filter(Boolean))].sort().map((name: string) => (
+                                <SelectItem key={name} value={name}>{name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className="w-full">
+                                <CalendarIcon className="w-4 h-4 mr-2" />
+                                {language === 'en' ? 'Date Range' : 'Plage de Dates'}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <div className="p-4 space-y-4">
+                                <div>
+                                  <Label>{language === 'en' ? 'From' : 'De'}</Label>
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                        {codOrderFilters.dateFrom ? format(codOrderFilters.dateFrom, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0">
+                                      <Calendar
+                                        mode="single"
+                                        selected={codOrderFilters.dateFrom || undefined}
+                                        onSelect={(date) => {
+                                          setCodOrderFilters({ ...codOrderFilters, dateFrom: date || null });
+                                        }}
+                                        initialFocus
+                                      />
+                                    </PopoverContent>
+                                  </Popover>
+                                </div>
+                                <div>
+                                  <Label>{language === 'en' ? 'To' : 'À'}</Label>
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                        {codOrderFilters.dateTo ? format(codOrderFilters.dateTo, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0">
+                                      <Calendar
+                                        mode="single"
+                                        selected={codOrderFilters.dateTo || undefined}
+                                        onSelect={(date) => {
+                                          setCodOrderFilters({ ...codOrderFilters, dateTo: date || null });
+                                        }}
+                                        initialFocus
+                                      />
+                                    </PopoverContent>
+                                  </Popover>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setCodOrderFilters({ ...codOrderFilters, dateFrom: null, dateTo: null });
+                                  }}
+                                  className="w-full"
+                                >
+                                  {language === 'en' ? 'Clear Dates' : 'Effacer les Dates'}
+                                </Button>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{language === 'en' ? 'Customer' : 'Client'}</TableHead>
+                            <TableHead>{language === 'en' ? 'City/Ville' : 'Ville/Quartier'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Total' : 'Total'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Ambassador' : 'Ambassadeur'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                          <TableBody>
+                            {(() => {
+                              // Apply filters to COD orders
+                              let filteredOrders = [...codOrders];
+                              
+                              if (codOrderFilters.status !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => {
+                                  const statusUpper = order.status?.toUpperCase() || '';
+                                  if (codOrderFilters.status === 'CANCELLED') {
+                                    return statusUpper.includes('CANCELLED') || statusUpper.includes('CANCEL');
+                                  }
+                                  return statusUpper === codOrderFilters.status.toUpperCase();
+                                });
+                              }
+                              
+                              if (codOrderFilters.city !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.city === codOrderFilters.city);
+                              }
+                              
+                              if (codOrderFilters.ville !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.ville === codOrderFilters.ville);
+                              }
+                              
+                              if (codOrderFilters.passType !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.pass_type === codOrderFilters.passType);
+                              }
+                              
+                              if (codOrderFilters.ambassador !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.ambassador_name === codOrderFilters.ambassador);
+                              }
+                              
+                              if (codOrderFilters.dateFrom) {
+                                filteredOrders = filteredOrders.filter(order => {
+                                  const orderDate = new Date(order.created_at);
+                                  return orderDate >= codOrderFilters.dateFrom!;
+                                });
+                              }
+                              
+                              if (codOrderFilters.dateTo) {
+                                const dateTo = new Date(codOrderFilters.dateTo);
+                                dateTo.setHours(23, 59, 59, 999);
+                                filteredOrders = filteredOrders.filter(order => {
+                                  const orderDate = new Date(order.created_at);
+                                  return orderDate <= dateTo;
+                                });
+                              }
+                              
+                              return filteredOrders.length === 0 ? (
+                                <TableRow>
+                                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                                    {language === 'en' ? 'No COD orders found' : 'Aucune commande COD trouvée'}
+                                  </TableCell>
+                                </TableRow>
+                              ) : (
+                                filteredOrders.map((order) => {
+                                return (
+                                <TableRow key={order.id}>
+                                  <TableCell>{order.user_name || order.customer_name || 'N/A'}</TableCell>
+                                  <TableCell>{order.city}{order.ville ? ` - ${order.ville}` : ''}</TableCell>
+                                  <TableCell>
+                                    {(() => {
+                                      // If pass_type is 'mixed', try to parse notes to show breakdown
+                                      if (order.pass_type === 'mixed' && order.notes) {
+                                        try {
+                                          const notesData = typeof order.notes === 'string' 
+                                            ? JSON.parse(order.notes) 
+                                            : order.notes;
+                                          if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
+                                            const passBreakdown = notesData.all_passes
+                                              .map((p: any) => `${p.quantity}x ${p.passType?.toUpperCase() || 'STANDARD'}`)
+                                              .join(', ');
+                                            return (
+                                              <div className="space-y-1">
+                                                <Badge variant="outline">MIXED</Badge>
+                                                <p className="text-xs text-muted-foreground">{passBreakdown}</p>
+                                              </div>
+                                            );
+                                          }
+                                        } catch (e) {
+                                          // Fall through to default
+                                        }
+                                      }
+                                      // Default display
+                                      return <Badge variant={order.pass_type === 'vip' ? 'default' : 'secondary'}>
+                                        {order.pass_type?.toUpperCase() || 'STANDARD'}
+                                      </Badge>;
+                                    })()}
+                                  </TableCell>
+                                  <TableCell>{order.quantity}</TableCell>
+                                  <TableCell>{order.total_price.toFixed(2)} TND</TableCell>
+                                  <TableCell>
+                                    <OrderStatusIndicator status={order.status} />
+                                  </TableCell>
+                                  <TableCell>
+                                    {order.ambassador_id 
+                                      ? (order.ambassador_name || 'Assigned') 
+                                      : (language === 'en' ? 'Pending' : 'En Attente')}
+                                  </TableCell>
+                                  <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
+                                  <TableCell>
+                                    <Button size="sm" variant="outline" onClick={async () => {
+                                      setSelectedOrder(order);
+                                      setIsOrderDetailsOpen(true);
+                                      
+                                      // Fetch ambassador information if order has ambassador_id
+                                      if (order.ambassador_id) {
+                                        try {
+                                          const { data: ambassadorData, error } = await supabase
+                                            .from('ambassadors')
+                                            .select('id, full_name, phone, email, city, ville, status, commission_rate')
+                                            .eq('id', order.ambassador_id)
+                                            .single();
+                                          
+                                          if (!error && ambassadorData) {
+                                            setSelectedOrderAmbassador(ambassadorData);
+                                          } else {
+                                            setSelectedOrderAmbassador(null);
+                                          }
+                                        } catch (error) {
+                                          console.error('Error fetching ambassador:', error);
+                                          setSelectedOrderAmbassador(null);
+                                        }
+                                      } else {
+                                        setSelectedOrderAmbassador(null);
+                                      }
+
+                                      // Fetch email delivery logs if order is completed COD
+                                      if ((order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED') && order.payment_method === 'cod') {
+                                        try {
+                                          const response = await fetch(`/api/email-delivery-logs/${order.id}`, {
+                                            credentials: 'include'
+                                          });
+                                          if (response.ok) {
+                                            const data = await response.json();
+                                            setEmailDeliveryLogs(data.logs || []);
+                                          }
+                                        } catch (error) {
+                                          console.error('Error fetching email logs:', error);
+                                        }
+                                      }
+                                    }}>
+                                      <Eye className="w-4 h-4" />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                              );
+                            })()}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  {/* Manual Orders */}
+                  <TabsContent value="manual-orders" className="mt-6">
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <CardTitle>{language === 'en' ? 'Manual Orders' : 'Commandes Manuelles'}</CardTitle>
+                          <Button onClick={fetchAmbassadorSalesData} variant="outline" size="sm">
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                            {language === 'en' ? 'Refresh' : 'Actualiser'}
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {/* Filters */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                          <Select
+                            value={manualOrderFilters.status}
+                            onValueChange={(value) => {
+                              setManualOrderFilters({ ...manualOrderFilters, status: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Status' : 'Statut'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Statuses' : 'Tous les Statuts'}</SelectItem>
+                              <SelectItem value="PENDING_AMBASSADOR">{language === 'en' ? 'Pending Ambassador' : 'En Attente d\'Ambassadeur'}</SelectItem>
+                              <SelectItem value="ASSIGNED">{language === 'en' ? 'Assigned' : 'Assigné'}</SelectItem>
+                              <SelectItem value="ACCEPTED">{language === 'en' ? 'Accepted' : 'Accepté'}</SelectItem>
+                              <SelectItem value="COMPLETED">{language === 'en' ? 'Completed' : 'Terminé'}</SelectItem>
+                              <SelectItem value="CANCELLED">{language === 'en' ? 'Cancelled' : 'Annulé'}</SelectItem>
+                              <SelectItem value="CANCELLED_BY_AMBASSADOR">{language === 'en' ? 'Cancelled by Ambassador' : 'Annulé par l\'Ambassadeur'}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={manualOrderFilters.city}
+                            onValueChange={(value) => {
+                              setManualOrderFilters({ ...manualOrderFilters, city: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'City' : 'Ville'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Cities' : 'Toutes les Villes'}</SelectItem>
+                              {CITIES.map(city => (
+                                <SelectItem key={city} value={city}>{city}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={manualOrderFilters.ville}
+                            onValueChange={(value) => {
+                              setManualOrderFilters({ ...manualOrderFilters, ville: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Ville/Quarter' : 'Ville/Quartier'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Quarters' : 'Tous les Quartiers'}</SelectItem>
+                              {SOUSSE_VILLES.map(ville => (
+                                <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={manualOrderFilters.passType}
+                            onValueChange={(value) => {
+                              setManualOrderFilters({ ...manualOrderFilters, passType: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Pass Type' : 'Type de Pass'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Types' : 'Tous les Types'}</SelectItem>
+                              <SelectItem value="standard">{language === 'en' ? 'Standard' : 'Standard'}</SelectItem>
+                              <SelectItem value="vip">{language === 'en' ? 'VIP' : 'VIP'}</SelectItem>
+                              <SelectItem value="mixed">{language === 'en' ? 'Mixed' : 'Mixte'}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={manualOrderFilters.ambassador}
+                            onValueChange={(value) => {
+                              setManualOrderFilters({ ...manualOrderFilters, ambassador: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Ambassador' : 'Ambassadeur'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Ambassadors' : 'Tous les Ambassadeurs'}</SelectItem>
+                              {[...new Set(manualOrders.map(o => o.ambassador_name).filter(Boolean))].sort().map((name: string) => (
+                                <SelectItem key={name} value={name}>{name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className="w-full">
+                                <CalendarIcon className="w-4 h-4 mr-2" />
+                                {language === 'en' ? 'Date Range' : 'Plage de Dates'}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <div className="p-4 space-y-4">
+                                <div>
+                                  <Label>{language === 'en' ? 'From' : 'De'}</Label>
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                        {manualOrderFilters.dateFrom ? format(manualOrderFilters.dateFrom, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0">
+                                      <Calendar
+                                        mode="single"
+                                        selected={manualOrderFilters.dateFrom || undefined}
+                                        onSelect={(date) => {
+                                          setManualOrderFilters({ ...manualOrderFilters, dateFrom: date || null });
+                                        }}
+                                        initialFocus
+                                      />
+                                    </PopoverContent>
+                                  </Popover>
+                                </div>
+                                <div>
+                                  <Label>{language === 'en' ? 'To' : 'À'}</Label>
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                        {manualOrderFilters.dateTo ? format(manualOrderFilters.dateTo, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0">
+                                      <Calendar
+                                        mode="single"
+                                        selected={manualOrderFilters.dateTo || undefined}
+                                        onSelect={(date) => {
+                                          setManualOrderFilters({ ...manualOrderFilters, dateTo: date || null });
+                                        }}
+                                        initialFocus
+                                      />
+                                    </PopoverContent>
+                                  </Popover>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setManualOrderFilters({ ...manualOrderFilters, dateFrom: null, dateTo: null });
+                                  }}
+                                  className="w-full"
+                                >
+                                  {language === 'en' ? 'Clear Dates' : 'Effacer les Dates'}
+                                </Button>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              {/* Hide Order ID for manual orders */}
+                              <TableHead className="hidden">{language === 'en' ? 'Order ID' : 'ID Commande'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Source' : 'Source'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Customer' : 'Client'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Ambassador' : 'Ambassadeur'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Total' : 'Total'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {(() => {
+                              // Apply filters to manual orders
+                              let filteredOrders = [...manualOrders];
+                              
+                              if (manualOrderFilters.status !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => {
+                                  const statusUpper = order.status?.toUpperCase() || '';
+                                  if (manualOrderFilters.status === 'CANCELLED') {
+                                    return statusUpper.includes('CANCELLED') || statusUpper.includes('CANCEL');
+                                  }
+                                  return statusUpper === manualOrderFilters.status.toUpperCase();
+                                });
+                              }
+                              
+                              if (manualOrderFilters.city !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.city === manualOrderFilters.city);
+                              }
+                              
+                              if (manualOrderFilters.ville !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.ville === manualOrderFilters.ville);
+                              }
+                              
+                              if (manualOrderFilters.passType !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.pass_type === manualOrderFilters.passType);
+                              }
+                              
+                              if (manualOrderFilters.ambassador !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.ambassador_name === manualOrderFilters.ambassador);
+                              }
+                              
+                              if (manualOrderFilters.dateFrom) {
+                                filteredOrders = filteredOrders.filter(order => {
+                                  const orderDate = new Date(order.created_at);
+                                  return orderDate >= manualOrderFilters.dateFrom!;
+                                });
+                              }
+                              
+                              if (manualOrderFilters.dateTo) {
+                                const dateTo = new Date(manualOrderFilters.dateTo);
+                                dateTo.setHours(23, 59, 59, 999);
+                                filteredOrders = filteredOrders.filter(order => {
+                                  const orderDate = new Date(order.created_at);
+                                  return orderDate <= dateTo;
+                                });
+                              }
+                              
+                              return filteredOrders.length === 0 ? (
+                                <TableRow>
+                                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                                    {language === 'en' ? 'No manual orders found' : 'Aucune commande manuelle trouvée'}
+                                  </TableCell>
+                                </TableRow>
+                              ) : (
+                                filteredOrders.map((order) => (
+                                <TableRow key={order.id}>
+                                  {/* Hide Order ID for manual orders */}
+                                  <TableCell className="hidden font-mono text-xs">{order.id.substring(0, 8)}...</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline" className="text-xs">
+                                      {order.source === 'ambassador_manual' 
+                                        ? (language === 'en' ? 'Manual' : 'Manuel')
+                                        : order.source || 'N/A'}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>{order.user_name || order.customer_name || 'N/A'}</TableCell>
+                                  <TableCell>
+                                    {order.ambassador_id 
+                                      ? (order.ambassador_name || 'Assigned') 
+                                      : 'N/A'}
+                                  </TableCell>
+                                  <TableCell>
+                                    {(() => {
+                                      // If pass_type is 'mixed', try to parse notes to show breakdown
+                                      if (order.pass_type === 'mixed' && order.notes) {
+                                        try {
+                                          const notesData = typeof order.notes === 'string' 
+                                            ? JSON.parse(order.notes) 
+                                            : order.notes;
+                                          if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
+                                            const passBreakdown = notesData.all_passes
+                                              .map((p: any) => `${p.quantity}x ${p.passType?.toUpperCase() || 'STANDARD'}`)
+                                              .join(', ');
+                                            return (
+                                              <div className="space-y-1">
+                                                <Badge variant="outline">MIXED</Badge>
+                                                <p className="text-xs text-muted-foreground">{passBreakdown}</p>
+                                              </div>
+                                            );
+                                          }
+                                        } catch (e) {
+                                          // Fall through to default
+                                        }
+                                      }
+                                      // Default display
+                                      return <Badge variant={order.pass_type === 'vip' ? 'default' : 'secondary'}>
+                                        {order.pass_type?.toUpperCase() || 'STANDARD'}
+                                      </Badge>;
+                                    })()}
+                                  </TableCell>
+                                  <TableCell>{order.quantity}</TableCell>
+                                  <TableCell>{order.total_price.toFixed(2)} TND</TableCell>
+                                  <TableCell>
+                                    <OrderStatusIndicator status={order.status} />
+                                  </TableCell>
+                                  <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
+                                  <TableCell>
+                                    <Button size="sm" variant="outline" onClick={async () => {
+                                      setSelectedOrder(order);
+                                      setIsOrderDetailsOpen(true);
+                                      
+                                      // Fetch ambassador information if order has ambassador_id
+                                      if (order.ambassador_id) {
+                                        try {
+                                          const { data: ambassadorData, error } = await supabase
+                                            .from('ambassadors')
+                                            .select('id, full_name, phone, email, city, ville, status, commission_rate')
+                                            .eq('id', order.ambassador_id)
+                                            .single();
+                                          
+                                          if (!error && ambassadorData) {
+                                            setSelectedOrderAmbassador(ambassadorData);
+                                          } else {
+                                            setSelectedOrderAmbassador(null);
+                                          }
+                                        } catch (error) {
+                                          console.error('Error fetching ambassador:', error);
+                                          setSelectedOrderAmbassador(null);
+                                        }
+                                      } else {
+                                        setSelectedOrderAmbassador(null);
+                                      }
+                                    }}>
+                                      <Eye className="w-4 h-4" />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                              );
+                            })()}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  {/* All Ambassador Orders */}
+                  <TabsContent value="all-orders" className="mt-6">
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <CardTitle>{language === 'en' ? 'All Ambassador Orders' : 'Toutes les Commandes Ambassadeurs'}</CardTitle>
+                          <Button onClick={fetchAmbassadorSalesData} variant="outline" size="sm">
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                            {language === 'en' ? 'Refresh' : 'Actualiser'}
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {/* Filters */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-6">
+                          <Select
+                            value={allOrderFilters.status}
+                            onValueChange={(value) => {
+                              setAllOrderFilters({ ...allOrderFilters, status: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Status' : 'Statut'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Statuses' : 'Tous les Statuts'}</SelectItem>
+                              <SelectItem value="PENDING_AMBASSADOR">{language === 'en' ? 'Pending Ambassador' : 'En Attente d\'Ambassadeur'}</SelectItem>
+                              <SelectItem value="ASSIGNED">{language === 'en' ? 'Assigned' : 'Assigné'}</SelectItem>
+                              <SelectItem value="ACCEPTED">{language === 'en' ? 'Accepted' : 'Accepté'}</SelectItem>
+                              <SelectItem value="COMPLETED">{language === 'en' ? 'Completed' : 'Terminé'}</SelectItem>
+                              <SelectItem value="CANCELLED">{language === 'en' ? 'Cancelled' : 'Annulé'}</SelectItem>
+                              <SelectItem value="CANCELLED_BY_AMBASSADOR">{language === 'en' ? 'Cancelled by Ambassador' : 'Annulé par l\'Ambassadeur'}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={allOrderFilters.source}
+                            onValueChange={(value) => {
+                              setAllOrderFilters({ ...allOrderFilters, source: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Source' : 'Source'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Sources' : 'Toutes les Sources'}</SelectItem>
+                              <SelectItem value="platform_cod">{language === 'en' ? 'Platform COD' : 'Plateforme COD'}</SelectItem>
+                              <SelectItem value="ambassador_manual">{language === 'en' ? 'Ambassador Manual' : 'Manuel Ambassadeur'}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={allOrderFilters.city}
+                            onValueChange={(value) => {
+                              setAllOrderFilters({ ...allOrderFilters, city: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'City' : 'Ville'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Cities' : 'Toutes les Villes'}</SelectItem>
+                              {CITIES.map(city => (
+                                <SelectItem key={city} value={city}>{city}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={allOrderFilters.ville}
+                            onValueChange={(value) => {
+                              setAllOrderFilters({ ...allOrderFilters, ville: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Ville/Quarter' : 'Ville/Quartier'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Quarters' : 'Tous les Quartiers'}</SelectItem>
+                              {SOUSSE_VILLES.map(ville => (
+                                <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={allOrderFilters.passType}
+                            onValueChange={(value) => {
+                              setAllOrderFilters({ ...allOrderFilters, passType: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Pass Type' : 'Type de Pass'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Types' : 'Tous les Types'}</SelectItem>
+                              <SelectItem value="standard">{language === 'en' ? 'Standard' : 'Standard'}</SelectItem>
+                              <SelectItem value="vip">{language === 'en' ? 'VIP' : 'VIP'}</SelectItem>
+                              <SelectItem value="mixed">{language === 'en' ? 'Mixed' : 'Mixte'}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={allOrderFilters.ambassador}
+                            onValueChange={(value) => {
+                              setAllOrderFilters({ ...allOrderFilters, ambassador: value });
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? 'Ambassador' : 'Ambassadeur'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{language === 'en' ? 'All Ambassadors' : 'Tous les Ambassadeurs'}</SelectItem>
+                              {[...new Set(allAmbassadorOrders.map(o => o.ambassador_name).filter(Boolean))].sort().map((name: string) => (
+                                <SelectItem key={name} value={name}>{name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className="w-full">
+                                <CalendarIcon className="w-4 h-4 mr-2" />
+                                {language === 'en' ? 'Date Range' : 'Plage de Dates'}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <div className="p-4 space-y-4">
+                                <div>
+                                  <Label>{language === 'en' ? 'From' : 'De'}</Label>
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                        {allOrderFilters.dateFrom ? format(allOrderFilters.dateFrom, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0">
+                                      <Calendar
+                                        mode="single"
+                                        selected={allOrderFilters.dateFrom || undefined}
+                                        onSelect={(date) => {
+                                          setAllOrderFilters({ ...allOrderFilters, dateFrom: date || null });
+                                        }}
+                                        initialFocus
+                                      />
+                                    </PopoverContent>
+                                  </Popover>
+                                </div>
+                                <div>
+                                  <Label>{language === 'en' ? 'To' : 'À'}</Label>
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                        {allOrderFilters.dateTo ? format(allOrderFilters.dateTo, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0">
+                                      <Calendar
+                                        mode="single"
+                                        selected={allOrderFilters.dateTo || undefined}
+                                        onSelect={(date) => {
+                                          setAllOrderFilters({ ...allOrderFilters, dateTo: date || null });
+                                        }}
+                                        initialFocus
+                                      />
+                                    </PopoverContent>
+                                  </Popover>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setAllOrderFilters({ ...allOrderFilters, dateFrom: null, dateTo: null });
+                                  }}
+                                  className="w-full"
+                                >
+                                  {language === 'en' ? 'Clear Dates' : 'Effacer les Dates'}
+                                </Button>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>{language === 'en' ? 'Source' : 'Source'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Customer' : 'Client'}</TableHead>
+                              <TableHead>{language === 'en' ? 'City/Ville' : 'Ville/Quartier'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Total' : 'Total'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {(() => {
+                              // Apply filters to all ambassador orders
+                              let filteredOrders = [...allAmbassadorOrders];
+                              
+                              if (allOrderFilters.status !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => {
+                                  const statusUpper = order.status?.toUpperCase() || '';
+                                  if (allOrderFilters.status === 'CANCELLED') {
+                                    return statusUpper.includes('CANCELLED') || statusUpper.includes('CANCEL');
+                                  }
+                                  return statusUpper === allOrderFilters.status.toUpperCase();
+                                });
+                              }
+                              
+                              if (allOrderFilters.source !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.source === allOrderFilters.source);
+                              }
+                              
+                              if (allOrderFilters.city !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.city === allOrderFilters.city);
+                              }
+                              
+                              if (allOrderFilters.ville !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.ville === allOrderFilters.ville);
+                              }
+                              
+                              if (allOrderFilters.passType !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.pass_type === allOrderFilters.passType);
+                              }
+                              
+                              if (allOrderFilters.ambassador !== 'all') {
+                                filteredOrders = filteredOrders.filter(order => order.ambassador_name === allOrderFilters.ambassador);
+                              }
+                              
+                              if (allOrderFilters.dateFrom) {
+                                filteredOrders = filteredOrders.filter(order => {
+                                  const orderDate = new Date(order.created_at);
+                                  return orderDate >= allOrderFilters.dateFrom!;
+                                });
+                              }
+                              
+                              if (allOrderFilters.dateTo) {
+                                const dateTo = new Date(allOrderFilters.dateTo);
+                                dateTo.setHours(23, 59, 59, 999);
+                                filteredOrders = filteredOrders.filter(order => {
+                                  const orderDate = new Date(order.created_at);
+                                  return orderDate <= dateTo;
+                                });
+                              }
+                              
+                              return filteredOrders.length === 0 ? (
+                                <TableRow>
+                                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                                    {language === 'en' ? 'No orders found' : 'Aucune commande trouvée'}
+                                  </TableCell>
+                                </TableRow>
+                              ) : (
+                                filteredOrders.map((order) => {
+                                // Use the consistent status indicator
+
+                                return (
+                                <TableRow key={order.id}>
+                                  <TableCell><Badge variant="outline">{order.source}</Badge></TableCell>
+                                  <TableCell>{order.user_name || order.customer_name || 'N/A'}</TableCell>
+                                  <TableCell>{order.city}{order.ville ? ` - ${order.ville}` : ''}</TableCell>
+                                  <TableCell>
+                                    {(() => {
+                                      // If pass_type is 'mixed', try to parse notes to show breakdown
+                                      if (order.pass_type === 'mixed' && order.notes) {
+                                        try {
+                                          const notesData = typeof order.notes === 'string' 
+                                            ? JSON.parse(order.notes) 
+                                            : order.notes;
+                                          if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
+                                            const passBreakdown = notesData.all_passes
+                                              .map((p: any) => `${p.quantity}x ${p.passType?.toUpperCase() || 'STANDARD'}`)
+                                              .join(', ');
+                                            return (
+                                              <div className="space-y-1">
+                                                <Badge variant="outline">MIXED</Badge>
+                                                <p className="text-xs text-muted-foreground">{passBreakdown}</p>
+                                              </div>
+                                            );
+                                          }
+                                        } catch (e) {
+                                          // Fall through to default
+                                        }
+                                      }
+                                      // Default display
+                                      return <Badge variant={order.pass_type === 'vip' ? 'default' : 'secondary'}>
+                                        {order.pass_type?.toUpperCase() || 'STANDARD'}
+                                      </Badge>;
+                                    })()}
+                                  </TableCell>
+                                  <TableCell>{order.quantity}</TableCell>
+                                  <TableCell>{order.total_price.toFixed(2)} TND</TableCell>
+                                  <TableCell>
+                                    <OrderStatusIndicator status={order.status} />
+                                  </TableCell>
+                                  <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
+                                  <TableCell>
+                                    <Button size="sm" variant="outline" onClick={async () => {
+                                      setSelectedOrder(order);
+                                      setIsOrderDetailsOpen(true);
+                                      
+                                      // Fetch ambassador information if order has ambassador_id
+                                      if (order.ambassador_id) {
+                                        try {
+                                          const { data: ambassadorData, error } = await supabase
+                                            .from('ambassadors')
+                                            .select('id, full_name, phone, email, city, ville, status, commission_rate')
+                                            .eq('id', order.ambassador_id)
+                                            .single();
+                                          
+                                          if (!error && ambassadorData) {
+                                            setSelectedOrderAmbassador(ambassadorData);
+                                          } else {
+                                            setSelectedOrderAmbassador(null);
+                                          }
+                                        } catch (error) {
+                                          console.error('Error fetching ambassador:', error);
+                                          setSelectedOrderAmbassador(null);
+                                        }
+                                      } else {
+                                        setSelectedOrderAmbassador(null);
+                                      }
+                                    }}>
+                                      <Eye className="w-4 h-4" />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                              );
+                            })()}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  {/* Round Robin Manager */}
+                  <TabsContent value="round-robin" className="mt-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>{language === 'en' ? 'Round Robin Manager' : 'Gestionnaire de Tourniquet'}</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>{language === 'en' ? 'Ville' : 'Quartier'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Active Ambassadors' : 'Ambassadeurs Actifs'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Last Assigned' : 'Dernier Assigné'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Next Ambassador' : 'Prochain Ambassadeur'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Mode' : 'Mode'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {roundRobinData.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                                  {language === 'en' ? 'No round robin data found' : 'Aucune donnée de tourniquet trouvée'}
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              roundRobinData.map((item) => (
+                                <TableRow key={item.ville}>
+                                  <TableCell>{item.ville}</TableCell>
+                                  <TableCell>{item.active_ambassadors || 0}</TableCell>
+                                  <TableCell>{item.last_assigned || 'None'}</TableCell>
+                                  <TableCell>{item.next_ambassador || 'N/A'}</TableCell>
+                                  <TableCell><Badge variant={item.rotation_mode === 'automatic' ? 'default' : 'secondary'}>{item.rotation_mode}</Badge></TableCell>
+                                  <TableCell>
+                                    <Button size="sm" variant="outline">
+                                      {language === 'en' ? 'Reset' : 'Réinitialiser'}
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  {/* Order Logs */}
+                  <TabsContent value="order-logs" className="mt-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>{language === 'en' ? 'Order Logs' : 'Journaux de Commandes'}</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>{language === 'en' ? 'Order ID' : 'ID Commande'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Action' : 'Action'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Performed By' : 'Effectué Par'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Type' : 'Type'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Details' : 'Détails'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Timestamp' : 'Horodatage'}</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {orderLogs.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                                  {language === 'en' ? 'No order logs found' : 'Aucun journal de commande trouvé'}
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              orderLogs.map((log) => (
+                                <TableRow key={log.id}>
+                                  <TableCell className="font-mono text-xs">{log.order_id?.substring(0, 8)}...</TableCell>
+                                  <TableCell><Badge variant="outline">{log.action}</Badge></TableCell>
+                                  <TableCell>{log.performed_by || 'System'}</TableCell>
+                                  <TableCell>{log.performed_by_type || 'system'}</TableCell>
+                                  <TableCell className="max-w-xs truncate">{JSON.stringify(log.details || {})}</TableCell>
+                                  <TableCell>{new Date(log.created_at).toLocaleString()}</TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  {/* Performance Reports */}
+                  <TabsContent value="performance" className="mt-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>{language === 'en' ? 'Performance Reports' : 'Rapports de Performance'}</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {performanceReports ? (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="text-sm">{language === 'en' ? 'Total Orders' : 'Total Commandes'}</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <p className="text-2xl font-bold">{performanceReports.totalOrders || 0}</p>
+                                </CardContent>
+                              </Card>
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="text-sm">{language === 'en' ? 'Success Rate' : 'Taux de Réussite'}</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <p className="text-2xl font-bold">{performanceReports.successRate || 0}%</p>
+                                </CardContent>
+                              </Card>
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle className="text-sm">{language === 'en' ? 'Avg Response Time' : 'Temps de Réponse Moyen'}</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                  <p className="text-2xl font-bold">{performanceReports.avgResponseTime || 0} min</p>
+                                </CardContent>
+                              </Card>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">
+                            {language === 'en' ? 'Performance data will be displayed here' : 'Les données de performance seront affichées ici'}
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                </Tabs>
+              </TabsContent>
+
               {/* Marketing Tab */}
               <TabsContent value="marketing" className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full px-2">
@@ -8314,18 +10632,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           </div>
                         </div>
                         <Button
-                          onClick={() => updateSalesSettings(!salesEnabled)}
+                          onClick={() => updateSalesSettingsData(!salesEnabled)}
                           disabled={loadingSalesSettings}
-                          variant={salesEnabled ? "destructive" : "default"}
+                          variant={salesEnabled ? "default" : "destructive"}
                           size="sm"
                           className="ml-2 flex-shrink-0 transition-all duration-300"
                         >
                           {loadingSalesSettings ? (
                             <RefreshCw className="w-4 h-4 animate-spin" />
                           ) : salesEnabled ? (
-                            <XCircle className="w-4 h-4" />
-                          ) : (
                             <CheckCircle className="w-4 h-4" />
+                          ) : (
+                            <XCircle className="w-4 h-4" />
                           )}
                         </Button>
                       </div>
@@ -8381,7 +10699,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           ) : maintenanceEnabled ? (
                             <CheckCircle className="w-4 h-4" />
                           ) : (
-                            <Wrench className="w-4 h-4" />
+                            <XCircle className="w-4 h-4" />
                           )}
                         </Button>
                       </div>
@@ -8447,16 +10765,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             updateAmbassadorApplicationSettings(!ambassadorApplicationEnabled, ambassadorApplicationMessage);
                           }}
                           disabled={loadingAmbassadorApplicationSettings}
-                          variant={ambassadorApplicationEnabled ? "destructive" : "default"}
+                          variant={ambassadorApplicationEnabled ? "default" : "destructive"}
                           size="sm"
                           className="ml-2 flex-shrink-0 transition-all duration-300"
                         >
                           {loadingAmbassadorApplicationSettings ? (
                             <RefreshCw className="w-4 h-4 animate-spin" />
                           ) : ambassadorApplicationEnabled ? (
-                            <XCircle className="w-4 h-4" />
-                          ) : (
                             <CheckCircle className="w-4 h-4" />
+                          ) : (
+                            <XCircle className="w-4 h-4" />
                           )}
                         </Button>
                       </div>
@@ -9091,6 +11409,979 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <Button variant="outline" onClick={() => setEventToDelete(null)}>{language === 'en' ? 'Cancel' : 'Annuler'}</Button>
             <Button variant="destructive" onClick={confirmDeleteEvent}>{language === 'en' ? 'Delete' : 'Supprimer'}</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Order Details Dialog */}
+      <Dialog open={isOrderDetailsOpen} onOpenChange={(open) => {
+        setIsOrderDetailsOpen(open);
+        if (!open) {
+          setSelectedOrder(null);
+          setSelectedOrderAmbassador(null);
+          setEmailDeliveryLogs([]);
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{language === 'en' ? 'Order Details' : 'Détails de la Commande'}</DialogTitle>
+          </DialogHeader>
+          {selectedOrder && (
+            <div className="space-y-6">
+              {/* Order Summary Card */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Package className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Order Summary' : 'Résumé de la Commande'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <FileText className="w-3 h-3" />
+                        {language === 'en' ? 'Order ID' : 'ID Commande'}
+                      </Label>
+                      <p className="font-mono text-sm break-all">{selectedOrder.id}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Activity className="w-3 h-3" />
+                        {language === 'en' ? 'Status' : 'Statut'}
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div
+                                className={cn(
+                                  "w-3 h-3 rounded-full cursor-help",
+                                  selectedOrder.status === 'COMPLETED' ? 'bg-green-500' :
+                                  selectedOrder.status?.includes('CANCELLED') ? 'bg-red-500' :
+                                  selectedOrder.status === 'PENDING_AMBASSADOR' ? 'bg-yellow-500' :
+                                  selectedOrder.status === 'ASSIGNED' ? 'bg-blue-500' :
+                                  selectedOrder.status === 'ACCEPTED' ? 'bg-cyan-500' :
+                                  'bg-gray-500'
+                                )}
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>
+                                {selectedOrder.status === 'PENDING_AMBASSADOR' && selectedOrder.ambassador_id
+                                  ? (language === 'en' ? 'Assigned - Awaiting Acceptance' : 'Assigné - En Attente d\'Acceptation')
+                                  : selectedOrder.status}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <Badge variant={selectedOrder.status === 'COMPLETED' ? 'default' : selectedOrder.status?.includes('CANCELLED') ? 'destructive' : 'secondary'}>
+                          {selectedOrder.status === 'PENDING_AMBASSADOR' && selectedOrder.ambassador_id
+                            ? (language === 'en' ? 'Assigned - Awaiting Acceptance' : 'Assigné - En Attente d\'Acceptation')
+                            : selectedOrder.status}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Database className="w-3 h-3" />
+                        {language === 'en' ? 'Order Type' : 'Type de Commande'}
+                      </Label>
+                      <Badge variant="outline" className="font-normal">
+                        {selectedOrder.source === 'platform_cod' ? (language === 'en' ? 'Platform COD' : 'Plateforme COD') :
+                         selectedOrder.source === 'platform_online' ? (language === 'en' ? 'Platform Online' : 'Plateforme En Ligne') :
+                         selectedOrder.source === 'ambassador_manual' ? (language === 'en' ? 'Ambassador Manual' : 'Manuel Ambassadeur') :
+                         selectedOrder.source}
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <CalendarIcon className="w-3 h-3" />
+                        {language === 'en' ? 'Created At' : 'Créé Le'}
+                      </Label>
+                      <p className="text-sm">{new Date(selectedOrder.created_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}</p>
+                    </div>
+                    {selectedOrder.total_price && (
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                          <DollarSign className="w-3 h-3" />
+                          {language === 'en' ? 'Total Amount' : 'Montant Total'}
+                        </Label>
+                        <p className="text-lg font-bold text-primary">{selectedOrder.total_price.toFixed(2)} TND</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Customer Information */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <User className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Customer Information' : 'Informations Client'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <User className="w-3 h-3" />
+                        {language === 'en' ? 'Name' : 'Nom'}
+                      </Label>
+                      <p className="font-semibold text-base">{selectedOrder.user_name || selectedOrder.customer_name || 'N/A'}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Phone className="w-3 h-3" />
+                        {language === 'en' ? 'Phone' : 'Téléphone'}
+                      </Label>
+                      <p className="text-base">{selectedOrder.user_phone || selectedOrder.phone || 'N/A'}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Mail className="w-3 h-3" />
+                        {language === 'en' ? 'Email' : 'Email'}
+                      </Label>
+                      <p className="text-base break-all">{selectedOrder.user_email || selectedOrder.email || 'N/A'}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {language === 'en' ? 'City/Ville' : 'Ville/Quartier'}
+                      </Label>
+                      <p className="text-base">{selectedOrder.city || 'N/A'}{selectedOrder.ville ? ` - ${selectedOrder.ville}` : ''}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Order Items */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Ticket className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Order Items' : 'Articles de Commande'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                {(() => {
+                  // Try to parse notes to get detailed pass breakdown
+                  let allPasses: any[] = [];
+                  try {
+                    if (selectedOrder.notes) {
+                      const notesData = typeof selectedOrder.notes === 'string' 
+                        ? JSON.parse(selectedOrder.notes) 
+                        : selectedOrder.notes;
+                      if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
+                        allPasses = notesData.all_passes;
+                      }
+                    }
+                  } catch (e) {
+                    console.error('Error parsing notes:', e);
+                  }
+
+                  // If we have detailed pass breakdown, show it
+                  if (allPasses.length > 0) {
+                    // Calculate total from passes array to ensure accuracy
+                    const calculatedTotal = allPasses.reduce((sum: number, pass: any) => {
+                      return sum + ((pass.price || 0) * (pass.quantity || 0));
+                    }, 0);
+                    
+                    return (
+                      <div className="space-y-4">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Unit Price' : 'Prix Unitaire'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Subtotal' : 'Sous-total'}</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {allPasses.map((pass: any, index: number) => (
+                              <TableRow key={index}>
+                                <TableCell>
+                                  <Badge variant={pass.passType === 'vip' ? 'default' : 'secondary'}>
+                                    {pass.passType?.toUpperCase() || 'STANDARD'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
+                                <TableCell>{pass.price?.toFixed(2) || '0.00'} TND</TableCell>
+                                <TableCell className="font-semibold">
+                                  {((pass.price || 0) * (pass.quantity || 0)).toFixed(2)} TND
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            <TableRow className="font-bold border-t-2">
+                              <TableCell colSpan={3} className="text-right">
+                                {language === 'en' ? 'Total' : 'Total'}
+                              </TableCell>
+                              <TableCell className="text-lg">
+                                {calculatedTotal.toFixed(2)} TND
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </div>
+                    );
+                  }
+
+                  // Fallback to simple display for old orders
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <Label className="text-muted-foreground">{language === 'en' ? 'Pass Type' : 'Type Pass'}</Label>
+                        <p className="font-semibold uppercase">{selectedOrder.pass_type}</p>
+                      </div>
+                      <div>
+                        <Label className="text-muted-foreground">{language === 'en' ? 'Quantity' : 'Quantité'}</Label>
+                        <p className="font-semibold">{selectedOrder.quantity}</p>
+                      </div>
+                      <div>
+                        <Label className="text-muted-foreground">{language === 'en' ? 'Total Price' : 'Prix Total'}</Label>
+                        <p className="font-semibold text-lg">{selectedOrder.total_price?.toFixed(2) || '0.00'} TND</p>
+                      </div>
+                    </div>
+                  );
+                })()}
+                </CardContent>
+              </Card>
+
+              {/* Ambassador Information */}
+              {selectedOrder.ambassador_id && (
+                <Card className="bg-muted/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Users className="w-5 h-5 text-primary" />
+                      {language === 'en' ? 'Assigned Ambassador' : 'Ambassadeur Assigné'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {selectedOrderAmbassador ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            {language === 'en' ? 'Name' : 'Nom'}
+                          </Label>
+                          <p className="font-semibold text-base">{selectedOrderAmbassador.full_name}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Phone className="w-3 h-3" />
+                            {language === 'en' ? 'Phone' : 'Téléphone'}
+                          </Label>
+                          <p className="text-base">{selectedOrderAmbassador.phone}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Mail className="w-3 h-3" />
+                            {language === 'en' ? 'Email' : 'Email'}
+                          </Label>
+                          <p className="text-base break-all">{selectedOrderAmbassador.email || 'N/A'}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            {language === 'en' ? 'City/Ville' : 'Ville/Quartier'}
+                          </Label>
+                          <p className="text-base">{selectedOrderAmbassador.city || 'N/A'}{selectedOrderAmbassador.ville ? ` - ${selectedOrderAmbassador.ville}` : ''}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Activity className="w-3 h-3" />
+                            {language === 'en' ? 'Status' : 'Statut'}
+                          </Label>
+                          <Badge variant={selectedOrderAmbassador.status === 'approved' ? 'default' : 'secondary'}>
+                            {selectedOrderAmbassador.status}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Percent className="w-3 h-3" />
+                            {language === 'en' ? 'Commission Rate' : 'Taux de Commission'}
+                          </Label>
+                          <p className="text-base font-semibold">{selectedOrderAmbassador.commission_rate || 0}%</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground font-mono">{selectedOrder.ambassador_id}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Timestamps */}
+              <div className="border-t pt-4">
+                <h3 className="font-semibold mb-4">{language === 'en' ? 'Timestamps' : 'Horodatages'}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  {selectedOrder.assigned_at && (
+                    <div>
+                      <Label className="text-muted-foreground">{language === 'en' ? 'Assigned At' : 'Assigné Le'}</Label>
+                      <p>{new Date(selectedOrder.assigned_at).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {selectedOrder.accepted_at && (
+                    <div>
+                      <Label className="text-muted-foreground">{language === 'en' ? 'Accepted At' : 'Accepté Le'}</Label>
+                      <p>{new Date(selectedOrder.accepted_at).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {selectedOrder.completed_at && (
+                    <div>
+                      <Label className="text-muted-foreground">{language === 'en' ? 'Completed At' : 'Terminé Le'}</Label>
+                      <p>{new Date(selectedOrder.completed_at).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {selectedOrder.cancelled_at && (
+                    <div>
+                      <Label className="text-muted-foreground">{language === 'en' ? 'Cancelled At' : 'Annulé Le'}</Label>
+                      <p>{new Date(selectedOrder.cancelled_at).toLocaleString()}</p>
+                      {selectedOrder.cancellation_reason && (
+                        <p className="mt-1 text-muted-foreground italic">{language === 'en' ? 'Reason' : 'Raison'}: {selectedOrder.cancellation_reason}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Order Logs */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Order Logs' : 'Journaux de Commande'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="max-h-48 overflow-y-auto">
+                    {orderLogs.filter((log: any) => log.order_id === selectedOrder.id).length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{language === 'en' ? 'Action' : 'Action'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Performed By' : 'Effectué Par'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Timestamp' : 'Horodatage'}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {orderLogs.filter((log: any) => log.order_id === selectedOrder.id).map((log: any) => (
+                            <TableRow key={log.id}>
+                              <TableCell><Badge variant="outline">{log.action}</Badge></TableCell>
+                              <TableCell className="text-sm">{log.performed_by_type || 'N/A'}</TableCell>
+                              <TableCell className="text-sm">{new Date(log.created_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">{language === 'en' ? 'No logs found for this order' : 'Aucun journal trouvé pour cette commande'}</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Email Delivery Status */}
+              {(selectedOrder.status === 'COMPLETED' || selectedOrder.status === 'MANUAL_COMPLETED') && selectedOrder.payment_method === 'cod' && (
+                <Card className="bg-muted/30">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Mail className="w-5 h-5 text-primary" />
+                        {language === 'en' ? 'Email Delivery Status' : 'Statut de Livraison Email'}
+                      </CardTitle>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          setLoadingEmailLogs(true);
+                          try {
+                            const response = await fetch(`/api/email-delivery-logs/${selectedOrder.id}`, {
+                              credentials: 'include'
+                            });
+                            if (response.ok) {
+                              const data = await response.json();
+                              setEmailDeliveryLogs(data.logs || []);
+                            }
+                          } catch (error) {
+                            console.error('Error fetching email logs:', error);
+                          } finally {
+                            setLoadingEmailLogs(false);
+                          }
+                        }}
+                        disabled={loadingEmailLogs}
+                      >
+                        <RefreshCw className={`w-4 h-4 mr-2 ${loadingEmailLogs ? 'animate-spin' : ''}`} />
+                        {language === 'en' ? 'Refresh' : 'Actualiser'}
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {emailDeliveryLogs.length > 0 ? (
+                      <div className="space-y-3">
+                        {emailDeliveryLogs.map((log: any) => (
+                          <div key={log.id} className="border rounded-lg p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Badge 
+                                  variant={
+                                    log.status === 'sent' ? 'default' :
+                                    log.status === 'failed' ? 'destructive' :
+                                    log.status === 'pending_retry' ? 'secondary' :
+                                    'outline'
+                                  }
+                                >
+                                  {log.status === 'sent' ? (language === 'en' ? 'Sent' : 'Envoyé') :
+                                   log.status === 'failed' ? (language === 'en' ? 'Failed' : 'Échoué') :
+                                   log.status === 'pending_retry' ? (language === 'en' ? 'Pending Retry' : 'Nouvelle Tentative') :
+                                   language === 'en' ? 'Pending' : 'En Attente'}
+                                </Badge>
+                                {log.retry_count > 0 && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {language === 'en' ? `Retry ${log.retry_count}` : `Tentative ${log.retry_count}`}
+                                  </span>
+                                )}
+                              </div>
+                              {log.sent_at && (
+                                <span className="text-xs text-muted-foreground">
+                                  {new Date(log.sent_at).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm">
+                              <p className="text-muted-foreground">
+                                <strong>{language === 'en' ? 'To:' : 'À:'}</strong> {log.recipient_email}
+                              </p>
+                              {log.error_message && (
+                                <p className="text-destructive text-xs mt-1">
+                                  <strong>{language === 'en' ? 'Error:' : 'Erreur:'}</strong> {log.error_message}
+                                </p>
+                              )}
+                            </div>
+                            {(log.status === 'failed' || log.status === 'pending_retry') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                  setResendingEmail(true);
+                                  try {
+                                    const response = await fetch('/api/resend-order-completion-email', {
+                                      method: 'POST',
+                                      headers: {
+                                        'Content-Type': 'application/json',
+                                      },
+                                      credentials: 'include',
+                                      body: JSON.stringify({ orderId: selectedOrder.id }),
+                                    });
+                                    if (response.ok) {
+                                      toast({
+                                        title: language === 'en' ? 'Email Resent' : 'Email Renvoyé',
+                                        description: language === 'en' ? 'The completion email has been resent successfully.' : 'L\'email de confirmation a été renvoyé avec succès.',
+                                        variant: 'default',
+                                      });
+                                      // Refresh email logs
+                                      const logsResponse = await fetch(`/api/email-delivery-logs/${selectedOrder.id}`, {
+                                        credentials: 'include'
+                                      });
+                                      if (logsResponse.ok) {
+                                        const data = await logsResponse.json();
+                                        setEmailDeliveryLogs(data.logs || []);
+                                      }
+                                    } else {
+                                      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                                      toast({
+                                        title: language === 'en' ? 'Error' : 'Erreur',
+                                        description: errorData.details || errorData.error || (language === 'en' ? 'Failed to resend email.' : 'Échec du renvoi de l\'email.'),
+                                        variant: 'destructive',
+                                      });
+                                    }
+                                  } catch (error) {
+                                    console.error('Error resending email:', error);
+                                    toast({
+                                      title: language === 'en' ? 'Error' : 'Erreur',
+                                      description: language === 'en' ? 'Failed to resend email.' : 'Échec du renvoi de l\'email.',
+                                      variant: 'destructive',
+                                    });
+                                  } finally {
+                                    setResendingEmail(false);
+                                  }
+                                }}
+                                disabled={resendingEmail}
+                                className="w-full"
+                              >
+                                <Send className={`w-4 h-4 mr-2 ${resendingEmail ? 'animate-spin' : ''}`} />
+                                {language === 'en' ? 'Resend Email' : 'Renvoyer l\'Email'}
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-4 space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                          {language === 'en' ? 'No email delivery logs found. The completion email may not have been sent yet.' : 'Aucun journal de livraison email trouvé. L\'email de confirmation n\'a peut-être pas encore été envoyé.'}
+                        </p>
+                        {selectedOrder.user_email && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              setResendingEmail(true);
+                              try {
+                                const response = await fetch('/api/resend-order-completion-email', {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  credentials: 'include',
+                                  body: JSON.stringify({ orderId: selectedOrder.id }),
+                                });
+                                if (response.ok) {
+                                  toast({
+                                    title: language === 'en' ? 'Email Sent' : 'Email Envoyé',
+                                    description: language === 'en' ? 'The completion email has been sent successfully.' : 'L\'email de confirmation a été envoyé avec succès.',
+                                    variant: 'default',
+                                  });
+                                  // Refresh email logs
+                                  const logsResponse = await fetch(`/api/email-delivery-logs/${selectedOrder.id}`, {
+                                    credentials: 'include'
+                                  });
+                                  if (logsResponse.ok) {
+                                    const data = await logsResponse.json();
+                                    setEmailDeliveryLogs(data.logs || []);
+                                  }
+                                } else {
+                                  const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                                  toast({
+                                    title: language === 'en' ? 'Error' : 'Erreur',
+                                    description: errorData.details || errorData.error || (language === 'en' ? 'Failed to send email.' : 'Échec de l\'envoi de l\'email.'),
+                                    variant: 'destructive',
+                                  });
+                                }
+                              } catch (error: any) {
+                                console.error('Error sending email:', error);
+                                toast({
+                                  title: language === 'en' ? 'Error' : 'Erreur',
+                                  description: error?.message || (language === 'en' ? 'Failed to send email. Please check server logs for details.' : 'Échec de l\'envoi de l\'email. Veuillez vérifier les journaux du serveur.'),
+                                  variant: 'destructive',
+                                });
+                              } finally {
+                                setResendingEmail(false);
+                              }
+                            }}
+                            disabled={resendingEmail}
+                          >
+                            <Send className={`w-4 h-4 mr-2 ${resendingEmail ? 'animate-spin' : ''}`} />
+                            {language === 'en' ? 'Send Completion Email' : 'Envoyer l\'Email de Confirmation'}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Admin Actions */}
+              {selectedOrder.source === 'platform_cod' && (
+                <Card className="bg-primary/5 border-primary/20">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Wrench className="w-5 h-5 text-primary" />
+                      {language === 'en' ? 'Admin Actions' : 'Actions Admin'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedOrder.status === 'PENDING_AMBASSADOR' && selectedOrder.ville && (
+                        <Button
+                          onClick={() => handleAssignOrder(selectedOrder.id, selectedOrder.ville)}
+                          variant="default"
+                          size="sm"
+                        >
+                          <Users className="w-4 h-4 mr-2" />
+                          {language === 'en' ? 'Assign Order' : 'Assigner la Commande'}
+                        </Button>
+                      )}
+                      {selectedOrder.status === 'ASSIGNED' && (
+                        <Button
+                          onClick={() => handleAcceptOrderAsAdmin(selectedOrder.id)}
+                          variant="default"
+                          size="sm"
+                        >
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          {language === 'en' ? 'Accept Order' : 'Accepter la Commande'}
+                        </Button>
+                      )}
+                      {selectedOrder.status === 'ACCEPTED' && (
+                        <Button
+                          onClick={() => handleCompleteOrderAsAdmin(selectedOrder.id)}
+                          variant="default"
+                          size="sm"
+                        >
+                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                          {language === 'en' ? 'Complete Order' : 'Terminer la Commande'}
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Online Order Details Dialog */}
+      <Dialog open={isOnlineOrderDetailsOpen} onOpenChange={(open) => {
+        setIsOnlineOrderDetailsOpen(open);
+        if (!open) {
+          setSelectedOnlineOrder(null);
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{language === 'en' ? 'Online Order Details' : 'Détails de la Commande en Ligne'}</DialogTitle>
+          </DialogHeader>
+          {selectedOnlineOrder && (
+            <div className="space-y-6">
+              {/* Order Summary Card */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Package className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Order Summary' : 'Résumé de la Commande'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <FileText className="w-3 h-3" />
+                        {language === 'en' ? 'Order ID' : 'ID Commande'}
+                      </Label>
+                      <p className="font-mono text-sm break-all">{selectedOnlineOrder.id}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Activity className="w-3 h-3" />
+                        {language === 'en' ? 'Payment Status' : 'Statut de Paiement'}
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div
+                                className={cn(
+                                  "w-3 h-3 rounded-full cursor-help",
+                                  selectedOnlineOrder.payment_status === 'PAID' ? 'bg-green-500' :
+                                  selectedOnlineOrder.payment_status === 'FAILED' ? 'bg-red-500' :
+                                  selectedOnlineOrder.payment_status === 'REFUNDED' ? 'bg-orange-500' :
+                                  'bg-yellow-500'
+                                )}
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{selectedOnlineOrder.payment_status || 'PENDING_PAYMENT'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <Badge
+                          variant={
+                            selectedOnlineOrder.payment_status === 'PAID' ? 'default' :
+                            selectedOnlineOrder.payment_status === 'FAILED' ? 'destructive' :
+                            selectedOnlineOrder.payment_status === 'REFUNDED' ? 'secondary' :
+                            'outline'
+                          }
+                        >
+                          {selectedOnlineOrder.payment_status || 'PENDING_PAYMENT'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Database className="w-3 h-3" />
+                        {language === 'en' ? 'Order Type' : 'Type de Commande'}
+                      </Label>
+                      <Badge variant="outline" className="font-normal">
+                        {selectedOnlineOrder.source === 'platform_online' ? (language === 'en' ? 'Platform Online' : 'Plateforme En Ligne') : selectedOnlineOrder.source}
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <CalendarIcon className="w-3 h-3" />
+                        {language === 'en' ? 'Created At' : 'Créé Le'}
+                      </Label>
+                      <p className="text-sm">{new Date(selectedOnlineOrder.created_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}</p>
+                    </div>
+                    {selectedOnlineOrder.updated_at && selectedOnlineOrder.updated_at !== selectedOnlineOrder.created_at && (
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {language === 'en' ? 'Updated At' : 'Mis à Jour Le'}
+                        </Label>
+                        <p className="text-sm">{new Date(selectedOnlineOrder.updated_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}</p>
+                      </div>
+                    )}
+                    {selectedOnlineOrder.total_price && (
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                          <DollarSign className="w-3 h-3" />
+                          {language === 'en' ? 'Total Amount' : 'Montant Total'}
+                        </Label>
+                        <p className="text-lg font-bold text-primary">{selectedOnlineOrder.total_price.toFixed(2)} TND</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Customer Information */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <User className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Customer Information' : 'Informations Client'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <User className="w-3 h-3" />
+                        {language === 'en' ? 'Name' : 'Nom'}
+                      </Label>
+                      <p className="font-semibold text-base">{selectedOnlineOrder.user_name || selectedOnlineOrder.customer_name || 'N/A'}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Phone className="w-3 h-3" />
+                        {language === 'en' ? 'Phone' : 'Téléphone'}
+                      </Label>
+                      <p className="text-base">{selectedOnlineOrder.user_phone || selectedOnlineOrder.phone || 'N/A'}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Mail className="w-3 h-3" />
+                        {language === 'en' ? 'Email' : 'Email'}
+                      </Label>
+                      <p className="text-base break-all">{selectedOnlineOrder.user_email || selectedOnlineOrder.email || 'N/A'}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {language === 'en' ? 'City/Ville' : 'Ville/Quartier'}
+                      </Label>
+                      <p className="text-base">{selectedOnlineOrder.city || 'N/A'}{selectedOnlineOrder.ville ? ` - ${selectedOnlineOrder.ville}` : ''}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Passes List */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Ticket className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Passes Purchased' : 'Passes Achetés'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                {(() => {
+                  let allPasses: any[] = [];
+                  try {
+                    if (selectedOnlineOrder.notes) {
+                      const notesData = typeof selectedOnlineOrder.notes === 'string' 
+                        ? JSON.parse(selectedOnlineOrder.notes) 
+                        : selectedOnlineOrder.notes;
+                      if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
+                        allPasses = notesData.all_passes;
+                      }
+                    }
+                  } catch (e) {
+                    console.error('Error parsing notes:', e);
+                  }
+
+                  if (allPasses.length > 0) {
+                    // Calculate total from passes array to ensure accuracy
+                    const calculatedTotal = allPasses.reduce((sum: number, pass: any) => {
+                      return sum + ((pass.price || 0) * (pass.quantity || 0));
+                    }, 0);
+                    
+                    return (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Unit Price' : 'Prix Unitaire'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Subtotal' : 'Sous-total'}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {allPasses.map((pass: any, index: number) => (
+                            <TableRow key={index}>
+                              <TableCell>
+                                <Badge variant={pass.passType === 'vip' ? 'default' : 'secondary'}>
+                                  {pass.passType?.toUpperCase() || 'STANDARD'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
+                              <TableCell>{pass.price?.toFixed(2) || '0.00'} TND</TableCell>
+                              <TableCell className="font-semibold">
+                                {((pass.quantity || 0) * (pass.price || 0)).toFixed(2)} TND
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          <TableRow className="font-bold border-t-2">
+                            <TableCell colSpan={3} className="text-right">
+                              {language === 'en' ? 'Total' : 'Total'}
+                            </TableCell>
+                            <TableCell className="text-lg">
+                              {calculatedTotal.toFixed(2)} TND
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    );
+                  } else {
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <Label className="text-muted-foreground">{language === 'en' ? 'Pass Type' : 'Type Pass'}</Label>
+                          <p className="font-semibold uppercase">{selectedOnlineOrder.pass_type}</p>
+                        </div>
+                        <div>
+                          <Label className="text-muted-foreground">{language === 'en' ? 'Quantity' : 'Quantité'}</Label>
+                          <p className="font-semibold">{selectedOnlineOrder.quantity}</p>
+                        </div>
+                        <div>
+                          <Label className="text-muted-foreground">{language === 'en' ? 'Total Price' : 'Prix Total'}</Label>
+                          <p className="font-semibold text-lg">{selectedOnlineOrder.total_price?.toFixed(2) || '0.00'} TND</p>
+                        </div>
+                      </div>
+                    );
+                  }
+                })()}
+                </CardContent>
+              </Card>
+
+              {/* Payment Gateway Information */}
+              {(selectedOnlineOrder.transaction_id || selectedOnlineOrder.payment_gateway_reference || selectedOnlineOrder.payment_response_data) && (
+                <Card className="bg-muted/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CreditCard className="w-5 h-5 text-primary" />
+                      {language === 'en' ? 'Payment Gateway Information' : 'Informations Passerelle de Paiement'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {selectedOnlineOrder.transaction_id && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                            <FileText className="w-3 h-3" />
+                            {language === 'en' ? 'Transaction ID' : 'ID Transaction'}
+                          </Label>
+                          <p className="font-mono text-sm break-all">{selectedOnlineOrder.transaction_id}</p>
+                        </div>
+                      )}
+                      {selectedOnlineOrder.payment_gateway_reference && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Database className="w-3 h-3" />
+                            {language === 'en' ? 'Payment Gateway Reference' : 'Référence Passerelle'}
+                          </Label>
+                          <p className="font-mono text-sm break-all">{selectedOnlineOrder.payment_gateway_reference}</p>
+                        </div>
+                      )}
+                      {selectedOnlineOrder.payment_response_data && (
+                        <div className="md:col-span-2 space-y-1">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                            <FileText className="w-3 h-3" />
+                            {language === 'en' ? 'Payment Response Data' : 'Données de Réponse'}
+                          </Label>
+                          <pre className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-auto max-h-40">
+                            {JSON.stringify(selectedOnlineOrder.payment_response_data, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Payment Logs Section (Future-ready, empty for now) */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Payment Logs' : 'Journaux de Paiement'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="p-4 bg-background border rounded-lg text-center text-muted-foreground">
+                    <p className="text-sm">
+                      {language === 'en' 
+                        ? 'Payment logs will appear here once the payment gateway integration is complete.'
+                        : 'Les journaux de paiement apparaîtront ici une fois l\'intégration de la passerelle de paiement terminée.'}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Admin Actions */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Admin Actions' : 'Actions Administrateur'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="default"
+                    onClick={() => updateOnlineOrderStatus(selectedOnlineOrder.id, 'PAID')}
+                    disabled={selectedOnlineOrder.payment_status === 'PAID'}
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    {language === 'en' ? 'Mark as Paid' : 'Marquer comme Payé'}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => updateOnlineOrderStatus(selectedOnlineOrder.id, 'FAILED')}
+                    disabled={selectedOnlineOrder.payment_status === 'FAILED'}
+                  >
+                    <XCircle className="w-4 h-4 mr-2" />
+                    {language === 'en' ? 'Mark as Failed' : 'Marquer comme Échoué'}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => updateOnlineOrderStatus(selectedOnlineOrder.id, 'REFUNDED')}
+                    disabled={selectedOnlineOrder.payment_status === 'REFUNDED'}
+                  >
+                    <ArrowDown className="w-4 h-4 mr-2" />
+                    {language === 'en' ? 'Mark as Refunded' : 'Marquer comme Remboursé'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      toast({
+                        title: language === 'en' ? 'Coming Soon' : 'Bientôt Disponible',
+                        description: language === 'en' ? 'Email/SMS templates will be available soon' : 'Les modèles d\'email/SMS seront bientôt disponibles',
+                        variant: "default",
+                      });
+                    }}
+                  >
+                    <Send className="w-4 h-4 mr-2" />
+                    {language === 'en' ? 'Resend Email/SMS' : 'Renvoyer Email/SMS'}
+                  </Button>
+                </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

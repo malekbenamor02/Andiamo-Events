@@ -23,10 +23,19 @@ if (!process.env.JWT_SECRET) {
 
 // Initialize Supabase client only if environment variables are available
 let supabase = null;
+let supabaseService = null; // Service role client for storage operations
 if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
   const { createClient } = require('@supabase/supabase-js');
   supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
   // Supabase client initialized
+  
+  // Also create service role client if available (for storage operations)
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    console.log('Supabase service role client initialized for storage operations');
+  } else {
+    console.warn('SUPABASE_SERVICE_ROLE_KEY not set - storage operations may fail. Using anon key instead.');
+  }
 } else {
   // Supabase client not initialized - admin login disabled
 }
@@ -42,12 +51,14 @@ app.use(cors({
 app.use(bodyParser.json());
 app.use(cookieParser());
 
-// Configure Gmail SMTP transporter using environment variables
+// Configure SMTP transporter using environment variables
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: process.env.EMAIL_HOST,
+  port: parseInt(process.env.EMAIL_PORT || '587'),
+  secure: false, // true for 465, false for other ports
   auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
@@ -66,7 +77,7 @@ app.post('/api/send-email', async (req, res) => {
     const { to, subject, html } = req.body;
     
     await transporter.sendMail({
-      from: process.env.GMAIL_FROM,
+      from: `Andiamo Events <${process.env.EMAIL_USER}>`,
       to,
       subject,
       html,
@@ -93,45 +104,51 @@ app.post('/api/admin-login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password required' });
     }
 
-    // Verify reCAPTCHA
-    if (!recaptchaToken) {
-      return res.status(400).json({ error: 'reCAPTCHA verification required' });
-    }
+    // Bypass reCAPTCHA verification for localhost development
+    if (recaptchaToken === 'localhost-bypass-token') {
+      console.log('⚠️  reCAPTCHA bypassed for localhost development');
+      // Continue with login without reCAPTCHA verification
+    } else {
+      // Verify reCAPTCHA for production
+      if (!recaptchaToken) {
+        return res.status(400).json({ error: 'reCAPTCHA verification required' });
+      }
 
-    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
-    
-    if (!RECAPTCHA_SECRET_KEY) {
-      console.error('RECAPTCHA_SECRET_KEY is not set in environment variables');
-      return res.status(500).json({ 
-        error: 'Server configuration error',
-        details: 'reCAPTCHA secret key is not configured. Please set RECAPTCHA_SECRET_KEY in environment variables.'
-      });
-    }
-    
-    try {
-      const verifyResponse = await fetch(`https://www.google.com/recaptcha/api/siteverify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
-      });
-
-      const verifyData = await verifyResponse.json();
+      const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
       
-      if (!verifyData.success) {
-        console.error('reCAPTCHA verification failed:', verifyData);
-        return res.status(400).json({ 
-          error: 'reCAPTCHA verification failed',
-          details: 'Please complete the reCAPTCHA verification and try again.'
+      if (!RECAPTCHA_SECRET_KEY) {
+        console.error('RECAPTCHA_SECRET_KEY is not set in environment variables');
+        return res.status(500).json({ 
+          error: 'Server configuration error',
+          details: 'reCAPTCHA secret key is not configured. Please set RECAPTCHA_SECRET_KEY in environment variables.'
         });
       }
-    } catch (recaptchaError) {
-      console.error('reCAPTCHA verification error:', recaptchaError);
-      return res.status(500).json({ 
+      
+      try {
+        const verifyResponse = await fetch(`https://www.google.com/recaptcha/api/siteverify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
+        });
+
+        const verifyData = await verifyResponse.json();
+        
+        if (!verifyData.success) {
+          console.error('reCAPTCHA verification failed:', verifyData);
+          return res.status(400).json({ 
+            error: 'reCAPTCHA verification failed',
+            details: 'Please complete the reCAPTCHA verification and try again.'
+          });
+        }
+      } catch (recaptchaError) {
+        console.error('reCAPTCHA verification error:', recaptchaError);
+        return res.status(500).json({ 
         error: 'reCAPTCHA verification service unavailable',
         details: 'Unable to verify reCAPTCHA. Please try again later.'
       });
+      }
     }
     
     // Fetch admin by email
@@ -206,12 +223,22 @@ app.post('/api/admin-login', async (req, res) => {
 });
 
 // Verify reCAPTCHA endpoint
+// reCAPTCHA verification endpoint
 app.post('/api/verify-recaptcha', async (req, res) => {
   try {
     const { recaptchaToken } = req.body;
 
     if (!recaptchaToken) {
       return res.status(400).json({ error: 'reCAPTCHA token is required' });
+    }
+
+    // Bypass reCAPTCHA verification for localhost development
+    if (recaptchaToken === 'localhost-bypass-token') {
+      console.log('⚠️  reCAPTCHA bypassed for localhost development');
+      return res.status(200).json({ 
+        success: true,
+        message: 'reCAPTCHA bypassed for localhost'
+      });
     }
 
     const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
@@ -1031,6 +1058,1222 @@ app.post('/api/bulk-phones', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to add phone numbers'
+    });
+  }
+});
+
+// Round Robin Assignment Endpoints
+
+// POST /api/assign-order - Assign an order to an ambassador using round robin
+app.post('/api/assign-order', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Supabase not configured' });
+    }
+
+    const { order_id, ville } = req.body;
+
+    if (!order_id || !ville) {
+      return res.status(400).json({ success: false, error: 'order_id and ville are required' });
+    }
+
+    // Call the database function to assign order
+    const { data, error } = await supabase.rpc('assign_order_to_ambassador', {
+      p_order_id: order_id,
+      p_ville: ville
+    });
+
+    if (error) {
+      console.error('Error assigning order:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    if (!data) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'No available ambassadors for this ville' 
+      });
+    }
+
+    // Get ambassador details for notification
+    const { data: ambassador } = await supabase
+      .from('ambassadors')
+      .select('id, full_name, phone, email')
+      .eq('id', data)
+      .single();
+
+    res.json({
+      success: true,
+      ambassador_id: data,
+      ambassador: ambassador
+    });
+
+  } catch (error) {
+    console.error('Error in assign-order endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to assign order'
+    });
+  }
+});
+
+// POST /api/auto-reassign - Auto-reassign ignored orders
+app.post('/api/auto-reassign', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Supabase not configured' });
+    }
+
+    const { ignore_minutes } = req.body;
+    const minutes = ignore_minutes || 15; // Default 15 minutes
+
+    // Call the database function to auto-reassign
+    const { data, error } = await supabase.rpc('auto_reassign_ignored_orders', {
+      p_ignore_minutes: minutes
+    });
+
+    if (error) {
+      console.error('Error auto-reassigning orders:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    res.json({
+      success: true,
+      reassigned_count: data || 0
+    });
+
+  } catch (error) {
+    console.error('Error in auto-reassign endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to auto-reassign orders'
+    });
+  }
+});
+
+// GET /api/next-ambassador/:ville - Get next ambassador for a ville (for admin preview)
+app.get('/api/next-ambassador/:ville', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Supabase not configured' });
+    }
+
+    const { ville } = req.params;
+
+    if (!ville) {
+      return res.status(400).json({ success: false, error: 'ville parameter is required' });
+    }
+
+    // Call the database function to get next ambassador
+    const { data, error } = await supabase.rpc('get_next_ambassador_for_ville', {
+      p_ville: ville
+    });
+
+    if (error) {
+      console.error('Error getting next ambassador:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'No available ambassadors for this ville' 
+      });
+    }
+
+    res.json({
+      success: true,
+      ambassador: data[0]
+    });
+
+  } catch (error) {
+    console.error('Error in next-ambassador endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get next ambassador'
+    });
+  }
+});
+
+// Update ambassador password endpoint
+app.post('/api/ambassador-update-password', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { ambassadorId, newPassword } = req.body;
+
+    if (!ambassadorId || !newPassword) {
+      return res.status(400).json({ error: 'Ambassador ID and new password are required' });
+    }
+
+    // Validate password length
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Hash the password
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Prepare update data (only password, phone cannot be changed)
+    const updateData = { password: hashedPassword };
+
+    // Update the ambassador password
+    const { error } = await supabase
+      .from('ambassadors')
+      .update(updateData)
+      .eq('id', ambassadorId);
+
+    if (error) {
+      console.error('Error updating ambassador password:', error);
+      return res.status(500).json({ error: 'Failed to update password', details: error.message });
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Password updated successfully' 
+    });
+  } catch (error) {
+    console.error('Error in ambassador password update:', error);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
+  }
+});
+
+// Send order completion email endpoint
+app.post('/api/send-order-completion-email', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    // Fetch order with all related data
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        events (
+          id,
+          name,
+          date,
+          venue
+        ),
+        ambassadors (
+          id,
+          full_name,
+          phone
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Only send email for COD orders (allow sending even if not completed for admin manual sending)
+    if (order.payment_method !== 'cod') {
+      return res.status(400).json({ error: 'Email can only be sent for COD orders' });
+    }
+
+    // Check if customer email exists
+    if (!order.user_email) {
+      return res.status(400).json({ error: 'Customer email is required to send confirmation email' });
+    }
+
+    // Fetch order passes
+    const { data: orderPasses, error: passesError } = await supabase
+      .from('order_passes')
+      .select('*')
+      .eq('order_id', orderId);
+
+    if (passesError) {
+      console.error('Error fetching order passes:', passesError);
+    }
+
+    // Build passes array
+    const passes = orderPasses && orderPasses.length > 0
+      ? orderPasses.map(p => ({
+          passType: p.pass_type,
+          quantity: p.quantity,
+          price: parseFloat(p.price)
+        }))
+      : [{
+          passType: order.pass_type || 'Standard',
+          quantity: order.quantity || 1,
+          price: order.total_price / (order.quantity || 1)
+        }];
+
+    // Prepare email data
+    const emailData = {
+      customerName: order.user_name || 'Valued Customer',
+      orderId: order.id,
+      eventName: order.events?.name || 'Event',
+      ambassadorName: order.ambassadors?.full_name || 'Our Ambassador',
+      passes: passes,
+      totalAmount: parseFloat(order.total_price),
+      qrCode: order.qr_code || null,
+      ticketNumber: order.ticket_number || null,
+      referenceNumber: order.reference_number || order.id.substring(0, 8).toUpperCase(),
+      supportContactUrl: `${req.protocol}://${req.get('host')}/contact`
+    };
+
+    // Generate email HTML (we'll use a simplified version here, or import from email.ts)
+    // For now, we'll create a basic HTML template
+    const emailHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Order Confirmation - Andiamo Events</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; padding: 20px; }
+          .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
+          .header h1 { margin: 0; font-size: 28px; }
+          .content { padding: 20px 0; }
+          .order-info { background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .order-info h3 { margin-top: 0; color: #667eea; }
+          .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+          .info-row:last-child { border-bottom: none; }
+          .passes-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+          .passes-table th, .passes-table td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+          .passes-table th { background: #f9f9f9; color: #667eea; font-weight: 600; }
+          .total-row { font-weight: bold; font-size: 18px; color: #667eea; }
+          .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 14px; }
+          .support-link { display: inline-block; margin-top: 20px; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✅ Order Confirmed!</h1>
+            <p>Your Pass Purchase is Complete</p>
+          </div>
+          <div class="content">
+            <p>Dear <strong>${emailData.customerName}</strong>,</p>
+            <p>We're excited to confirm that your pass purchase has been successfully processed! Your payment has been received in cash by our ambassador, and your order is now fully validated.</p>
+            
+            <div class="order-info">
+              <h3>📋 Order Details</h3>
+              <div class="info-row">
+                <span><strong>Order ID:</strong></span>
+                <span>${emailData.orderId}</span>
+              </div>
+              <div class="info-row">
+                <span><strong>Event:</strong></span>
+                <span>${emailData.eventName}</span>
+              </div>
+              <div class="info-row">
+                <span><strong>Delivered by:</strong></span>
+                <span>${emailData.ambassadorName}</span>
+              </div>
+            </div>
+
+            <div class="order-info">
+              <h3>🎫 Passes Purchased</h3>
+              <table class="passes-table">
+                <thead>
+                  <tr>
+                    <th>Pass Type</th>
+                    <th>Quantity</th>
+                    <th>Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${passes.map(p => `
+                    <tr>
+                      <td>${p.passType}</td>
+                      <td>${p.quantity}</td>
+                      <td>${p.price.toFixed(2)} TND</td>
+                    </tr>
+                  `).join('')}
+                  <tr class="total-row">
+                    <td colspan="2"><strong>Total Amount Paid:</strong></td>
+                    <td><strong>${emailData.totalAmount.toFixed(2)} TND</strong></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            ${emailData.qrCode ? `
+              <div class="order-info">
+                <h3>🎫 Your Digital Ticket</h3>
+                <p>Scan this QR code at the event entrance:</p>
+                <img src="${emailData.qrCode}" alt="QR Code" style="max-width: 200px; height: auto; display: block; margin: 20px auto;" />
+              </div>
+            ` : ''}
+
+            ${emailData.ticketNumber ? `
+              <div class="order-info">
+                <h3>🎫 Ticket Number</h3>
+                <p><strong>${emailData.ticketNumber}</strong></p>
+              </div>
+            ` : ''}
+
+            <div class="order-info">
+              <h3>💳 Payment Confirmation</h3>
+              <p>Your payment of <strong>${emailData.totalAmount.toFixed(2)} TND</strong> has been successfully received in cash by our ambassador <strong>${emailData.ambassadorName}</strong>. Your order is now fully validated and confirmed.</p>
+            </div>
+
+            <div class="order-info">
+              <h3>💬 Need Help?</h3>
+              <p>If you have any questions about your order, need to verify your purchase, or require assistance, please don't hesitate to contact our support team.</p>
+              <a href="${emailData.supportContactUrl}" class="support-link">Contact Support</a>
+            </div>
+
+            <p>Thank you for choosing Andiamo Events! We look forward to seeing you at the event.</p>
+            <p><strong>Best regards,<br>The Andiamo Team</strong></p>
+          </div>
+          <div class="footer">
+            <p>© 2024 Andiamo Events. All rights reserved.</p>
+            <p>Tunisia's Premier Nightlife Experience</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Create email delivery log entry (pending status)
+    // Wrap in try-catch in case table doesn't exist yet or RLS issues
+    let emailLog = null;
+    try {
+      const { data: logData, error: logError } = await supabase
+        .from('email_delivery_logs')
+        .insert({
+          order_id: orderId,
+          email_type: 'order_completion',
+          recipient_email: order.user_email,
+          recipient_name: order.user_name,
+          subject: '✅ Order Confirmation - Your Pass Purchase is Complete!',
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (logError) {
+        console.error('Error creating email log:', logError);
+        console.error('Log error details:', JSON.stringify(logError, null, 2));
+        // Continue without logging if table doesn't exist or RLS blocks it
+        // Email will still be sent, just won't be logged
+      } else {
+        emailLog = logData;
+        console.log('Email log created successfully:', emailLog.id);
+      }
+    } catch (logErr) {
+      console.error('Error creating email log (exception):', logErr);
+      // Continue without logging
+    }
+
+    // Check if email service is configured
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      return res.status(500).json({ 
+        error: 'Email service not configured', 
+        details: 'EMAIL_USER and EMAIL_PASS environment variables are required. Please configure them in your server environment.'
+      });
+    }
+
+    // Send email
+    try {
+      await transporter.sendMail({
+        from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+        to: order.user_email,
+        subject: '✅ Order Confirmation - Your Pass Purchase is Complete!',
+        html: emailHtml
+      });
+
+      // Update email log to sent
+      if (emailLog) {
+        try {
+          const { error: updateError } = await supabase
+            .from('email_delivery_logs')
+            .update({
+              status: 'sent',
+              sent_at: new Date().toISOString()
+            })
+            .eq('id', emailLog.id);
+          
+          if (updateError) {
+            console.error('Error updating email log to sent:', updateError);
+            console.error('Update error details:', JSON.stringify(updateError, null, 2));
+          } else {
+            console.log('Email log updated to sent successfully');
+          }
+        } catch (updateError) {
+          console.error('Error updating email log (exception):', updateError);
+          // Don't fail the response if log update fails
+        }
+      } else {
+        console.log('No email log to update (log creation may have failed)');
+      }
+
+      res.status(200).json({ 
+        success: true, 
+        message: 'Order completion email sent successfully',
+        emailLogId: emailLog?.id
+      });
+    } catch (emailError) {
+      console.error('Error sending email:', emailError);
+      
+      // Update email log to failed
+      if (emailLog) {
+        try {
+          const { error: updateError } = await supabase
+            .from('email_delivery_logs')
+            .update({
+              status: 'failed',
+              error_message: emailError.message
+            })
+            .eq('id', emailLog.id);
+          
+          if (updateError) {
+            console.error('Error updating email log to failed:', updateError);
+            console.error('Update error details:', JSON.stringify(updateError, null, 2));
+          }
+        } catch (updateError) {
+          console.error('Error updating email log (exception):', updateError);
+        }
+      }
+
+      // Provide more detailed error message
+      const errorMessage = emailError.message || 'Unknown error';
+      const isAuthError = errorMessage.includes('Invalid login') || errorMessage.includes('authentication');
+      const isConfigError = !process.env.EMAIL_USER || !process.env.EMAIL_PASS;
+
+      return res.status(500).json({ 
+        error: 'Failed to send email', 
+        details: isConfigError 
+          ? 'Email service not configured. Please check EMAIL_USER and EMAIL_PASS environment variables.'
+          : isAuthError
+          ? 'Email authentication failed. Please check email credentials.'
+          : errorMessage
+      });
+    }
+  } catch (error) {
+    console.error('Error in send-order-completion-email:', error);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
+  }
+});
+
+// Resend order completion email endpoint (admin only)
+app.post('/api/resend-order-completion-email', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    // Call the same logic as send-order-completion-email
+    // We'll reuse the logic by making an internal call
+    req.body = { orderId };
+    req.cookies = req.cookies || {};
+    
+    // Remove requireAdminAuth for this internal call
+    const originalRequireAdminAuth = requireAdminAuth;
+    delete req.requireAdminAuth;
+    
+    // Forward to the send endpoint logic
+    return await new Promise((resolve) => {
+      const mockRes = {
+        status: (code) => ({
+          json: (data) => {
+            res.status(code).json(data);
+            resolve();
+          }
+        })
+      };
+      // We'll just call the send endpoint logic directly
+      // For simplicity, we'll duplicate the logic here
+      // (In production, you'd extract this into a shared function)
+    });
+
+    // Actually, let's just duplicate the logic for clarity
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        events (
+          id,
+          name,
+          date,
+          venue
+        ),
+        ambassadors (
+          id,
+          full_name,
+          phone
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (!order.user_email) {
+      return res.status(400).json({ error: 'Customer email is required to send confirmation email' });
+    }
+
+    // Fetch order passes
+    const { data: orderPasses } = await supabase
+      .from('order_passes')
+      .select('*')
+      .eq('order_id', orderId);
+
+    const passes = orderPasses && orderPasses.length > 0
+      ? orderPasses.map(p => ({
+          passType: p.pass_type,
+          quantity: p.quantity,
+          price: parseFloat(p.price)
+        }))
+      : [{
+          passType: order.pass_type || 'Standard',
+          quantity: order.quantity || 1,
+          price: order.total_price / (order.quantity || 1)
+        }];
+
+    // Create email HTML (same as above)
+    const emailHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Order Confirmation - Andiamo Events</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; padding: 20px; }
+          .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✅ Order Confirmed!</h1>
+          </div>
+          <p>Dear <strong>${order.user_name || 'Valued Customer'}</strong>,</p>
+          <p>Your order ${orderId} has been confirmed. Total: ${order.total_price} TND</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Create new email log entry
+    const { data: emailLog } = await supabase
+      .from('email_delivery_logs')
+      .insert({
+        order_id: orderId,
+        email_type: 'order_completion',
+        recipient_email: order.user_email,
+        recipient_name: order.user_name,
+        subject: '✅ Order Confirmation - Your Pass Purchase is Complete!',
+        status: 'pending'
+      })
+      .select()
+      .single();
+
+    try {
+      await transporter.sendMail({
+        from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+        to: order.user_email,
+        subject: '✅ Order Confirmation - Your Pass Purchase is Complete!',
+        html: emailHtml
+      });
+
+      if (emailLog) {
+        await supabase
+          .from('email_delivery_logs')
+          .update({
+            status: 'sent',
+            sent_at: new Date().toISOString()
+          })
+          .eq('id', emailLog.id);
+      }
+
+      res.status(200).json({ 
+        success: true, 
+        message: 'Order completion email resent successfully',
+        emailLogId: emailLog?.id
+      });
+    } catch (emailError) {
+      if (emailLog) {
+        await supabase
+          .from('email_delivery_logs')
+          .update({
+            status: 'failed',
+            error_message: emailError.message,
+            retry_count: (emailLog.retry_count || 0) + 1
+          })
+          .eq('id', emailLog.id);
+      }
+
+      return res.status(500).json({ 
+        error: 'Failed to send email', 
+        details: emailError.message 
+      });
+    }
+  } catch (error) {
+    console.error('Error in resend-order-completion-email:', error);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
+  }
+});
+
+// Get email delivery logs for an order (admin only)
+app.get('/api/email-delivery-logs/:orderId', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId } = req.params;
+
+    const { data: logs, error } = await supabase
+      .from('email_delivery_logs')
+      .select('*')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return res.status(500).json({ error: 'Failed to fetch email logs', details: error.message });
+    }
+
+    res.status(200).json({ success: true, logs });
+  } catch (error) {
+    console.error('Error fetching email logs:', error);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
+  }
+});
+
+// POST /api/generate-qr-code - Generate QR code image from token
+app.post('/api/generate-qr-code', async (req, res) => {
+  try {
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+
+    // Use qrcode library to generate QR code
+    const QRCode = require('qrcode');
+    const qrCodeBuffer = await QRCode.toBuffer(token, {
+      type: 'png',
+      width: 300,
+      margin: 2,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      }
+    });
+
+    // Return as base64 data URL for frontend use
+    const base64 = qrCodeBuffer.toString('base64');
+    const dataUrl = `data:image/png;base64,${base64}`;
+
+    res.status(200).json({ 
+      success: true, 
+      dataUrl,
+      buffer: base64 // Also return base64 for backend use
+    });
+  } catch (error) {
+    console.error('Error generating QR code:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate QR code', 
+      details: error.message 
+    });
+  }
+});
+
+// POST /api/generate-tickets-for-order - Generate tickets when order reaches PAID status
+app.post('/api/generate-tickets-for-order', async (req, res) => {
+  try {
+    console.log('🎫 ========== TICKET GENERATION STARTED ==========');
+    console.log('🎫 Ticket generation request received:', req.body);
+    const { orderId } = req.body;
+    
+    if (!orderId) {
+      console.error('❌ No orderId provided');
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    if (!supabase) {
+      console.error('❌ Supabase not configured');
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    // Use service role client for ALL operations (storage AND database) if available
+    // This bypasses RLS policies and ensures we can create tickets
+    const dbClient = supabaseService || supabase;
+    const storageClient = supabaseService || supabase;
+    
+    if (!supabaseService) {
+      console.warn('⚠️ Service role key not set - using anon key (may fail due to RLS)');
+    } else {
+      console.log('✅ Using service role client for all operations');
+    }
+
+    // Fetch order data using service role client
+    console.log(`📋 Fetching order data for: ${orderId}`);
+    const { data: orderData, error: orderError } = await dbClient
+      .from('orders')
+      .select(`
+        *,
+        events (
+          id,
+          name,
+          date,
+          venue
+        ),
+        ambassadors (
+          id,
+          full_name,
+          phone
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !orderData) {
+      console.error('❌ Order not found:', orderError);
+      return res.status(404).json({ error: 'Order not found', details: orderError?.message });
+    }
+
+    const order = orderData;
+    console.log(`📋 Order details: id=${order.id}, status=${order.status}, source=${order.source}, payment_method=${order.payment_method}`);
+
+    // Check if order is in the correct status (COMPLETED for COD, PAID for online)
+    // Also accept MANUAL_COMPLETED for manual orders
+    const isPaidStatus = 
+      (order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED')) ||
+      (order.source === 'platform_online' && order.status === 'PAID');
+
+    console.log(`📋 Order status check: status=${order.status}, source=${order.source}, isPaidStatus=${isPaidStatus}`);
+
+    if (!isPaidStatus) {
+      console.error(`❌ Order not in paid status: ${order.status} (source: ${order.source})`);
+      return res.status(400).json({ 
+        error: `Order is not in a paid status. Current status: ${order.status}, Source: ${order.source}`,
+        orderStatus: order.status,
+        orderSource: order.source,
+        expectedStatus: order.source === 'platform_cod' ? 'COMPLETED or MANUAL_COMPLETED' : 'PAID'
+      });
+    }
+
+    // Check if tickets already exist
+    console.log(`🔍 Checking if tickets already exist for order ${orderId}`);
+    const { data: existingTickets } = await dbClient
+      .from('tickets')
+      .select('id')
+      .eq('order_id', orderId)
+      .limit(1);
+
+    if (existingTickets && existingTickets.length > 0) {
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Tickets already generated for this order',
+        orderId 
+      });
+    }
+
+    // Fetch all passes for this order
+    console.log(`📋 Fetching order passes for order ${orderId}`);
+    let orderPasses = null;
+    const { data: passesData, error: passesError } = await dbClient
+      .from('order_passes')
+      .select('*')
+      .eq('order_id', orderId);
+
+    if (passesError) {
+      console.error('❌ Error fetching order passes:', passesError);
+      return res.status(500).json({ 
+        error: `Failed to fetch order passes: ${passesError.message}`,
+        details: passesError 
+      });
+    }
+
+    orderPasses = passesData;
+    console.log(`📋 Found ${orderPasses?.length || 0} pass(es) in order_passes table for order ${orderId}`);
+
+    // Fallback: If no passes in order_passes table, create them from order data
+    if (!orderPasses || orderPasses.length === 0) {
+      console.log('⚠️ No passes in order_passes table, checking order for pass_type...');
+      
+      // Check if order has pass_type (old format)
+      if (order.pass_type) {
+        console.log(`📋 Creating order_pass entry from order data: pass_type=${order.pass_type}, quantity=${order.quantity || 1}`);
+        
+        // Calculate price per pass
+        const quantity = order.quantity || 1;
+        const pricePerPass = order.total_price / quantity;
+        
+        // Create order_pass entry using service role client
+        console.log(`💾 Creating order_pass entry in database...`);
+        const { data: newPass, error: createPassError } = await dbClient
+          .from('order_passes')
+          .insert({
+            order_id: orderId,
+            pass_type: order.pass_type,
+            quantity: quantity,
+            price: pricePerPass
+          })
+          .select()
+          .single();
+
+        if (createPassError) {
+          console.error('❌ Error creating order_pass:', createPassError);
+          return res.status(500).json({ 
+            error: `Failed to create order pass: ${createPassError.message}`,
+            details: createPassError 
+          });
+        }
+
+        console.log('✅ Created order_pass entry:', newPass);
+        orderPasses = [newPass];
+      } else {
+        console.error('❌ No passes found and order has no pass_type');
+        return res.status(400).json({ 
+          error: 'No passes found for this order',
+          orderId: orderId,
+          suggestion: 'The order must have either entries in order_passes table or a pass_type field'
+        });
+      }
+    }
+
+    console.log(`✅ Found ${orderPasses.length} pass(es) for order ${orderId}`);
+
+    const { v4: uuidv4 } = require('uuid');
+    const QRCode = require('qrcode');
+
+    // Create tickets and generate QR codes
+    const tickets = [];
+    console.log('🎫 Starting ticket generation...');
+
+    for (const pass of orderPasses) {
+      // Create one ticket per quantity
+      for (let i = 0; i < pass.quantity; i++) {
+        const secureToken = uuidv4();
+        
+        // Generate QR code
+        const qrCodeBuffer = await QRCode.toBuffer(secureToken, {
+          type: 'png',
+          width: 300,
+          margin: 2
+        });
+
+        // Upload to Supabase Storage
+        const fileName = `tickets/${orderId}/${secureToken}.png`;
+        console.log(`📤 Uploading QR code to storage: ${fileName}`);
+        const { data: uploadData, error: uploadError } = await storageClient.storage
+          .from('tickets')
+          .upload(fileName, qrCodeBuffer, {
+            contentType: 'image/png',
+            upsert: true
+          });
+
+        if (uploadError) {
+          console.error(`❌ Error uploading QR code for ticket ${secureToken}:`, uploadError);
+          continue;
+        }
+
+        console.log(`✅ QR code uploaded successfully: ${fileName}`);
+
+        // Get public URL
+        const { data: urlData } = storageClient.storage
+          .from('tickets')
+          .getPublicUrl(fileName);
+        
+        console.log(`🔗 QR code URL: ${urlData?.publicUrl}`);
+
+        // Create ticket entry using service role client
+        console.log(`💾 Creating ticket entry in database...`);
+        const ticketInsertData = {
+          order_id: orderId,
+          order_pass_id: pass.id,
+          secure_token: secureToken,
+          qr_code_url: urlData?.publicUrl || null,
+          status: 'GENERATED',
+          generated_at: new Date().toISOString()
+        };
+        
+        console.log('📝 Ticket data to insert:', JSON.stringify(ticketInsertData, null, 2));
+        
+        const { data: ticketData, error: ticketError } = await dbClient
+          .from('tickets')
+          .insert(ticketInsertData)
+          .select()
+          .single();
+
+        if (ticketError) {
+          console.error(`❌ Error creating ticket in database:`, ticketError);
+          console.error('❌ Ticket error code:', ticketError.code);
+          console.error('❌ Ticket error message:', ticketError.message);
+          console.error('❌ Ticket error details:', JSON.stringify(ticketError, null, 2));
+          console.error('❌ Ticket data that failed:', JSON.stringify(ticketInsertData, null, 2));
+          continue;
+        }
+
+        if (ticketData) {
+          console.log(`✅ Ticket created successfully in database: ${ticketData.id}`);
+          console.log(`✅ Ticket details:`, JSON.stringify(ticketData, null, 2));
+          tickets.push(ticketData);
+        } else {
+          console.error(`❌ Ticket insert returned no data`);
+        }
+      }
+    }
+
+    if (tickets.length === 0) {
+      console.error('❌ No tickets were successfully created');
+      return res.status(500).json({ error: 'Failed to generate any tickets' });
+    }
+
+    console.log(`✅ Successfully created ${tickets.length} ticket(s)`);
+
+    // Send confirmation email with all QR codes
+    if (order.user_email) {
+      console.log(`📧 Preparing to send email to: ${order.user_email}`);
+      try {
+        // Build email HTML with all ticket QR codes
+        const ticketsHtml = tickets
+          .filter(t => t.qr_code_url)
+          .map((ticket, index) => `
+            <div style="margin: 20px 0; padding: 20px; background: #f9f9f9; border-radius: 8px; text-align: center;">
+              <h4 style="margin: 0 0 15px 0; color: #667eea;">Ticket ${index + 1}</h4>
+              <img src="${ticket.qr_code_url}" alt="QR Code" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid hsl(195, 100%, 50%, 0.3); display: block; margin: 0 auto;" />
+            </div>
+          `)
+          .join('');
+
+        const emailHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Order Confirmation - Andiamo Events</title>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; padding: 20px; }
+              .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+              .header { background: linear-gradient(135deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 50%, hsl(330, 100%, 65%) 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
+              .header h1 { margin: 0; font-size: 28px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>✅ Order Confirmed!</h1>
+                <p>Your Digital Tickets Are Ready</p>
+              </div>
+              <div style="padding: 20px 0;">
+                <p>Dear <strong>${order.user_name || 'Valued Customer'}</strong>,</p>
+                <p>Your digital tickets with unique QR codes are ready!</p>
+                <h3 style="color: #667eea;">🎫 Your Digital Tickets</h3>
+                <p>Please present these QR codes at the event entrance:</p>
+                ${ticketsHtml}
+                <p>Thank you for choosing Andiamo Events!</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `;
+
+        console.log('📧 Sending email...');
+        const emailResult = await transporter.sendMail({
+          from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+          to: order.user_email,
+          subject: '✅ Order Confirmation - Your Digital Tickets Are Ready!',
+          html: emailHtml
+        });
+        console.log('✅ Email sent successfully:', emailResult.messageId);
+
+        // Update tickets to DELIVERED using service role client
+        const ticketIds = tickets.map(t => t.id);
+        console.log(`📝 Updating ${ticketIds.length} ticket(s) to DELIVERED status`);
+        const { error: updateError } = await dbClient
+          .from('tickets')
+          .update({
+            status: 'DELIVERED',
+            email_delivery_status: 'sent',
+            delivered_at: new Date().toISOString()
+          })
+          .in('id', ticketIds);
+        
+        if (updateError) {
+          console.error('❌ Error updating tickets to DELIVERED:', updateError);
+        } else {
+          console.log('✅ Tickets updated to DELIVERED status');
+        }
+
+        // Log email delivery using service role client
+        console.log('📝 Logging email delivery...');
+        const { error: logError } = await dbClient.from('email_delivery_logs').insert({
+          order_id: orderId,
+          email_type: 'ticket_delivery',
+          recipient_email: order.user_email,
+          recipient_name: order.user_name,
+          subject: '✅ Order Confirmation - Your Digital Tickets Are Ready!',
+          status: 'sent',
+          sent_at: new Date().toISOString()
+        });
+
+      } catch (emailError) {
+        console.error('❌ Error sending confirmation email:', emailError);
+        console.error('Email error details:', emailError.message);
+        // Update tickets email delivery status to failed using service role client
+        const ticketIds = tickets.map(t => t.id);
+        await dbClient
+          .from('tickets')
+          .update({
+            email_delivery_status: 'failed'
+          })
+          .in('id', ticketIds);
+
+        // Log email failure using service role client
+        await dbClient.from('email_delivery_logs').insert({
+          order_id: orderId,
+          email_type: 'ticket_delivery',
+          recipient_email: order.user_email,
+          recipient_name: order.user_name,
+          subject: '✅ Order Confirmation - Your Digital Tickets Are Ready!',
+          status: 'failed',
+          error_message: emailError.message
+        });
+      }
+    }
+
+    console.log(`🎉 ========== TICKET GENERATION COMPLETED ==========`);
+    console.log(`🎉 Successfully created ${tickets.length} ticket(s) for order ${orderId}`);
+    console.log(`🎉 Ticket IDs:`, tickets.map(t => t.id));
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'Tickets generated successfully',
+      ticketsCount: tickets.length,
+      orderId,
+      ticketIds: tickets.map(t => t.id)
+    });
+
+  } catch (error) {
+    console.error('❌ Error generating tickets:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to generate tickets', 
+      details: error.message 
+    });
+  }
+});
+
+// Test email endpoint
+app.post('/api/test-email', async (req, res) => {
+  try {
+    // Check if email service is configured
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      return res.status(500).json({ 
+        error: 'Email service not configured', 
+        details: 'EMAIL_USER and EMAIL_PASS environment variables are required.'
+      });
+    }
+
+    const { to } = req.body;
+    const testEmailTo = to || 'malekbenamor02@icloud.com';
+
+    const testEmailHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Test Email - Andiamo Events</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; padding: 20px; }
+          .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
+          .header h1 { margin: 0; font-size: 28px; }
+          .content { padding: 20px 0; }
+          .success-box { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin: 20px 0; }
+          .success-box h3 { color: #155724; margin-top: 0; }
+          .info-box { background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .info-box p { margin: 10px 0; }
+          .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 14px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✅ Test Email Successful!</h1>
+          </div>
+          <div class="content">
+            <p>Dear User,</p>
+            
+            <div class="success-box">
+              <h3>🎉 Email Configuration Test</h3>
+              <p>This is a test email to verify that your new professional email configuration is working correctly.</p>
+            </div>
+
+            <div class="info-box">
+              <h3>📧 Email Configuration Details:</h3>
+              <p><strong>Email User:</strong> ${process.env.EMAIL_USER}</p>
+              <p><strong>Email Host:</strong> ${process.env.EMAIL_HOST}</p>
+              <p><strong>Email Port:</strong> ${process.env.EMAIL_PORT || '587'}</p>
+              <p><strong>Sent At:</strong> ${new Date().toLocaleString()}</p>
+            </div>
+
+            <p>If you received this email, it means your email service is properly configured and ready to use!</p>
+            
+            <p>Best regards,<br>
+            <strong>The Andiamo Events Team</strong></p>
+          </div>
+          <div class="footer">
+            <p>© 2024 Andiamo Events. All rights reserved.</p>
+            <p>Tunisia's Premier Nightlife Experience</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await transporter.sendMail({
+      from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+      to: testEmailTo,
+      subject: '✅ Test Email - Andiamo Events Email Configuration',
+      html: testEmailHtml
+    });
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Test email sent successfully',
+      to: testEmailTo,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Test email sending failed:', error);
+    res.status(500).json({ 
+      error: 'Failed to send test email', 
+      details: error.message 
     });
   }
 });
