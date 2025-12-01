@@ -146,7 +146,9 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         recaptchaToken
       };
       
-      console.log('🔵 [LOGIN] Sending login request to /api/admin-login');
+      // Try simplified endpoint first, fallback to regular endpoint
+      const loginEndpoint = '/api/admin-login-simple'; // Use simplified endpoint for debugging
+      console.log('🔵 [LOGIN] Sending login request to', loginEndpoint);
       console.log('🔵 [LOGIN] Request payload:', { 
         email, 
         hasPassword: !!password, 
@@ -155,7 +157,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       });
       
       // Call the Vercel API route for admin login
-      const response = await fetch('/api/admin-login', {
+      const response = await fetch(loginEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
