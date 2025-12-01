@@ -372,7 +372,41 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     dateTo: null as Date | null
   });
 
-  const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(2 * 60 * 60); // 2 hours in seconds
+  // Session expiration timestamp (milliseconds) - persisted in localStorage
+  // This is the actual JWT expiration time, allowing accurate calculation regardless of refresh
+  // We persist it so it's available immediately on page refresh, before the server response arrives
+  const getStoredExpiration = (): number | null => {
+    try {
+      const stored = localStorage.getItem('adminSessionExpiresAt');
+      if (stored) {
+        const expiration = parseInt(stored, 10);
+        // Only use stored value if it's in the future
+        if (expiration > Date.now()) {
+          return expiration;
+        } else {
+          // Expired, remove it
+          localStorage.removeItem('adminSessionExpiresAt');
+        }
+      }
+    } catch (e) {
+      // localStorage not available or error
+    }
+    return null;
+  };
+  
+  const storedExpiration = getStoredExpiration();
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(storedExpiration);
+  
+  // Session time left in seconds - calculated from expiration timestamp
+  // This ensures the timer continues from the original login time and does NOT restart on refresh
+  const calculateTimeLeft = (expiration: number | null): number => {
+    if (!expiration) return 60 * 60; // Default to 1 hour
+    const remaining = Math.max(0, Math.floor((expiration - Date.now()) / 1000));
+    return remaining;
+  };
+  
+  // Initialize with stored expiration if available, otherwise default
+  const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(() => calculateTimeLeft(storedExpiration));
 
 
   const content = {
@@ -2356,7 +2390,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Fetch current admin role
+  // Fetch current admin role and verify token validity
+  // This ensures the 1-hour session is enforced - token expiration is checked periodically
   useEffect(() => {
     const fetchCurrentAdminRole = async () => {
       try {
@@ -2367,13 +2402,37 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         
         if (response.ok) {
           const data = await response.json();
-          // Debug logs removed - uncomment if needed for debugging
-          // console.log('Admin role data:', data);
           if (data.valid && data.admin) {
             const role = data.admin.role || 'admin';
-            // console.log('Setting admin role to:', role);
-            // console.log('Full admin object:', data.admin);
             setCurrentAdminRole(role);
+            
+            // Update session expiration timestamp from server response
+            // This ensures the timer continues from the original login time
+            // and does NOT restart on refresh or navigation
+            // IMPORTANT: Only use sessionExpiresAt (absolute timestamp), NOT sessionTimeRemaining
+            // Using sessionTimeRemaining would reset the timer because it's calculated from current time
+            if (data.sessionExpiresAt) {
+              // Store the expiration timestamp - this is the source of truth
+              // Persist it in localStorage so it's available immediately on refresh
+              const expiration = data.sessionExpiresAt;
+              try {
+                localStorage.setItem('adminSessionExpiresAt', expiration.toString());
+              } catch (e) {
+                // localStorage not available, continue without persistence
+              }
+              // Only update if it's different (prevents unnecessary re-renders)
+              // This ensures the timer continues from the original login time
+              setSessionExpiresAt(prev => {
+                // If we already have the same value, don't update (prevents reset)
+                if (prev === expiration) return prev;
+                return expiration;
+              });
+              // Calculate remaining time from expiration timestamp
+              const remaining = Math.max(0, Math.floor((expiration - Date.now()) / 1000));
+              setSessionTimeLeft(remaining);
+            }
+            // Note: We intentionally do NOT use sessionTimeRemaining as a fallback
+            // because calculating expiration from it (Date.now() + remaining) would reset the timer
             
             // Show alert if role is not super_admin but user expects it
             if (role !== 'super_admin') {
@@ -2381,22 +2440,36 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               console.warn('💡 If you should be super_admin, run FIX_SUPER_ADMIN_ROLE.sql and log out/in');
             }
           } else {
-            console.warn('Admin data not valid or missing:', data);
+            // Token invalid or expired - redirect to login
+            console.warn('Admin session expired or invalid');
+            navigate('/admin/login');
           }
         } else {
-          console.error('Failed to verify admin, status:', response.status);
+          // Token expired or invalid (401) - redirect to login
+          if (response.status === 401) {
+            console.warn('Admin session expired - redirecting to login');
+            navigate('/admin/login');
+          } else {
+            console.error('Failed to verify admin, status:', response.status);
+          }
         }
       } catch (error) {
         console.error('Error fetching admin role:', error);
+        // Network error - don't redirect, just log
       }
     };
     
+    // Fetch immediately on mount to get the correct session time
+    // This ensures the timer doesn't start from the default value
     fetchCurrentAdminRole();
     
-    // Also refetch role periodically in case it was updated
-    const interval = setInterval(fetchCurrentAdminRole, 30000); // Every 30 seconds
+    // Verify token every 5 minutes to catch expiration and sync session timer
+    // The JWT expiration is encoded in the token, so this check ensures we catch it
+    // This also updates the session timer with the actual remaining time from the server
+    // The timer does NOT restart - it continues from the original login time
+    const interval = setInterval(fetchCurrentAdminRole, 5 * 60 * 1000); // Every 5 minutes
     return () => clearInterval(interval);
-  }, []);
+  }, [navigate]);
 
   // Fetch all admins (only for super_admin)
   const fetchAdmins = async () => {
@@ -4574,6 +4647,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
 
   const handleLogout = async () => {
+    // Clear session expiration from localStorage on logout
+    try {
+      localStorage.removeItem('adminSessionExpiresAt');
+    } catch (e) {
+      // localStorage not available, continue
+    }
     try {
       // Call Vercel API route to clear JWT cookie
       await fetch('/api/admin-logout', {
@@ -5170,12 +5249,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, []);
 
-  // Session timer
+  // Session timer - calculates remaining time from expiration timestamp
+  // The timer does NOT restart on refresh - it continues from the JWT expiration time
+  // This ensures accuracy even if the page is refreshed or the component remounts
   useEffect(() => {
     const timer = setInterval(() => {
-      setSessionTimeLeft(prev => {
-        if (prev <= 1) {
-          // Session expired
+      if (sessionExpiresAt) {
+        // Calculate remaining time from the expiration timestamp
+        // This ensures the timer is always accurate, even after refresh
+        const remaining = Math.max(0, Math.floor((sessionExpiresAt - Date.now()) / 1000));
+        setSessionTimeLeft(remaining);
+        
+        if (remaining <= 0) {
+          // Session expired - redirect to login
           toast({
             title: language === 'en' ? "Session Expired" : "Session expirée",
             description: language === 'en' 
@@ -5184,14 +5270,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             variant: "destructive",
           });
           navigate('/admin/login');
-          return 0;
         }
-        return prev - 1;
-      });
-    }, 1000);
+      } else {
+        // If we don't have expiration timestamp yet, just decrement
+        // This will be corrected once the server response arrives
+        setSessionTimeLeft(prev => {
+          if (prev <= 1) {
+            return 0;
+          }
+          return prev - 1;
+        });
+      }
+    }, 1000); // Update every second
 
     return () => clearInterval(timer);
-  }, [navigate, toast, language]);
+  }, [sessionExpiresAt, navigate, toast, language]);
 
   // Add JWT expiration handling
   useEffect(() => {

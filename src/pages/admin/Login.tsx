@@ -200,6 +200,14 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
           details: { email }
         });
 
+        // Clear any old session expiration from localStorage
+        // A new session will be created, and the expiration will be set from the server response
+        try {
+          localStorage.removeItem('adminSessionExpiresAt');
+        } catch (e) {
+          // localStorage not available, continue
+        }
+
         // Login successful - JWT token is now stored in httpOnly cookie
         toast({
           title: language === 'en' ? "Login Successful!" : "Connexion réussie!",

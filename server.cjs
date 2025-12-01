@@ -42,8 +42,44 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
 
 const app = express();
 
+// CORS configuration - allow all origins in development, specific origins in production
+const allowedOrigins = process.env.NODE_ENV === 'production' 
+  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000'])
+  : ['http://localhost:8080', 'http://localhost:3000', 'http://192.168.1.*', 'http://10.0.*', 'http://127.0.0.1:3000', /^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/];
+
 app.use(cors({
-  origin: ['http://localhost:8080', 'http://localhost:3000', 'http://192.168.1.*', 'http://10.0.*', 'http://127.0.0.1:3000'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin matches allowed patterns
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        // Support wildcard patterns
+        if (allowed.includes('*')) {
+          const pattern = allowed.replace(/\*/g, '.*');
+          return new RegExp(`^${pattern}$`).test(origin);
+        }
+        return origin === allowed;
+      }
+      // Regex pattern
+      if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return false;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      // In development, allow all origins
+      if (process.env.NODE_ENV !== 'production') {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -186,7 +222,8 @@ app.post('/api/admin-login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    // Generate JWT (24 hours for session cookie)
+    // Generate JWT (1 hour fixed session - expiration encoded in token)
+    // The session countdown starts from login and continues regardless of user activity
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
       console.warn('WARNING: JWT_SECRET is not set! Using fallback secret. This is insecure in production.');
@@ -197,20 +234,38 @@ app.post('/api/admin-login', async (req, res) => {
     
     let token;
     try {
-      token = jwt.sign({ id: admin.id, email: admin.email, role: admin.role }, jwtSecret || 'fallback-secret-dev-only', { expiresIn: '24h' });
+      // 1 hour expiration - encoded in JWT, cannot be extended
+      token = jwt.sign({ id: admin.id, email: admin.email, role: admin.role }, jwtSecret || 'fallback-secret-dev-only', { expiresIn: '1h' });
     } catch (jwtError) {
       console.error('JWT signing error:', jwtError);
       return res.status(500).json({ error: 'Server error', details: 'Failed to generate token' });
     }
     
-    res.cookie('adminToken', token, { 
-      httpOnly: true, 
-      secure: false, // Allow HTTP for localhost
-      sameSite: 'lax', // More permissive for mobile
+    // Determine cookie settings based on environment
+    // IMPORTANT: The cookie maxAge matches the JWT expiration (1 hour)
+    // This ensures the cookie expires at the same time as the JWT
+    // The session timer starts at login and continues regardless of:
+    // - Page refreshes
+    // - Navigation between pages
+    // - Browser close/reopen
+    // - Opening multiple tabs
+    // The timer does NOT restart on any activity
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieOptions = {
+      httpOnly: true, // Prevents JavaScript access - security feature
+      secure: isProduction, // Use secure cookies in production (HTTPS)
+      sameSite: 'lax', // More permissive for cross-site requests
       path: '/', // Ensure cookie is available for all paths
-      domain: 'localhost' // Set domain explicitly
-      // Remove maxAge to make it a session cookie (expires when browser closes)
-    });
+      maxAge: 60 * 60 * 1000 // 1 hour (matches JWT expiration) - fixed expiration, cannot be extended
+    };
+    
+    // Only set domain in production or if explicitly configured
+    // Don't set domain for localhost - it breaks cookie setting
+    if (isProduction && process.env.COOKIE_DOMAIN) {
+      cookieOptions.domain = process.env.COOKIE_DOMAIN;
+    }
+    
+    res.cookie('adminToken', token, cookieOptions);
     res.json({ success: true });
   } catch (error) {
     console.error('Admin login error:', error);
@@ -367,6 +422,10 @@ app.post('/api/admin-logout', (req, res) => {
 });
 
 // Admin verify endpoint
+// IMPORTANT: This endpoint does NOT extend or refresh the session
+// The JWT expiration is fixed at 1 hour from login and cannot be changed
+// Refreshing the page, navigating, or closing/reopening the browser does NOT restart the timer
+// The session countdown continues from the original login time
 app.get('/api/verify-admin', requireAdminAuth, async (req, res) => {
   if (!supabase) {
     return res.status(500).json({ valid: false, error: 'Supabase not configured' });
@@ -374,6 +433,8 @@ app.get('/api/verify-admin', requireAdminAuth, async (req, res) => {
   
   try {
     // Verify admin exists in database and is active
+    // Note: requireAdminAuth middleware already verified the JWT token expiration
+    // If token is expired, this endpoint will never be reached (401 returned by middleware)
     const { data: admin, error } = await supabase
       .from('admins')
       .select('id, email, name, role, is_active')
@@ -386,7 +447,20 @@ app.get('/api/verify-admin', requireAdminAuth, async (req, res) => {
       return res.status(401).json({ valid: false, error: 'Invalid admin' });
     }
 
-    res.json({ valid: true, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role } });
+    // Return admin info with token expiration time
+    // req.admin contains the decoded JWT which includes 'exp' (expiration timestamp)
+    // This allows the frontend to calculate remaining session time accurately
+    const tokenExpiration = req.admin.exp ? req.admin.exp * 1000 : null; // Convert to milliseconds
+    const currentTime = Date.now();
+    const timeRemaining = tokenExpiration ? Math.max(0, Math.floor((tokenExpiration - currentTime) / 1000)) : 0; // Remaining seconds
+
+    // Return admin info - NO new token is issued, session continues with original expiration
+    res.json({ 
+      valid: true, 
+      admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role },
+      sessionExpiresAt: tokenExpiration, // Unix timestamp in milliseconds
+      sessionTimeRemaining: timeRemaining // Remaining seconds
+    });
   } catch (error) {
     console.error('Token verification error:', error);
     res.status(401).json({ valid: false, error: 'Invalid token' });
@@ -503,9 +577,13 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
 });
 
 // JWT middleware for protected admin routes
+// Verifies the HttpOnly JWT cookie and checks expiration
+// The JWT contains a 1-hour expiration that cannot be extended
 function requireAdminAuth(req, res, next) {
   const token = req.cookies.adminToken;
-  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+  if (!token) {
+    return res.status(401).json({ error: 'Not authenticated', reason: 'No token provided' });
+  }
   try {
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
@@ -514,11 +592,18 @@ function requireAdminAuth(req, res, next) {
         return res.status(500).json({ error: 'Server configuration error: JWT_SECRET is required in production.' });
       }
     }
+    // jwt.verify automatically checks expiration - throws error if expired
     const decoded = jwt.verify(token, jwtSecret || 'fallback-secret-dev-only');
     req.admin = decoded;
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    // Token is invalid, expired, or malformed
+    // Clear the cookie to prevent reuse
+    res.clearCookie('adminToken', { path: '/' });
+    return res.status(401).json({ 
+      error: 'Invalid or expired token', 
+      reason: err.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token'
+    });
   }
 }
 
