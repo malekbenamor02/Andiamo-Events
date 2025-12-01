@@ -394,11 +394,26 @@ app.post('/api/admin-login', async (req, res) => {
       cookieOptions.domain = process.env.COOKIE_DOMAIN;
     }
     
+    console.log('🔵 Setting adminToken cookie...');
+    console.log('🔵 Cookie options:', {
+      httpOnly: cookieOptions.httpOnly,
+      secure: cookieOptions.secure,
+      sameSite: cookieOptions.sameSite,
+      path: cookieOptions.path,
+      maxAge: cookieOptions.maxAge,
+      domain: cookieOptions.domain || 'not set'
+    });
+    
     res.cookie('adminToken', token, cookieOptions);
+    console.log('✅ Cookie set successfully');
+    console.log('✅ Sending success response');
     res.json({ success: true });
+    console.log('✅ Login completed successfully for email:', email);
   } catch (error) {
-    console.error('Admin login error:', error);
-    console.error('Error stack:', error.stack);
+    console.error('❌ Admin login error:', error);
+    console.error('❌ Error type:', error?.constructor?.name);
+    console.error('❌ Error message:', error?.message);
+    console.error('❌ Error stack:', error?.stack);
     res.status(500).json({ 
       error: 'Internal server error', 
       details: error.message 
