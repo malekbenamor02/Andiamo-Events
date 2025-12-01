@@ -146,8 +146,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         recaptchaToken
       };
       
-      // Use minimal endpoint (no Express, no serverless-http wrapper)
-      const loginEndpoint = '/api/admin-login'; // Minimal endpoint for debugging
+      const loginEndpoint = '/api/admin-login';
       console.log('🔵 [LOGIN] Sending login request to', loginEndpoint);
       console.log('🔵 [LOGIN] Request payload:', { 
         email, 
