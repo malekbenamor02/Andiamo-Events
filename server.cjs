@@ -157,8 +157,50 @@ app.get('/api/test', (req, res) => {
     vercelUrl: process.env.VERCEL_URL,
     nodeEnv: process.env.NODE_ENV,
     hasSupabase: !!supabase,
+    hasSupabaseUrl: !!process.env.SUPABASE_URL,
+    hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
+    hasJwtSecret: !!process.env.JWT_SECRET,
     timestamp: new Date().toISOString()
   });
+});
+
+// Diagnostic endpoint to test Supabase connection
+app.get('/api/test-supabase', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ 
+        error: 'Supabase not initialized',
+        hasUrl: !!process.env.SUPABASE_URL,
+        hasKey: !!process.env.SUPABASE_ANON_KEY
+      });
+    }
+    
+    // Try to query admins table
+    const { data, error } = await supabase
+      .from('admins')
+      .select('id, email')
+      .limit(1);
+    
+    if (error) {
+      return res.status(500).json({ 
+        error: 'Supabase query failed',
+        details: error.message,
+        code: error.code
+      });
+    }
+    
+    res.json({ 
+      success: true,
+      message: 'Supabase connection working',
+      adminCount: data?.length || 0,
+      sampleAdmin: data?.[0] || null
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Supabase test failed',
+      details: err.message
+    });
+  }
 });
 
 // Admin login endpoint
@@ -180,26 +222,26 @@ app.post('/api/admin-login', async (req, res) => {
     }
 
     // Bypass reCAPTCHA verification for localhost development
-    if (recaptchaToken === 'localhost-bypass-token') {
-      console.log('⚠️  reCAPTCHA bypassed for localhost development');
+    // Also allow bypass if RECAPTCHA_SECRET_KEY is not set (for testing)
+    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+    const shouldBypassRecaptcha = recaptchaToken === 'localhost-bypass-token' || !RECAPTCHA_SECRET_KEY;
+    
+    if (shouldBypassRecaptcha) {
+      if (!RECAPTCHA_SECRET_KEY) {
+        console.log('⚠️  reCAPTCHA bypassed - RECAPTCHA_SECRET_KEY not set');
+      } else {
+        console.log('⚠️  reCAPTCHA bypassed for localhost development');
+      }
       // Continue with login without reCAPTCHA verification
     } else {
       // Verify reCAPTCHA for production
       if (!recaptchaToken) {
+        console.log('reCAPTCHA token missing');
         return res.status(400).json({ error: 'reCAPTCHA verification required' });
-      }
-
-      const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
-      
-      if (!RECAPTCHA_SECRET_KEY) {
-        console.error('RECAPTCHA_SECRET_KEY is not set in environment variables');
-        return res.status(500).json({ 
-          error: 'Server configuration error',
-          details: 'reCAPTCHA secret key is not configured. Please set RECAPTCHA_SECRET_KEY in environment variables.'
-        });
       }
       
       try {
+        console.log('Verifying reCAPTCHA token...');
         const verifyResponse = await fetch(`https://www.google.com/recaptcha/api/siteverify`, {
           method: 'POST',
           headers: {
@@ -209,34 +251,47 @@ app.post('/api/admin-login', async (req, res) => {
         });
 
         const verifyData = await verifyResponse.json();
+        console.log('reCAPTCHA verification response:', { success: verifyData.success, errors: verifyData['error-codes'] });
         
         if (!verifyData.success) {
           console.error('reCAPTCHA verification failed:', verifyData);
           return res.status(400).json({ 
             error: 'reCAPTCHA verification failed',
-            details: 'Please complete the reCAPTCHA verification and try again.'
+            details: verifyData['error-codes']?.join(', ') || 'Please complete the reCAPTCHA verification and try again.'
           });
         }
+        console.log('reCAPTCHA verification successful');
       } catch (recaptchaError) {
         console.error('reCAPTCHA verification error:', recaptchaError);
         return res.status(500).json({ 
-        error: 'reCAPTCHA verification service unavailable',
-        details: 'Unable to verify reCAPTCHA. Please try again later.'
-      });
+          error: 'reCAPTCHA verification service unavailable',
+          details: 'Unable to verify reCAPTCHA. Please try again later.'
+        });
       }
     }
     
     // Fetch admin by email
     console.log('Fetching admin from Supabase for email:', email);
+    console.log('Supabase initialized:', !!supabase);
+    console.log('Supabase URL set:', !!process.env.SUPABASE_URL);
+    console.log('Supabase key set:', !!process.env.SUPABASE_ANON_KEY);
+    
     const { data: admin, error } = await supabase
       .from('admins')
       .select('*')
-      .eq('email', email)
+      .eq('email', email.toLowerCase().trim()) // Normalize email
       .single();
       
     if (error) {
       console.error('Supabase error:', error);
-      return res.status(401).json({ error: 'Invalid credentials', details: error.message });
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      console.error('Error details:', error.details);
+      return res.status(401).json({ 
+        error: 'Invalid credentials', 
+        details: error.message,
+        code: error.code 
+      });
     }
     
     if (!admin) {
@@ -255,15 +310,18 @@ app.post('/api/admin-login', async (req, res) => {
     let isMatch;
     try {
       console.log('Comparing password...');
+      console.log('Password hash length:', admin.password?.length);
       isMatch = await bcrypt.compare(password, admin.password);
       console.log('Password match result:', isMatch);
     } catch (bcryptError) {
       console.error('Bcrypt comparison error:', bcryptError);
+      console.error('Bcrypt error stack:', bcryptError.stack);
       return res.status(500).json({ error: 'Server error', details: 'Password verification failed' });
     }
     
     if (!isMatch) {
       console.log('Password does not match for email:', email);
+      // Don't reveal too much info, but log for debugging
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
