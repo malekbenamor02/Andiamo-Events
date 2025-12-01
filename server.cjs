@@ -206,12 +206,35 @@ app.get('/api/test-supabase', async (req, res) => {
 // Admin login endpoint
 app.post('/api/admin-login', async (req, res) => {
   try {
-    // Log for debugging
-    console.log('Admin login attempt:', { email: req.body.email, hasPassword: !!req.body.password });
+    // Log for debugging - include all request info
+    console.log('=== ADMIN LOGIN REQUEST ===');
+    console.log('Request body:', { 
+      email: req.body?.email, 
+      hasPassword: !!req.body?.password,
+      hasRecaptcha: !!req.body?.recaptchaToken
+    });
+    console.log('Request headers:', {
+      'content-type': req.headers['content-type'],
+      origin: req.headers.origin,
+      referer: req.headers.referer
+    });
+    console.log('Environment check:', {
+      hasSupabase: !!supabase,
+      hasSupabaseUrl: !!process.env.SUPABASE_URL,
+      hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
+      hasJwtSecret: !!process.env.JWT_SECRET,
+      nodeEnv: process.env.NODE_ENV,
+      vercel: process.env.VERCEL === '1'
+    });
     
     if (!supabase) {
-      console.error('Supabase not configured');
-      return res.status(500).json({ error: 'Supabase not configured' });
+      console.error('❌ Supabase not configured');
+      console.error('SUPABASE_URL:', process.env.SUPABASE_URL ? 'SET' : 'NOT SET');
+      console.error('SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? 'SET' : 'NOT SET');
+      return res.status(500).json({ 
+        error: 'Supabase not configured',
+        details: 'Please check environment variables: SUPABASE_URL and SUPABASE_ANON_KEY must be set'
+      });
     }
     
     const { email, password, recaptchaToken } = req.body;
