@@ -72,11 +72,21 @@ app.use(cors({
     if (isAllowed) {
       callback(null, true);
     } else {
+      // On Vercel, allow same-origin requests
+      const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_URL;
+      if (isVercel && origin && (origin.includes(process.env.VERCEL_URL || '') || origin.includes(process.env.VERCEL_BRANCH_URL || ''))) {
+        return callback(null, true);
+      }
       // In development, allow all origins
       if (process.env.NODE_ENV !== 'production') {
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+        // In production, if on Vercel, allow same-origin
+        if (isVercel) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
       }
     }
   },
