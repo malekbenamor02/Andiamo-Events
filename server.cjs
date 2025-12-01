@@ -10,7 +10,13 @@ const https = require('https');
 const querystring = require('querystring');
 
 // Load environment variables
-require('dotenv').config();
+// On Vercel, environment variables are already available, but dotenv is safe to call
+try {
+  require('dotenv').config();
+} catch (e) {
+  // dotenv might not be available, but that's OK on Vercel
+  console.log('dotenv not available (this is OK on Vercel)');
+}
 
 // Debug: Log environment variables
 // Check environment variables

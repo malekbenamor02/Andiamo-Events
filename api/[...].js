@@ -1,40 +1,41 @@
 // Vercel serverless function wrapper for Express app
 // This catch-all route handles all API requests
 
-// Use dynamic import to avoid issues with module resolution
+console.log('🔵 [SERVERLESS] Initializing serverless function...');
+
 let app;
 let handler;
 
 try {
-  // Import the Express app
+  console.log('🔵 [SERVERLESS] Loading server.cjs...');
   app = require('../server.cjs');
+  console.log('✅ [SERVERLESS] server.cjs loaded successfully');
   
-  // Wrap with serverless-http
+  console.log('🔵 [SERVERLESS] Loading serverless-http...');
   const serverless = require('serverless-http');
+  console.log('✅ [SERVERLESS] serverless-http loaded successfully');
+  
+  console.log('🔵 [SERVERLESS] Wrapping Express app with serverless-http...');
   handler = serverless(app, {
-    binary: ['image/*', 'application/pdf', 'application/octet-stream'],
-    request: (request, event, context) => {
-      // Log request for debugging
-      console.log('Serverless request:', {
-        path: request.path,
-        method: request.method,
-        url: request.url,
-        vercel: process.env.VERCEL === '1',
-        vercelUrl: process.env.VERCEL_URL
-      });
-    }
+    binary: ['image/*', 'application/pdf', 'application/octet-stream']
   });
+  console.log('✅ [SERVERLESS] Handler created successfully');
 } catch (error) {
-  console.error('Error initializing serverless function:', error);
+  console.error('❌ [SERVERLESS] Error initializing:', error);
+  console.error('❌ [SERVERLESS] Error message:', error.message);
+  console.error('❌ [SERVERLESS] Error stack:', error.stack);
+  
   handler = async (req, res) => {
-    console.error('Serverless function error:', error);
+    console.error('❌ [SERVERLESS] Handler called but initialization failed');
     res.status(500).json({ 
       error: 'Server initialization error', 
       details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      type: error.constructor?.name
     });
   };
 }
+
+console.log('✅ [SERVERLESS] Function initialized, exporting handler');
 
 // Export the handler
 module.exports = handler;
