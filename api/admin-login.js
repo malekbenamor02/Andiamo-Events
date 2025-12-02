@@ -19,13 +19,22 @@ module.exports = async (req, res) => {
   }
   
   try {
-    // Parse request body
-    let body = '';
-    for await (const chunk of req) {
-      body += chunk.toString();
+    // Parse request body - Vercel provides body directly or as stream
+    let bodyData;
+    
+    if (req.body) {
+      // Body already parsed (Vercel does this automatically)
+      bodyData = req.body;
+    } else {
+      // Need to read from stream
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk.toString();
+      }
+      bodyData = JSON.parse(body);
     }
     
-    const { email, password, recaptchaToken } = JSON.parse(body);
+    const { email, password, recaptchaToken } = bodyData;
     
     // Validate input
     if (!email || !password) {
