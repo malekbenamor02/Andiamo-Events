@@ -34,9 +34,13 @@ module.exports = async (req, res) => {
     
     // Check environment variables
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+      console.error('Missing environment variables:', {
+        hasSupabaseUrl: !!process.env.SUPABASE_URL,
+        hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY
+      });
       return res.status(500).json({ 
         error: 'Server configuration error',
-        details: 'Supabase not configured'
+        details: 'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
       });
     }
     
@@ -107,9 +111,12 @@ module.exports = async (req, res) => {
     
   } catch (error) {
     console.error('Admin login error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error name:', error.name);
     return res.status(500).json({ 
       error: 'Server error',
-      details: error.message
+      details: error.message,
+      type: error.name
     });
   }
 };
