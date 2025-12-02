@@ -12,18 +12,30 @@ export const OGImageLoader = () => {
       try {
         const settings = await fetchOGImageSettings();
 
-        // Remove existing OG image meta tags
-        const existingOGImage = document.querySelector('meta[property="og:image"]');
-        const existingTwitterImage = document.querySelector('meta[name="twitter:image"]');
-        
-        if (existingOGImage) existingOGImage.remove();
-        if (existingTwitterImage) existingTwitterImage.remove();
-
         // Helper function to add cache-busting parameter
         const addCacheBuster = (url: string, timestamp?: string) => {
           const separator = url.includes('?') ? '&' : '?';
           const cacheBuster = timestamp || Date.now().toString();
           return `${url}${separator}v=${cacheBuster}`;
+        };
+
+        // Helper function to update or create meta tag
+        const setMetaTag = (property: string, content: string, isName = false) => {
+          const selector = isName 
+            ? `meta[name="${property}"]` 
+            : `meta[property="${property}"]`;
+          let meta = document.querySelector(selector) as HTMLMetaElement;
+          
+          if (!meta) {
+            meta = document.createElement('meta');
+            if (isName) {
+              meta.setAttribute('name', property);
+            } else {
+              meta.setAttribute('property', property);
+            }
+            document.head.appendChild(meta);
+          }
+          meta.setAttribute('content', content);
         };
 
         // Only use OG image from database (no fallback to hardcoded images)
@@ -40,36 +52,35 @@ export const OGImageLoader = () => {
           // Add cache-busting timestamp
           ogImageUrl = addCacheBuster(ogImageUrl, settings.updated_at);
           
-          // Remove any existing OG image meta tags (including width, height, type)
-          const existingOGTags = document.querySelectorAll('meta[property^="og:image"]');
-          existingOGTags.forEach(tag => tag.remove());
-          
-          // Add OG image meta tag
-          const ogImageMeta = document.createElement('meta');
-          ogImageMeta.setAttribute('property', 'og:image');
-          ogImageMeta.setAttribute('content', ogImageUrl);
-          document.head.appendChild(ogImageMeta);
-
-          // Add OG image secure URL (required by some platforms)
-          const ogImageSecureMeta = document.createElement('meta');
-          ogImageSecureMeta.setAttribute('property', 'og:image:secure_url');
-          ogImageSecureMeta.setAttribute('content', ogImageUrl);
-          document.head.appendChild(ogImageSecureMeta);
-
-          // Add OG image type
-          const ogImageTypeMeta = document.createElement('meta');
-          ogImageTypeMeta.setAttribute('property', 'og:image:type');
-          ogImageTypeMeta.setAttribute('content', 'image/jpeg');
-          document.head.appendChild(ogImageTypeMeta);
+          // Add all required OpenGraph image tags (will update existing or create new)
+          setMetaTag('og:image', ogImageUrl);
+          setMetaTag('og:image:secure_url', ogImageUrl);
+          setMetaTag('og:image:type', 'image/jpeg');
+          setMetaTag('og:image:width', '1200');
+          setMetaTag('og:image:height', '630');
 
           // Add Twitter image meta tag
-          const twitterImageMeta = document.createElement('meta');
-          twitterImageMeta.setAttribute('name', 'twitter:image');
-          twitterImageMeta.setAttribute('content', ogImageUrl);
-          document.head.appendChild(twitterImageMeta);
+          setMetaTag('twitter:image', ogImageUrl, true);
+        } else {
+          // If no OG image in database, ensure no empty OG image tags exist
+          // Facebook crawler requires og:image to have a valid URL or be absent
+          const emptyOGTags = document.querySelectorAll('meta[property^="og:image"]');
+          emptyOGTags.forEach(tag => {
+            const content = tag.getAttribute('content');
+            if (!content || content.trim() === '') {
+              tag.remove();
+            }
+          });
+          
+          // Also remove empty Twitter image tag
+          const emptyTwitterTag = document.querySelector('meta[name="twitter:image"]');
+          if (emptyTwitterTag) {
+            const content = emptyTwitterTag.getAttribute('content');
+            if (!content || content.trim() === '') {
+              emptyTwitterTag.remove();
+            }
+          }
         }
-        // If no OG image in database, don't add any meta tags
-        // Admin can upload one from the dashboard
       } catch (error) {
         console.error('Error loading OG image from database:', error);
         // Don't add fallback - let admin upload from dashboard
