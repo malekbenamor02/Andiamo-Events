@@ -21,6 +21,8 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import { CITIES, SOUSSE_VILLES } from "@/lib/constants";
 import { format } from "date-fns";
 import { fetchSalesSettings, subscribeToSalesSettings } from "@/lib/salesSettings";
+import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
+import { sanitizeUrl } from "@/lib/url-validator";
 
 interface AmbassadorDashboardProps {
   language: 'en' | 'fr';
@@ -483,7 +485,14 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
         // Reassign to next ambassador via API
         try {
-          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8082'}/api/assign-order`, {
+          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+          const apiUrl = buildFullApiUrl(API_ROUTES.ASSIGN_ORDER, apiBase);
+          
+          if (!apiUrl) {
+            throw new Error('Invalid API URL configuration');
+          }
+          
+          const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -619,8 +628,14 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
           await new Promise(resolve => setTimeout(resolve, 500));
           
           // First, generate tickets (this will also send the email with QR codes)
-          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8082';
-          const ticketResponse = await fetch(`${apiUrl}/api/generate-tickets-for-order`, {
+          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+          const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
+          
+          if (!ticketApiUrl) {
+            throw new Error('Invalid API URL configuration');
+          }
+          
+          const ticketResponse = await fetch(ticketApiUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -919,7 +934,14 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     try {
       // If password is being updated, use server-side API for secure hashing
       if (profileForm.password && profileForm.password.trim() !== '') {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8082'}/api/ambassador-update-password`, {
+        const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+        const passwordApiUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_UPDATE_PASSWORD, apiBase);
+        
+        if (!passwordApiUrl) {
+          throw new Error('Invalid API URL configuration');
+        }
+        
+        const response = await fetch(passwordApiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

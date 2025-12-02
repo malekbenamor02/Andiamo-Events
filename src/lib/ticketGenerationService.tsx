@@ -17,6 +17,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
+import { API_ROUTES } from './api-routes';
 
 // Types
 interface OrderPass {
@@ -90,7 +91,7 @@ const generateQRCodeImage = async (secureToken: string): Promise<Buffer | string
   
   // For frontend, we need to call an API endpoint
   try {
-    const response = await fetch('/api/generate-qr-code', {
+    const response = await fetch(API_ROUTES.GENERATE_QR_CODE, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -516,7 +517,7 @@ const sendConfirmationEmail = async (
   const subject = '✅ Order Confirmation - Your Digital Tickets Are Ready!';
 
   try {
-    const response = await fetch('/api/send-email', {
+    const response = await fetch(API_ROUTES.SEND_EMAIL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

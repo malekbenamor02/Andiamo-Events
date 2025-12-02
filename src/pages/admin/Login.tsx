@@ -9,6 +9,7 @@ import { Eye, EyeOff, Lock, User, Mail, ArrowLeft, Sparkles, AlertCircle, Settin
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { logger } from "@/lib/logger";
+import { API_ROUTES } from "@/lib/api-routes";
 
 interface AdminLoginProps {
   language: 'en' | 'fr';
@@ -146,7 +147,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         recaptchaToken
       };
       
-      const loginEndpoint = '/api/admin-login';
+      const loginEndpoint = API_ROUTES.ADMIN_LOGIN;
       console.log('🔵 [LOGIN] Sending login request to', loginEndpoint);
       console.log('🔵 [LOGIN] Request payload:', { 
         email, 

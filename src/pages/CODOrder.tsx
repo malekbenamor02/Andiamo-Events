@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import { CITIES, SOUSSE_VILLES } from '@/lib/constants';
+import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
+import { sanitizeUrl } from '@/lib/url-validator';
 
 interface CODOrderProps {
   language: 'en' | 'fr';
@@ -167,7 +169,14 @@ const CODOrder = ({ language }: CODOrderProps) => {
       if (formData.ville || formData.city === 'Sousse') {
         const ville = formData.ville || formData.city;
         try {
-          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8082'}/api/assign-order`, {
+          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+          const apiUrl = buildFullApiUrl(API_ROUTES.ASSIGN_ORDER, apiBase);
+          
+          if (!apiUrl) {
+            throw new Error('Invalid API URL configuration');
+          }
+          
+          const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'

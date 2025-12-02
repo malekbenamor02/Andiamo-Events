@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import { apiFetch } from '@/lib/api-client';
+import { API_ROUTES } from '@/lib/api-routes';
 
 interface ProtectedAdminRouteProps {
   children: React.ReactNode;
@@ -17,9 +19,9 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
       try {
         // Since the cookie is httpOnly, we can't read it directly
         // Just make the API call and let the server handle the cookie
-        const response = await fetch('/api/verify-admin', {
+        // Use apiFetch to automatically handle 401 errors
+        const response = await apiFetch(API_ROUTES.VERIFY_ADMIN, {
           method: 'GET',
-          credentials: 'include', // Include cookies
         });
         
         if (response.ok) {
@@ -31,9 +33,11 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
             setIsAuthenticated(false);
           }
         } else {
+          // If 401, apiFetch already handled redirect, just set auth to false
           setIsAuthenticated(false);
         }
       } catch (error) {
+        // Network errors are fine to catch here
         setIsAuthenticated(false);
       } finally {
         setLoading(false);

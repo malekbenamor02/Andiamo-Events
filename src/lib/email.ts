@@ -1,4 +1,7 @@
 // Email configuration and templates for ambassador notifications
+import { API_ROUTES } from './api-routes';
+import { handleApiResponse } from './api-client';
+import { buildUrlWithParams, sanitizeUrl } from './url-validator';
 
 interface EmailConfig {
   from: string;
@@ -19,10 +22,20 @@ interface AmbassadorData {
 export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string, ambassadorId?: string): EmailConfig => {
   const subject = "🎉 Welcome to Andiamo Events - Your Application Has Been Approved!";
   
-  // Create tracking pixel URL
-  const trackingPixel = ambassadorId 
-    ? `<img src="${window.location.origin}/api/track-email?ambassador_id=${ambassadorId}&email_type=approval" width="1" height="1" style="display:none;" />`
-    : '';
+  // Create tracking pixel URL (only if ambassadorId is valid)
+  let trackingPixel = '';
+  if (ambassadorId && typeof ambassadorId === 'string' && ambassadorId.trim().length > 0) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    if (origin) {
+      const trackingUrl = buildUrlWithParams(`${origin}/api/track-email`, {
+        ambassador_id: ambassadorId,
+        email_type: 'approval'
+      });
+      if (trackingUrl) {
+        trackingPixel = `<img src="${trackingUrl}" width="1" height="1" style="display:none;" />`;
+      }
+    }
+  }
   
   const html = `
     <!DOCTYPE html>
@@ -455,9 +468,14 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
     </html>
   `;
 
+  // Validate that we have an email address
+  if (!ambassador.email || !ambassador.email.trim()) {
+    throw new Error('Email address is required to send approval email');
+  }
+
   return {
     from: 'Andiamo Events <support@andiamoevents.com>',
-    to: ambassador.email || 'support@andiamoevents.com',
+    to: ambassador.email,
     subject,
     html
   };
@@ -1571,13 +1589,43 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
 };
 
 
+// Email sending result type
+export interface EmailResult {
+  success: boolean;
+  error?: string;
+}
+
 // Email sending function with SMTP implementation
 export const sendEmail = async (emailConfig: EmailConfig): Promise<boolean> => {
   try {
     // For client-side, you'll need to use a service like EmailJS or a backend API
     // Here's how to implement it with a backend API endpoint
     
-    const response = await fetch('/api/send-email', {
+    const response = await fetch(API_ROUTES.SEND_EMAIL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(emailConfig),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Server returned an error:', errorData);
+      throw new Error(`Failed to send email: ${errorData.details || errorData.error || response.statusText}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Email sending failed:', error);
+    return false;
+  }
+};
+
+// Email sending function that returns detailed result
+export const sendEmailWithDetails = async (emailConfig: EmailConfig): Promise<EmailResult> => {
+  try {
+    const response = await fetch(API_ROUTES.SEND_EMAIL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1588,12 +1636,20 @@ export const sendEmail = async (emailConfig: EmailConfig): Promise<boolean> => {
     if (!response.ok) {
       const errorData = await response.json();
       console.error('Server returned an error:', errorData);
-      throw new Error(`Failed to send email: ${errorData.details || response.statusText}`);
+      const errorMessage = errorData.details || errorData.error || response.statusText || 'Unknown error occurred';
+      return {
+        success: false,
+        error: errorMessage
+      };
     }
 
-    return true;
+    return { success: true };
   } catch (error) {
     console.error('Email sending failed:', error);
-    return false;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return {
+      success: false,
+      error: errorMessage
+    };
   }
 }; 

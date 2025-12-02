@@ -140,6 +140,32 @@ app.post('/api/send-email', async (req, res) => {
   try {
     const { to, subject, html } = req.body;
     
+    // Validate required fields
+    if (!to || !subject || !html) {
+      return res.status(400).json({ 
+        error: 'Missing required fields', 
+        details: 'to, subject, and html are required' 
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(to)) {
+      return res.status(400).json({ 
+        error: 'Invalid email address', 
+        details: `The email address "${to}" is not valid. Please verify the email address and try again.` 
+      });
+    }
+    
+    // Check if email configuration is available
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error('Email configuration missing: EMAIL_USER or EMAIL_PASS not set');
+      return res.status(500).json({ 
+        error: 'Email service not configured', 
+        details: 'Email server configuration is missing. Please contact the administrator.' 
+      });
+    }
+    
     await transporter.sendMail({
       from: `Andiamo Events <${process.env.EMAIL_USER}>`,
       to,
@@ -150,7 +176,30 @@ app.post('/api/send-email', async (req, res) => {
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('Email sending failed:', error);
-    res.status(500).json({ error: 'Failed to send email', details: error.message });
+    
+    // Provide more specific error messages based on error type
+    let errorMessage = 'Failed to send email';
+    let errorDetails = error.message || 'Unknown error occurred';
+    
+    // Check for common SMTP errors
+    if (error.code === 'EAUTH' || error.responseCode === 535) {
+      errorMessage = 'Email authentication failed';
+      errorDetails = 'The email server credentials are invalid. Please contact the administrator.';
+    } else if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT') {
+      errorMessage = 'Email server connection failed';
+      errorDetails = 'Unable to connect to the email server. Please try again later.';
+    } else if (error.responseCode === 550 || error.message?.includes('550')) {
+      errorMessage = 'Email address rejected';
+      errorDetails = `The email address "${req.body.to}" was rejected by the email server. Please verify the email address and try again.`;
+    } else if (error.responseCode === 553 || error.message?.includes('553')) {
+      errorMessage = 'Invalid email address';
+      errorDetails = `The email address "${req.body.to}" is invalid. Please verify the email address and try again.`;
+    }
+    
+    res.status(500).json({ 
+      error: errorMessage, 
+      details: errorDetails 
+    });
   }
 });
 

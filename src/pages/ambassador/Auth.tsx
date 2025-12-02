@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Eye, EyeOff, User, Lock, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
+import { API_ROUTES } from '@/lib/api-routes';
 
 interface AuthProps {
   language: 'en' | 'fr';
@@ -208,7 +209,7 @@ const Auth = ({ language }: AuthProps) => {
 
     try {
       // Verify reCAPTCHA on server
-      const verifyResponse = await fetch('/api/verify-recaptcha', {
+      const verifyResponse = await fetch(API_ROUTES.VERIFY_RECAPTCHA, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

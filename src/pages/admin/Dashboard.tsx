@@ -16,7 +16,7 @@ import { uploadOGImage, deleteOGImage, fetchOGImageSettings } from "@/lib/og-ima
 import { uploadFavicon, deleteFavicon, fetchFaviconSettings, FaviconSettings } from "@/lib/favicon";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, createAdminCredentialsEmail } from "@/lib/email";
+import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, sendEmailWithDetails, createAdminCredentialsEmail } from "@/lib/email";
 import { fetchSalesSettings, updateSalesSettings } from "@/lib/salesSettings";
 import {
   CheckCircle, XCircle, Clock, Users, TrendingUp, DollarSign, LogOut,
@@ -37,6 +37,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { CITIES, SOUSSE_VILLES } from "@/lib/constants";
+import { apiFetch, handleApiResponse } from "@/lib/api-client";
+import { API_ROUTES } from "@/lib/api-routes";
 
 
 interface AdminDashboardProps {
@@ -1343,10 +1345,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Admin order management functions
   const handleAssignOrder = async (orderId: string, ville: string) => {
     try {
-      const response = await fetch('/api/assign-order', {
+      const response = await apiFetch(API_ROUTES.ASSIGN_ORDER, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ order_id: orderId, ville })
       });
       const data = await response.json();
@@ -1491,10 +1492,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       let assignedCount = 0;
       for (const order of pendingOrders) {
         try {
-          const response = await fetch('/api/assign-order', {
+          const response = await apiFetch(API_ROUTES.ASSIGN_ORDER, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({ order_id: (order as any).id, ville: (order as any).ville })
           });
           const data = await response.json();
@@ -2045,7 +2045,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchSmsBalance = async () => {
     try {
       setLoadingBalance(true);
-      const response = await fetch('/api/sms-balance');
+      const response = await apiFetch(API_ROUTES.SMS_BALANCE);
       
       // Check if response is OK (should always be 200 now, but check anyway)
       if (!response.ok) {
@@ -2129,7 +2129,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      const response = await fetch('/api/bulk-phones', {
+      const response = await apiFetch(API_ROUTES.BULK_PHONES, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumbers: phones }),
@@ -2241,7 +2241,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       setSendingTestSms(true);
       
-      const response = await fetch('/api/send-sms', {
+      const response = await apiFetch(API_ROUTES.SEND_SMS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -2337,7 +2337,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       setSendingSms(true);
       
-      const response = await fetch('/api/send-sms', {
+      const response = await apiFetch(API_ROUTES.SEND_SMS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -2395,9 +2395,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   useEffect(() => {
     const fetchCurrentAdminRole = async () => {
       try {
-        const response = await fetch('/api/verify-admin', {
+        const response = await apiFetch(API_ROUTES.VERIFY_ADMIN, {
           method: 'GET',
-          credentials: 'include',
         });
         
         if (response.ok) {
@@ -2892,12 +2891,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       // Update application status via API route (bypasses RLS)
-      const response = await fetch('/api/admin-update-application', {
+      const response = await apiFetch(API_ROUTES.ADMIN_UPDATE_APPLICATION, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
           applicationId: application.id,
           status: 'approved'
@@ -3078,10 +3076,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setProcessingId(application.id);
     
     try {
-      // Find the ambassador first
+      // Find the ambassador first - also get email from ambassador record
       const { data: ambassador } = await supabase
         .from('ambassadors')
-        .select('id')
+        .select('id, email')
         .eq('phone', application.phone_number)
         .maybeSingle();
 
@@ -3091,6 +3089,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           description: language === 'en' 
             ? "Ambassador not found. The application may need to be approved again." 
             : "Ambassadeur introuvable. La candidature devra peut-être être approuvée à nouveau.",
+          variant: "destructive",
+        });
+        setProcessingId(null);
+        return;
+      }
+
+      // Determine the email address to use - prefer application email, fallback to ambassador email
+      const emailToUse = application.email || ambassador.email;
+      
+      // Validate that we have an email address
+      if (!emailToUse || !emailToUse.trim()) {
+        toast({
+          title: language === 'en' ? "❌ Email Address Required" : "❌ Adresse email requise",
+          description: language === 'en' 
+            ? "No email address found for this ambassador. Please add an email address to the ambassador record or application before resending."
+            : "Aucune adresse email trouvée pour cet ambassadeur. Veuillez ajouter une adresse email à l'enregistrement de l'ambassadeur ou à la candidature avant de renvoyer.",
           variant: "destructive",
         });
         setProcessingId(null);
@@ -3170,7 +3184,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         {
           fullName: application.full_name,
           phone: application.phone_number,
-          email: application.email,
+          email: emailToUse, // Use the validated email address
           city: application.city,
           password: password
         },
@@ -3182,7 +3196,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       let emailError: string | null = null;
 
       try {
-        emailSent = await sendEmail(emailConfig);
+        const emailResult = await sendEmailWithDetails(emailConfig);
+        emailSent = emailResult.success;
+        emailError = emailResult.error || null;
 
         if (emailSent) {
           // Update status to sent
@@ -3201,11 +3217,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             title: language === 'en' ? "✅ Email Sent Successfully" : "✅ Email envoyé avec succès",
             description: language === 'en' 
               ? needsPasswordUpdate
-                ? `Approval email with new credentials has been successfully delivered to ${application.email || application.phone_number}`
-                : `Approval email has been successfully delivered to ${application.email || application.phone_number}`
+                ? `Approval email with new credentials has been successfully delivered to ${emailToUse}`
+                : `Approval email has been successfully delivered to ${emailToUse}`
               : needsPasswordUpdate
-                ? `L'email d'approbation avec de nouvelles identifiants a été envoyé avec succès à ${application.email || application.phone_number}`
-                : `L'email d'approbation a été envoyé avec succès à ${application.email || application.phone_number}`,
+                ? `L'email d'approbation avec de nouvelles identifiants a été envoyé avec succès à ${emailToUse}`
+                : `L'email d'approbation a été envoyé avec succès à ${emailToUse}`,
           });
         } else {
           // Update status to failed
@@ -3219,13 +3235,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             ...prev,
             [actualApplicationId]: 'failed'
           }));
-          emailError = 'Email delivery failed. Please check the email address and try again.';
+
+          // Use the actual error message from the server if available
+          const errorMessage = emailError || 'Email delivery failed. Please check the email address and try again.';
 
           toast({
             title: language === 'en' ? "❌ Email Failed to Send" : "❌ Échec de l'envoi de l'email",
             description: language === 'en' 
-              ? `The email could not be sent to ${application.email || application.phone_number}. Please verify the email address and try again.`
-              : `L'email n'a pas pu être envoyé à ${application.email || application.phone_number}. Veuillez vérifier l'adresse email et réessayer.`,
+              ? `The email could not be sent to ${emailToUse}. ${errorMessage}`
+              : `L'email n'a pas pu être envoyé à ${emailToUse}. ${errorMessage}`,
             variant: "destructive",
           });
         }
@@ -3528,12 +3546,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       reapplyDelayDate.setDate(reapplyDelayDate.getDate() + REAPPLY_DELAY_DAYS);
 
       // Update application status and reapply_delay_date via API route (bypasses RLS)
-      const response = await fetch('/api/admin-update-application', {
+      const response = await apiFetch(API_ROUTES.ADMIN_UPDATE_APPLICATION, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
           applicationId: application.id,
           status: 'rejected',
@@ -4655,9 +4672,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
     try {
       // Call Vercel API route to clear JWT cookie
-      await fetch('/api/admin-logout', {
+      await apiFetch(API_ROUTES.ADMIN_LOGOUT, {
         method: 'POST',
-        credentials: 'include',
       });
       
       toast({
@@ -9432,9 +9448,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                       // Fetch email delivery logs if order is completed COD
                                       if ((order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED') && order.payment_method === 'cod') {
                                         try {
-                                          const response = await fetch(`/api/email-delivery-logs/${order.id}`, {
-                                            credentials: 'include'
-                                          });
+                                          const response = await apiFetch(API_ROUTES.EMAIL_DELIVERY_LOGS(order.id));
                                           if (response.ok) {
                                             const data = await response.json();
                                             setEmailDeliveryLogs(data.logs || []);
@@ -11890,9 +11904,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         onClick={async () => {
                           setLoadingEmailLogs(true);
                           try {
-                            const response = await fetch(`/api/email-delivery-logs/${selectedOrder.id}`, {
-                              credentials: 'include'
-                            });
+                            const response = await apiFetch(API_ROUTES.EMAIL_DELIVERY_LOGS(selectedOrder.id));
                             if (response.ok) {
                               const data = await response.json();
                               setEmailDeliveryLogs(data.logs || []);
@@ -11959,12 +11971,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 onClick={async () => {
                                   setResendingEmail(true);
                                   try {
-                                    const response = await fetch('/api/resend-order-completion-email', {
+                                    const response = await apiFetch(API_ROUTES.RESEND_ORDER_COMPLETION_EMAIL, {
                                       method: 'POST',
                                       headers: {
                                         'Content-Type': 'application/json',
                                       },
-                                      credentials: 'include',
                                       body: JSON.stringify({ orderId: selectedOrder.id }),
                                     });
                                     if (response.ok) {
@@ -11974,9 +11985,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                         variant: 'default',
                                       });
                                       // Refresh email logs
-                                      const logsResponse = await fetch(`/api/email-delivery-logs/${selectedOrder.id}`, {
-                                        credentials: 'include'
-                                      });
+                                      const logsResponse = await apiFetch(API_ROUTES.EMAIL_DELIVERY_LOGS(selectedOrder.id));
                                       if (logsResponse.ok) {
                                         const data = await logsResponse.json();
                                         setEmailDeliveryLogs(data.logs || []);
@@ -12022,12 +12031,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             onClick={async () => {
                               setResendingEmail(true);
                               try {
-                                const response = await fetch('/api/resend-order-completion-email', {
+                                const response = await apiFetch(API_ROUTES.RESEND_ORDER_COMPLETION_EMAIL, {
                                   method: 'POST',
                                   headers: {
                                     'Content-Type': 'application/json',
                                   },
-                                  credentials: 'include',
                                   body: JSON.stringify({ orderId: selectedOrder.id }),
                                 });
                                 if (response.ok) {
@@ -12037,9 +12045,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     variant: 'default',
                                   });
                                   // Refresh email logs
-                                  const logsResponse = await fetch(`/api/email-delivery-logs/${selectedOrder.id}`, {
-                                    credentials: 'include'
-                                  });
+                                  const logsResponse = await apiFetch(`/api/email-delivery-logs/${selectedOrder.id}`);
                                   if (logsResponse.ok) {
                                     const data = await logsResponse.json();
                                     setEmailDeliveryLogs(data.logs || []);
