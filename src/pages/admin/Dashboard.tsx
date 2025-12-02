@@ -1859,16 +1859,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-      toast({
-        title: language === 'en' ? 'Delete Failed' : 'Échec de la Suppression',
-        description: language === 'en' 
-          ? `Failed to delete preview image: ${error instanceof Error ? error.message : 'Unknown error'}` 
-          : `Échec de la suppression: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
-        variant: 'destructive',
-      });
-    }
-  };
-
   // Fetch favicon settings
   const loadFaviconSettings = async () => {
     try {
