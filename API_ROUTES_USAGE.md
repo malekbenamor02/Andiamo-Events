@@ -146,3 +146,5 @@ const response = await apiFetch(API_ROUTES.NEW_ROUTE);
 ✅ **Better error handling** - Automatic handling of 401/404 errors  
 ✅ **No console spam** - Clean error handling without red console errors  
 
+
+

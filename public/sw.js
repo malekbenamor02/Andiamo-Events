@@ -24,18 +24,15 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
-  // NEVER cache the HTML page, API requests, Supabase requests, OG images, or scripts
+  // NEVER cache the HTML page, API requests, Supabase requests, or scripts
   // Always fetch from network to ensure latest version
-  // Also exclude OG images and any images with version parameters to prevent stale cache
-  const isOGImage = url.pathname.includes('/og-image/') || 
-                    url.searchParams.has('v') ||
-                    (url.hostname.includes('supabase.co') && url.pathname.includes('/storage/'));
+  const isSupabaseStorage = url.hostname.includes('supabase.co') && url.pathname.includes('/storage/');
   
   if (url.pathname === '/' || 
       url.pathname === '/index.html' ||
       url.pathname.startsWith('/api/') || 
       url.hostname.includes('supabase.co') ||
-      isOGImage ||
+      isSupabaseStorage ||
       url.pathname.endsWith('.js') ||
       url.pathname.endsWith('.mjs') ||
       url.pathname.endsWith('.ts') ||
@@ -44,7 +41,7 @@ self.addEventListener('fetch', (event) => {
       event.request.destination === 'script' ||
       event.request.destination === 'style' ||
       event.request.destination === 'document') {
-    // Always fetch from network for HTML, scripts, styles, API calls, and OG images
+    // Always fetch from network for HTML, scripts, styles, and API calls
     // Don't catch errors - let them propagate naturally, but handle gracefully
     event.respondWith(
       fetch(event.request).catch(err => {
