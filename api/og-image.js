@@ -31,11 +31,13 @@ export default async (req, res) => {
       process.env.SUPABASE_ANON_KEY
     );
 
-    // Fetch OG image settings from database
+    // Fetch OG image settings from database - get the newest one
     const { data, error } = await supabase
       .from('site_content')
-      .select('content')
+      .select('content, updated_at')
       .eq('key', 'og_image_settings')
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .single();
 
     if (error || !data || !data.content) {
