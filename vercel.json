@@ -8,6 +8,9 @@
   "functions": {
     "api/admin-login.js": {
       "maxDuration": 30
+    },
+    "api/verify-admin.js": {
+      "maxDuration": 30
     }
   }
 }
