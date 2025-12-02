@@ -6,7 +6,7 @@
     }
   ],
   "functions": {
-    "api/admin-login.cjs": {
+    "api/admin-login.js": {
       "maxDuration": 30
     }
   }

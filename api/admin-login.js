@@ -1,7 +1,7 @@
 // Clean, minimal admin login endpoint for Vercel
-// Using .cjs extension because package.json has "type": "module"
+// Using ES module syntax because package.json has "type": "module"
 
-module.exports = async (req, res) => {
+export default async (req, res) => {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -53,8 +53,8 @@ module.exports = async (req, res) => {
       });
     }
     
-    // Initialize Supabase
-    const { createClient } = require('@supabase/supabase-js');
+    // Initialize Supabase - use dynamic import for ES modules
+    const { createClient } = await import('@supabase/supabase-js');
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_ANON_KEY
@@ -71,16 +71,16 @@ module.exports = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    // Verify password
-    const bcrypt = require('bcryptjs');
-    const isMatch = await bcrypt.compare(password, admin.password);
+    // Verify password - use dynamic import for ES modules
+    const bcrypt = await import('bcryptjs');
+    const isMatch = await bcrypt.default.compare(password, admin.password);
     
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    // Generate JWT
-    const jwt = require('jsonwebtoken');
+    // Generate JWT - use dynamic import for ES modules
+    const jwt = await import('jsonwebtoken');
     const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
     
     if (!jwtSecret || jwtSecret === 'fallback-secret-dev-only') {
@@ -92,7 +92,7 @@ module.exports = async (req, res) => {
       }
     }
     
-    const token = jwt.sign(
+    const token = jwt.default.sign(
       { id: admin.id, email: admin.email, role: admin.role },
       jwtSecret,
       { expiresIn: '1h' }
