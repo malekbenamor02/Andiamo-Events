@@ -2562,6 +2562,54 @@ app.post('/api/test-email', async (req, res) => {
   }
 });
 
+// OG Image endpoint - Server-side route for social media previews
+// This route fetches the OG image URL from the database and redirects to it
+// This ensures Facebook/Instagram crawlers always see the correct image
+app.get('/api/og-image', async (req, res) => {
+  try {
+    if (!supabase) {
+      // If Supabase is not configured, return 404
+      return res.status(404).send('OG image not configured');
+    }
+
+    // Fetch OG image settings from database
+    const { data, error } = await supabase
+      .from('site_content')
+      .select('content')
+      .eq('key', 'og_image_settings')
+      .single();
+
+    if (error || !data || !data.content) {
+      // If no OG image is set, return 404
+      return res.status(404).send('OG image not found');
+    }
+
+    const settings = data.content;
+    const ogImageUrl = settings.og_image;
+
+    if (!ogImageUrl) {
+      return res.status(404).send('OG image not found');
+    }
+
+    // Add version parameter for cache-busting if updated_at exists
+    let finalUrl = ogImageUrl;
+    if (settings.updated_at) {
+      const separator = ogImageUrl.includes('?') ? '&' : '?';
+      finalUrl = `${ogImageUrl}${separator}v=${settings.updated_at}`;
+    }
+
+    // Set caching headers (1 hour cache, but allow revalidation)
+    res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    // Redirect to the actual image URL in Supabase Storage
+    return res.redirect(302, finalUrl);
+  } catch (error) {
+    console.error('Error fetching OG image:', error);
+    return res.status(500).send('Error loading OG image');
+  }
+});
+
 // Export app for Vercel serverless functions
 // If running as standalone server, start listening
 if (require.main === module) {

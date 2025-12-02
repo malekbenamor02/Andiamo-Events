@@ -38,49 +38,26 @@ export const OGImageLoader = () => {
           meta.setAttribute('content', content);
         };
 
-        // Only use OG image from database (no fallback to hardcoded images)
-        if (settings.og_image) {
-          // Ensure the URL is absolute (full URL with protocol)
-          let ogImageUrl = settings.og_image;
-          if (!ogImageUrl.startsWith('http://') && !ogImageUrl.startsWith('https://')) {
-            // If relative URL, make it absolute
-            ogImageUrl = ogImageUrl.startsWith('/') 
-              ? `${window.location.origin}${ogImageUrl}`
-              : `${window.location.origin}/${ogImageUrl}`;
-          }
-          
-          // Add cache-busting timestamp
-          ogImageUrl = addCacheBuster(ogImageUrl, settings.updated_at);
-          
-          // Add all required OpenGraph image tags (will update existing or create new)
-          setMetaTag('og:image', ogImageUrl);
-          setMetaTag('og:image:secure_url', ogImageUrl);
-          setMetaTag('og:image:type', 'image/jpeg');
-          setMetaTag('og:image:width', '1200');
-          setMetaTag('og:image:height', '630');
+        // Use server-side route /api/og-image which handles the redirect to Supabase Storage
+        // This ensures Facebook/Instagram crawlers always see the correct image via server-side rendering
+        // The route will automatically add version parameters for cache-busting
+        const ogImageRoute = '/api/og-image';
+        const absoluteOgImageUrl = `${window.location.origin}${ogImageRoute}`;
+        
+        // Update server-side OG tags with absolute URL (for crawlers)
+        // The /api/og-image route will redirect to the actual Supabase Storage URL with versioning
+        setMetaTag('og:image', absoluteOgImageUrl);
+        setMetaTag('og:image:secure_url', absoluteOgImageUrl);
+        setMetaTag('og:image:type', 'image/jpeg');
+        setMetaTag('og:image:width', '1200');
+        setMetaTag('og:image:height', '630');
 
-          // Add Twitter image meta tag
-          setMetaTag('twitter:image', ogImageUrl, true);
-        } else {
-          // If no OG image in database, ensure no empty OG image tags exist
-          // Facebook crawler requires og:image to have a valid URL or be absent
-          const emptyOGTags = document.querySelectorAll('meta[property^="og:image"]');
-          emptyOGTags.forEach(tag => {
-            const content = tag.getAttribute('content');
-            if (!content || content.trim() === '') {
-              tag.remove();
-            }
-          });
-          
-          // Also remove empty Twitter image tag
-          const emptyTwitterTag = document.querySelector('meta[name="twitter:image"]');
-          if (emptyTwitterTag) {
-            const content = emptyTwitterTag.getAttribute('content');
-            if (!content || content.trim() === '') {
-              emptyTwitterTag.remove();
-            }
-          }
-        }
+        // Add Twitter image meta tag
+        setMetaTag('twitter:image', absoluteOgImageUrl, true);
+        
+        // Note: The /api/og-image route will return 404 if no image is uploaded
+        // But we keep the tags pointing to the route so crawlers can see the structure
+        // Admin can upload image from dashboard and it will work immediately
       } catch (error) {
         console.error('Error loading OG image from database:', error);
         // Don't add fallback - let admin upload from dashboard
