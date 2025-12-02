@@ -1,5 +1,5 @@
 // Clean, minimal admin login endpoint for Vercel
-// No Express, no serverless-http - just a simple handler
+// Using .cjs extension because package.json has "type": "module"
 
 module.exports = async (req, res) => {
   // Set CORS headers
