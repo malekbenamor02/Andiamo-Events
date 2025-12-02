@@ -1,6 +1,6 @@
 // Service Worker for Andiamo Events Scanner
-// Updated cache version to prevent refresh loops
-const CACHE_NAME = 'andiamo-events-scanner-v3';
+// Updated cache version to prevent refresh loops and exclude OG images
+const CACHE_NAME = 'andiamo-events-scanner-v4';
 const urlsToCache = [
   '/manifest.json',
   '/placeholder.svg'
@@ -24,12 +24,18 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
-  // NEVER cache the HTML page, API requests, Supabase requests, or scripts
+  // NEVER cache the HTML page, API requests, Supabase requests, OG images, or scripts
   // Always fetch from network to ensure latest version
+  // Also exclude OG images and any images with version parameters to prevent stale cache
+  const isOGImage = url.pathname.includes('/og-image/') || 
+                    url.searchParams.has('v') ||
+                    (url.hostname.includes('supabase.co') && url.pathname.includes('/storage/'));
+  
   if (url.pathname === '/' || 
       url.pathname === '/index.html' ||
       url.pathname.startsWith('/api/') || 
       url.hostname.includes('supabase.co') ||
+      isOGImage ||
       url.pathname.endsWith('.js') ||
       url.pathname.endsWith('.mjs') ||
       url.pathname.endsWith('.ts') ||
@@ -38,7 +44,7 @@ self.addEventListener('fetch', (event) => {
       event.request.destination === 'script' ||
       event.request.destination === 'style' ||
       event.request.destination === 'document') {
-    // Always fetch from network for HTML, scripts, styles, and API calls
+    // Always fetch from network for HTML, scripts, styles, API calls, and OG images
     // Don't catch errors - let them propagate naturally, but handle gracefully
     event.respondWith(
       fetch(event.request).catch(err => {
