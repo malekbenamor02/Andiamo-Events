@@ -130,6 +130,13 @@ export default async (req, res) => {
               
               console.log('Successfully fetched image via HTTP, serving directly');
               return res.send(imageBuffer);
+            } else if (imageResponse.status === 404) {
+              // Image doesn't exist at this URL - return 404 instead of redirecting
+              console.error('OG image file not found at URL:', ogImageUrl);
+              return res.status(404).json({ 
+                error: 'OG image file not found',
+                message: 'The image URL in the database points to a file that does not exist in storage. Please upload a new image from the admin dashboard.'
+              });
             } else {
               console.error('HTTP fetch also failed:', imageResponse.status, imageResponse.statusText);
             }
@@ -137,13 +144,12 @@ export default async (req, res) => {
             console.error('Error fetching image via HTTP:', fetchError);
           }
           
-          // Fallback to redirect if all methods fail
-          const finalUrl = settings.updated_at 
-            ? `${ogImageUrl}${ogImageUrl.includes('?') ? '&' : '?'}v=${settings.updated_at}`
-            : ogImageUrl;
-          res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
-          res.setHeader('Location', finalUrl);
-          return res.redirect(302, finalUrl);
+          // If we get here, all methods failed - return 404 instead of redirecting to non-existent URL
+          console.error('All methods to fetch OG image failed. URL may be invalid:', ogImageUrl);
+          return res.status(404).json({ 
+            error: 'OG image not found',
+            message: 'Unable to fetch the OG image. The file may have been deleted or the URL is invalid. Please upload a new image from the admin dashboard.'
+          });
         }
 
         // Convert blob to buffer
@@ -200,18 +206,24 @@ export default async (req, res) => {
             
             console.log('Successfully fetched image via HTTP fallback, serving directly');
             return res.send(imageBuffer);
+          } else if (imageResponse.status === 404) {
+            // Image doesn't exist at this URL - return 404 instead of redirecting
+            console.error('OG image file not found at URL:', ogImageUrl);
+            return res.status(404).json({ 
+              error: 'OG image file not found',
+              message: 'The image URL in the database points to a file that does not exist in storage. Please upload a new image from the admin dashboard.'
+            });
           }
         } catch (fetchError) {
           console.error('HTTP fetch fallback also failed:', fetchError);
         }
         
-        // Fallback to redirect if all methods fail
-        const finalUrl = settings.updated_at 
-          ? `${ogImageUrl}${ogImageUrl.includes('?') ? '&' : '?'}v=${settings.updated_at}`
-          : ogImageUrl;
-        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
-        res.setHeader('Location', finalUrl);
-        return res.redirect(302, finalUrl);
+        // If we get here, all methods failed - return 404 instead of redirecting to non-existent URL
+        console.error('All methods to fetch OG image failed. URL may be invalid:', ogImageUrl);
+        return res.status(404).json({ 
+          error: 'OG image not found',
+          message: 'Unable to fetch the OG image. The file may have been deleted or the URL is invalid. Please upload a new image from the admin dashboard.'
+        });
       }
     } else {
       // If we can't extract the path, try fetching directly from the public URL
@@ -236,6 +248,13 @@ export default async (req, res) => {
           
           console.log('Successfully fetched image via direct HTTP, serving directly');
           return res.send(imageBuffer);
+        } else if (imageResponse.status === 404) {
+          // Image doesn't exist at this URL - return 404 instead of redirecting
+          console.error('OG image file not found at URL:', ogImageUrl);
+          return res.status(404).json({ 
+            error: 'OG image file not found',
+            message: 'The image URL in the database points to a file that does not exist in storage. Please upload a new image from the admin dashboard.'
+          });
         } else {
           console.error('Direct HTTP fetch failed:', imageResponse.status, imageResponse.statusText);
         }
@@ -243,13 +262,12 @@ export default async (req, res) => {
         console.error('Error fetching image via direct HTTP:', fetchError);
       }
       
-      // Final fallback: redirect if all methods fail
-      const finalUrl = settings.updated_at 
-        ? `${ogImageUrl}${ogImageUrl.includes('?') ? '&' : '?'}v=${settings.updated_at}`
-        : ogImageUrl;
-      res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
-      res.setHeader('Location', finalUrl);
-      return res.redirect(302, finalUrl);
+      // Final fallback: return 404 instead of redirecting to non-existent URL
+      console.error('All methods to fetch OG image failed. URL may be invalid:', ogImageUrl);
+      return res.status(404).json({ 
+        error: 'OG image not found',
+        message: 'Unable to fetch the OG image. The file may have been deleted or the URL is invalid. Please upload a new image from the admin dashboard.'
+      });
     }
   } catch (error) {
     console.error('Error fetching OG image:', error);
