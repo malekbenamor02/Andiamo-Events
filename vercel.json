@@ -14,6 +14,9 @@
     },
     "api/og-image.js": {
       "maxDuration": 30
+    },
+    "api/og-image-url.js": {
+      "maxDuration": 30
     }
   }
 }

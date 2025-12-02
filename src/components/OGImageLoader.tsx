@@ -4,20 +4,30 @@ import { fetchOGImageSettings } from '@/lib/og-image';
 
 /**
  * Component that dynamically loads OG image from database and updates meta tags
+ * Uses direct Supabase Storage URL with version parameter for automatic cache-busting
  * Listens for real-time changes to update OG image when it's added/removed
  */
 export const OGImageLoader = () => {
   useEffect(() => {
     const loadOGImage = async () => {
       try {
-        const settings = await fetchOGImageSettings();
+        // Fetch OG image URL from API endpoint (gets latest from database with version)
+        const response = await fetch('/api/og-image-url');
+        
+        if (!response.ok) {
+          // If no OG image is set, remove any existing OG image tags to prevent errors
+          const ogImageTag = document.querySelector('meta[property="og:image"]');
+          const ogImageSecureTag = document.querySelector('meta[property="og:image:secure_url"]');
+          const twitterImageTag = document.querySelector('meta[name="twitter:image"]');
+          
+          if (ogImageTag) ogImageTag.remove();
+          if (ogImageSecureTag) ogImageSecureTag.remove();
+          if (twitterImageTag) twitterImageTag.remove();
+          return;
+        }
 
-        // Helper function to add cache-busting parameter
-        const addCacheBuster = (url: string, timestamp?: string) => {
-          const separator = url.includes('?') ? '&' : '?';
-          const cacheBuster = timestamp || Date.now().toString();
-          return `${url}${separator}v=${cacheBuster}`;
-        };
+        const data = await response.json();
+        const ogImageUrl = data.url; // Already includes version parameter
 
         // Helper function to update or create meta tag
         const setMetaTag = (property: string, content: string, isName = false) => {
@@ -38,29 +48,38 @@ export const OGImageLoader = () => {
           meta.setAttribute('content', content);
         };
 
-        // Use server-side route /api/og-image which handles the redirect to Supabase Storage
-        // This ensures Facebook/Instagram crawlers always see the correct image via server-side rendering
-        // The route will automatically add version parameters for cache-busting
-        const ogImageRoute = '/api/og-image';
-        const absoluteOgImageUrl = `${window.location.origin}${ogImageRoute}`;
+        // Determine content type from URL
+        const getContentType = (url: string): string => {
+          if (url.includes('.png')) return 'image/png';
+          if (url.includes('.jpg') || url.includes('.jpeg')) return 'image/jpeg';
+          if (url.includes('.gif')) return 'image/gif';
+          if (url.includes('.webp')) return 'image/webp';
+          return 'image/jpeg'; // Default
+        };
+
+        const contentType = getContentType(ogImageUrl);
         
-        // Update server-side OG tags with absolute URL (for crawlers)
-        // The /api/og-image route will redirect to the actual Supabase Storage URL with versioning
-        setMetaTag('og:image', absoluteOgImageUrl);
-        setMetaTag('og:image:secure_url', absoluteOgImageUrl);
-        setMetaTag('og:image:type', 'image/jpeg');
+        // Update OG tags with direct Supabase Storage URL (includes version parameter for cache-busting)
+        setMetaTag('og:image', ogImageUrl);
+        setMetaTag('og:image:secure_url', ogImageUrl);
+        setMetaTag('og:image:type', contentType);
         setMetaTag('og:image:width', '1200');
         setMetaTag('og:image:height', '630');
 
         // Add Twitter image meta tag
-        setMetaTag('twitter:image', absoluteOgImageUrl, true);
+        setMetaTag('twitter:image', ogImageUrl, true);
         
-        // Note: The /api/og-image route will return 404 if no image is uploaded
-        // But we keep the tags pointing to the route so crawlers can see the structure
-        // Admin can upload image from dashboard and it will work immediately
+        console.log('OG image meta tags updated with URL:', ogImageUrl);
       } catch (error) {
         console.error('Error loading OG image from database:', error);
-        // Don't add fallback - let admin upload from dashboard
+        // Remove OG image tags if there's an error
+        const ogImageTag = document.querySelector('meta[property="og:image"]');
+        const ogImageSecureTag = document.querySelector('meta[property="og:image:secure_url"]');
+        const twitterImageTag = document.querySelector('meta[name="twitter:image"]');
+        
+        if (ogImageTag) ogImageTag.remove();
+        if (ogImageSecureTag) ogImageSecureTag.remove();
+        if (twitterImageTag) twitterImageTag.remove();
       }
     };
 
