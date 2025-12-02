@@ -2563,13 +2563,13 @@ app.post('/api/test-email', async (req, res) => {
 });
 
 // OG Image endpoint - Server-side route for social media previews
-// This route fetches the OG image URL from the database and redirects to it
-// This ensures Facebook/Instagram crawlers always see the correct image
+// This route fetches the OG image from Supabase Storage and serves it directly
+// This ensures Facebook/Instagram crawlers can access the image without following redirects
 app.get('/api/og-image', async (req, res) => {
   try {
     if (!supabase) {
       // If Supabase is not configured, return 404
-      return res.status(404).send('OG image not configured');
+      return res.status(404).json({ error: 'OG image not configured' });
     }
 
     // Fetch OG image settings from database
@@ -2581,32 +2581,113 @@ app.get('/api/og-image', async (req, res) => {
 
     if (error || !data || !data.content) {
       // If no OG image is set, return 404
-      return res.status(404).send('OG image not found');
+      return res.status(404).json({ error: 'OG image not found' });
     }
 
     const settings = data.content;
     const ogImageUrl = settings.og_image;
 
     if (!ogImageUrl) {
-      return res.status(404).send('OG image not found');
+      return res.status(404).json({ error: 'OG image not found' });
     }
 
-    // Add version parameter for cache-busting if updated_at exists
-    let finalUrl = ogImageUrl;
-    if (settings.updated_at) {
-      const separator = ogImageUrl.includes('?') ? '&' : '?';
-      finalUrl = `${ogImageUrl}${separator}v=${settings.updated_at}`;
+    // Extract the file path from the Supabase Storage URL
+    // Example: https://xxx.supabase.co/storage/v1/object/public/images/og-image/og-image-123.jpg
+    // Path after "public" is: images/og-image/og-image-123.jpg
+    let filePath = null;
+    try {
+      const url = new URL(ogImageUrl);
+      const pathParts = url.pathname.split('/').filter(part => part);
+      
+      // Find the index of "public" in the path
+      const publicIndex = pathParts.findIndex(part => part === 'public');
+      if (publicIndex !== -1 && pathParts[publicIndex + 1]) {
+        // Everything after "public" is the bucket/path
+        // Format: public/bucket/folder/file.jpg -> bucket/folder/file.jpg
+        filePath = pathParts.slice(publicIndex + 1).join('/');
+      } else {
+        // Fallback: try to find "images" in the path
+        const imagesIndex = pathParts.findIndex(part => part === 'images');
+        if (imagesIndex !== -1) {
+          filePath = pathParts.slice(imagesIndex).join('/');
+        }
+      }
+    } catch (e) {
+      console.error('Error parsing OG image URL:', e);
+      // Fallback: try simple string extraction
+      try {
+        const urlParts = ogImageUrl.split('/');
+        const imagesIndex = urlParts.findIndex(part => part === 'images');
+        if (imagesIndex !== -1) {
+          filePath = urlParts.slice(imagesIndex).join('/');
+        }
+      } catch (e2) {
+        console.error('Fallback URL parsing also failed:', e2);
+      }
     }
 
-    // Set caching headers (1 hour cache, but allow revalidation)
-    res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // If we can extract the path, fetch the image from Supabase Storage
+    if (filePath) {
+      try {
+        // Download the image from Supabase Storage
+        const { data: imageData, error: downloadError } = await supabase.storage
+          .from('images')
+          .download(filePath);
 
-    // Redirect to the actual image URL in Supabase Storage
-    return res.redirect(302, finalUrl);
+        if (downloadError || !imageData) {
+          console.error('Error downloading OG image from storage:', downloadError);
+          // Fallback to redirect if download fails
+          const finalUrl = settings.updated_at 
+            ? `${ogImageUrl}${ogImageUrl.includes('?') ? '&' : '?'}v=${settings.updated_at}`
+            : ogImageUrl;
+          res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+          return res.redirect(302, finalUrl);
+        }
+
+        // Convert blob to buffer
+        const arrayBuffer = await imageData.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        // Determine content type from file extension
+        const contentType = filePath.endsWith('.png') ? 'image/png' :
+                          filePath.endsWith('.jpg') || filePath.endsWith('.jpeg') ? 'image/jpeg' :
+                          filePath.endsWith('.gif') ? 'image/gif' :
+                          filePath.endsWith('.webp') ? 'image/webp' :
+                          'image/jpeg'; // Default to JPEG
+
+        // Set proper headers for image serving
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Length', buffer.length);
+        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        
+        // Add version parameter to Cache-Control for cache-busting
+        if (settings.updated_at) {
+          res.setHeader('ETag', `"${settings.updated_at}"`);
+        }
+
+        // Send the image directly
+        return res.send(buffer);
+      } catch (storageError) {
+        console.error('Error serving OG image from storage:', storageError);
+        // Fallback to redirect if serving fails
+        const finalUrl = settings.updated_at 
+          ? `${ogImageUrl}${ogImageUrl.includes('?') ? '&' : '?'}v=${settings.updated_at}`
+          : ogImageUrl;
+        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+        return res.redirect(302, finalUrl);
+      }
+    } else {
+      // If we can't extract the path, fallback to redirect
+      const finalUrl = settings.updated_at 
+        ? `${ogImageUrl}${ogImageUrl.includes('?') ? '&' : '?'}v=${settings.updated_at}`
+        : ogImageUrl;
+      res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+      return res.redirect(302, finalUrl);
+    }
   } catch (error) {
     console.error('Error fetching OG image:', error);
-    return res.status(500).send('Error loading OG image');
+    return res.status(500).json({ error: 'Error loading OG image' });
   }
 });
 
