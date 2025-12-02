@@ -26,23 +26,8 @@ export const OGImageLoader = () => {
           return `${url}${separator}v=${cacheBuster}`;
         };
 
-        // If no OG image in database, use default from public folder
-        if (!settings.og_image) {
-          // Use default OG image from public folder with cache-busting
-          const defaultOGImage = addCacheBuster(`${window.location.origin}/og-image.jpg`);
-          
-          // Add OG image meta tag
-          const ogImageMeta = document.createElement('meta');
-          ogImageMeta.setAttribute('property', 'og:image');
-          ogImageMeta.setAttribute('content', defaultOGImage);
-          document.head.appendChild(ogImageMeta);
-
-          // Add Twitter image meta tag
-          const twitterImageMeta = document.createElement('meta');
-          twitterImageMeta.setAttribute('name', 'twitter:image');
-          twitterImageMeta.setAttribute('content', defaultOGImage);
-          document.head.appendChild(twitterImageMeta);
-        } else {
+        // Only use OG image from database (no fallback to hardcoded images)
+        if (settings.og_image) {
           // Ensure the URL is absolute (full URL with protocol)
           let ogImageUrl = settings.og_image;
           if (!ogImageUrl.startsWith('http://') && !ogImageUrl.startsWith('https://')) {
@@ -83,20 +68,11 @@ export const OGImageLoader = () => {
           twitterImageMeta.setAttribute('content', ogImageUrl);
           document.head.appendChild(twitterImageMeta);
         }
+        // If no OG image in database, don't add any meta tags
+        // Admin can upload one from the dashboard
       } catch (error) {
         console.error('Error loading OG image from database:', error);
-        // Fallback to default OG image with cache-busting
-        const defaultOGImage = `${window.location.origin}/og-image.jpg?v=${Date.now()}`;
-        
-        const ogImageMeta = document.createElement('meta');
-        ogImageMeta.setAttribute('property', 'og:image');
-        ogImageMeta.setAttribute('content', defaultOGImage);
-        document.head.appendChild(ogImageMeta);
-
-        const twitterImageMeta = document.createElement('meta');
-        twitterImageMeta.setAttribute('name', 'twitter:image');
-        twitterImageMeta.setAttribute('content', defaultOGImage);
-        document.head.appendChild(twitterImageMeta);
+        // Don't add fallback - let admin upload from dashboard
       }
     };
 

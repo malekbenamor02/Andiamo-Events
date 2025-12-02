@@ -6,6 +6,7 @@ export interface FaviconSettings {
   favicon_32x32?: string;
   favicon_16x16?: string;
   apple_touch_icon?: string;
+  updated_at?: string; // Timestamp for cache-busting
 }
 
 /**
@@ -51,9 +52,11 @@ export const uploadFavicon = async (
       .single();
 
     const currentSettings = (existingData?.content as FaviconSettings) || {};
+    const timestamp = Date.now().toString();
     const updatedSettings: FaviconSettings = {
       ...currentSettings,
-      [type]: urlData.publicUrl
+      [type]: urlData.publicUrl,
+      updated_at: timestamp // Store timestamp for cache-busting
     };
 
     const { error: updateError, data: updateData } = await supabase
@@ -159,7 +162,11 @@ export const deleteFavicon = async (
     }
 
     const currentSettings = (existingData?.content as FaviconSettings) || {};
-    const updatedSettings: FaviconSettings = { ...currentSettings };
+    const timestamp = Date.now().toString();
+    const updatedSettings: FaviconSettings = { 
+      ...currentSettings,
+      updated_at: timestamp // Update timestamp even when deleting
+    };
     delete updatedSettings[type];
 
     const { error: updateError } = await supabase

@@ -21,12 +21,20 @@ export const FaviconLoader = () => {
         const existingLinks = document.querySelectorAll('link[rel*="icon"], link[rel*="apple-touch-icon"]');
         existingLinks.forEach(link => link.remove());
 
-        // Add favicon links from database (only if they exist)
+        // Helper function to add cache-busting parameter
+        const addCacheBuster = (url: string, timestamp?: string) => {
+          if (!url) return url;
+          const separator = url.includes('?') ? '&' : '?';
+          const cacheBuster = timestamp || Date.now().toString();
+          return `${url}${separator}v=${cacheBuster}`;
+        };
+
+        // Add favicon links from database (only if they exist) with cache-busting
         if (settings.favicon_ico) {
           const link = document.createElement('link');
           link.rel = 'icon';
           link.type = 'image/x-icon';
-          link.href = settings.favicon_ico;
+          link.href = addCacheBuster(settings.favicon_ico, settings.updated_at);
           document.head.appendChild(link);
         }
 
@@ -35,7 +43,7 @@ export const FaviconLoader = () => {
           link.rel = 'icon';
           link.type = 'image/png';
           link.sizes = '32x32';
-          link.href = settings.favicon_32x32;
+          link.href = addCacheBuster(settings.favicon_32x32, settings.updated_at);
           document.head.appendChild(link);
         }
 
@@ -44,7 +52,7 @@ export const FaviconLoader = () => {
           link.rel = 'icon';
           link.type = 'image/png';
           link.sizes = '16x16';
-          link.href = settings.favicon_16x16;
+          link.href = addCacheBuster(settings.favicon_16x16, settings.updated_at);
           document.head.appendChild(link);
         }
 
@@ -52,7 +60,7 @@ export const FaviconLoader = () => {
           const link = document.createElement('link');
           link.rel = 'apple-touch-icon';
           link.sizes = '180x180';
-          link.href = settings.apple_touch_icon;
+          link.href = addCacheBuster(settings.apple_touch_icon, settings.updated_at);
           document.head.appendChild(link);
         }
       } catch (error) {
