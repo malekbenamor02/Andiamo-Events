@@ -5603,33 +5603,37 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <Megaphone className={`w-4 h-4 transition-transform duration-300 ${activeTab === "marketing" ? "animate-pulse" : ""}`} />
                 <span>{language === 'en' ? 'Marketing' : 'Marketing'}</span>
               </button>
-              <button
-                onClick={() => {
-                  setActiveTab("logs");
-                  if (siteLogs.length === 0) {
-                    fetchSiteLogs();
-                  }
-                }}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-875 ${
-                  activeTab === "logs" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
-                }`}
-              >
-                <Activity className={`w-4 h-4 transition-transform duration-300 ${activeTab === "logs" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'Logs' : 'Journaux'}</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("settings")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-925 ${
-                  activeTab === "settings" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
-                }`}
-              >
-                <Settings className={`w-4 h-4 transition-transform duration-300 ${activeTab === "settings" ? "animate-pulse" : ""}`} />
-                <span>{t.settings}</span>
-              </button>
+              {currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => {
+                    setActiveTab("logs");
+                    if (siteLogs.length === 0) {
+                      fetchSiteLogs();
+                    }
+                  }}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-875 ${
+                    activeTab === "logs" 
+                      ? "bg-primary text-primary-foreground shadow-lg" 
+                      : "hover:bg-accent hover:shadow-md"
+                  }`}
+                >
+                  <Activity className={`w-4 h-4 transition-transform duration-300 ${activeTab === "logs" ? "animate-pulse" : ""}`} />
+                  <span>{language === 'en' ? 'Logs' : 'Journaux'}</span>
+                </button>
+              )}
+              {currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => setActiveTab("settings")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-925 ${
+                    activeTab === "settings" 
+                      ? "bg-primary text-primary-foreground shadow-lg" 
+                      : "hover:bg-accent hover:shadow-md"
+                  }`}
+                >
+                  <Settings className={`w-4 h-4 transition-transform duration-300 ${activeTab === "settings" ? "animate-pulse" : ""}`} />
+                  <span>{t.settings}</span>
+                </button>
+              )}
             </div>
           </div>
           <div className="p-4 border-t border-border/20">
@@ -10758,8 +10762,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </div>
               </TabsContent>
 
-              {/* Logs Tab */}
-              <TabsContent value="logs" className="space-y-6">
+              {/* Logs Tab - Only visible to super_admin */}
+              {currentAdminRole === 'super_admin' && (
+                <TabsContent value="logs" className="space-y-6">
                 <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
                   <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
                     {language === 'en' ? 'Site Logs & Analytics' : 'Journaux et Analytiques du Site'}
@@ -10871,9 +10876,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   </CardContent>
                 </Card>
               </TabsContent>
+              )}
 
-              {/* Settings Tab */}
-              <TabsContent value="settings" className="space-y-6">
+              {/* Settings Tab - Only visible to super_admin */}
+              {currentAdminRole === 'super_admin' && (
+                <TabsContent value="settings" className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full px-2">
                   {/* Sales Settings Card */}
                   <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
@@ -12552,7 +12559,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </CardContent>
               </Card>
             </div>
-          )}
+              </TabsContent>
+              )}
         </DialogContent>
       </Dialog>
     </div>
