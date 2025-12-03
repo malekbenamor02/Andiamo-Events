@@ -373,30 +373,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     dateTo: null as Date | null
   });
 
-  // Session expiration timestamp (milliseconds) - persisted in localStorage
-  // This is the actual JWT expiration time, allowing accurate calculation regardless of refresh
-  // We persist it so it's available immediately on page refresh, before the server response arrives
-  const getStoredExpiration = (): number | null => {
-    try {
-      const stored = localStorage.getItem('adminSessionExpiresAt');
-      if (stored) {
-        const expiration = parseInt(stored, 10);
-        // Only use stored value if it's in the future
-        if (expiration > Date.now()) {
-          return expiration;
-        } else {
-          // Expired, remove it
-          localStorage.removeItem('adminSessionExpiresAt');
-        }
-      }
-    } catch (e) {
-      // localStorage not available or error
-    }
-    return null;
-  };
-  
-  const storedExpiration = getStoredExpiration();
-  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(storedExpiration);
+  // Session expiration timestamp (milliseconds) - from server token only
+  // No localStorage - session is managed by server JWT token
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
   
   // Session time left in seconds - calculated from expiration timestamp
   // This ensures the timer continues from the original login time and does NOT restart on refresh
@@ -2317,32 +2296,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             setCurrentAdminId(data.admin.id || null);
             
             // Update session expiration timestamp from server response
-            // This ensures the timer continues from the original login time
-            // and does NOT restart on refresh or navigation
-            // IMPORTANT: Only use sessionExpiresAt (absolute timestamp), NOT sessionTimeRemaining
-            // Using sessionTimeRemaining would reset the timer because it's calculated from current time
+            // No localStorage - session is managed by server token only
             if (data.sessionExpiresAt) {
-              // Store the expiration timestamp - this is the source of truth
-              // Persist it in localStorage so it's available immediately on refresh
               const expiration = data.sessionExpiresAt;
-              try {
-                localStorage.setItem('adminSessionExpiresAt', expiration.toString());
-              } catch (e) {
-                // localStorage not available, continue without persistence
-              }
-              // Only update if it's different (prevents unnecessary re-renders)
-              // This ensures the timer continues from the original login time
-              setSessionExpiresAt(prev => {
-                // If we already have the same value, don't update (prevents reset)
-                if (prev === expiration) return prev;
-                return expiration;
-              });
+              setSessionExpiresAt(expiration);
               // Calculate remaining time from expiration timestamp
               const remaining = Math.max(0, Math.floor((expiration - Date.now()) / 1000));
               setSessionTimeLeft(remaining);
             }
-            // Note: We intentionally do NOT use sessionTimeRemaining as a fallback
-            // because calculating expiration from it (Date.now() + remaining) would reset the timer
             
             // Show alert if role is not super_admin but user expects it
             if (role !== 'super_admin') {
@@ -4737,7 +4698,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const handleLogout = async () => {
     // Clear session expiration from localStorage on logout
     try {
-      localStorage.removeItem('adminSessionExpiresAt');
     } catch (e) {
       // localStorage not available, continue
     }

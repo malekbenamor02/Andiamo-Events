@@ -21,12 +21,7 @@ const handleUnauthorized = () => {
   }
   isRedirecting = true;
 
-  try {
-    // Clear any admin session data from localStorage
-    localStorage.removeItem('adminSessionExpiresAt');
-  } catch (e) {
-    // localStorage might not be available, continue anyway
-  }
+  // No localStorage cleanup needed - session is managed by server token only
 
   // Redirect to login page
   // Use a small delay to ensure cleanup happens first
