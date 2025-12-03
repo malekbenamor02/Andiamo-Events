@@ -2787,6 +2787,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [currentAdminRole]);
 
+  // Protect super_admin-only tabs: redirect regular admins away from logs, settings, admins tabs
+  useEffect(() => {
+    if (currentAdminRole && currentAdminRole !== 'super_admin') {
+      // If regular admin tries to access super_admin-only tabs, redirect to overview
+      if (activeTab === 'logs' || activeTab === 'settings' || activeTab === 'admins') {
+        setActiveTab('overview');
+      }
+    }
+  }, [activeTab, currentAdminRole]);
+
   const fetchAllData = async () => {
     try {
       setLoading(true);
@@ -5671,7 +5681,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             </div>
 
             {/* Tabs Content - keeping all existing content exactly the same */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6 min-w-0">
+            <Tabs 
+              value={activeTab} 
+              onValueChange={(value) => {
+                // Prevent regular admins from accessing super_admin-only tabs
+                if (currentAdminRole !== 'super_admin' && (value === 'logs' || value === 'settings' || value === 'admins')) {
+                  return; // Don't allow tab change
+                }
+                setActiveTab(value);
+              }} 
+              className="space-y-6 min-w-0"
+            >
               {/* Tabs Content - separated from navigation */}
               <TabsContent value="overview" className="space-y-6 mt-20 sm:mt-0">
                 {/* Welcome Header */}
