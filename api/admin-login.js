@@ -92,10 +92,14 @@ export default async (req, res) => {
       }
     }
     
+    // STRICT: Generate JWT with fixed 1-hour expiration
+    // The 'exp' field in the token is immutable and cannot be changed
+    // This ensures the session always ends exactly 1 hour after login
+    // No refresh, no extension, no reset - only logout or expiration
     const token = jwt.default.sign(
       { id: admin.id, email: admin.email, role: admin.role },
       jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: '1h' } // Fixed 1-hour expiration - immutable 'exp' field
     );
     
     // Set cookie

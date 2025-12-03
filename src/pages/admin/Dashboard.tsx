@@ -373,20 +373,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     dateTo: null as Date | null
   });
 
-  // Session expiration timestamp (milliseconds) - from server token only
-  // No localStorage - session is managed by server JWT token
+  // Session expiration timestamp (milliseconds) - from server JWT token only
+  // STRICT: Token expiration is fixed at login and NEVER resets or extends
+  // The JWT contains an immutable 'exp' field that cannot be changed
+  // No localStorage - session is managed entirely by server JWT token
   const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
   
   // Session time left in seconds - calculated from expiration timestamp
-  // This ensures the timer continues from the original login time and does NOT restart on refresh
+  // STRICT: Timer is based on JWT 'exp' field - never resets, never extends
   const calculateTimeLeft = (expiration: number | null): number => {
-    if (!expiration) return 60 * 60; // Default to 1 hour
+    if (!expiration) return 0; // No expiration = no session
     const remaining = Math.max(0, Math.floor((expiration - Date.now()) / 1000));
     return remaining;
   };
   
-  // Initialize with stored expiration if available, otherwise default
-  const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(() => calculateTimeLeft(storedExpiration));
+  // Initialize session timer - will be set from server response
+  // STRICT: No default value - must come from server token
+  const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(0);
 
 
   const content = {
@@ -2296,10 +2299,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             setCurrentAdminId(data.admin.id || null);
             
             // Update session expiration timestamp from server response
-            // No localStorage - session is managed by server token only
+            // STRICT: This is the JWT 'exp' field - immutable, non-resettable
+            // The expiration time is set at login and NEVER changes until re-login
             if (data.sessionExpiresAt) {
               const expiration = data.sessionExpiresAt;
-              setSessionExpiresAt(expiration);
+              // Only set if not already set (prevents reset on refresh)
+              setSessionExpiresAt(prev => {
+                // If we already have the same expiration, don't update
+                // This ensures the timer never resets on page refresh
+                if (prev === expiration) return prev;
+                // Only update if we don't have one yet or if it's different (shouldn't happen)
+                return prev || expiration;
+              });
               // Calculate remaining time from expiration timestamp
               const remaining = Math.max(0, Math.floor((expiration - Date.now()) / 1000));
               setSessionTimeLeft(remaining);
@@ -2311,15 +2322,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               console.warn('💡 If you should be super_admin, run FIX_SUPER_ADMIN_ROLE.sql and log out/in');
             }
           } else {
-            // Token invalid or expired - redirect to login
-            console.warn('Admin session expired or invalid');
-            navigate('/admin/login');
+            // Token invalid or expired - STRICT: redirect immediately
+            console.warn('Admin session expired or invalid - redirecting to login');
+            // Use window.location for hard redirect (clears all state)
+            window.location.href = '/admin/login';
           }
         } else {
-          // Token expired or invalid (401) - redirect to login
+          // Token expired or invalid (401) - STRICT: redirect immediately
           if (response.status === 401) {
-            console.warn('Admin session expired - redirecting to login');
-            navigate('/admin/login');
+            console.warn('Admin session expired (401) - redirecting to login');
+            // Use window.location for hard redirect (clears all state)
+            window.location.href = '/admin/login';
           } else {
             console.error('Failed to verify admin, status:', response.status);
           }
@@ -2330,15 +2343,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
     };
     
-    // Fetch immediately on mount to get the correct session time
-    // This ensures the timer doesn't start from the default value
+    // Fetch immediately on mount to get the correct session expiration from JWT
+    // STRICT: This gets the immutable 'exp' field from the token - never resets
     fetchCurrentAdminRole();
     
-    // Verify token every 5 minutes to catch expiration and sync session timer
-    // The JWT expiration is encoded in the token, so this check ensures we catch it
-    // This also updates the session timer with the actual remaining time from the server
-    // The timer does NOT restart - it continues from the original login time
-    const interval = setInterval(fetchCurrentAdminRole, 5 * 60 * 1000); // Every 5 minutes
+    // Verify token periodically to catch expiration
+    // STRICT: This only checks expiration - it NEVER extends or resets the timer
+    // The JWT 'exp' field is immutable and cannot be changed
+    const interval = setInterval(fetchCurrentAdminRole, 60 * 1000); // Every 1 minute
     return () => clearInterval(interval);
   }, [navigate]);
 
@@ -5297,41 +5309,39 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }, []);
 
   // Session timer - calculates remaining time from expiration timestamp
-  // The timer does NOT restart on refresh - it continues from the JWT expiration time
-  // This ensures accuracy even if the page is refreshed or the component remounts
+  // STRICT SESSION TIMER: Based on immutable JWT 'exp' field
+  // Timer NEVER resets, NEVER extends - only counts down from login time
+  // The expiration timestamp is fixed at login and cannot be changed
   useEffect(() => {
+    if (!sessionExpiresAt) {
+      // No expiration set yet - wait for server response
+      return;
+    }
+
     const timer = setInterval(() => {
-      if (sessionExpiresAt) {
-        // Calculate remaining time from the expiration timestamp
-        // This ensures the timer is always accurate, even after refresh
-        const remaining = Math.max(0, Math.floor((sessionExpiresAt - Date.now()) / 1000));
-        setSessionTimeLeft(remaining);
-        
-        if (remaining <= 0) {
-          // Session expired - redirect to login
-          toast({
-            title: language === 'en' ? "Session Expired" : "Session expirée",
-            description: language === 'en' 
-              ? "Your session has expired. Please login again."
-              : "Votre session a expiré. Veuillez vous reconnecter.",
-            variant: "destructive",
-          });
-          navigate('/admin/login');
-        }
-      } else {
-        // If we don't have expiration timestamp yet, just decrement
-        // This will be corrected once the server response arrives
-        setSessionTimeLeft(prev => {
-          if (prev <= 1) {
-            return 0;
-          }
-          return prev - 1;
+      // Calculate remaining time from the immutable expiration timestamp
+      // STRICT: This is based on JWT 'exp' - never changes until re-login
+      const remaining = Math.max(0, Math.floor((sessionExpiresAt - Date.now()) / 1000));
+      setSessionTimeLeft(remaining);
+      
+      if (remaining <= 0) {
+        // Session expired - JWT 'exp' has passed
+        // Clear timer and redirect to login
+        clearInterval(timer);
+        toast({
+          title: language === 'en' ? "Session Expired" : "Session expirée",
+          description: language === 'en' 
+            ? "Your session has expired. Please login again."
+            : "Votre session a expiré. Veuillez vous reconnecter.",
+          variant: "destructive",
         });
+        // Use window.location for hard redirect (clears all state)
+        window.location.href = '/admin/login';
       }
     }, 1000); // Update every second
 
     return () => clearInterval(timer);
-  }, [sessionExpiresAt, navigate, toast, language]);
+  }, [sessionExpiresAt, toast, language]);
 
   // Add JWT expiration handling
   useEffect(() => {

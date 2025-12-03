@@ -49,13 +49,19 @@ export async function verifyAdminAuth(req) {
     
     let decoded;
     try {
+      // STRICT: jwt.verify automatically checks the 'exp' field
+      // If token is expired, it throws TokenExpiredError
+      // This ensures the immutable expiration is enforced
       decoded = jwt.default.verify(token, jwtSecret);
     } catch (jwtError) {
       // Token is invalid, expired, or malformed
+      // STRICT: Expired tokens are immediately rejected - no extension possible
       return {
         valid: false,
         error: 'Invalid or expired token',
-        reason: jwtError.message,
+        reason: jwtError.name === 'TokenExpiredError' 
+          ? 'Token expired - session ended' 
+          : jwtError.message,
         statusCode: 401
       };
     }
