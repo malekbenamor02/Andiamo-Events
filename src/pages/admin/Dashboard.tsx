@@ -136,8 +136,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [currentAdminRole, setCurrentAdminRole] = useState<string | null>(null);
+  const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
   const [admins, setAdmins] = useState<Array<{id: string; name: string; email: string; phone?: string; role: string; is_active: boolean; created_at: string}>>([]);
   const [isAddAdminDialogOpen, setIsAddAdminDialogOpen] = useState(false);
+  const [isEditAdminDialogOpen, setIsEditAdminDialogOpen] = useState(false);
+  const [editingAdmin, setEditingAdmin] = useState<{id: string; name: string; email: string; phone?: string; role: string; is_active: boolean} | null>(null);
   const [newAdminData, setNewAdminData] = useState({ name: '', email: '', phone: '' });
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
@@ -2311,6 +2314,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           if (data.valid && data.admin) {
             const role = data.admin.role || 'admin';
             setCurrentAdminRole(role);
+            setCurrentAdminId(data.admin.id || null);
             
             // Update session expiration timestamp from server response
             // This ensures the timer continues from the original login time
@@ -2628,6 +2632,167 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         errorMessage = language === 'en' 
           ? 'An admin with this email already exists.'
           : 'Un admin avec cet email existe déjà.';
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  // Edit admin
+  const handleEditAdmin = async () => {
+    if (!editingAdmin || !editingAdmin.name || !editingAdmin.email) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' ? 'Name and email are required' : 'Le nom et l\'email sont requis',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setProcessingId(`edit-admin-${editingAdmin.id}`);
+    
+    try {
+      const updatePayload: any = {
+        name: editingAdmin.name,
+        email: editingAdmin.email,
+        role: editingAdmin.role,
+        is_active: editingAdmin.is_active,
+      };
+      
+      // Only include phone if it's provided (column might not exist)
+      if (editingAdmin.phone !== undefined) {
+        if (editingAdmin.phone && editingAdmin.phone.trim() !== '') {
+          updatePayload.phone = editingAdmin.phone;
+        } else {
+          updatePayload.phone = null;
+        }
+      }
+      
+      const { error: updateError } = await supabase
+        .from('admins')
+        .update(updatePayload)
+        .eq('id', editingAdmin.id);
+      
+      if (updateError) {
+        // If error is about missing phone column, try without it
+        if (updateError.message?.includes('phone')) {
+          const { error: retryError } = await supabase
+            .from('admins')
+            .update({
+              name: editingAdmin.name,
+              email: editingAdmin.email,
+              role: editingAdmin.role,
+              is_active: editingAdmin.is_active,
+            })
+            .eq('id', editingAdmin.id);
+          
+          if (retryError) throw retryError;
+        } else {
+          throw updateError;
+        }
+      }
+
+      toast({
+        title: language === 'en' ? 'Admin Updated' : 'Admin Modifié',
+        description: language === 'en' 
+          ? 'Admin account updated successfully'
+          : 'Compte admin modifié avec succès',
+      });
+
+      // Reset form and close dialog
+      setEditingAdmin(null);
+      setIsEditAdminDialogOpen(false);
+      
+      // Refresh admins list
+      await fetchAdmins();
+    } catch (error: any) {
+      console.error('Error updating admin:', error);
+      
+      let errorMessage = language === 'en' ? 'Failed to update admin account' : 'Échec de la modification du compte admin';
+      
+      if (error?.code === '42501' || error?.message?.includes('policy') || error?.message?.includes('permission')) {
+        errorMessage = language === 'en' 
+          ? 'Permission denied. Please check your admin permissions.'
+          : 'Permission refusée. Veuillez vérifier vos permissions d\'admin.';
+      } else if (error?.code === '23505' || error?.message?.includes('duplicate') || error?.message?.includes('unique')) {
+        errorMessage = language === 'en' 
+          ? 'An admin with this email already exists.'
+          : 'Un admin avec cet email existe déjà.';
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  // Delete admin
+  const handleDeleteAdmin = async (adminId: string) => {
+    // Prevent deleting yourself
+    if (adminId === currentAdminId) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'You cannot delete your own account'
+          : 'Vous ne pouvez pas supprimer votre propre compte',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Confirm deletion
+    const confirmMessage = language === 'en' 
+      ? 'Are you sure you want to delete this admin? This action cannot be undone.'
+      : 'Êtes-vous sûr de vouloir supprimer cet admin? Cette action ne peut pas être annulée.';
+    
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    setProcessingId(`delete-admin-${adminId}`);
+    
+    try {
+      const { error: deleteError } = await supabase
+        .from('admins')
+        .delete()
+        .eq('id', adminId);
+      
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      toast({
+        title: language === 'en' ? 'Admin Deleted' : 'Admin Supprimé',
+        description: language === 'en' 
+          ? 'Admin account deleted successfully'
+          : 'Compte admin supprimé avec succès',
+      });
+      
+      // Refresh admins list
+      await fetchAdmins();
+    } catch (error: any) {
+      console.error('Error deleting admin:', error);
+      
+      let errorMessage = language === 'en' ? 'Failed to delete admin account' : 'Échec de la suppression du compte admin';
+      
+      if (error?.code === '42501' || error?.message?.includes('policy') || error?.message?.includes('permission')) {
+        errorMessage = language === 'en' 
+          ? 'Permission denied. Please check your admin permissions.'
+          : 'Permission refusée. Veuillez vérifier vos permissions d\'admin.';
       } else if (error?.message) {
         errorMessage = error.message;
       }
@@ -6379,6 +6544,103 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </Dialog>
                   </div>
 
+                  {/* Edit Admin Dialog */}
+                  <Dialog open={isEditAdminDialogOpen} onOpenChange={setIsEditAdminDialogOpen}>
+                    <DialogContent className="max-w-2xl animate-in zoom-in-95 duration-300">
+                      <DialogHeader>
+                        <DialogTitle>
+                          {language === 'en' ? 'Edit Admin' : 'Modifier l\'Admin'}
+                        </DialogTitle>
+                      </DialogHeader>
+                      {editingAdmin && (
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="editAdminName">{language === 'en' ? 'Name' : 'Nom'}</Label>
+                            <Input
+                              id="editAdminName"
+                              value={editingAdmin.name}
+                              onChange={(e) => setEditingAdmin({ ...editingAdmin, name: e.target.value })}
+                              placeholder={language === 'en' ? 'Enter admin name' : 'Entrez le nom de l\'admin'}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="editAdminEmail">{language === 'en' ? 'Email' : 'Email'}</Label>
+                            <Input
+                              id="editAdminEmail"
+                              type="email"
+                              value={editingAdmin.email}
+                              onChange={(e) => setEditingAdmin({ ...editingAdmin, email: e.target.value })}
+                              placeholder={language === 'en' ? 'Enter admin email' : 'Entrez l\'email de l\'admin'}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="editAdminPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'}</Label>
+                            <Input
+                              id="editAdminPhone"
+                              type="tel"
+                              value={editingAdmin.phone || ''}
+                              onChange={(e) => setEditingAdmin({ ...editingAdmin, phone: e.target.value })}
+                              placeholder={language === 'en' ? 'Enter phone number (optional)' : 'Entrez le numéro de téléphone (optionnel)'}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="editAdminRole">{language === 'en' ? 'Role' : 'Rôle'}</Label>
+                            <Select 
+                              value={editingAdmin.role} 
+                              onValueChange={(value: 'admin' | 'super_admin') => setEditingAdmin({ ...editingAdmin, role: value })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="admin">{language === 'en' ? 'Admin' : 'Admin'}</SelectItem>
+                                <SelectItem value="super_admin">{language === 'en' ? 'Super Admin' : 'Super Admin'}</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id="editAdminActive"
+                              checked={editingAdmin.is_active}
+                              onChange={(e) => setEditingAdmin({ ...editingAdmin, is_active: e.target.checked })}
+                            />
+                            <Label htmlFor="editAdminActive">{language === 'en' ? 'Active' : 'Actif'}</Label>
+                          </div>
+                          <div className="flex justify-end gap-2 pt-4">
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setEditingAdmin(null);
+                                setIsEditAdminDialogOpen(false);
+                              }}
+                            >
+                              {language === 'en' ? 'Cancel' : 'Annuler'}
+                            </Button>
+                            <Button
+                              onClick={handleEditAdmin}
+                              disabled={processingId === `edit-admin-${editingAdmin.id}`}
+                            >
+                              {processingId === `edit-admin-${editingAdmin.id}` ? (
+                                <>
+                                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                  {language === 'en' ? 'Saving...' : 'Enregistrement...'}
+                                </>
+                              ) : (
+                                <>
+                                  <Save className="w-4 h-4 mr-2" />
+                                  {language === 'en' ? 'Save Changes' : 'Enregistrer les Modifications'}
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </DialogContent>
+                  </Dialog>
+
                   <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-300">
                     <CardHeader>
                       <CardTitle>{language === 'en' ? 'All Admins' : 'Tous les Admins'}</CardTitle>
@@ -6393,6 +6655,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             <TableHead>{language === 'en' ? 'Role' : 'Rôle'}</TableHead>
                             <TableHead>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
                             <TableHead>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
+                            <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -6418,11 +6681,45 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               <TableCell>
                                 {new Date(admin.created_at).toLocaleDateString()}
                               </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setEditingAdmin({
+                                        id: admin.id,
+                                        name: admin.name,
+                                        email: admin.email,
+                                        phone: admin.phone,
+                                        role: admin.role,
+                                        is_active: admin.is_active,
+                                      });
+                                      setIsEditAdminDialogOpen(true);
+                                    }}
+                                    disabled={processingId === `edit-admin-${admin.id}`}
+                                    className="transform hover:scale-105 transition-all duration-300"
+                                  >
+                                    <Edit className="w-4 h-4 mr-1" />
+                                    {processingId === `edit-admin-${admin.id}` ? (language === 'en' ? 'Saving...' : 'Enregistrement...') : (language === 'en' ? 'Edit' : 'Modifier')}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleDeleteAdmin(admin.id)}
+                                    disabled={processingId === `delete-admin-${admin.id}` || admin.id === currentAdminId}
+                                    className="transform hover:scale-105 transition-all duration-300"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-1" />
+                                    {processingId === `delete-admin-${admin.id}` ? (language === 'en' ? 'Deleting...' : 'Suppression...') : (language === 'en' ? 'Delete' : 'Supprimer')}
+                                  </Button>
+                                </div>
+                              </TableCell>
                             </TableRow>
                           ))}
                           {admins.length === 0 && (
                             <TableRow>
-                              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                                 {language === 'en' ? 'No admins found' : 'Aucun admin trouvé'}
                               </TableCell>
                             </TableRow>
