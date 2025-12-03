@@ -11566,6 +11566,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   </div>
                 </div>
               </TabsContent>
+              )}
             </Tabs>
           </div>
         </div>
@@ -12579,8 +12580,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </CardContent>
               </Card>
             </div>
-              </TabsContent>
-              )}
+          )}
         </DialogContent>
       </Dialog>
     </div>
