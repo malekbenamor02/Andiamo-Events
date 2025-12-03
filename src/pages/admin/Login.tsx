@@ -375,22 +375,22 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         }} />
       </div>
 
-      <div className="w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-700">
+      <div className="w-full max-w-sm relative z-10 animate-in fade-in zoom-in-95 duration-700">
         <Card className="glass border-border/50 shadow-2xl">
-          <CardHeader className="text-center pt-8 pb-4 relative">
-            <div className="mx-auto w-16 h-16 bg-gradient-to-r from-primary via-secondary to-accent rounded-full flex items-center justify-center mb-4 relative overflow-hidden animate-pulse-glow">
-              <Lock className="w-8 h-8 text-primary-foreground relative z-10" />
-              <Sparkles className="absolute top-1 right-1 w-4 h-4 text-white/80 animate-spin-slow" />
+          <CardHeader className="text-center pt-6 pb-3 relative">
+            <div className="mx-auto w-12 h-12 bg-gradient-to-r from-primary via-secondary to-accent rounded-full flex items-center justify-center mb-3 relative overflow-hidden animate-pulse-glow">
+              <Lock className="w-6 h-6 text-primary-foreground relative z-10" />
+              <Sparkles className="absolute top-0.5 right-0.5 w-3 h-3 text-white/80 animate-spin-slow" />
             </div>
-            <CardTitle className="text-3xl font-heading font-bold text-gradient-neon mb-2">
+            <CardTitle className="text-2xl font-heading font-bold text-gradient-neon mb-1">
               {t[language].title}
             </CardTitle>
-            <CardDescription className="text-muted-foreground text-sm">
+            <CardDescription className="text-muted-foreground text-xs">
               {t[language].description}
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-6">
-            <form onSubmit={handleLogin} className="space-y-5">
+          <CardContent className="p-5">
+            <form onSubmit={handleLogin} className="space-y-4">
               {error && (
                 <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-2">
                   <AlertCircle className="h-4 w-4" />
@@ -411,7 +411,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     autoComplete="email"
-                    className="w-full pl-10 h-12 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
+                    className="w-full pl-10 h-10 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
                     placeholder="admin@andiamoevents.com"
                   />
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -432,7 +432,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     autoComplete="current-password"
-                    className="w-full pr-10 pl-10 h-12 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
+                    className="w-full pr-10 pl-10 h-10 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
                     placeholder="••••••••"
                   />
                   <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -466,7 +466,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
               
               <Button
                 type="submit"
-                className="w-full h-12 btn-gradient text-lg font-semibold relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
+                className="w-full h-10 btn-gradient text-base font-semibold relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
                 disabled={loading || (!RECAPTCHA_SITE_KEY && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.hostname.startsWith('192.168.') && !window.location.hostname.startsWith('10.0.'))}
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
@@ -487,7 +487,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
               </Button>
             </form>
             
-            <div className="mt-6 text-center border-t border-border/50 pt-6">
+            <div className="mt-4 text-center border-t border-border/50 pt-4">
               <Button
                 variant="link"
                 onClick={() => navigate('/')}
