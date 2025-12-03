@@ -50,9 +50,11 @@ export const apiFetch = async (
   try {
     const response = await fetch(url, fetchOptions);
 
-    // Handle 401 Unauthorized responses silently
+    // Handle 401 Unauthorized responses - STRICT: immediate redirect
+    // This happens when JWT 'exp' field has passed or token is invalid
     if (response.status === 401) {
-      // Handle unauthorized error silently (no console errors)
+      // STRICT: Token expired or invalid - redirect immediately
+      // No token refresh, no extension - session is over
       handleUnauthorized();
       
       // Return a response that won't cause console errors
@@ -62,7 +64,7 @@ export const apiFetch = async (
         JSON.stringify({ 
           error: 'Unauthorized', 
           valid: false,
-          reason: 'Token expired or invalid'
+          reason: 'Token expired or invalid - session ended'
         }),
         {
           status: 401,
