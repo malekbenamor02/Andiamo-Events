@@ -5,6 +5,8 @@
  * Handles 404 errors gracefully with user-friendly messages
  */
 
+import { buildApiUrl } from './api-config';
+
 // Flag to prevent multiple redirects
 let isRedirecting = false;
 
@@ -41,6 +43,10 @@ export const apiFetch = async (
   url: string,
   options: RequestInit = {}
 ): Promise<Response> => {
+  // Build full API URL (handles production vs development)
+  // Only build if it's an API route (starts with /api)
+  const fullUrl = url.startsWith('/api') ? buildApiUrl(url) : url;
+  
   // Ensure credentials are included for cookie-based auth
   const fetchOptions: RequestInit = {
     ...options,
@@ -48,7 +54,7 @@ export const apiFetch = async (
   };
 
   try {
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(fullUrl, fetchOptions);
 
     // Handle 401 Unauthorized responses - STRICT: immediate redirect
     // This happens when JWT 'exp' field has passed or token is invalid

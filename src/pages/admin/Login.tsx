@@ -148,6 +148,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       };
       
       const loginEndpoint = API_ROUTES.ADMIN_LOGIN;
+      console.log('🔵 [LOGIN] API Base URL:', import.meta.env.VITE_API_URL || 'relative');
       console.log('🔵 [LOGIN] Sending login request to', loginEndpoint);
       console.log('🔵 [LOGIN] Request payload:', { 
         email, 

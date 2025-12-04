@@ -20,6 +20,7 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
         // Since the cookie is httpOnly, we can't read it directly
         // Just make the API call and let the server handle the cookie
         // Use apiFetch to automatically handle 401 errors
+        // apiFetch automatically handles API base URL
         const response = await apiFetch(API_ROUTES.VERIFY_ADMIN, {
           method: 'GET',
         });
