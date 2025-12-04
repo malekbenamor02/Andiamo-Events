@@ -59,20 +59,32 @@ self.addEventListener('fetch', (event) => {
   }
   
   // For static assets (images, etc.), try network first, then cache
+  // NEVER cache POST, PUT, DELETE, or PATCH requests
+  const isNonGetRequest = event.request.method !== 'GET';
+  
+  if (isNonGetRequest) {
+    // For non-GET requests, just fetch from network (no caching)
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Cache successful responses for static assets
-        if (response.status === 200) {
+        // Only cache successful GET responses for static assets
+        if (response.status === 200 && event.request.method === 'GET') {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
+            // Only cache GET requests
+            if (event.request.method === 'GET') {
+              cache.put(event.request, responseToCache);
+            }
           });
         }
         return response;
       })
       .catch(() => {
-        // If network fails, try cache
+        // If network fails, try cache (only for GET requests)
         return caches.match(event.request);
       })
   );
