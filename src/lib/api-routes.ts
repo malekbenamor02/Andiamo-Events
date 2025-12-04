@@ -19,6 +19,11 @@ export const API_ROUTES = {
   ADMIN_LOGOUT: '/api/admin-logout',
   VERIFY_ADMIN: '/api/verify-admin',
   
+  // Authentication & Ambassador
+  AMBASSADOR_LOGIN: '/api/ambassador-login',
+  AMBASSADOR_LOGOUT: '/api/ambassador-logout',
+  VERIFY_AMBASSADOR: '/api/verify-ambassador',
+  
   // Application Management
   ADMIN_UPDATE_APPLICATION: '/api/admin-update-application',
   

@@ -2840,26 +2840,51 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       else setAmbassadors(ambassadorsData || []);
 
       // Fetch sales for all ambassadors
+      // Note: clients table may not exist or may be deprecated in favor of orders table
       if (ambassadorsData && ambassadorsData.length > 0) {
-        const { data: salesData, error: salesError } = await (supabase as any)
-          .from('clients')
-          .select('ambassador_id, standard_tickets, vip_tickets');
-        if (salesError) {
-          // Only log if it's not a handled error (e.g., table doesn't exist is expected)
-          if (salesError.code !== '42P01' && salesError.code !== 'PGRST116') {
-            console.error('Error fetching ambassador sales:', salesError);
+        try {
+          const { data: salesData, error: salesError } = await (supabase as any)
+            .from('clients')
+            .select('ambassador_id, standard_tickets, vip_tickets');
+          
+          if (salesError) {
+            // Handle various error cases:
+            // - 404: Table doesn't exist or RLS blocking
+            // - 42P01: PostgreSQL relation doesn't exist
+            // - PGRST116: PostgREST relation not found
+            const isTableNotFound = 
+              salesError.code === '42P01' || 
+              salesError.code === 'PGRST116' ||
+              salesError.message?.includes('relation') ||
+              salesError.message?.includes('does not exist') ||
+              salesError.status === 404 ||
+              salesError.statusCode === 404;
+            
+            if (isTableNotFound) {
+              // Table doesn't exist - this is OK, clients table may be deprecated
+              console.warn('clients table not found or not accessible. Sales data will be empty.');
+            } else {
+              // Other errors should be logged
+              console.error('Error fetching ambassador sales:', salesError);
+            }
+            setAmbassadorSales({});
+          } else if (salesData) {
+            // Aggregate sales by ambassador_id
+            const salesMap: Record<string, { standard: number; vip: number }> = {};
+            for (const sale of salesData) {
+              if (!sale.ambassador_id) continue;
+              if (!salesMap[sale.ambassador_id]) salesMap[sale.ambassador_id] = { standard: 0, vip: 0 };
+              salesMap[sale.ambassador_id].standard += sale.standard_tickets || 0;
+              salesMap[sale.ambassador_id].vip += sale.vip_tickets || 0;
+            }
+            setAmbassadorSales(salesMap);
+          } else {
+            setAmbassadorSales({});
           }
+        } catch (error) {
+          // Catch any unexpected errors
+          console.error('Unexpected error fetching ambassador sales:', error);
           setAmbassadorSales({});
-        } else {
-          // Aggregate sales by ambassador_id
-          const salesMap: Record<string, { standard: number; vip: number }> = {};
-          for (const sale of salesData) {
-            if (!sale.ambassador_id) continue;
-            if (!salesMap[sale.ambassador_id]) salesMap[sale.ambassador_id] = { standard: 0, vip: 0 };
-            salesMap[sale.ambassador_id].standard += sale.standard_tickets || 0;
-            salesMap[sale.ambassador_id].vip += sale.vip_tickets || 0;
-          }
-          setAmbassadorSales(salesMap);
         }
       } else {
         setAmbassadorSales({});

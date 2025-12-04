@@ -126,15 +126,25 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Rate limiting: 10 requests per 15 minutes per IP
-const limiter = rateLimit({
+// Rate limiting configurations
+const emailLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10,
   message: { error: 'Too many requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/api/send-email', limiter);
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 login attempts per 15 minutes
+  message: { error: 'Too many login attempts, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Don't count successful logins
+});
+
+app.use('/api/send-email', emailLimiter);
 
 app.post('/api/send-email', async (req, res) => {
   try {
@@ -259,7 +269,7 @@ app.get('/api/test-supabase', async (req, res) => {
 });
 
 // Admin login endpoint
-app.post('/api/admin-login', async (req, res) => {
+app.post('/api/admin-login', authLimiter, async (req, res) => {
   try {
     // Log for debugging - include all request info
     console.log('=== ADMIN LOGIN REQUEST ===');
@@ -410,9 +420,15 @@ app.post('/api/admin-login', async (req, res) => {
     // The session countdown starts from login and continues regardless of user activity
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
-      console.warn('WARNING: JWT_SECRET is not set! Using fallback secret. This is insecure in production.');
       if (process.env.NODE_ENV === 'production') {
         return res.status(500).json({ error: 'Server configuration error: JWT_SECRET is required in production.' });
+      }
+      console.warn('WARNING: JWT_SECRET is not set! Using fallback secret for development only.');
+    }
+    
+    if (!jwtSecret || jwtSecret === 'fallback-secret-dev-only') {
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(500).json({ error: 'Server configuration error: JWT_SECRET must be set in production.' });
       }
     }
     
@@ -473,6 +489,203 @@ app.post('/api/admin-login', async (req, res) => {
       error: 'Internal server error', 
       details: error.message 
     });
+  }
+});
+
+// Ambassador login endpoint (secure with httpOnly cookies)
+app.post('/api/ambassador-login', authLimiter, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ 
+        error: 'Supabase not configured',
+        details: 'Please check environment variables: SUPABASE_URL and SUPABASE_ANON_KEY must be set'
+      });
+    }
+
+    const { phone, password, recaptchaToken } = req.body;
+
+    if (!phone || !password) {
+      return res.status(400).json({ error: 'Phone and password required' });
+    }
+
+    // Verify reCAPTCHA (bypass for localhost)
+    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+    const shouldBypassRecaptcha = recaptchaToken === 'localhost-bypass-token' || !RECAPTCHA_SECRET_KEY;
+    
+    if (!shouldBypassRecaptcha) {
+      if (!recaptchaToken) {
+        return res.status(400).json({ error: 'reCAPTCHA verification required' });
+      }
+      
+      try {
+        const verifyResponse = await fetch(`https://www.google.com/recaptcha/api/siteverify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
+        });
+
+        const verifyData = await verifyResponse.json();
+        if (!verifyData.success) {
+          return res.status(400).json({ 
+            error: 'reCAPTCHA verification failed',
+            details: verifyData['error-codes']?.join(', ') || 'Please complete the reCAPTCHA verification and try again.'
+          });
+        }
+      } catch (recaptchaError) {
+        return res.status(500).json({ 
+          error: 'reCAPTCHA verification service unavailable',
+          details: 'Unable to verify reCAPTCHA. Please try again later.'
+        });
+      }
+    }
+
+    // Fetch ambassador by phone
+    const { data: ambassador, error } = await supabase
+      .from('ambassadors')
+      .select('*')
+      .eq('phone', phone.trim())
+      .single();
+
+    // Prevent enumeration - return same error for invalid phone or password
+    if (error || !ambassador) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Check status
+    if (ambassador.status === 'pending') {
+      return res.status(403).json({ error: 'Application is under review' });
+    }
+
+    if (ambassador.status === 'rejected') {
+      return res.status(403).json({ error: 'Application was not approved' });
+    }
+
+    // Verify password
+    const isMatch = await bcrypt.compare(password, ambassador.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Generate JWT token
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(500).json({ error: 'Server configuration error: JWT_SECRET is required in production.' });
+      }
+    }
+
+    if (!jwtSecret || jwtSecret === 'fallback-secret-dev-only') {
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(500).json({ error: 'Server configuration error: JWT_SECRET must be set in production.' });
+      }
+    }
+
+    let token;
+    try {
+      token = jwt.sign(
+        { 
+          id: ambassador.id, 
+          phone: ambassador.phone, 
+          role: 'ambassador' 
+        }, 
+        jwtSecret || 'fallback-secret-dev-only', 
+        { expiresIn: '24h' } // 24 hours for ambassadors
+      );
+    } catch (jwtError) {
+      console.error('JWT signing error:', jwtError);
+      return res.status(500).json({ error: 'Server error', details: 'Failed to generate token' });
+    }
+
+    // Set httpOnly cookie
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieOptions = {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    };
+
+    if (isProduction && process.env.COOKIE_DOMAIN) {
+      cookieOptions.domain = process.env.COOKIE_DOMAIN;
+    }
+
+    res.cookie('ambassadorToken', token, cookieOptions);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Ambassador login error:', error);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
+  }
+});
+
+// Ambassador logout endpoint
+app.post('/api/ambassador-logout', (req, res) => {
+  res.clearCookie('ambassadorToken', { path: '/' });
+  res.json({ success: true });
+});
+
+// Ambassador verify endpoint
+app.get('/api/verify-ambassador', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ valid: false, error: 'Supabase not configured' });
+    }
+
+    const token = req.cookies.ambassadorToken;
+    if (!token) {
+      return res.status(401).json({ valid: false, error: 'Not authenticated' });
+    }
+
+    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
+    let decoded;
+    try {
+      decoded = jwt.verify(token, jwtSecret);
+    } catch (err) {
+      res.clearCookie('ambassadorToken', { path: '/' });
+      return res.status(401).json({ 
+        valid: false, 
+        error: 'Invalid or expired token',
+        reason: err.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token'
+      });
+    }
+
+    // Verify ambassador exists and is active
+    const { data: ambassador, error } = await supabase
+      .from('ambassadors')
+      .select('id, full_name, phone, email, city, ville, status')
+      .eq('id', decoded.id)
+      .eq('phone', decoded.phone)
+      .in('status', ['approved', 'active'])
+      .single();
+
+    if (error || !ambassador) {
+      res.clearCookie('ambassadorToken', { path: '/' });
+      return res.status(401).json({ valid: false, error: 'Invalid ambassador' });
+    }
+
+    const tokenExpiration = decoded.exp ? decoded.exp * 1000 : null;
+    const currentTime = Date.now();
+    const timeRemaining = tokenExpiration ? Math.max(0, Math.floor((tokenExpiration - currentTime) / 1000)) : 0;
+
+    res.json({ 
+      valid: true, 
+      ambassador: {
+        id: ambassador.id,
+        full_name: ambassador.full_name,
+        phone: ambassador.phone,
+        email: ambassador.email,
+        city: ambassador.city,
+        ville: ambassador.ville
+      },
+      sessionExpiresAt: tokenExpiration,
+      sessionTimeRemaining: timeRemaining
+    });
+  } catch (error) {
+    console.error('Token verification error:', error);
+    res.status(401).json({ valid: false, error: 'Invalid token' });
   }
 });
 
@@ -817,20 +1030,35 @@ app.post('/api/validate-ticket', async (req, res) => {
       });
     }
 
-    // Find the ticket by QR code
-    const { data: ticket, error: ticketError } = await supabase
-      .from('pass_purchases')
+    // Use service role client for database operations (bypasses RLS)
+    const dbClient = supabaseService || supabase;
+
+    // Find the ticket by secure_token (QR code contains secure_token)
+    // Join through order_passes -> orders -> events to get all needed data
+    const { data: ticket, error: ticketError } = await dbClient
+      .from('tickets')
       .select(`
         *,
-        events (
-          id,
-          name,
-          date,
-          venue,
-          city
+        order_passes (
+          pass_type,
+          quantity,
+          price,
+          orders (
+            id,
+            user_name,
+            user_email,
+            event_id,
+            events (
+              id,
+              name,
+              date,
+              venue,
+              city
+            )
+          )
         )
       `)
-      .eq('qr_code', qrCode)
+      .eq('secure_token', qrCode)
       .single();
 
     if (ticketError || !ticket) {
@@ -841,8 +1069,21 @@ app.post('/api/validate-ticket', async (req, res) => {
       });
     }
 
+    // Extract nested data from joined tables
+    const order = ticket.order_passes?.[0]?.orders;
+    const event = order?.events;
+    const passType = ticket.order_passes?.[0]?.pass_type;
+
+    if (!order || !event) {
+      return res.status(404).json({
+        success: false,
+        result: 'invalid',
+        message: 'Ticket data incomplete'
+      });
+    }
+
     // Check if ticket is for the correct event
-    if (ticket.event_id !== eventId) {
+    if (order.event_id !== eventId) {
       return res.status(400).json({
         success: false,
         result: 'invalid',
@@ -851,7 +1092,7 @@ app.post('/api/validate-ticket', async (req, res) => {
     }
 
     // Check if ticket is already scanned
-    const { data: existingScan, error: scanError } = await supabase
+    const { data: existingScan, error: scanError } = await dbClient
       .from('scans')
       .select('*')
       .eq('ticket_id', ticket.id)
@@ -860,7 +1101,7 @@ app.post('/api/validate-ticket', async (req, res) => {
 
     if (existingScan) {
       // Record the duplicate scan attempt
-      await supabase.from('scans').insert({
+      await dbClient.from('scans').insert({
         ticket_id: ticket.id,
         event_id: eventId,
         ambassador_id: ambassadorId,
@@ -876,21 +1117,21 @@ app.post('/api/validate-ticket', async (req, res) => {
         message: 'Ticket already scanned',
         ticket: {
           id: ticket.id,
-          customer_name: ticket.customer_name,
-          event_name: ticket.events.name,
-          ticket_type: ticket.pass_type,
+          customer_name: order.user_name,
+          event_name: event.name,
+          ticket_type: passType,
           scan_time: existingScan.scan_time
         }
       });
     }
 
     // Check if event date has passed
-    const eventDate = new Date(ticket.events.date);
+    const eventDate = new Date(event.date);
     const now = new Date();
     
     if (eventDate < now) {
       // Record the expired scan attempt
-      await supabase.from('scans').insert({
+      await dbClient.from('scans').insert({
         ticket_id: ticket.id,
         event_id: eventId,
         ambassador_id: ambassadorId,
@@ -906,15 +1147,15 @@ app.post('/api/validate-ticket', async (req, res) => {
         message: 'Event date has passed',
         ticket: {
           id: ticket.id,
-          customer_name: ticket.customer_name,
-          event_name: ticket.events.name,
-          ticket_type: ticket.pass_type
+          customer_name: order.user_name,
+          event_name: event.name,
+          ticket_type: passType
         }
       });
     }
 
     // Record the valid scan
-    const { data: scanRecord, error: recordError } = await supabase
+    const { data: scanRecord, error: recordError } = await dbClient
       .from('scans')
       .insert({
         ticket_id: ticket.id,
@@ -943,9 +1184,9 @@ app.post('/api/validate-ticket', async (req, res) => {
       message: 'Ticket validated successfully',
       ticket: {
         id: ticket.id,
-        customer_name: ticket.customer_name,
-        event_name: ticket.events.name,
-        ticket_type: ticket.pass_type,
+        customer_name: order.user_name,
+        event_name: event.name,
+        ticket_type: passType,
         scan_time: scanRecord.scan_time
       }
     });
@@ -966,7 +1207,10 @@ app.get('/api/sms-test', (req, res) => {
 });
 
 // WinSMS API configuration
-const WINSMS_API_KEY = process.env.WINSMS_API_KEY || "iUOh18YaJE1Ea1keZgW72qg451g713r722EqWe9q1zS0kSAXcuL5lm3JWDFi";
+const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
+if (!WINSMS_API_KEY && process.env.NODE_ENV === 'production') {
+  throw new Error('WINSMS_API_KEY environment variable is required in production');
+}
 const WINSMS_API_HOST = "www.winsmspro.com";
 const WINSMS_API_PATH = "/sms/sms/api";
 const WINSMS_SENDER = "Andiamo"; // Your sender ID

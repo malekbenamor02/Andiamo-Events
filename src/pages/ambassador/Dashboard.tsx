@@ -23,6 +23,7 @@ import { format } from "date-fns";
 import { fetchSalesSettings, subscribeToSalesSettings } from "@/lib/salesSettings";
 import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
 import { sanitizeUrl } from "@/lib/url-validator";
+import { apiFetch } from "@/lib/api-client";
 
 interface AmbassadorDashboardProps {
   language: 'en' | 'fr';
@@ -236,16 +237,34 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   };
 
   useEffect(() => {
-    const session = localStorage.getItem('ambassadorSession');
-    if (!session) {
-      navigate('/ambassador/auth');
-      return;
-    }
-    const { user } = JSON.parse(session);
-    setAmbassador(user);
-    setProfileForm({ password: '', confirmPassword: '' });
-    fetchData(user.id);
-    fetchEvents();
+    // Verify session with backend using httpOnly cookie
+    const verifySession = async () => {
+      try {
+        const response = await fetch(API_ROUTES.VERIFY_AMBASSADOR, {
+          method: 'GET',
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.valid && data.ambassador) {
+            setAmbassador(data.ambassador);
+            setProfileForm({ password: '', confirmPassword: '' });
+            fetchData(data.ambassador.id);
+            fetchEvents();
+          } else {
+            navigate('/ambassador/auth');
+          }
+        } else {
+          navigate('/ambassador/auth');
+        }
+      } catch (error) {
+        console.error('Session verification error:', error);
+        navigate('/ambassador/auth');
+      }
+    };
+
+    verifySession();
     
     // Fetch sales settings
     const loadSalesSettings = async () => {
@@ -989,8 +1008,15 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('ambassadorSession');
+  const handleLogout = async () => {
+    try {
+      await fetch(API_ROUTES.AMBASSADOR_LOGOUT, {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
     navigate('/ambassador/auth');
   };
 

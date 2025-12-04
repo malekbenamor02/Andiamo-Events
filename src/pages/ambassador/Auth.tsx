@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Eye, EyeOff, User, Lock, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import bcrypt from 'bcryptjs';
+// Removed bcrypt import - password verification now handled server-side
 import { API_ROUTES } from '@/lib/api-routes';
 
 interface AuthProps {
@@ -230,63 +230,54 @@ const Auth = ({ language }: AuthProps) => {
         return;
       }
 
-      // Fetch ambassador by phone number
-      const { data: ambassadors, error } = await supabase
-        .from('ambassadors')
-        .select('*')
-        .eq('phone', loginData.phone)
-        .single();
-
-      if (error || !ambassadors) {
-        toast({
-          title: t.login.error,
-          description: language === 'en' ? "Invalid phone number or password" : "Numéro de téléphone ou mot de passe invalide",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Verify password
-      const isPasswordValid = await bcrypt.compare(loginData.password, ambassadors.password);
-      if (!isPasswordValid) {
-        toast({
-          title: t.login.error,
-          description: language === 'en' ? "Invalid phone number or password" : "Numéro de téléphone ou mot de passe invalide",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Check application status
-      if (ambassadors.status === 'pending') {
-        toast({
-          title: t.login.pending,
-          description: language === 'en' ? "Your application is under review" : "Votre candidature est en cours d'examen",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (ambassadors.status === 'rejected') {
-        toast({
-          title: t.login.rejected,
-          description: language === 'en' ? "Your application was not approved" : "Votre candidature n'a pas été approuvée",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Success - redirect to dashboard
-      toast({
-        title: t.login.success,
-        description: language === 'en' ? "Redirecting to dashboard..." : "Redirection vers le tableau de bord...",
+      // Call secure backend login endpoint
+      const loginResponse = await fetch(API_ROUTES.AMBASSADOR_LOGIN, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Important: This allows cookies to be set
+        body: JSON.stringify({
+          phone: loginData.phone,
+          password: loginData.password,
+          recaptchaToken
+        })
       });
 
-      // Store ambassador session
-      localStorage.setItem('ambassadorSession', JSON.stringify({ user: ambassadors, loggedInAt: new Date().toISOString() }));
+      if (!loginResponse.ok) {
+        const errorData = await loginResponse.json().catch(() => ({}));
+        const errorMessage = errorData.error || t.login.error;
+        
+        toast({
+          title: errorMessage,
+          description: language === 'en' 
+            ? errorData.details || "Invalid phone number or password" 
+            : errorData.details || "Numéro de téléphone ou mot de passe invalide",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
 
-      // Redirect to dashboard
-      navigate('/ambassador/dashboard');
+      const loginData_result = await loginResponse.json();
+      
+      if (loginData_result.success) {
+        // Success - redirect to dashboard
+        toast({
+          title: t.login.success,
+          description: language === 'en' ? "Redirecting to dashboard..." : "Redirection vers le tableau de bord...",
+        });
+
+        // No localStorage needed - session is managed by server httpOnly cookie
+        // Redirect to dashboard
+        navigate('/ambassador/dashboard');
+      } else {
+        toast({
+          title: t.login.error,
+          description: language === 'en' ? "Login failed" : "Échec de connexion",
+          variant: "destructive",
+        });
+      }
 
     } catch (error) {
       toast({
