@@ -24,34 +24,40 @@ self.addEventListener('install', (event) => {
 // Fetch event
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+  const request = event.request;
   
-  // NEVER cache the HTML page, API requests, Supabase requests, or scripts
-  // Always fetch from network to ensure latest version
-  // IMPORTANT: Also skip ALL non-GET requests (POST, PUT, DELETE, PATCH)
-  const isNonGetRequest = event.request.method !== 'GET';
-  const isSupabaseStorage = url.hostname.includes('supabase.co') && url.pathname.includes('/storage/');
+  // CRITICAL: Completely bypass service worker for API requests and non-GET requests
+  // This prevents any interference with authentication flows
+  const isApiRequest = url.pathname.startsWith('/api/');
+  const isNonGetRequest = request.method !== 'GET';
+  const isSupabaseRequest = url.hostname.includes('supabase.co');
   
-  if (isNonGetRequest ||
-      url.pathname === '/' || 
+  // For API requests or non-GET requests, don't intercept at all - let browser handle natively
+  if (isApiRequest || isNonGetRequest) {
+    // Don't call event.respondWith() - this allows the request to bypass service worker completely
+    return;
+  }
+  
+  // For other requests that should bypass service worker
+  const isSupabaseStorage = isSupabaseRequest && url.pathname.includes('/storage/');
+  const shouldBypass = url.pathname === '/' || 
       url.pathname === '/index.html' ||
-      url.pathname.startsWith('/api/') || 
-      url.hostname.includes('supabase.co') ||
+      isSupabaseRequest ||
       isSupabaseStorage ||
       url.pathname.endsWith('.js') ||
       url.pathname.endsWith('.mjs') ||
       url.pathname.endsWith('.ts') ||
       url.pathname.endsWith('.tsx') ||
       url.pathname.endsWith('.css') ||
-      event.request.destination === 'script' ||
-      event.request.destination === 'style' ||
-      event.request.destination === 'document') {
-    // Always fetch from network for HTML, scripts, styles, API calls, and non-GET requests
-    // Don't catch errors - let them propagate naturally, but handle gracefully
+      request.destination === 'script' ||
+      request.destination === 'style' ||
+      request.destination === 'document';
+  
+  if (shouldBypass) {
+    // Fetch from network without caching
     event.respondWith(
-      fetch(event.request).catch(err => {
-        // Log error but don't block - return a proper error response
+      fetch(request).catch(err => {
         console.warn('Service worker fetch error (non-critical):', err);
-        // Return a proper HTTP error response (503 Service Unavailable)
         return new Response('Network Error', { 
           status: 503, 
           statusText: 'Service Unavailable',

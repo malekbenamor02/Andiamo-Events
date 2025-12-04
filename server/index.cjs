@@ -87,12 +87,12 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Vercel serverless function path handling
-// Note: Vercel keeps the /api prefix when routing to serverless functions
-// So we don't need to add it back - the path should already include /api
+// Vercel routes /api/* to api/index.js, and the path includes /api prefix
+// Express routes are already configured with /api prefix, so paths match correctly
 app.use((req, res, next) => {
-  // Log for debugging (remove in production if needed)
+  // Log for debugging in development
   if (process.env.VERCEL === '1' && process.env.NODE_ENV === 'development') {
-    console.log('Vercel request:', req.method, req.path, req.url);
+    console.log('[Vercel]', req.method, req.path, req.url);
   }
   next();
 });

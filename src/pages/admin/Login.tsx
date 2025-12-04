@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { logger } from "@/lib/logger";
 import { API_ROUTES } from "@/lib/api-routes";
+import { apiFetch } from "@/lib/api-client";
 
 interface AdminLoginProps {
   language: 'en' | 'fr';
@@ -157,13 +158,13 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         hasRecaptcha: !!recaptchaToken 
       });
       
-      // Call the Vercel API route for admin login
-      const response = await fetch(loginEndpoint, {
+      // Call the backend API for admin login
+      // apiFetch automatically handles API base URL and credentials
+      const response = await apiFetch(loginEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include', // Important: This allows cookies to be set
         body: JSON.stringify(loginPayload)
       });
       
