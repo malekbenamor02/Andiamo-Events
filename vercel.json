@@ -4,16 +4,5 @@
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
-  ],
-  "functions": {
-    "api/admin-login.js": {
-      "maxDuration": 30
-    },
-    "api/verify-admin.js": {
-      "maxDuration": 30
-    },
-    "api/authAdminMiddleware.js": {
-      "maxDuration": 30
-    }
-  }
+  ]
 }
