@@ -25,16 +25,28 @@ self.addEventListener('install', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   const request = event.request;
+  const method = request.method;
   
-  // CRITICAL: Completely bypass service worker for API requests and non-GET requests
-  // This prevents any interference with authentication flows
+  // CRITICAL FIX: Completely bypass service worker for:
+  // 1. ALL non-GET requests (POST, PUT, DELETE, PATCH, OPTIONS)
+  // 2. ALL API requests (/api/*)
+  // 3. ALL authentication-related endpoints
+  // This prevents ANY interference with authentication flows
+  
+  const isNonGetRequest = method !== 'GET';
   const isApiRequest = url.pathname.startsWith('/api/');
-  const isNonGetRequest = request.method !== 'GET';
-  const isSupabaseRequest = url.hostname.includes('supabase.co');
+  const isAuthEndpoint = url.pathname.includes('/admin-login') || 
+                         url.pathname.includes('/admin-logout') ||
+                         url.pathname.includes('/verify-admin') ||
+                         url.pathname.includes('/ambassador-login') ||
+                         url.pathname.includes('/ambassador-logout') ||
+                         url.pathname.includes('/verify-ambassador');
   
-  // For API requests or non-GET requests, don't intercept at all - let browser handle natively
-  if (isApiRequest || isNonGetRequest) {
-    // Don't call event.respondWith() - this allows the request to bypass service worker completely
+  // ABSOLUTE BYPASS: Don't intercept at all - let browser handle natively
+  // This is the ONLY way to prevent service worker from interfering
+  if (isNonGetRequest || isApiRequest || isAuthEndpoint) {
+    // CRITICAL: Don't call event.respondWith() - this completely bypasses service worker
+    // The request will go directly to the network without any service worker involvement
     return;
   }
   
