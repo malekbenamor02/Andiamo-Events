@@ -1,6 +1,7 @@
 // Service Worker for Andiamo Events Scanner
 // Updated cache version to prevent refresh loops and exclude OG images
-const CACHE_NAME = 'andiamo-events-scanner-v4';
+// v5: Fixed POST request caching issue
+const CACHE_NAME = 'andiamo-events-scanner-v5';
 const urlsToCache = [
   '/manifest.json',
   '/placeholder.svg'
@@ -26,9 +27,12 @@ self.addEventListener('fetch', (event) => {
   
   // NEVER cache the HTML page, API requests, Supabase requests, or scripts
   // Always fetch from network to ensure latest version
+  // IMPORTANT: Also skip ALL non-GET requests (POST, PUT, DELETE, PATCH)
+  const isNonGetRequest = event.request.method !== 'GET';
   const isSupabaseStorage = url.hostname.includes('supabase.co') && url.pathname.includes('/storage/');
   
-  if (url.pathname === '/' || 
+  if (isNonGetRequest ||
+      url.pathname === '/' || 
       url.pathname === '/index.html' ||
       url.pathname.startsWith('/api/') || 
       url.hostname.includes('supabase.co') ||
@@ -41,7 +45,7 @@ self.addEventListener('fetch', (event) => {
       event.request.destination === 'script' ||
       event.request.destination === 'style' ||
       event.request.destination === 'document') {
-    // Always fetch from network for HTML, scripts, styles, and API calls
+    // Always fetch from network for HTML, scripts, styles, API calls, and non-GET requests
     // Don't catch errors - let them propagate naturally, but handle gracefully
     event.respondWith(
       fetch(event.request).catch(err => {
@@ -59,38 +63,27 @@ self.addEventListener('fetch', (event) => {
   }
   
   // For static assets (images, etc.), try network first, then cache
-  // NEVER cache POST, PUT, DELETE, or PATCH requests
-  const isNonGetRequest = event.request.method !== 'GET';
-  
-  if (isNonGetRequest) {
-    // For non-GET requests, just fetch from network (no caching)
-    event.respondWith(fetch(event.request));
-    return;
-  }
-  
+  // This code only runs for GET requests to static assets (already filtered above)
   event.respondWith(
     fetch(event.request)
       .then((response) => {
         // Only cache successful GET responses for static assets
-        if (response.status === 200 && event.request.method === 'GET') {
+        if (response.status === 200) {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            // Only cache GET requests
-            if (event.request.method === 'GET') {
-              cache.put(event.request, responseToCache);
-            }
+            cache.put(event.request, responseToCache);
           });
         }
         return response;
       })
       .catch(() => {
-        // If network fails, try cache (only for GET requests)
+        // If network fails, try cache
         return caches.match(event.request);
       })
   );
 });
 
-// Activate event - clear all old caches
+// Activate event - clear all old caches and take control
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -103,9 +96,8 @@ self.addEventListener('activate', (event) => {
         })
       );
     }).then(() => {
-      // Don't claim clients immediately - this prevents automatic refresh
-      // Clients will be claimed naturally when they navigate
-      // return self.clients.claim(); // Commented out to prevent auto-refresh
+      // Take control of all clients to ensure new service worker is active
+      return self.clients.claim();
     })
   );
 }); 
