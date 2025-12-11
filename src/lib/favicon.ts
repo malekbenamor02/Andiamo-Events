@@ -17,17 +17,42 @@ export const uploadFavicon = async (
   type: 'favicon_ico' | 'favicon_32x32' | 'favicon_16x16' | 'apple_touch_icon'
 ): Promise<{ url: string; path: string; error?: string }> => {
   try {
-    // Generate filename based on type
+    // Generate filename with timestamp to ensure unique URLs and force browser refresh
     const fileExtension = file.name.split('.').pop();
-    const fileName = `${type}.${fileExtension}`;
+    const fileTimestamp = Date.now();
+    const fileName = `${type}_${fileTimestamp}.${fileExtension}`;
     const filePath = `favicon/${fileName}`;
 
-    // Upload to Supabase Storage
+    // Delete old favicon files of the same type first
+    try {
+      const { data: oldFiles } = await supabase.storage
+        .from('images')
+        .list('favicon', {
+          search: type
+        });
+      
+      if (oldFiles && oldFiles.length > 0) {
+        const filesToDelete = oldFiles
+          .filter(f => f.name.startsWith(`${type}_`))
+          .map(f => `favicon/${f.name}`);
+        
+        if (filesToDelete.length > 0) {
+          await supabase.storage
+            .from('images')
+            .remove(filesToDelete);
+        }
+      }
+    } catch (deleteError) {
+      // Continue even if old file deletion fails
+      console.warn('Could not delete old favicon files:', deleteError);
+    }
+
+    // Upload to Supabase Storage with no cache to force refresh
     const { data, error } = await supabase.storage
       .from('images')
       .upload(filePath, file, {
-        cacheControl: '31536000', // Cache for 1 year
-        upsert: true // Allow overwriting
+        cacheControl: '0', // No cache to force browser refresh
+        upsert: false // Don't overwrite, use new filename
       });
 
     if (error) {
@@ -52,11 +77,11 @@ export const uploadFavicon = async (
       .single();
 
     const currentSettings = (existingData?.content as FaviconSettings) || {};
-    const timestamp = Date.now().toString();
+    const settingsTimestamp = Date.now().toString();
     const updatedSettings: FaviconSettings = {
       ...currentSettings,
       [type]: urlData.publicUrl,
-      updated_at: timestamp // Store timestamp for cache-busting
+      updated_at: settingsTimestamp // Store timestamp for cache-busting
     };
 
     const { error: updateError, data: updateData } = await supabase

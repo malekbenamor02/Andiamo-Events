@@ -2563,10 +2563,31 @@ app.post('/api/test-email', async (req, res) => {
 });
 
 
+// Catch-all 404 handler for undefined routes
+app.use('/api/*', (req, res) => {
+  console.error(`404 - Route not found: ${req.method} ${req.path}`);
+  res.status(404).json({ 
+    success: false,
+    error: 'Route not found',
+    details: `The route ${req.path} does not exist`,
+    method: req.method,
+    path: req.path
+  });
+});
+
 // Export app for Vercel serverless functions
 // If running as standalone server, start listening
 if (require.main === module) {
-  app.listen(process.env.PORT || 8082, () => console.log('API server running on port', process.env.PORT || 8082));
+  const port = process.env.PORT || 8082;
+  app.listen(port, () => {
+    console.log('API server running on port', port);
+    console.log('Available routes:');
+    console.log('  POST /api/send-email');
+    console.log('  POST /api/admin-login');
+    console.log('  POST /api/admin-logout');
+    console.log('  GET  /api/verify-admin');
+    console.log('  ... and more');
+  });
 }
 
 // Export app for use in serverless functions

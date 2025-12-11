@@ -848,7 +848,7 @@ interface AdminData {
 }
 
 export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string): EmailConfig => {
-  const subject = "🔐 Your Andiamo Events Admin Account Credentials";
+  const subject = "Welcome to the Admin Team – Your Login Credentials";
   
   const html = `
     <!DOCTYPE html>
@@ -900,11 +900,6 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
           width: 200%;
           height: 200%;
           background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-          animation: pulse 4s ease-in-out infinite;
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(1.1); }
         }
         .header-content {
           position: relative;
@@ -912,27 +907,33 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
         }
         .logo {
           font-family: 'Orbitron', sans-serif;
-          font-size: 28px;
+          font-size: 32px;
           font-weight: 700;
-          letter-spacing: 2px;
+          letter-spacing: 3px;
           color: #ffffff;
           margin-bottom: 15px;
-          text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+          text-shadow: 0 0 20px rgba(255, 255, 255, 0.5), 0 0 40px rgba(185, 85, 211, 0.3);
         }
         .header h1 {
           font-family: 'Orbitron', sans-serif;
-          font-size: 32px;
+          font-size: 36px;
           font-weight: 700;
           color: #ffffff;
           margin: 15px 0 10px;
           text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        .header-subtitle {
+          font-size: 18px;
+          font-weight: 400;
+          color: rgba(255, 255, 255, 0.95);
+          margin-top: 10px;
         }
         .content {
           padding: 40px;
           background: hsl(218, 23%, 12%);
         }
         .greeting {
-          font-size: 18px;
+          font-size: 20px;
           color: #ffffff;
           margin-bottom: 25px;
           font-weight: 500;
@@ -940,6 +941,7 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
         .greeting strong {
           color: hsl(285, 85%, 65%);
           font-weight: 600;
+          font-size: 22px;
         }
         .intro-text {
           font-size: 16px;
@@ -949,60 +951,116 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
         }
         .credentials-card {
           background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
-          border: 1px solid hsl(285, 85%, 65%, 0.3);
-          border-radius: 12px;
-          padding: 25px;
+          border: 2px solid hsl(285, 85%, 65%, 0.4);
+          border-radius: 16px;
+          padding: 30px;
           margin: 30px 0;
-          box-shadow: 0 0 20px rgba(185, 85, 211, 0.1), inset 0 0 20px rgba(185, 85, 211, 0.05);
+          box-shadow: 0 0 30px rgba(185, 85, 211, 0.2), inset 0 0 30px rgba(185, 85, 211, 0.05);
+          position: relative;
+          overflow: hidden;
+        }
+        .credentials-card::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 4px;
+          background: linear-gradient(90deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 50%, hsl(330, 100%, 65%) 100%);
         }
         .credentials-card h3 {
           font-family: 'Orbitron', sans-serif;
-          font-size: 18px;
+          font-size: 20px;
           color: hsl(195, 100%, 50%);
-          margin-bottom: 20px;
+          margin-bottom: 25px;
           display: flex;
           align-items: center;
           gap: 10px;
+          text-shadow: 0 0 10px rgba(0, 195, 255, 0.3);
         }
         .credential-item {
-          margin: 15px 0;
+          margin: 20px 0;
           font-size: 15px;
           color: #e0e0e0;
         }
         .credential-item strong {
           color: #ffffff;
           display: block;
-          margin-bottom: 5px;
+          margin-bottom: 8px;
           font-weight: 600;
+          font-size: 14px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          color: hsl(285, 85%, 65%);
         }
         .credential-value {
           background: hsl(218, 23%, 8%);
-          padding: 10px 15px;
-          border-radius: 8px;
+          padding: 14px 18px;
+          border-radius: 10px;
           font-family: 'Courier New', monospace;
           color: hsl(195, 100%, 50%);
-          border: 1px solid hsl(195, 100%, 50%, 0.2);
-          display: inline-block;
+          border: 2px solid hsl(195, 100%, 50%, 0.3);
+          display: block;
+          margin-top: 8px;
+          font-size: 16px;
+          font-weight: 600;
+          word-break: break-all;
+          box-shadow: 0 0 15px rgba(0, 195, 255, 0.1);
+          text-shadow: 0 0 10px rgba(0, 195, 255, 0.3);
+        }
+        .copy-hint {
+          font-size: 12px;
+          color: #888;
           margin-top: 5px;
+          font-style: italic;
         }
         .button-container {
           text-align: center;
-          margin: 35px 0;
+          margin: 40px 0;
         }
         .cta-button {
           display: inline-block;
           background: linear-gradient(135deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 100%);
           color: #ffffff;
-          padding: 16px 40px;
+          padding: 18px 45px;
           text-decoration: none;
-          border-radius: 10px;
+          border-radius: 12px;
           font-weight: 600;
           font-size: 16px;
-          letter-spacing: 0.5px;
-          box-shadow: 0 4px 20px rgba(185, 85, 211, 0.4), 0 0 30px rgba(0, 195, 255, 0.2);
-          transition: all 0.3s ease;
+          letter-spacing: 1px;
+          box-shadow: 0 6px 25px rgba(185, 85, 211, 0.5), 0 0 40px rgba(0, 195, 255, 0.3);
           text-transform: uppercase;
           font-family: 'Orbitron', sans-serif;
+          transition: all 0.3s ease;
+        }
+        .cta-button:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 30px rgba(185, 85, 211, 0.6), 0 0 50px rgba(0, 195, 255, 0.4);
+        }
+        .login-info {
+          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
+          border-left: 4px solid hsl(195, 100%, 50%);
+          border-radius: 12px;
+          padding: 20px;
+          margin: 30px 0;
+          box-shadow: 0 0 20px rgba(0, 195, 255, 0.1);
+        }
+        .login-info h4 {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 16px;
+          color: hsl(195, 100%, 50%);
+          margin-bottom: 10px;
+        }
+        .login-info p {
+          color: #d0d0d0;
+          font-size: 14px;
+          line-height: 1.6;
+          margin: 5px 0;
+        }
+        .login-info a {
+          color: hsl(285, 85%, 65%);
+          text-decoration: none;
+          word-break: break-all;
         }
         .security-notice {
           background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
@@ -1022,6 +1080,16 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
           color: #d0d0d0;
           font-size: 14px;
           line-height: 1.6;
+        }
+        .security-notice ul {
+          color: #d0d0d0;
+          font-size: 14px;
+          line-height: 1.8;
+          margin-top: 10px;
+          padding-left: 20px;
+        }
+        .security-notice li {
+          margin: 5px 0;
         }
         .closing {
           margin-top: 35px;
@@ -1049,14 +1117,15 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
         .footer-text {
           color: #888;
           font-size: 13px;
-          margin: 0;
+          margin: 5px 0;
         }
         .footer-brand {
           font-family: 'Orbitron', sans-serif;
-          font-size: 14px;
+          font-size: 16px;
           color: hsl(285, 85%, 65%);
           margin-bottom: 10px;
-          letter-spacing: 1px;
+          letter-spacing: 2px;
+          text-shadow: 0 0 10px rgba(185, 85, 211, 0.3);
         }
         @media only screen and (max-width: 600px) {
           .email-wrapper {
@@ -1066,10 +1135,20 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
             padding: 40px 25px;
           }
           .header h1 {
+            font-size: 28px;
+          }
+          .logo {
             font-size: 24px;
           }
           .content {
             padding: 30px 25px;
+          }
+          .credentials-card {
+            padding: 20px;
+          }
+          .cta-button {
+            padding: 16px 35px;
+            font-size: 14px;
           }
         }
       </style>
@@ -1080,60 +1159,86 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
           <div class="header-content">
             <div class="logo">ANDIAMO EVENTS</div>
             <h1>🔐 Admin Account Created</h1>
-            <h2 style="font-size: 18px; font-weight: 400; color: rgba(255, 255, 255, 0.95); margin-top: 10px;">Your Admin Dashboard Access</h2>
+            <div class="header-subtitle">Your Admin Dashboard Access</div>
           </div>
         </div>
         
         <div class="content" style="background: hsl(218, 23%, 12%) !important; color: #e0e0e0 !important; padding: 40px;">
-          <p class="greeting">Dear <strong>${admin.name}</strong>,</p>
+          <p class="greeting">Hello <strong>${admin.name}</strong>,</p>
           
           <p class="intro-text">
-            Your admin account for Andiamo Events has been successfully created. You now have access to the admin dashboard where you can manage events, ambassadors, applications, and more.
+            You have been added as an administrator on the <strong style="color: hsl(285, 85%, 65%);">Andiamo Events</strong> platform by our Super Admin team.
+          </p>
+          
+          <p class="intro-text">
+            Your admin account is now ready and you can access the admin dashboard to manage events, ambassadors, applications, orders, and more.
           </p>
           
           <div class="credentials-card">
             <h3>🔑 Your Login Credentials</h3>
             <div class="credential-item">
-              <strong>Email:</strong>
+              <strong>Login Email:</strong>
               <div class="credential-value">${admin.email}</div>
             </div>
             <div class="credential-item">
               <strong>Password:</strong>
               <div class="credential-value">${admin.password}</div>
             </div>
+            <div class="credential-item">
+              <strong>Admin Dashboard URL:</strong>
+              <div class="credential-value" style="font-size: 14px; word-break: break-all;">${loginUrl}</div>
+            </div>
             ${admin.phone ? `
             <div class="credential-item">
-              <strong>Phone:</strong>
+              <strong>Phone Number:</strong>
               <div class="credential-value">${admin.phone}</div>
             </div>
             ` : ''}
-          </div>
-          
-          <div class="security-notice">
-            <h3>⚠️ Security Notice</h3>
-            <p>
-              <strong>Important:</strong> Please change your password after your first login for security purposes. Keep your credentials confidential and never share them with anyone.
-            </p>
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid hsl(285, 85%, 65%, 0.2);">
+              <p style="color: hsl(330, 100%, 65%); font-size: 14px; font-weight: 600; margin: 0;">
+                ⚠️ WARNING: NEVER share this password with anyone, including other staff members or administrators.
+              </p>
+            </div>
           </div>
           
           <div class="button-container">
-            <a href="${loginUrl}" class="cta-button">Access Admin Dashboard</a>
+            <a href="${loginUrl}" class="cta-button">🚀 Access Admin Dashboard</a>
+          </div>
+          
+          <div class="security-notice">
+            <h3>🔒 Security Instructions</h3>
+            <p><strong>Important Security Information:</strong></p>
+            <ul>
+              <li>Keep your credentials secure and confidential at all times</li>
+              <li>Your password is encrypted and not visible to any staff members, including Super Admins</li>
+              <li>Never share your login credentials via email, phone, or any other communication method</li>
+              <li>Log out when finished, especially on shared or public devices</li>
+              <li>If you suspect any security issues or unauthorized access, contact the Super Admin immediately</li>
+            </ul>
+          </div>
+          
+          <div class="login-info">
+            <h4>💬 Need Help?</h4>
+            <p><strong>If you experience any login issues or need assistance:</strong></p>
+            <p>Please contact the Super Admin team or reach out to our support at <a href="mailto:support@andiamoevents.com">support@andiamoevents.com</a></p>
           </div>
           
           <div class="closing">
-            <p>If you have any questions or need assistance, please contact the super admin.</p>
-            
             <p class="signature">
               Best regards,<br>
-              <strong>The Andiamo Team</strong>
+              <strong>The Andiamo Events Team</strong><br>
+              <span style="color: #888; font-size: 14px; font-weight: normal;">Andiamo Events</span>
+            </p>
+            <p style="margin-top: 15px; color: #888; font-size: 13px;">
+              Support Email: <a href="mailto:support@andiamoevents.com" style="color: hsl(285, 85%, 65%); text-decoration: none;">support@andiamoevents.com</a>
             </p>
           </div>
         </div>
         
         <div class="footer" style="background: hsl(218, 23%, 8%) !important; padding: 30px 40px; text-align: center; border-top: 1px solid hsl(218, 23%, 20%);">
           <div class="footer-brand">ANDIAMO EVENTS</div>
-          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">© 2024 Andiamo Events. All rights reserved.</p>
-          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">Tunisia's Premier Nightlife Experience</p>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 5px 0;">© 2024 Andiamo Events. All rights reserved.</p>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 5px 0;">Tunisia's Premier Nightlife Experience</p>
         </div>
       </div>
     </body>

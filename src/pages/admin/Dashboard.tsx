@@ -1871,11 +1871,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Reload favicon settings
       await loadFaviconSettings();
 
+      // Force favicon reload by triggering a custom event
+      window.dispatchEvent(new Event('favicon-updated'));
+
       toast({
         title: language === 'en' ? 'Favicon Uploaded' : 'Favicon Téléchargé',
         description: language === 'en' 
-          ? 'Favicon uploaded successfully. Refresh the page to see the new favicon.' 
-          : 'Favicon téléchargé avec succès. Actualisez la page pour voir le nouveau favicon.',
+          ? 'Favicon uploaded successfully. The favicon should update automatically. If not, try refreshing the page (Ctrl+Shift+R or Cmd+Shift+R).' 
+          : 'Favicon téléchargé avec succès. Le favicon devrait se mettre à jour automatiquement. Sinon, essayez d\'actualiser la page (Ctrl+Shift+R ou Cmd+Shift+R).',
       });
     } catch (error) {
       console.error('Error uploading favicon:', error);
@@ -1915,11 +1918,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Reload favicon settings
       await loadFaviconSettings();
 
+      // Force favicon reload by triggering a custom event
+      window.dispatchEvent(new Event('favicon-updated'));
+
       toast({
         title: language === 'en' ? 'Favicon Deleted' : 'Favicon Supprimé',
         description: language === 'en' 
-          ? 'Favicon deleted successfully' 
-          : 'Favicon supprimé avec succès',
+          ? 'Favicon deleted successfully. The change should be visible immediately. If not, try refreshing the page (Ctrl+Shift+R or Cmd+Shift+R).' 
+          : 'Favicon supprimé avec succès. Le changement devrait être visible immédiatement. Sinon, essayez d\'actualiser la page (Ctrl+Shift+R ou Cmd+Shift+R).',
       });
     } catch (error) {
       console.error('Error deleting favicon:', error);
@@ -2463,9 +2469,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           `${window.location.origin}/admin/login`
         );
 
-        const emailSent = await sendEmail(emailConfig);
+        const emailResult = await sendEmailWithDetails(emailConfig);
 
-        if (emailSent) {
+        if (emailResult.success) {
           toast({
             title: language === 'en' ? 'Admin Created' : 'Admin Créé',
             description: language === 'en' 
@@ -2473,12 +2479,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               : `Compte admin créé avec succès. Identifiants envoyés à ${newAdminData.email}`,
           });
         } else {
+          console.error('Email sending failed:', emailResult.error);
           toast({
-            title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+            title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin Créé - Email Échoué',
             description: language === 'en' 
-              ? 'Admin account created, but email failed to send. Password: ' + password
-              : 'Compte admin créé, mais l\'email a échoué. Mot de passe: ' + password,
-            variant: 'default',
+              ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Password: ${password}`
+              : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Mot de passe: ${password}`,
+            variant: 'destructive',
+            duration: 10000,
           });
         }
 
@@ -2522,9 +2530,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             `${window.location.origin}/admin/login`
           );
 
-          const emailSent = await sendEmail(emailConfig);
+          const emailResult = await sendEmailWithDetails(emailConfig);
 
-          if (emailSent) {
+          if (emailResult.success) {
             toast({
               title: language === 'en' ? 'Admin Created' : 'Admin Créé',
               description: language === 'en' 
@@ -2532,12 +2540,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 : `Compte admin créé avec succès. Identifiants envoyés à ${newAdminData.email}`,
             });
           } else {
+            console.error('Email sending failed:', emailResult.error);
             toast({
-              title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+              title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin Créé - Email Échoué',
               description: language === 'en' 
-                ? 'Admin account created, but email failed to send. Password: ' + password
-                : 'Compte admin créé, mais l\'email a échoué. Mot de passe: ' + password,
-              variant: 'default',
+                ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Password: ${password}`
+                : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Mot de passe: ${password}`,
+              variant: 'destructive',
+              duration: 10000,
             });
           }
 
@@ -2566,9 +2576,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         `${window.location.origin}/admin/login`
       );
 
-      const emailSent = await sendEmail(emailConfig);
+      const emailResult = await sendEmailWithDetails(emailConfig);
 
-      if (emailSent) {
+      if (emailResult.success) {
         toast({
           title: language === 'en' ? 'Admin Created' : 'Admin Créé',
           description: language === 'en' 
@@ -2576,12 +2586,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             : `Compte admin créé avec succès. Identifiants envoyés à ${newAdminData.email}`,
         });
       } else {
+        console.error('Email sending failed:', emailResult.error);
         toast({
-          title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+          title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin Créé - Email Échoué',
           description: language === 'en' 
-            ? 'Admin account created, but email failed to send. Password: ' + password
-            : 'Compte admin créé, mais l\'email a échoué. Mot de passe: ' + password,
-          variant: 'default',
+            ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Password: ${password}`
+            : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Mot de passe: ${password}`,
+          variant: 'destructive',
+          duration: 10000,
         });
       }
 
