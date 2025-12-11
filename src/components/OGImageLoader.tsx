@@ -1,39 +1,21 @@
 import { useEffect } from 'react';
-import ogImage from '@/assets/og_image.png';
 
 /**
  * Component that dynamically sets Open Graph and Twitter meta tags
- * Uses the og_image.png from assets folder
+ * Uses the og_image.png from public folder (accessible at /og_image.png)
  * 
  * Note: For OG images to work properly with social media crawlers,
- * they need absolute URLs. This component converts the asset path
- * to an absolute URL based on the current origin.
+ * they need absolute URLs and must be accessible at a static path.
+ * Files in the public folder are served as-is at the root URL.
  */
 export const OGImageLoader = () => {
   useEffect(() => {
     // Get the base URL for absolute image URL
     const baseUrl = window.location.origin;
     
-    // Vite processes assets and returns the processed path
-    // We need to convert it to an absolute URL for OG tags
-    let imageUrl: string;
-    
-    if (typeof ogImage === 'string') {
-      // If it's already a string (URL), use it directly
-      // If it starts with /, it's a relative path, make it absolute
-      if (ogImage.startsWith('/')) {
-        imageUrl = `${baseUrl}${ogImage}`;
-      } else if (ogImage.startsWith('http')) {
-        // Already absolute
-        imageUrl = ogImage;
-      } else {
-        // Vite asset path, make it absolute
-        imageUrl = `${baseUrl}${ogImage}`;
-      }
-    } else {
-      // Fallback to public folder
-      imageUrl = `${baseUrl}/og-image.png`;
-    }
+    // Use the public folder image - accessible at /og_image.png
+    // Add cache-busting parameter to force refresh
+    const imageUrl = `${baseUrl}/og_image.png?t=${Date.now()}`;
     
     // Update or create OG image meta tags
     const updateMetaTag = (property: string, content: string) => {
