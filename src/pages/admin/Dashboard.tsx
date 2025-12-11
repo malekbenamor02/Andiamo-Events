@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
 import { uploadFavicon, deleteFavicon, fetchFaviconSettings, FaviconSettings } from "@/lib/favicon";
+import { uploadOGImage, validateOGImage, getOGImageUrl } from "@/lib/og-image";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, sendEmailWithDetails, createAdminCredentialsEmail } from "@/lib/email";
@@ -243,6 +244,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [faviconSettings, setFaviconSettings] = useState<FaviconSettings>({});
   const [loadingFaviconSettings, setLoadingFaviconSettings] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState<{type: string; loading: boolean}>({type: '', loading: false});
+  const [uploadingOGImage, setUploadingOGImage] = useState(false);
+  const [currentOGImageUrl, setCurrentOGImageUrl] = useState<string | null>(null);
 
   // --- Team Members State ---
   const [teamMembers, setTeamMembers] = useState([]);
@@ -1894,6 +1897,61 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  // Load current OG image URL
+  const loadOGImageUrl = async () => {
+    try {
+      const url = await getOGImageUrl();
+      setCurrentOGImageUrl(url);
+    } catch (error) {
+      console.error('Error loading OG image URL:', error);
+      setCurrentOGImageUrl(null);
+    }
+  };
+
+  // Handle OG image upload
+  const handleUploadOGImage = async (file: File) => {
+    try {
+      setUploadingOGImage(true);
+      
+      // Validate image dimensions first
+      const validation = await validateOGImage(file);
+      if (!validation.valid) {
+        toast({
+          title: language === 'en' ? 'Invalid Image' : 'Image Invalide',
+          description: validation.error || (language === 'en' ? 'Image validation failed' : 'Échec de la validation de l\'image'),
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Upload the image
+      const result = await uploadOGImage(file);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Upload failed');
+      }
+
+      // Reload the OG image URL
+      await loadOGImageUrl();
+
+      toast({
+        title: language === 'en' ? 'OG Image Uploaded' : 'Image OG Téléchargée',
+        description: language === 'en' 
+          ? 'OG image uploaded successfully. Use Facebook Debugger to clear cache and see the new image.' 
+          : 'Image OG téléchargée avec succès. Utilisez le Facebook Debugger pour vider le cache et voir la nouvelle image.',
+      });
+    } catch (error) {
+      console.error('Error uploading OG image:', error);
+      toast({
+        title: language === 'en' ? 'Upload Failed' : 'Échec du Téléchargement',
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to upload OG image' : 'Échec du téléchargement de l\'image OG'),
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingOGImage(false);
+    }
+  };
+
   // Handle favicon delete
   const handleDeleteFavicon = async (type: 'favicon_ico' | 'favicon_32x32' | 'favicon_16x16' | 'apple_touch_icon') => {
     try {
@@ -2886,6 +2944,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchSmsLogs();
       // SMS Balance check removed - user must click button to check
       await loadFaviconSettings();
+      await loadOGImageUrl();
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -11577,6 +11636,96 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </Alert>
                           </div>
                         )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* OG Image Management Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Image className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'OG Image Management' : 'Gestion de l\'Image OG'}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">
+                          {language === 'en' 
+                            ? 'Upload the Open Graph image that appears when your site is shared on Facebook, WhatsApp, Twitter, LinkedIn, and other social platforms. Image must be at least 1200x630 pixels (recommended: 1200x630px).' 
+                            : 'Téléchargez l\'image Open Graph qui apparaît lorsque votre site est partagé sur Facebook, WhatsApp, Twitter, LinkedIn et d\'autres plateformes sociales. L\'image doit faire au moins 1200x630 pixels (recommandé: 1200x630px).'}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        <div className="space-y-4">
+                          {/* Current OG Image Preview */}
+                          {currentOGImageUrl && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold">
+                                {language === 'en' ? 'Current OG Image' : 'Image OG Actuelle'}
+                              </Label>
+                              <div className="p-4 bg-muted/30 rounded-lg border border-border/50">
+                                <div className="flex items-start gap-4">
+                                  <img 
+                                    src={currentOGImageUrl} 
+                                    alt="Current OG Image" 
+                                    className="w-32 h-20 object-cover flex-shrink-0 border border-border/50 rounded" 
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-muted-foreground break-all mb-2">
+                                      <strong>{language === 'en' ? 'URL:' : 'URL:'}</strong> {window.location.origin}{currentOGImageUrl}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {language === 'en' 
+                                        ? 'This image is used for social media sharing. Upload a new image to replace it.' 
+                                        : 'Cette image est utilisée pour le partage sur les réseaux sociaux. Téléchargez une nouvelle image pour la remplacer.'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Upload OG Image */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-semibold flex items-center gap-2">
+                              <Upload className="w-4 h-4" />
+                              {language === 'en' ? 'Upload OG Image' : 'Télécharger l\'Image OG'}
+                              <span className="text-xs text-muted-foreground font-normal">
+                                {language === 'en' ? '(PNG or JPG, min 1200x630px)' : '(PNG ou JPG, min 1200x630px)'}
+                              </span>
+                            </Label>
+                            <FileUpload
+                              onFileSelect={(file) => {
+                                if (file) {
+                                  handleUploadOGImage(file);
+                                }
+                              }}
+                              onUrlChange={() => {}}
+                              accept="image/png,image/jpeg,image/jpg"
+                              label={uploadingOGImage ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload OG Image' : 'Télécharger l\'Image OG')}
+                              maxSize={5 * 1024 * 1024}
+                              currentUrl={currentOGImageUrl || undefined}
+                            />
+                          </div>
+
+                          <Alert className="bg-blue-500/10 border-blue-500/20 text-blue-200">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription className="text-xs">
+                              {language === 'en' 
+                                ? 'After uploading a new OG image, use Facebook Sharing Debugger (developers.facebook.com/tools/debug/) to clear the cache and see the new image. Social media platforms cache OG images aggressively.' 
+                                : 'Après avoir téléchargé une nouvelle image OG, utilisez le Facebook Sharing Debugger (developers.facebook.com/tools/debug/) pour vider le cache et voir la nouvelle image. Les plateformes de médias sociaux mettent en cache les images OG de manière agressive.'}
+                            </AlertDescription>
+                          </Alert>
+
+                          <div className="text-xs text-muted-foreground space-y-1">
+                            <p><strong>{language === 'en' ? 'Requirements:' : 'Exigences:'}</strong></p>
+                            <ul className="list-disc list-inside space-y-1 ml-2">
+                              <li>{language === 'en' ? 'Minimum size: 200x200 pixels' : 'Taille minimale: 200x200 pixels'}</li>
+                              <li>{language === 'en' ? 'Recommended size: 1200x630 pixels (1.91:1 ratio)' : 'Taille recommandée: 1200x630 pixels (ratio 1.91:1)'}</li>
+                              <li>{language === 'en' ? 'Format: PNG or JPG' : 'Format: PNG ou JPG'}</li>
+                              <li>{language === 'en' ? 'Maximum file size: 5MB' : 'Taille maximale du fichier: 5MB'}</li>
+                            </ul>
+                          </div>
+                        </div>
                       </CardContent>
                     </Card>
                   </div>

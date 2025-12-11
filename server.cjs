@@ -2563,6 +2563,62 @@ app.post('/api/test-email', async (req, res) => {
 });
 
 
+// OG Image endpoint - serves OG image from Supabase Storage
+app.get('/api/og-image', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    // Try to get the image - check PNG first, then JPG
+    const extensions = ['png', 'jpg'];
+    let imageData = null;
+    let contentType = 'image/png';
+    
+    for (const ext of extensions) {
+      const filePath = `og-image/current.${ext}`;
+      
+      try {
+        const { data, error } = await supabase.storage
+          .from('images')
+          .download(filePath);
+        
+        if (!error && data) {
+          imageData = await data.arrayBuffer();
+          contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+          break;
+        }
+      } catch (err) {
+        // Continue to next extension
+        console.warn(`Failed to load ${ext} image:`, err.message);
+      }
+    }
+    
+    // If no image found, return 404
+    if (!imageData) {
+      return res.status(404).json({ 
+        error: 'OG image not found',
+        message: 'Please upload an OG image from the admin dashboard'
+      });
+    }
+    
+    // Set headers for image response
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    res.setHeader('Content-Length', imageData.byteLength);
+    
+    // Return the image binary data
+    return res.status(200).send(Buffer.from(imageData));
+    
+  } catch (error) {
+    console.error('OG image API error:', error);
+    return res.status(500).json({ 
+      error: 'Server error',
+      details: error.message
+    });
+  }
+});
+
 // Catch-all 404 handler for undefined routes
 app.use('/api/*', (req, res) => {
   console.error(`404 - Route not found: ${req.method} ${req.path}`);
@@ -2586,6 +2642,7 @@ if (require.main === module) {
     console.log('  POST /api/admin-login');
     console.log('  POST /api/admin-logout');
     console.log('  GET  /api/verify-admin');
+    console.log('  GET  /api/og-image');
     console.log('  ... and more');
   });
 }
