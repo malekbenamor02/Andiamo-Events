@@ -165,3 +165,68 @@ export const getOGImageUrl = async (): Promise<string | null> => {
   }
 };
 
+/**
+ * Delete OG image from Supabase Storage
+ * Removes all current.* files from og-image folder
+ */
+export const deleteOGImage = async (): Promise<OGImageUploadResult> => {
+  try {
+    // Get all current.* files in og-image folder
+    const { data: existingFiles, error: listError } = await supabase.storage
+      .from('images')
+      .list('og-image', {
+        search: 'current'
+      });
+
+    if (listError) {
+      console.error('Error listing OG image files:', listError);
+      return {
+        success: false,
+        error: listError.message
+      };
+    }
+
+    if (!existingFiles || existingFiles.length === 0) {
+      return {
+        success: false,
+        error: 'No OG image found to delete'
+      };
+    }
+
+    // Delete all current.* files
+    const filesToDelete = existingFiles
+      .filter(f => f.name.startsWith('current.'))
+      .map(f => `og-image/${f.name}`);
+    
+    if (filesToDelete.length === 0) {
+      return {
+        success: false,
+        error: 'No OG image files found to delete'
+      };
+    }
+
+    const { error: deleteError } = await supabase.storage
+      .from('images')
+      .remove(filesToDelete);
+
+    if (deleteError) {
+      console.error('Error deleting OG image:', deleteError);
+      return {
+        success: false,
+        error: deleteError.message
+      };
+    }
+
+    return {
+      success: true
+    };
+
+  } catch (error) {
+    console.error('OG image deletion failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Deletion failed'
+    };
+  }
+};
+

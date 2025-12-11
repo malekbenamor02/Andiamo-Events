@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
 import { uploadFavicon, deleteFavicon, fetchFaviconSettings, FaviconSettings } from "@/lib/favicon";
-import { uploadOGImage, validateOGImage, getOGImageUrl } from "@/lib/og-image";
+import { uploadOGImage, validateOGImage, getOGImageUrl, deleteOGImage } from "@/lib/og-image";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, sendEmailWithDetails, createAdminCredentialsEmail } from "@/lib/email";
@@ -1949,6 +1949,45 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
     } finally {
       setUploadingOGImage(false);
+    }
+  };
+
+  // Handle OG image delete
+  const handleDeleteOGImage = async () => {
+    try {
+      if (!currentOGImageUrl) {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? 'No OG image to delete' 
+            : 'Aucune image OG à supprimer',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const result = await deleteOGImage();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete OG image');
+      }
+
+      // Clear the current OG image URL
+      setCurrentOGImageUrl(null);
+
+      toast({
+        title: language === 'en' ? 'OG Image Deleted' : 'Image OG Supprimée',
+        description: language === 'en' 
+          ? 'OG image deleted successfully. Social media platforms will no longer show a preview image until you upload a new one.' 
+          : 'Image OG supprimée avec succès. Les plateformes de médias sociaux n\'afficheront plus d\'image d\'aperçu jusqu\'à ce que vous en téléchargiez une nouvelle.',
+      });
+    } catch (error) {
+      console.error('Error deleting OG image:', error);
+      toast({
+        title: language === 'en' ? 'Delete Failed' : 'Échec de la Suppression',
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to delete OG image' : 'Échec de la suppression de l\'image OG'),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -11673,11 +11712,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     <p className="text-xs text-muted-foreground break-all mb-2">
                                       <strong>{language === 'en' ? 'URL:' : 'URL:'}</strong> {window.location.origin}{currentOGImageUrl}
                                     </p>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs text-muted-foreground mb-3">
                                       {language === 'en' 
-                                        ? 'This image is used for social media sharing. Upload a new image to replace it.' 
-                                        : 'Cette image est utilisée pour le partage sur les réseaux sociaux. Téléchargez une nouvelle image pour la remplacer.'}
+                                        ? 'This image is used for social media sharing. Upload a new image to replace it or delete it.' 
+                                        : 'Cette image est utilisée pour le partage sur les réseaux sociaux. Téléchargez une nouvelle image pour la remplacer ou supprimez-la.'}
                                     </p>
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      onClick={handleDeleteOGImage}
+                                      className="flex-shrink-0"
+                                    >
+                                      <Trash2 className="w-3 h-3 mr-2" />
+                                      {language === 'en' ? 'Delete OG Image' : 'Supprimer l\'Image OG'}
+                                    </Button>
                                   </div>
                                 </div>
                               </div>
