@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 
 /**
  * Component that dynamically sets Open Graph and Twitter meta tags
- * Uses the og_image.png from public folder (accessible at /og_image.png)
+ * Uses the og-image.png from public folder (accessible at /og-image.png)
  * 
  * Note: For OG images to work properly with social media crawlers,
  * they need absolute URLs and must be accessible at a static path.
@@ -13,9 +13,9 @@ export const OGImageLoader = () => {
     // Get the base URL for absolute image URL
     const baseUrl = window.location.origin;
     
-    // Use the public folder image - accessible at /og_image.png
+    // Use the public folder image - accessible at /og-image.png
     // Add cache-busting parameter to force refresh
-    const imageUrl = `${baseUrl}/og_image.png?t=${Date.now()}`;
+    const imageUrl = `${baseUrl}/og-image.png?t=${Date.now()}`;
     
     // Update or create OG image meta tags
     const updateMetaTag = (property: string, content: string) => {
