@@ -28,6 +28,14 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
   // Get reCAPTCHA site key from environment
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   
+  // Clear form state on mount to ensure fresh login form after logout
+  useEffect(() => {
+    setEmail("");
+    setPassword("");
+    setError("");
+    setShowPassword(false);
+  }, []);
+
   // Load reCAPTCHA v3 script
   useEffect(() => {
     if (!RECAPTCHA_SITE_KEY) {

@@ -4718,28 +4718,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
 
   const handleLogout = async () => {
-    // Clear session expiration from localStorage on logout
-    try {
-    } catch (e) {
-      // localStorage not available, continue
-    }
     try {
       // Call Vercel API route to clear JWT cookie
+      // This will remove the httpOnly cookie containing the JWT token
       await apiFetch(API_ROUTES.ADMIN_LOGOUT, {
         method: 'POST',
+        credentials: 'include', // Important: Include cookies in request
       });
+      
+      // Clear any local state that might contain admin info
+      setCurrentAdminRole(null);
+      setCurrentAdminId(null);
       
       toast({
         title: language === 'en' ? "Logged Out" : "Déconnecté",
         description: language === 'en' 
-          ? "You have been successfully logged out."
-          : "Vous avez été déconnecté avec succès.",
+          ? "You have been successfully logged out. Please re-enter your credentials to continue."
+          : "Vous avez été déconnecté avec succès. Veuillez ré-entrer vos identifiants pour continuer.",
       });
     } catch (error) {
       console.error('Logout error:', error);
+      // Even if logout API call fails, still navigate to login
+      // The ProtectedAdminRoute will handle authentication check
     } finally {
-      // Navigate to login page
-      navigate('/admin/login');
+      // Navigate to login page - admin must re-enter credentials
+      // The login form will be empty and require fresh credentials
+      navigate('/admin/login', { replace: true });
     }
   };
 
