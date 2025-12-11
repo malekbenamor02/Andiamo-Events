@@ -30,7 +30,6 @@ import CODOrder from "./pages/CODOrder";
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { FaviconLoader } from "./components/FaviconLoader";
-import { OGImageLoader } from "./components/OGImageLoader";
 
 const queryClient = new QueryClient();
 
@@ -49,7 +48,6 @@ const App = () => {
           <Sonner />
           <BrowserRouter>
             <FaviconLoader />
-            <OGImageLoader />
             <DisableInspect />
             <ScrollToTop />
             <MaintenanceMode language={language}>
