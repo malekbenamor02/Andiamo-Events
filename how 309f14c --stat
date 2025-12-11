@@ -1,0 +1,9 @@
+[33mcommit 309f14c353ca80f93fc1f39502a55fd55ea163ce[m
+Author: malekbenamor02 <malekbenamor02@users.noreply.github.com>
+Date:   Wed Dec 3 02:03:29 2025 +0100
+
+    Add Vercel Analytics for web analytics tracking - Installed @vercel/analytics package - Added Analytics component to App.tsx using React integration - Analytics will automatically track page views and visitor data
+
+package-lock.json
+package.json
+src/App.tsx
