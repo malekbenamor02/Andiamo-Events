@@ -7,6 +7,7 @@ import TypewriterText from "./TypewriterText";
 
 interface HeroSectionProps {
   language: 'en' | 'fr';
+  onMediaLoaded?: () => void;
 }
 
 interface SiteContentItem {
@@ -22,23 +23,34 @@ interface HeroSlide {
 }
 
 // Video slide component with lazy loading
-const VideoSlide = ({ slide, isActive, isPageInteractive }: { slide: HeroSlide; isActive: boolean; isPageInteractive: boolean }) => {
+const VideoSlide = ({ slide, isActive, isPageInteractive, onLoaded }: { slide: HeroSlide; isActive: boolean; isPageInteractive: boolean; onLoaded?: () => void }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hasNotified = useRef(false);
 
-  // Load video when page becomes interactive
+  // Load video immediately for loading screen tracking
   useEffect(() => {
-    if (videoRef.current && isPageInteractive) {
+    if (videoRef.current) {
       const video = videoRef.current;
-      // Switch preload to auto to start loading
+      // Preload video immediately with high priority
       video.preload = 'auto';
-      // Load the video source
       video.load();
-      // Try to play
+      // Try to load faster
+      if ('webkitDecodedFrameCount' in video) {
+        // Force faster loading on WebKit browsers
+        video.load();
+      }
+    }
+  }, []);
+
+  // Try to play when active and page is interactive
+  useEffect(() => {
+    if (videoRef.current && isActive && isPageInteractive) {
+      const video = videoRef.current;
       video.play().catch((err) => {
         console.warn('Video autoplay prevented:', err);
       });
     }
-  }, [isPageInteractive]);
+  }, [isActive, isPageInteractive]);
 
   return (
     <video
@@ -50,7 +62,7 @@ const VideoSlide = ({ slide, isActive, isPageInteractive }: { slide: HeroSlide; 
       loop
       muted
       playsInline
-      preload="none"
+      preload="auto"
       style={{ 
         objectFit: 'cover',
         width: '100%',
@@ -61,10 +73,26 @@ const VideoSlide = ({ slide, isActive, isPageInteractive }: { slide: HeroSlide; 
         const video = e.currentTarget;
         video.muted = true;
         video.volume = 0;
-        // Force play to ensure autoplay works
-        video.play().catch((err) => {
-          console.warn('Video autoplay prevented:', err);
-        });
+        // Notify that first frame is ready (loadeddata fires when first frame can be displayed)
+        // This is what we want - don't wait for full video download
+        if (!hasNotified.current) {
+          hasNotified.current = true;
+          onLoaded?.();
+        }
+        // Force play to ensure autoplay works (only if active)
+        if (isActive) {
+          video.play().catch((err) => {
+            console.warn('Video autoplay prevented:', err);
+          });
+        }
+      }}
+      onCanPlay={(e) => {
+        // Alternative: canplay also fires when first frame is ready
+        // Use this as backup if loadeddata doesn't fire
+        if (!hasNotified.current) {
+          hasNotified.current = true;
+          onLoaded?.();
+        }
       }}
       onPlay={(e) => {
         // Ensure video stays muted even if browser tries to unmute
@@ -74,15 +102,29 @@ const VideoSlide = ({ slide, isActive, isPageInteractive }: { slide: HeroSlide; 
           video.volume = 0;
         }
       }}
+      onError={() => {
+        // Count errors as "loaded" to prevent infinite loading - only once
+        if (!hasNotified.current) {
+          hasNotified.current = true;
+          onLoaded?.();
+        }
+      }}
     />
   );
 };
 
-const HeroSection = ({ language }: HeroSectionProps) => {
+const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [heroContent, setHeroContent] = useState<any>({});
   const [isPageInteractive, setIsPageInteractive] = useState(false);
+  const [loadedMedia, setLoadedMedia] = useState<Set<number>>(new Set());
   const navigate = useNavigate();
+  const transitionTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Ensure we start with the first slide
+  useEffect(() => {
+    setCurrentSlide(0);
+  }, [heroContent]);
 
   useEffect(() => {
     const fetchSiteContent = async () => {
@@ -105,28 +147,11 @@ const HeroSection = ({ language }: HeroSectionProps) => {
     fetchSiteContent();
   }, []);
 
-  // Wait for page to be interactive before loading videos
-  // This ensures the page loads fast with poster images, then loads videos in background
+  // Start loading videos immediately for loading screen tracking
+  // We want to track all media loading, so we load videos right away
   useEffect(() => {
-    // Use requestIdleCallback if available for better performance, otherwise use setTimeout
-    const loadVideos = () => {
-      // Small delay to ensure page is fully rendered and interactive
-      setTimeout(() => {
-        setIsPageInteractive(true);
-      }, 200);
-    };
-
-    // Check if page is already interactive
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-      loadVideos();
-    } else {
-      // Wait for page load
-      const handleLoad = () => {
-        loadVideos();
-      };
-      window.addEventListener('load', handleLoad);
-      return () => window.removeEventListener('load', handleLoad);
-    }
+    // Set interactive immediately to start loading videos
+    setIsPageInteractive(true);
   }, []);
 
   const defaultContent = {
@@ -173,16 +198,75 @@ const HeroSection = ({ language }: HeroSectionProps) => {
   // If no images are set in Supabase, use empty array (will show placeholder or nothing)
   const heroSlides = heroContent.images || [];
 
+  // Track critical hero media loading only
+  // Only wait for hero images (decoded) and hero videos (first frame ready)
+  useEffect(() => {
+    if (heroSlides.length === 0) {
+      // If no slides, consider media loaded immediately
+      onMediaLoaded?.();
+      return;
+    }
+
+    // Set a maximum timeout (5 seconds) to prevent infinite loading
+    // This ensures we don't block the user experience
+    const maxTimeout = setTimeout(() => {
+      console.warn('Critical hero media loading timeout - showing content anyway');
+      onMediaLoaded?.();
+    }, 5000);
+
+    // Check if all critical hero media is loaded
+    // Images: ready when decoded (onLoad)
+    // Videos: ready when first frame can display (loadeddata/canplay)
+    if (loadedMedia.size === heroSlides.length && heroSlides.length > 0) {
+      clearTimeout(maxTimeout);
+      // Immediate reveal - no delay needed since media is ready
+      // Layout is already calculated, media is decoded/ready
+      onMediaLoaded?.();
+      return () => clearTimeout(maxTimeout);
+    }
+
+    return () => clearTimeout(maxTimeout);
+  }, [loadedMedia.size, heroSlides.length, onMediaLoaded]);
+
+  // Handle media load callbacks
+  const handleMediaLoad = (index: number) => {
+    setLoadedMedia(prev => new Set([...prev, index]));
+  };
+
   // Handle slide transitions with crossfade effect
+  // Only start transitions after media is loaded
   useEffect(() => {
     if (heroSlides.length === 0) return;
+    if (loadedMedia.size < heroSlides.length) {
+      // Reset to first slide while loading
+      setCurrentSlide(0);
+      return;
+    }
     
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % heroSlides.length);
-    }, 6000); // 6 seconds per slide for better video viewing
+    // Reset to first slide when all media is loaded
+    setCurrentSlide(0);
     
-    return () => clearInterval(timer);
-  }, [heroSlides.length]);
+    // Clear any existing timer
+    if (transitionTimerRef.current) {
+      clearInterval(transitionTimerRef.current);
+      transitionTimerRef.current = null;
+    }
+    
+    // Start transitions after a brief delay
+    const startTimer = setTimeout(() => {
+      transitionTimerRef.current = setInterval(() => {
+        setCurrentSlide((prev) => (prev + 1) % heroSlides.length);
+      }, 6000); // 6 seconds per slide for better video viewing
+    }, 500);
+    
+    return () => {
+      clearTimeout(startTimer);
+      if (transitionTimerRef.current) {
+        clearInterval(transitionTimerRef.current);
+        transitionTimerRef.current = null;
+      }
+    };
+  }, [heroSlides.length, loadedMedia.size]);
 
 
   return (
@@ -200,14 +284,30 @@ const HeroSection = ({ language }: HeroSectionProps) => {
               }`}
             >
               {slide.type === 'video' ? (
-                <VideoSlide slide={slide} isActive={isActive} isPageInteractive={isPageInteractive} />
+                <VideoSlide 
+                  slide={slide} 
+                  isActive={isActive} 
+                  isPageInteractive={isPageInteractive}
+                  onLoaded={() => handleMediaLoad(index)}
+                />
               ) : (
                 <img
                   src={slide.src}
                   alt={slide.alt || `Hero slide ${index + 1}`}
                   className="w-full h-full object-cover"
                   style={{ objectFit: 'cover' }}
-                  loading={isActive ? 'eager' : 'lazy'}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  onLoad={() => {
+                    // Image is ready when decoded - this is what we need for LCP
+                    // Browser has finished decoding the image
+                    handleMediaLoad(index);
+                  }}
+                  onError={() => {
+                    // Count errors as "loaded" to prevent infinite loading
+                    handleMediaLoad(index);
+                  }}
                 />
               )}
               <div className="absolute inset-0 bg-black/60" />

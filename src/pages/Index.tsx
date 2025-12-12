@@ -9,6 +9,7 @@ import CounterSection from "@/components/home/CounterSection";
 import FeaturedEventsSection from "@/components/home/FeaturedEventsSection";
 import TeamSection from "@/components/home/TeamSection";
 import SponsorsSection from "@/components/home/SponsorsSection";
+import LoadingScreen from "@/components/ui/LoadingScreen";
 
 interface Event {
   id: string;
@@ -33,6 +34,13 @@ const Index = ({ language }: IndexProps) => {
   const [counters, setCounters] = useState({ events: 0, members: 0, followers: 0});
   const [featuredEvents, setFeaturedEvents] = useState<Event[]>([]);
   const [animatedSections, setAnimatedSections] = useState<Set<string>>(new Set(['hero']));
+  const [heroMediaLoaded, setHeroMediaLoaded] = useState(false);
+  
+  // Show loader instantly - prevent blank screen
+  useEffect(() => {
+    // Force immediate render of loader by ensuring state is set
+    // This prevents any flash of unstyled content
+  }, []);
   
   // Refs for each section
   const heroRef = useRef<HTMLDivElement>(null);
@@ -96,7 +104,11 @@ const Index = ({ language }: IndexProps) => {
     return () => observer.disconnect();
   }, []);
 
+  // Lazy load featured events - only after hero is loaded
+  // This is non-critical content that shouldn't block the initial render
   useEffect(() => {
+    if (!heroMediaLoaded) return; // Wait for hero to load first
+    
     const fetchFeaturedEvents = async () => {
       const { data, error } = await supabase
         .from('events')
@@ -106,7 +118,7 @@ const Index = ({ language }: IndexProps) => {
       if (!error && data) setFeaturedEvents(data);
     };
     fetchFeaturedEvents();
-  }, []);
+  }, [heroMediaLoaded]);
 
   const animateCounters = () => {
     const duration = 2000; // 2 seconds
@@ -133,14 +145,36 @@ const Index = ({ language }: IndexProps) => {
 
   return (
     <div className="relative">
-      {/* Hero Section with Scroll Animation - positioned behind navbar */}
+      {/* Loading Screen - Appears instantly to prevent blank screen */}
+      {/* Only waits for critical hero assets: images (decoded) + videos (first frame) */}
+      {!heroMediaLoaded && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center min-h-screen bg-black">
+          <LoadingScreen 
+            variant="default" 
+            text="Loading Experience..." 
+            size="fullscreen"
+          />
+        </div>
+      )}
+
+      {/* Main Content - Smooth fade transition when critical hero assets are ready */}
+      {/* Layout is pre-calculated, media is decoded/ready - no reflow or jumping */}
       <div 
-        ref={heroRef}
-        className="transform transition-all duration-1000 ease-out opacity-100 translate-y-0 scale-100"
-        style={{ position: 'relative', zIndex: 0 }}
+        className={`transition-opacity duration-500 ease-out ${
+          heroMediaLoaded ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        style={{
+          visibility: heroMediaLoaded ? 'visible' : 'hidden',
+        }}
       >
-      <HeroSection language={language} />
-      </div>
+        {/* Hero Section with Scroll Animation - positioned behind navbar */}
+        <div 
+          ref={heroRef}
+          className="transform transition-all duration-1000 ease-out opacity-100 translate-y-0 scale-100"
+          style={{ position: 'relative', zIndex: 0 }}
+        >
+        <HeroSection language={language} onMediaLoaded={() => setHeroMediaLoaded(true)} />
+        </div>
 
       {/* Counter Section with Scroll Animation */}
       <div 
@@ -188,6 +222,7 @@ const Index = ({ language }: IndexProps) => {
         }`}
       >
       <SponsorsSection language={language} />
+      </div>
       </div>
     </div>
   );

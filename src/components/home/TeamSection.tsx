@@ -33,7 +33,13 @@ const TeamSection = ({ language }: TeamSectionProps) => {
               key={member.id} 
               className="bg-card rounded-xl shadow-lg p-6 flex flex-col items-center transition-all duration-300 hover:scale-105 hover:shadow-xl hover:bg-card/80 cursor-pointer group"
             >
-              <img src={member.photo_url || '/placeholder.svg'} alt={member.name} className="w-28 h-28 rounded-full object-cover mb-4 border-4 border-primary/30 transition-all duration-300 group-hover:border-primary group-hover:scale-110" />
+              <img 
+                src={member.photo_url || '/placeholder.svg'} 
+                alt={member.name} 
+                className="w-28 h-28 rounded-full object-cover mb-4 border-4 border-primary/30 transition-all duration-300 group-hover:border-primary group-hover:scale-110"
+                loading="lazy"
+                decoding="async"
+              />
               <h3 className="font-bold text-xl text-primary transition-colors duration-300 hover:text-primary/80">{member.name}</h3>
               <p className="text-muted-foreground mb-2 transition-colors duration-300 group-hover:text-foreground/70">{member.role}</p>
               {member.bio && <p className="text-xs text-muted-foreground mb-2 text-center">{member.bio}</p>}

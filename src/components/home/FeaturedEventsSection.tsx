@@ -65,6 +65,8 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                   src={event.poster_url || '/api/placeholder/400/300'}
                   alt={event.name}
                   className="w-full h-48 object-cover"
+                  loading="lazy"
+                  decoding="async"
                 />
                 {event.featured && (
                   <span className="absolute top-4 left-4 bg-gradient-primary text-white px-3 py-1 rounded-full text-sm font-semibold">
