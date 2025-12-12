@@ -204,10 +204,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Hero images state
   interface HeroImage {
-    type: string;
+    type: 'image' | 'video';
     src: string;
     alt: string;
     path?: string;
+    poster?: string; // Optional poster image for videos
+    srcMobile?: string; // Optional mobile version for videos
   }
   const [heroImages, setHeroImages] = useState<HeroImage[]>([]);
   const [loadingHeroImages, setLoadingHeroImages] = useState(false);
@@ -483,11 +485,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       disableAmbassadorApplication: "Disable Applications",
       ambassadorApplicationMessage: "Application Closed Message",
       ambassadorApplicationMessagePlaceholder: "Enter a custom message for when applications are closed (optional)",
-      heroImagesSettings: "Hero Images",
-      heroImagesSettingsDescription: "Manage hero images displayed on the home page. You can add, delete, and reorder images.",
-      uploadHeroImage: "Upload Hero Image",
+      heroImagesSettings: "Hero Images & Videos",
+      heroImagesSettingsDescription: "Manage hero images and videos displayed on the home page. You can add, delete, and reorder media files.",
+      uploadHeroImage: "Upload Hero Image or Video",
       deleteHeroImage: "Delete",
-      noHeroImages: "No hero images yet. Upload an image to get started.",
+      noHeroImages: "No hero media yet. Upload an image or video to get started.",
       heroImageAlt: "Image Alt Text",
       reorderImages: "Reorder by dragging"
     },
@@ -578,11 +580,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       disableAmbassadorApplication: "Fermer les Candidatures",
       ambassadorApplicationMessage: "Message de Candidature Fermée",
       ambassadorApplicationMessagePlaceholder: "Entrez un message personnalisé lorsque les candidatures sont fermées (optionnel)",
-      heroImagesSettings: "Images Hero",
-      heroImagesSettingsDescription: "Gérez les images hero affichées sur la page d'accueil. Vous pouvez ajouter, supprimer et réorganiser les images.",
-      uploadHeroImage: "Télécharger une Image Hero",
+      heroImagesSettings: "Images et Vidéos Hero",
+      heroImagesSettingsDescription: "Gérez les images et vidéos hero affichées sur la page d'accueil. Vous pouvez ajouter, supprimer et réorganiser les fichiers multimédias.",
+      uploadHeroImage: "Télécharger une Image ou Vidéo Hero",
       deleteHeroImage: "Supprimer",
-      noHeroImages: "Aucune image hero pour le moment. Téléchargez une image pour commencer.",
+      noHeroImages: "Aucun média hero pour le moment. Téléchargez une image ou une vidéo pour commencer.",
       heroImageAlt: "Texte Alternatif de l'Image",
       reorderImages: "Réorganiser en faisant glisser"
     }
@@ -1020,10 +1022,30 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Handle hero image upload
+  // Handle hero image/video upload
   const handleUploadHeroImage = async (file: File) => {
     try {
       setUploadingHeroImage(true);
+      
+      // Detect if file is a video (check both MIME type and file extension)
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      const isVideo = file.type.startsWith('video/') || 
+                      fileExtension === 'mp4' || 
+                      fileExtension === 'mov' || 
+                      fileExtension === 'webm';
+      const fileType = isVideo ? 'video' : 'image';
+      
+      // Validate video file size (recommend under 2MB for fast loading)
+      if (isVideo && file.size > 2 * 1024 * 1024) {
+        toast({
+          title: language === 'en' ? 'Large File Warning' : 'Avertissement Fichier Volumineux',
+          description: language === 'en' 
+            ? 'Video file is larger than 2MB. For best performance, videos should be under 2MB (5-10 seconds, H.264).' 
+            : 'Le fichier vidéo est supérieur à 2MB. Pour de meilleures performances, les vidéos doivent faire moins de 2MB (5-10 secondes, H.264).',
+          variant: 'default',
+          duration: 5000,
+        });
+      }
       
       // Upload to hero-images bucket
       const uploadResult = await uploadHeroImage(file);
@@ -1032,24 +1054,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         throw new Error(uploadResult.error);
       }
 
-      // Create new hero image object
-      const newImage: HeroImage = {
-        type: 'image',
+      // Create new hero image/video object
+      const newItem: HeroImage = {
+        type: fileType,
         src: uploadResult.url,
         alt: file.name.replace(/\.[^/.]+$/, ''), // Remove extension for alt text
         path: uploadResult.path
       };
 
       // Add to hero images array
-      const updatedImages = [...heroImages, newImage];
+      const updatedImages = [...heroImages, newItem];
       await saveHeroImages(updatedImages);
+      
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' 
+          ? `${fileType === 'video' ? 'Video' : 'Image'} uploaded successfully` 
+          : `${fileType === 'video' ? 'Vidéo' : 'Image'} téléchargée avec succès`,
+        duration: 3000,
+      });
     } catch (error) {
-      console.error('Error uploading hero image:', error);
+      console.error('Error uploading hero media:', error);
       toast({
         title: t.error,
         description: language === 'en' 
-          ? 'Failed to upload hero image' 
-          : 'Échec du téléchargement de l\'image hero',
+          ? 'Failed to upload hero media' 
+          : 'Échec du téléchargement du média hero',
         variant: 'destructive',
       });
     } finally {
@@ -11223,7 +11253,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Image className="w-5 h-5 text-primary" />
+                          <Video className="w-5 h-5 text-primary" />
                           {t.heroImagesSettings}
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">{t.heroImagesSettingsDescription}</p>
@@ -11235,7 +11265,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           </div>
                         ) : (
                           <>
-                            {/* Upload Hero Image */}
+                            {/* Upload Hero Image/Video */}
                             <div className="space-y-2">
                               <Label>{t.uploadHeroImage}</Label>
                               <FileUpload
@@ -11245,16 +11275,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   }
                                 }}
                                 onUrlChange={() => {}}
-                                accept="image/*"
-                                maxSize={10}
-                                label={uploadingHeroImage ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : t.uploadHeroImage}
+                                accept="image/*,video/mp4,video/quicktime,.mp4,.mov"
+                                maxSize={50}
+                                label={uploadingHeroImage ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload Image or Video' : 'Télécharger une Image ou une Vidéo')}
                               />
                               {uploadingHeroImage && (
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                   <RefreshCw className="w-4 h-4 animate-spin" />
-                                  {language === 'en' ? 'Uploading image...' : 'Téléchargement de l\'image...'}
+                                  {language === 'en' ? 'Uploading media...' : 'Téléchargement du média...'}
                                 </div>
                               )}
+                              <p className="text-xs text-muted-foreground">
+                                {language === 'en' 
+                                  ? 'Supports images (JPG, PNG) and videos (MP4, MOV). Recommended: MP4 (H.264), 5-10 seconds, under 2MB for fast loading. Videos will auto-play muted and loop.' 
+                                  : 'Prend en charge les images (JPG, PNG) et les vidéos (MP4, MOV). Recommandé: MP4 (H.264), 5-10 secondes, moins de 2MB pour un chargement rapide. Les vidéos se liront automatiquement en muet et en boucle.'}
+                              </p>
                             </div>
 
                             {/* Hero Images List */}
@@ -11266,14 +11301,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               <div className="space-y-3">
                                 <Label className="text-sm">{t.reorderImages}</Label>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                  {heroImages.map((image, index) => (
+                                  {heroImages.map((item, index) => (
                                     <Card key={index} className="relative group overflow-hidden">
                                       <div className="relative aspect-video w-full">
-                                        <img
-                                          src={image.src}
-                                          alt={image.alt}
-                                          className="w-full h-full object-cover"
-                                        />
+                                        {item.type === 'video' ? (
+                                          <video
+                                            src={item.src}
+                                            poster={item.poster}
+                                            className="w-full h-full object-cover"
+                                            muted
+                                            playsInline
+                                            loop
+                                            preload="metadata"
+                                            style={{ objectFit: 'cover' }}
+                                            onLoadedData={(e) => {
+                                              const video = e.currentTarget;
+                                              video.muted = true;
+                                              video.volume = 0;
+                                            }}
+                                          />
+                                        ) : (
+                                          <img
+                                            src={item.src}
+                                            alt={item.alt}
+                                            className="w-full h-full object-cover"
+                                          />
+                                        )}
                                         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                                           <div className="flex flex-col gap-2">
                                             <div className="flex gap-2">
@@ -11323,11 +11376,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                       <CardContent className="p-3">
                                         <div className="flex items-center justify-between">
                                           <span className="text-xs text-muted-foreground">
-                                            {language === 'en' ? 'Image' : 'Image'} {index + 1}
+                                            {item.type === 'video' 
+                                              ? (language === 'en' ? 'Video' : 'Vidéo') 
+                                              : (language === 'en' ? 'Image' : 'Image')} {index + 1}
                                           </span>
-                                          <Badge variant="outline" className="text-xs">
-                                            {image.alt || 'No alt text'}
-                                          </Badge>
+                                          <div className="flex items-center gap-2">
+                                            <Badge variant={item.type === 'video' ? 'default' : 'outline'} className="text-xs">
+                                              {item.type === 'video' ? <Video className="w-3 h-3 mr-1" /> : <Image className="w-3 h-3 mr-1" />}
+                                              {item.type === 'video' ? (language === 'en' ? 'Video' : 'Vidéo') : (language === 'en' ? 'Image' : 'Image')}
+                                            </Badge>
+                                            <Badge variant="outline" className="text-xs">
+                                              {item.alt || 'No alt text'}
+                                            </Badge>
+                                          </div>
                                         </div>
                                       </CardContent>
                                     </Card>

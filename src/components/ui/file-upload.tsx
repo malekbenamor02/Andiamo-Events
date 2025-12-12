@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,12 +27,26 @@ const FileUpload: React.FC<FileUploadProps> = ({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (previewUrl && previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
   const handleFile = (file: File) => {
     setError(null);
 
-    // Check file type
-    if (!file.type.startsWith('image/')) {
-      setError('Please select an image file');
+    // Check file type - accept both images and videos
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    const isVideoByExtension = fileExtension === 'mp4' || fileExtension === 'mov' || fileExtension === 'webm';
+    
+    if (!isImage && !isVideo && !isVideoByExtension) {
+      setError('Please select an image or video file (JPG, PNG, MP4, MOV)');
       return;
     }
 
@@ -45,13 +59,19 @@ const FileUpload: React.FC<FileUploadProps> = ({
     setUploadedFile(file);
     onFileSelect(file);
 
-    // Create preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      setPreviewUrl(result);
-    };
-    reader.readAsDataURL(file);
+    // Create preview - for images use FileReader, for videos use object URL
+    if (isImage) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setPreviewUrl(result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // For videos, create object URL for preview
+      const videoUrl = URL.createObjectURL(file);
+      setPreviewUrl(videoUrl);
+    }
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -90,6 +110,10 @@ const FileUpload: React.FC<FileUploadProps> = ({
   };
 
   const removeFile = () => {
+    // Clean up object URL if it was created for video preview
+    if (previewUrl && previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewUrl);
+    }
     setUploadedFile(null);
     setPreviewUrl(null);
     onFileSelect(null);
@@ -153,10 +177,12 @@ const FileUpload: React.FC<FileUploadProps> = ({
           <Upload className="mx-auto h-6 w-6 text-muted-foreground" />
           <div>
             <p className="text-sm font-medium">
-              Drop an image here, or click to select
+              Drop a file here, or click to select
             </p>
             <p className="text-xs text-muted-foreground">
-              PNG, JPG, GIF up to {maxSize}MB
+              {accept.includes('video') 
+                ? `Images (PNG, JPG) or Videos (MP4, MOV) up to ${maxSize}MB`
+                : `PNG, JPG, GIF up to ${maxSize}MB`}
             </p>
           </div>
         </div>
@@ -171,11 +197,25 @@ const FileUpload: React.FC<FileUploadProps> = ({
       {previewUrl && (
         <div className="relative">
           <div className="relative w-full h-32 rounded-lg overflow-hidden border">
-            <img
-              src={previewUrl}
-              alt="Preview"
-              className="w-full h-full object-cover"
-            />
+            {uploadedFile && (uploadedFile.type.startsWith('video/') || 
+                            uploadedFile.name.toLowerCase().endsWith('.mp4') || 
+                            uploadedFile.name.toLowerCase().endsWith('.mov') ||
+                            uploadedFile.name.toLowerCase().endsWith('.webm')) ? (
+              <video
+                src={previewUrl}
+                className="w-full h-full object-cover"
+                muted
+                playsInline
+                loop
+                preload="metadata"
+              />
+            ) : (
+              <img
+                src={previewUrl}
+                alt="Preview"
+                className="w-full h-full object-cover"
+              />
+            )}
             <Button
               type="button"
               variant="destructive"

@@ -65,7 +65,7 @@ const Index = ({ language }: IndexProps) => {
               
               // Trigger counter animation when counter section is visible
               if (sectionId === 'counter') {
-            animateCounters();
+                animateCounters();
               }
             }
           }
@@ -132,15 +132,12 @@ const Index = ({ language }: IndexProps) => {
   };
 
   return (
-    <div className="pt-16">
-      {/* Hero Section with Scroll Animation */}
+    <div className="relative">
+      {/* Hero Section with Scroll Animation - positioned behind navbar */}
       <div 
         ref={heroRef}
-        className={`transform transition-all duration-1000 ease-out ${
-          animatedSections.has('hero') 
-            ? 'opacity-100 translate-y-0 scale-100' 
-            : 'opacity-0 translate-y-8 scale-95'
-        }`}
+        className="transform transition-all duration-1000 ease-out opacity-100 translate-y-0 scale-100"
+        style={{ position: 'relative', zIndex: 0 }}
       >
       <HeroSection language={language} />
       </div>
@@ -192,7 +189,6 @@ const Index = ({ language }: IndexProps) => {
       >
       <SponsorsSection language={language} />
       </div>
-      
     </div>
   );
 };

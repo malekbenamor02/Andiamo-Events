@@ -171,9 +171,9 @@ const Footer = ({ language }: FooterProps) => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand */}
           <div className="col-span-1 md:col-span-2">
-            <div className="text-3xl font-heading font-bold text-gradient-neon mb-4">
-              ANDIAMO EVENTS
-            </div>
+            <RouterLink to="/" className="inline-block mb-4">
+              <img src="/logo.svg" alt="Andiamo Events Logo" className="logo" />
+            </RouterLink>
             <p className="text-muted-foreground mb-6 max-w-md">
               {language === 'en' 
                 ? "Creating unforgettable nightlife experiences across Tunisia. Join the movement and live the night with us."

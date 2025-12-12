@@ -71,18 +71,21 @@ export default {
 				}
 			},
 			fontFamily: {
+				// Custom Andiamo Font - Global Default
+				andiamo: ['AndiamoFont', 'sans-serif'],
+				sans: ['AndiamoFont', 'sans-serif'], // Set as default sans-serif
+				
 				// Current fonts
 				orbitron: ['Orbitron', 'monospace'],
-				sans: ['Josefin Sans', 'sans-serif'], // Changed to Josefin Sans - used everywhere
 				
 				// Font testing options - uncomment to test
 				// Option 1: Modern & Bold
 				// heading: ['Bebas Neue', 'sans-serif'],
 				// body: ['Work Sans', 'sans-serif'],
 				
-				// Josefin Sans - ACTIVE (User Requested) ⭐
-				heading: ['Josefin Sans', 'sans-serif'],
-				body: ['Josefin Sans', 'sans-serif'],
+				// AndiamoFont - ACTIVE (User Requested) ⭐
+				heading: ['AndiamoFont', 'sans-serif'],
+				body: ['AndiamoFont', 'sans-serif'],
 				
 				// Option 2: Clean & Contemporary
 				// heading: ['Outfit', 'sans-serif'],

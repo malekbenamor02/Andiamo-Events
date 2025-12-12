@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, Users, Clock, DollarSign, Info, Image as ImageIcon, Maximize2, Minimize2 } from "lucide-react";
+import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, Users, Clock, DollarSign, Info, Image as ImageIcon, Maximize2, Minimize2, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +53,15 @@ const Events = ({ language }: EventsProps) => {
   const [hasGalleryAnimated, setHasGalleryAnimated] = useState(false);
   const [scrollAnimatedEvents, setScrollAnimatedEvents] = useState<Set<string>>(new Set());
   const [scrollAnimatedGalleryEvents, setScrollAnimatedGalleryEvents] = useState<Set<string>>(new Set());
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [imageLoaded, setImageLoaded] = useState<Set<string>>(new Set());
+  const [videoMuted, setVideoMuted] = useState(true);
+  const mediaContainerRef = useRef<HTMLDivElement>(null);
+  const [modalAnimating, setModalAnimating] = useState(false);
+  const [clickedCardId, setClickedCardId] = useState<string | null>(null);
+  const [contentBlocksAnimated, setContentBlocksAnimated] = useState<Set<string>>(new Set());
+  const [scrollPosition, setScrollPosition] = useState(0);
 
   const content = {
     en: {
@@ -139,15 +148,28 @@ const Events = ({ language }: EventsProps) => {
   const fetchEvents = async () => {
     try {
       setLoading(true);
+      console.log('🔍 Fetching events from Supabase...');
       const { data, error } = await supabase
         .from('events')
         .select('*')
         .order('date', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching events:', error);
+        throw error;
+      }
+      
+      console.log('✅ Events fetched successfully:', data?.length || 0);
+      console.log('📋 All events:', data);
+      
+      // Check for gallery events specifically
+      const galleryEventsInData = (data || []).filter((e: any) => e.event_type === 'gallery');
+      console.log('🖼️ Gallery events in data:', galleryEventsInData.length);
+      console.log('🖼️ Gallery events details:', galleryEventsInData);
+      
       setEvents(data || []);
     } catch (error) {
-      console.error('Error fetching events:', error);
+      console.error('❌ Error fetching events:', error);
     } finally {
       setLoading(false);
       setTimeout(() => {
@@ -159,14 +181,31 @@ const Events = ({ language }: EventsProps) => {
     }
   };
 
-  const upcomingEvents = events.filter(event => 
-    (event.event_type === 'upcoming' || !event.event_type) && 
-    event.event_status !== 'cancelled'
-  );
+  const upcomingEvents = events.filter(event => {
+    const eventDate = new Date(event.date);
+    const now = new Date();
+    // Show as upcoming if:
+    // - Explicitly marked as upcoming, OR
+    // - No type specified and date is in the future, AND
+    // - Not cancelled
+    return (
+      (event.event_type === 'upcoming' || (!event.event_type && eventDate >= now)) && 
+      event.event_status !== 'cancelled' &&
+      event.event_status !== 'completed'
+    );
+  });
 
-  const galleryEvents = events.filter(event => 
-    event.event_type === 'gallery'
-  );
+  const galleryEvents = events.filter(event => {
+    // Primary filter: Show events with event_type === 'gallery'
+    if (event.event_type === 'gallery') {
+      // Only exclude if explicitly cancelled
+      return event.event_status !== 'cancelled';
+    }
+    
+    // For now, only show events explicitly marked as gallery
+    // Remove secondary filters to debug
+    return false;
+  });
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -185,43 +224,144 @@ const Events = ({ language }: EventsProps) => {
     return `${price} TND`;
   };
 
-  const openModal = (event: Event) => {
-    setSelectedEvent(event);
-    setCurrentMediaIndex(0);
-    setShowModal(true);
-    setActiveTab('details');
-    setIsFullScreenGallery(false);
-    document.body.classList.add('modal-open');
+  const openModal = (event: Event, cardElement?: HTMLElement) => {
+    // Save scroll position
+    setScrollPosition(window.scrollY);
+    
+    // Card scale-up feedback
+    if (cardElement) {
+      cardElement.classList.add('animate-card-scale-up');
+      setTimeout(() => {
+        cardElement.classList.remove('animate-card-scale-up');
+      }, 300);
+    }
+    
+    // Small delay for card animation, then open modal
+    setTimeout(() => {
+      setSelectedEvent(event);
+      setCurrentMediaIndex(0);
+      setModalAnimating(false);
+      setShowModal(true);
+      setActiveTab('details');
+      setIsFullScreenGallery(false);
+      setLightboxOpen(false);
+      setLightboxIndex(0);
+      document.body.classList.add('modal-open');
+      setContentBlocksAnimated(new Set());
+    }, 150);
   };
 
   const closeModal = () => {
-    setShowModal(false);
-    setSelectedEvent(null);
-    setCurrentMediaIndex(0);
-    setIsFullScreenGallery(false);
-    setActiveTab('details');
-    document.body.classList.remove('modal-open');
+    setModalAnimating(true);
+    // Exit animation
+    setTimeout(() => {
+      setShowModal(false);
+      setSelectedEvent(null);
+      setCurrentMediaIndex(0);
+      setIsFullScreenGallery(false);
+      setLightboxOpen(false);
+      setLightboxIndex(0);
+      setActiveTab('details');
+      setContentBlocksAnimated(new Set());
+      document.body.classList.remove('modal-open');
+      setModalAnimating(false);
+      setClickedCardId(null);
+      
+      // Restore scroll position
+      setTimeout(() => {
+        window.scrollTo(0, scrollPosition);
+      }, 100);
+    }, 500);
   };
 
-  const nextMedia = () => {
+  const openLightbox = (index: number) => {
+    setLightboxIndex(index);
+    setLightboxOpen(true);
+  };
+
+  const closeLightbox = () => {
+    setLightboxOpen(false);
+  };
+
+  // Get all media for current event (used in modal) - Must be defined before useMemo
+  const getAllMediaForEvent = useCallback((event: Event | null) => {
+    if (!event) return [];
+    return [
+      ...(event.gallery_images?.map((url, index) => ({ type: 'image' as const, url, index })) || []),
+      ...(event.gallery_videos?.map((url, index) => ({ type: 'video' as const, url, index: index + (event.gallery_images?.length || 0) })) || [])
+    ];
+  }, []);
+
+  const nextLightbox = useCallback(() => {
+    if (!selectedEvent) return;
+    const allMedia = getAllMediaForEvent(selectedEvent);
+    if (allMedia.length === 0) return;
+    setLightboxIndex((prev) => (prev + 1) % allMedia.length);
+  }, [selectedEvent]);
+
+  const previousLightbox = useCallback(() => {
+    if (!selectedEvent) return;
+    const allMedia = getAllMediaForEvent(selectedEvent);
+    if (allMedia.length === 0) return;
+    setLightboxIndex((prev) => (prev - 1 + allMedia.length) % allMedia.length);
+  }, [selectedEvent]);
+
+  const nextMedia = useCallback(() => {
     if (!selectedEvent) return;
     const allMedia = [
       ...(selectedEvent.gallery_images?.map((url, index) => ({ type: 'image' as const, url, index })) || []),
       ...(selectedEvent.gallery_videos?.map((url, index) => ({ type: 'video' as const, url, index: index + (selectedEvent.gallery_images?.length || 0) })) || [])
     ];
     if (allMedia.length === 0) return;
-    setCurrentMediaIndex((currentMediaIndex + 1) % allMedia.length);
-  };
+    setCurrentMediaIndex((prev) => (prev + 1) % allMedia.length);
+  }, [selectedEvent]);
 
-  const previousMedia = () => {
+  const previousMedia = useCallback(() => {
     if (!selectedEvent) return;
     const allMedia = [
       ...(selectedEvent.gallery_images?.map((url, index) => ({ type: 'image' as const, url, index })) || []),
       ...(selectedEvent.gallery_videos?.map((url, index) => ({ type: 'video' as const, url, index: index + (selectedEvent.gallery_images?.length || 0) })) || [])
     ];
     if (allMedia.length === 0) return;
-    setCurrentMediaIndex((currentMediaIndex - 1 + allMedia.length) % allMedia.length);
-  };
+    setCurrentMediaIndex((prev) => (prev - 1 + allMedia.length) % allMedia.length);
+  }, [selectedEvent]);
+
+  // Keyboard navigation for modal and lightbox
+  useEffect(() => {
+    if (!showModal) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (lightboxOpen) {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          previousLightbox();
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          nextLightbox();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closeLightbox();
+        }
+      } else if (activeTab === 'gallery') {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          previousMedia();
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          nextMedia();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closeModal();
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeModal();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showModal, lightboxOpen, activeTab, nextLightbox, previousLightbox, nextMedia, previousMedia]);
 
   const goToMedia = (index: number) => {
     setCurrentMediaIndex(index);
@@ -245,11 +385,20 @@ const Events = ({ language }: EventsProps) => {
     const isLeftSwipe = distance > minSwipeDistance;
     const isRightSwipe = distance < -minSwipeDistance;
 
-    if (isLeftSwipe) {
-      nextMedia();
-    }
-    if (isRightSwipe) {
-      previousMedia();
+    if (lightboxOpen) {
+      if (isLeftSwipe) {
+        nextLightbox();
+      }
+      if (isRightSwipe) {
+        previousLightbox();
+      }
+    } else if (activeTab === 'gallery') {
+      if (isLeftSwipe) {
+        nextMedia();
+      }
+      if (isRightSwipe) {
+        previousMedia();
+      }
     }
   };
 
@@ -329,14 +478,35 @@ const Events = ({ language }: EventsProps) => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [upcomingEvents, galleryEvents, scrollAnimatedEvents, scrollAnimatedGalleryEvents]);
 
-  // Get all media for current event (used in modal)
-  const getAllMediaForEvent = (event: Event | null) => {
-    if (!event) return [];
-    return [
-      ...(event.gallery_images?.map((url, index) => ({ type: 'image' as const, url, index })) || []),
-      ...(event.gallery_videos?.map((url, index) => ({ type: 'video' as const, url, index: index + (event.gallery_images?.length || 0) })) || [])
-    ];
-  };
+  // Debug gallery events - Log when events change (MUST be before any early returns)
+  useEffect(() => {
+    if (!loading) {
+      console.log('=== GALLERY DEBUG ===');
+      console.log('Total events in state:', events.length);
+      const galleryCount = events.filter(e => e.event_type === 'gallery').length;
+      console.log('Gallery events count:', galleryCount);
+      const galleryEventsList = events.filter(e => e.event_type === 'gallery').map(e => ({ 
+        id: e.id,
+        name: e.name, 
+        type: e.event_type, 
+        status: e.event_status,
+        hasImages: !!(e.gallery_images && e.gallery_images.length > 0),
+        hasVideos: !!(e.gallery_videos && e.gallery_videos.length > 0)
+      }));
+      console.log('Gallery events:', galleryEventsList);
+      const upcomingCount = events.filter(e => (e.event_type === 'upcoming' || !e.event_type) && e.event_status !== 'cancelled').length;
+      console.log('Upcoming events count:', upcomingCount);
+    }
+  }, [events, loading]);
+
+  // Compute media for selected event using useMemo
+  const allMedia = useMemo(() => {
+    return getAllMediaForEvent(selectedEvent);
+  }, [selectedEvent, getAllMediaForEvent]);
+  
+  const hasGallery = useMemo(() => {
+    return allMedia.length > 0;
+  }, [allMedia]);
 
   if (loading) {
     return (
@@ -347,9 +517,6 @@ const Events = ({ language }: EventsProps) => {
       />
     );
   }
-
-  const allMedia = getAllMediaForEvent(selectedEvent);
-  const hasGallery = allMedia.length > 0;
 
   return (
     <div className="pt-16 min-h-screen bg-background animate-page-intro">
@@ -433,73 +600,123 @@ const Events = ({ language }: EventsProps) => {
         </section>
       )}
 
-      {/* Event Gallery Section */}
-      {galleryEvents.length > 0 && (
-        <section className="py-20 bg-gradient-dark">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-12 animate-in slide-in-from-bottom-4 duration-700 delay-200">
-              <h2 className="text-3xl md:text-4xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-left-4 duration-1000">
-                {content[language].galleryTitle}
-              </h2>
-            </div>
+      {/* Premium Event Gallery Section */}
+      <section className="py-20 bg-gradient-dark relative overflow-hidden">
+        {/* Animated background effects */}
+        <div className="absolute inset-0 opacity-30">
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-pink-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        </div>
+        
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="text-center mb-16 animate-in slide-in-from-bottom-4 duration-700 delay-200">
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-left-4 duration-1000">
+              {content[language].galleryTitle}
+            </h2>
+            <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
+              {content[language].gallerySubtitle}
+            </p>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-8 justify-items-center">
-              {galleryEvents.map((event, index) => (
-                <Card 
-                  key={event.id} 
-                  className={`gallery-event-card glass overflow-hidden cursor-pointer hover-lift group w-full max-w-md transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-                    scrollAnimatedGalleryEvents.has(event.id) 
-                      ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                      : 'opacity-0 translate-y-8'
-                  }`}
-                  onClick={() => openModal(event)}
-                >
-                  <div className="relative">
-                    <img
-                      src={event.poster_url || "/api/placeholder/400/400"}
-                      alt={event.name}
-                      className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    {((event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0) > 0) && (
-                      <Badge className="absolute top-4 left-4 bg-purple-500 animate-in slide-in-from-top-4 duration-500">
-                        {(event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0)} Media
-                      </Badge>
-                    )}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-center animate-in zoom-in-95 duration-300">
-                        <p className="text-sm font-semibold">{content[language].viewDetails}</p>
+          {galleryEvents.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
+              {galleryEvents.map((event, index) => {
+                const mediaCount = (event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0);
+                const isAnimated = scrollAnimatedGalleryEvents.has(event.id) || animatedGalleryEvents.has(event.id);
+                
+                return (
+                  <div
+                    key={event.id}
+                    className={`group relative overflow-hidden rounded-2xl cursor-pointer transform transition-all duration-700 ease-out ${
+                      isAnimated 
+                        ? 'opacity-100 translate-y-0' 
+                        : 'opacity-100 translate-y-0'
+                    }`}
+                    style={{ animationDelay: `${index * 100}ms` }}
+                    onClick={(e) => openModal(event, e.currentTarget)}
+                  >
+                    {/* Premium Card with Glass Effect */}
+                    <div className="relative h-[420px] md:h-[480px] bg-gradient-to-br from-card/40 via-card/30 to-card/20 backdrop-blur-xl border border-primary/20 rounded-2xl overflow-hidden group-hover:border-primary/40 transition-all duration-500">
+                      {/* Poster Image with Parallax Effect */}
+                      <div className="relative h-3/4 overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-10"></div>
+                        <img
+                          src={event.poster_url || "/api/placeholder/400/400"}
+                          alt={event.name}
+                          className="w-full h-full object-cover transform transition-all duration-700 group-hover:scale-110 group-hover:brightness-110"
+                          loading="lazy"
+                        />
+                        
+                        {/* Neon Glow Overlay on Hover */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 via-pink-500/0 to-cyan-500/0 group-hover:from-purple-500/20 group-hover:via-pink-500/10 group-hover:to-cyan-500/20 transition-all duration-500 z-20"></div>
+                        
+                        {/* Media Count Badge */}
+                        {mediaCount > 0 && (
+                          <Badge className="absolute top-4 left-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 shadow-lg shadow-purple-500/50 z-30 backdrop-blur-sm">
+                            <ImageIcon className="w-3 h-3 mr-1" />
+                            {mediaCount} {mediaCount === 1 ? 'Media' : 'Media'}
+                          </Badge>
+                        )}
+                        
+                        {/* Featured Badge */}
+                        {event.featured && (
+                          <Badge className="absolute top-4 right-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0 shadow-lg shadow-yellow-500/50 z-30 backdrop-blur-sm">
+                            ⭐ Featured
+                          </Badge>
+                        )}
+                        
+                        {/* Hover Overlay with View Details */}
+                        <div className="absolute inset-0 flex items-center justify-center z-30 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                          <div className="bg-black/60 backdrop-blur-md rounded-full px-6 py-3 border border-primary/50 transform scale-95 group-hover:scale-100 transition-transform duration-300">
+                            <p className="text-sm font-semibold text-white">{content[language].viewDetails}</p>
+                          </div>
+                        </div>
                       </div>
+                      
+                      {/* Card Content */}
+                      <div className="absolute bottom-0 left-0 right-0 p-5 z-20 bg-gradient-to-t from-black/90 via-black/70 to-transparent">
+                        <h3 className="text-lg md:text-xl font-bold text-white mb-2 line-clamp-2 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-pink-400 transition-all duration-300">
+                          {event.name}
+                        </h3>
+                        
+                        <div className="space-y-2">
+                          <div className="flex items-center text-sm text-white/80">
+                            <Calendar className="w-4 h-4 mr-2 text-purple-400" />
+                            <span className="truncate">{formatDate(event.date)}</span>
+                          </div>
+                          
+                          <div className="flex items-center text-sm text-white/80">
+                            <MapPin className="w-4 h-4 mr-2 text-pink-400" />
+                            <span className="truncate">{event.city}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Neon Border Glow on Hover */}
+                      <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
+                        <div className="absolute inset-0 rounded-2xl border-2 border-transparent bg-gradient-to-r from-purple-500/50 via-pink-500/50 to-cyan-500/50 bg-clip-border blur-sm"></div>
+                        <div className="absolute inset-[2px] rounded-2xl bg-gradient-to-br from-card/40 via-card/30 to-card/20 backdrop-blur-xl"></div>
+                      </div>
+                      
+                      {/* Shadow Glow Effect */}
+                      <div className="absolute -inset-1 bg-gradient-to-r from-purple-500/20 via-pink-500/20 to-cyan-500/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10"></div>
                     </div>
                   </div>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-sm line-clamp-2 mb-2 animate-in slide-in-from-left-4 duration-500 delay-200">
-                      {event.name}
-                    </h3>
-                    <div className="flex items-center text-xs text-muted-foreground animate-in slide-in-from-left-4 duration-500 delay-300">
-                      <Calendar className="w-3 h-3 mr-1 animate-pulse" />
-                      {formatDate(event.date)}
-                    </div>
-                    <div className="flex items-center text-xs text-muted-foreground mt-1 animate-in slide-in-from-left-4 duration-500 delay-400">
-                      <MapPin className="w-3 h-3 mr-1 animate-pulse" />
-                      {event.city}
-                    </div>
-                    {(event.standard_price || (event.vip_price && Number(event.vip_price) > 0)) && (
-                      <div className="flex items-center space-x-2 text-xs text-muted-foreground mt-1 animate-in slide-in-from-left-4 duration-500 delay-500">
-                        {event.standard_price && (
-                          <span className="text-green-500 font-semibold">Standard: {event.standard_price} TND</span>
-                        )}
-                        {event.vip_price && Number(event.vip_price) > 0 && (
-                          <span className="text-blue-500 font-semibold">VIP: {event.vip_price} TND</span>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+                );
+              })}
             </div>
-          </div>
-        </section>
-      )}
+          ) : (
+            <div className="text-center py-20">
+              <p className="text-muted-foreground text-lg">
+                {content[language].noGalleryEvents}
+              </p>
+              <p className="text-muted-foreground text-sm mt-2">
+                Debug: Total events: {events.length}, Gallery events: {galleryEvents.length}
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Enhanced Event Modal */}
       {showModal && selectedEvent && (
@@ -618,57 +835,86 @@ const Events = ({ language }: EventsProps) => {
             </div>
           )}
 
-          {/* Main Modal */}
+          {/* Main Modal with Premium Animations */}
           {!isFullScreenGallery && (
-            <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-0 md:p-4 animate-in fade-in duration-300" style={{ overflow: 'hidden' }}>
-              <div className="bg-gradient-to-br from-background via-background/95 to-background/90 rounded-none md:rounded-3xl max-w-6xl w-full h-full md:h-[92vh] flex flex-col shadow-2xl border-0 md:border border-border/20 animate-in slide-in-from-bottom-4 duration-300">
-                {/* Header with Poster */}
-                <div className="relative overflow-hidden rounded-none md:rounded-t-3xl flex-shrink-0">
-                  <img
-                    src={selectedEvent.poster_url || "/api/placeholder/800/400"}
-                    alt={selectedEvent.name}
-                    className="w-full h-64 md:h-80 object-cover"
-                  />
-                  
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent"></div>
+            <div 
+              className={`fixed inset-0 z-50 flex items-end md:items-center justify-center ${
+                modalAnimating ? 'animate-backdrop-blur-out' : 'animate-backdrop-blur-in'
+              }`}
+              style={{ 
+                overflow: 'hidden',
+                backdropFilter: 'blur(20px)',
+                background: 'rgba(0, 0, 0, 0.85)'
+              }}
+              onClick={closeModal}
+            >
+              <div 
+                className={`bg-gradient-to-br from-background via-background/98 to-background/95 rounded-t-3xl md:rounded-3xl w-full h-[95vh] md:h-[92vh] md:max-w-6xl flex flex-col shadow-2xl border-0 md:border border-primary/30 ${
+                  modalAnimating ? 'animate-modal-exit' : 'animate-modal-enter'
+                }`}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  boxShadow: '0 0 80px hsl(285 85% 65% / 0.4), 0 20px 80px rgba(0,0,0,0.6)'
+                }}
+              >
+                {/* Immersive Hero Banner */}
+                <div className="relative overflow-hidden rounded-t-3xl flex-shrink-0">
+                  <div className="relative w-full h-80 md:h-96 overflow-hidden">
+                    <img
+                      src={selectedEvent.poster_url || "/api/placeholder/800/400"}
+                      alt={selectedEvent.name}
+                      className="w-full h-full object-cover"
+                      loading="eager"
+                    />
+                    
+                    {/* Gradient Overlay for Readability */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/70 to-black/40"></div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/15 via-pink-500/10 to-cyan-500/15 pointer-events-none"></div>
+                    
+                    {/* Subtle Neon Glow Border */}
+                    <div className="absolute inset-0 rounded-t-3xl pointer-events-none" 
+                         style={{ 
+                           boxShadow: 'inset 0 0 60px hsl(285 85% 65% / 0.2), 0 0 80px hsl(285 85% 65% / 0.15)'
+                         }}></div>
+                  </div>
           
                   {/* Close Button */}
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 hover:scale-110 z-10"
+                    className="absolute top-4 right-4 bg-black/70 hover:bg-black/90 text-white backdrop-blur-md border border-white/30 transition-all duration-200 hover:scale-110 z-20"
                     onClick={closeModal}
                   >
                     <X className="w-5 h-5 md:w-6 h-6" />
                   </Button>
                   
                   {/* Badges */}
-                  <div className="absolute top-4 left-4 flex gap-2 flex-wrap">
+                  <div className="absolute top-4 left-4 flex gap-2 flex-wrap z-20">
                     {selectedEvent.featured && (
-                      <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 shadow-lg">
+                      <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 shadow-lg backdrop-blur-sm">
                         ⭐ {content[language].featured}
                       </Badge>
                     )}
                     {selectedEvent.event_status === 'cancelled' && (
-                      <Badge className="bg-red-500 text-white border-0 shadow-lg">
+                      <Badge className="bg-red-500 text-white border-0 shadow-lg backdrop-blur-sm">
                         ❌ {content[language].cancelled}
                       </Badge>
                     )}
                   </div>
                   
-                  {/* Event Title Overlay */}
-                  <div className="absolute bottom-4 left-4 right-4">
-                    <h2 className="text-2xl md:text-4xl font-bold text-white drop-shadow-lg mb-2">
+                  {/* Event Title & Info Overlay */}
+                  <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 pb-8">
+                    <h2 className="text-3xl md:text-5xl font-bold text-white drop-shadow-2xl mb-3 leading-tight">
                       {selectedEvent.name}
                     </h2>
-                    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 text-white/90 text-sm">
-                      <div className="flex items-center">
-                        <Calendar className="w-4 h-4 mr-2" />
-                        <span className="text-xs md:text-sm">{formatDate(selectedEvent.date)}</span>
+                    <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-6 text-white/95">
+                      <div className="flex items-center text-sm md:text-base">
+                        <Calendar className="w-5 h-5 mr-2 text-purple-300" />
+                        <span className="font-medium">{formatDate(selectedEvent.date)}</span>
                       </div>
-                      <div className="flex items-center">
-                        <MapPin className="w-4 h-4 mr-2" />
-                        <span className="text-xs md:text-sm">{selectedEvent.venue}, {selectedEvent.city}</span>
+                      <div className="flex items-center text-sm md:text-base">
+                        <MapPin className="w-5 h-5 mr-2 text-pink-300" />
+                        <span className="font-medium">{selectedEvent.venue}, {selectedEvent.city}</span>
                       </div>
                     </div>
                   </div>
@@ -702,13 +948,51 @@ const Events = ({ language }: EventsProps) => {
                   </div>
                 )}
 
-                {/* Content Area */}
-                <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+                {/* Content Area with Scroll Animations */}
+                <div 
+                  className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 custom-scrollbar"
+                  onScroll={(e) => {
+                    const target = e.currentTarget;
+                    const blocks = target.querySelectorAll('[data-content-block]');
+                    blocks.forEach((block) => {
+                      const rect = block.getBoundingClientRect();
+                      const containerRect = target.getBoundingClientRect();
+                      const isVisible = rect.top < containerRect.bottom * 0.8 && rect.bottom > containerRect.top;
+                      if (isVisible && !contentBlocksAnimated.has(block.id)) {
+                        setContentBlocksAnimated(prev => new Set([...prev, block.id]));
+                      }
+                    });
+                  }}
+                  ref={(el) => {
+                    // Trigger initial animation check when modal opens
+                    if (el) {
+                      setTimeout(() => {
+                        const blocks = el.querySelectorAll('[data-content-block]');
+                        blocks.forEach((block) => {
+                          const rect = block.getBoundingClientRect();
+                          const containerRect = el.getBoundingClientRect();
+                          const isVisible = rect.top < containerRect.bottom * 0.8 && rect.bottom > containerRect.top;
+                          if (isVisible && !contentBlocksAnimated.has(block.id)) {
+                            setContentBlocksAnimated(prev => new Set([...prev, block.id]));
+                          }
+                        });
+                      }, 100);
+                    }
+                  }}
+                >
                   {activeTab === 'details' ? (
                     <>
                       {/* Pricing Section */}
                       {(selectedEvent.standard_price || selectedEvent.vip_price) && (
-                        <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl p-4 md:p-6 border border-purple-500/20">
+                        <div 
+                          id="pricing-block"
+                          data-content-block
+                          className={`bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl p-4 md:p-6 border border-purple-500/20 transition-all duration-700 ${
+                            contentBlocksAnimated.has('pricing-block')
+                              ? 'opacity-100 translate-y-0'
+                              : 'opacity-0 translate-y-8'
+                          }`}
+                        >
                           <h3 className="text-lg md:text-xl font-bold text-gradient-neon mb-4 text-center flex items-center justify-center gap-2">
                             <DollarSign className="w-5 h-5" />
                             {content[language].ticketPricing}
@@ -731,7 +1015,15 @@ const Events = ({ language }: EventsProps) => {
                       )}
 
                       {/* Description */}
-                      <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 rounded-2xl p-4 md:p-6 border border-blue-500/20">
+                      <div 
+                        id="description-block"
+                        data-content-block
+                        className={`bg-gradient-to-r from-blue-500/5 to-purple-500/5 rounded-2xl p-4 md:p-6 border border-blue-500/20 transition-all duration-700 ${
+                          contentBlocksAnimated.has('description-block')
+                            ? 'opacity-100 translate-y-0'
+                            : 'opacity-0 translate-y-8'
+                        }`}
+                      >
                         <h3 className="text-lg md:text-xl font-bold text-gradient-to-r from-blue-400 to-purple-400 mb-4 flex items-center">
                           <span className="w-2 h-2 bg-blue-400 rounded-full mr-3"></span>
                           {content[language].aboutEvent}
@@ -743,7 +1035,15 @@ const Events = ({ language }: EventsProps) => {
 
                       {/* Event Details Grid */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                        <div className="bg-gradient-to-r from-green-500/5 to-blue-500/5 rounded-2xl p-4 md:p-6 border border-green-500/20">
+                        <div 
+                          id="details-block"
+                          data-content-block
+                          className={`bg-gradient-to-r from-green-500/5 to-blue-500/5 rounded-2xl p-4 md:p-6 border border-green-500/20 transition-all duration-700 ${
+                            contentBlocksAnimated.has('details-block')
+                              ? 'opacity-100 translate-y-0'
+                              : 'opacity-0 translate-y-8'
+                          }`}
+                        >
                           <h4 className="font-semibold text-base md:text-lg text-green-400 mb-4 flex items-center">
                             <span className="w-2 h-2 bg-green-400 rounded-full mr-3"></span>
                             {content[language].eventDetails}
@@ -776,7 +1076,15 @@ const Events = ({ language }: EventsProps) => {
                           </div>
                         </div>
                         
-                        <div className="bg-gradient-to-r from-orange-500/5 to-red-500/5 rounded-2xl p-4 md:p-6 border border-orange-500/20">
+                        <div 
+                          id="quickinfo-block"
+                          data-content-block
+                          className={`bg-gradient-to-r from-orange-500/5 to-red-500/5 rounded-2xl p-4 md:p-6 border border-orange-500/20 transition-all duration-700 ${
+                            contentBlocksAnimated.has('quickinfo-block')
+                              ? 'opacity-100 translate-y-0'
+                              : 'opacity-0 translate-y-8'
+                          }`}
+                        >
                           <h4 className="font-semibold text-base md:text-lg text-orange-400 mb-4 flex items-center">
                             <span className="w-2 h-2 bg-orange-400 rounded-full mr-3"></span>
                             {content[language].quickInfo}
@@ -834,119 +1142,174 @@ const Events = ({ language }: EventsProps) => {
                       )}
                     </>
                   ) : (
-                    /* Gallery Tab */
+                    /* Premium Horizontal Scrollable Gallery */
                     <div className="space-y-6">
-                      {/* Main Gallery Display */}
+                      {/* Horizontal Scrollable Media Carousel */}
                       <div 
-                        ref={galleryRef}
-                        className="relative bg-gradient-to-br from-black/20 to-black/10 rounded-xl overflow-hidden border border-indigo-500/20 h-[70vh] md:h-[500px] min-h-[400px] md:min-h-[500px]"
-                        onTouchStart={onTouchStart}
-                        onTouchMove={onTouchMove}
-                        onTouchEnd={onTouchEnd}
+                        ref={mediaContainerRef}
+                        className="relative bg-gradient-to-br from-black/40 via-black/20 to-black/10 rounded-2xl overflow-x-auto overflow-y-hidden border border-primary/30 h-[70vh] md:h-[500px] min-h-[400px] md:min-h-[500px] shadow-2xl shadow-primary/10 snap-x snap-mandatory scrollbar-hide"
+                        style={{
+                          scrollBehavior: 'smooth',
+                          WebkitOverflowScrolling: 'touch'
+                        }}
+                        onScroll={(e) => {
+                          const container = e.currentTarget;
+                          const scrollLeft = container.scrollLeft;
+                          const itemWidth = container.clientWidth;
+                          const currentIndex = Math.round(scrollLeft / itemWidth);
+                          if (currentIndex !== currentMediaIndex && currentIndex < allMedia.length) {
+                            setCurrentMediaIndex(currentIndex);
+                          }
+                        }}
                       >
-                        {allMedia[currentMediaIndex] && (
-                          <>
-                            {allMedia[currentMediaIndex].type === 'video' ? (
-                              <video
-                                src={allMedia[currentMediaIndex].url}
-                                controls
-                                className="w-full h-full object-contain"
-                                autoPlay
-                              />
-                            ) : (
-                              <img
-                                src={allMedia[currentMediaIndex].url}
-                                alt={`${selectedEvent.name} - Image ${currentMediaIndex + 1}`}
-                                className="w-full h-full object-contain cursor-pointer"
-                                onClick={() => setIsFullScreenGallery(true)}
-                              />
-                            )}
-                          </>
-                        )}
-
-                        {/* Fullscreen Button (Desktop) */}
-                        {allMedia[currentMediaIndex]?.type === 'image' && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 md:block hidden"
-                            onClick={() => setIsFullScreenGallery(true)}
-                          >
-                            <Maximize2 className="w-5 h-5" />
-                          </Button>
-                        )}
-
-                        {/* Navigation Arrows */}
-                        {allMedia.length > 1 && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="absolute left-2 md:left-4 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200"
-                              onClick={previousMedia}
-                            >
-                              <ChevronLeft className="w-5 h-5 md:w-6 h-6" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="absolute right-2 md:right-4 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200"
-                              onClick={nextMedia}
-                            >
-                              <ChevronRight className="w-5 h-5 md:w-6 h-6" />
-                            </Button>
-                          </>
-                        )}
-
-                        {/* Media Counter */}
-                        {allMedia.length > 1 && (
-                          <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1.5 rounded-full backdrop-blur-sm text-sm font-semibold">
-                            {currentMediaIndex + 1} / {allMedia.length}
-                          </div>
-                        )}
+                        <div className="flex h-full" style={{ width: `${allMedia.length * 100}%` }}>
+                          {allMedia.map((media, index) => {
+                            const imageKey = `${selectedEvent.id}-${index}`;
+                            const isLoaded = imageLoaded.has(imageKey);
+                            
+                            return (
+                              <div
+                                key={index}
+                                className="flex-shrink-0 w-full h-full snap-center"
+                                style={{ width: `${100 / allMedia.length}%` }}
+                              >
+                                {media.type === 'video' ? (
+                                  <div className="relative w-full h-full flex items-center justify-center bg-black/50">
+                                    <video
+                                      src={media.url}
+                                      controls={!videoMuted}
+                                      muted={videoMuted}
+                                      autoPlay
+                                      loop
+                                      playsInline
+                                      className="w-full h-full object-contain"
+                                      onLoadedData={() => setImageLoaded(prev => new Set([...prev, imageKey]))}
+                                    />
+                                    {/* Mute/Unmute Toggle */}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="absolute bottom-4 right-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 z-20"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setVideoMuted(!videoMuted);
+                                      }}
+                                    >
+                                      {videoMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <div 
+                                    className="relative w-full h-full cursor-pointer group"
+                                    onClick={() => openLightbox(index)}
+                                  >
+                                    {/* Progressive Blur Placeholder */}
+                                    {!isLoaded && (
+                                      <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-pink-500/20 animate-pulse blur-2xl z-0"></div>
+                                    )}
+                                    
+                                    {/* Main Image */}
+                                    <img
+                                      src={media.url}
+                                      alt={`${selectedEvent.name} - Image ${index + 1}`}
+                                      className="w-full h-full object-contain transition-opacity duration-300"
+                                      loading="lazy"
+                                      onLoad={() => {
+                                        setImageLoaded(prev => new Set([...prev, imageKey]));
+                                      }}
+                                    />
+                                    
+                                    {/* Hover Overlay */}
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
+                                      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform scale-95 group-hover:scale-100">
+                                        <div className="bg-black/60 backdrop-blur-md rounded-full px-4 py-2 border border-primary/50">
+                                          <Maximize2 className="w-6 h-6 text-white" />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-
-                      {/* Thumbnail Navigation */}
+                      
+                      {/* Gallery Navigation Dots */}
                       {allMedia.length > 1 && (
-                        <div className="flex justify-center gap-2 overflow-x-auto pb-2 -mx-2 px-2">
-                          {allMedia.map((media, index) => (
+                        <div className="flex justify-center gap-2">
+                          {allMedia.map((_, index) => (
                             <button
                               key={index}
-                              onClick={() => goToMedia(index)}
-                              className={`w-20 h-20 md:w-24 md:h-24 rounded-lg overflow-hidden border-2 transition-all duration-200 flex-shrink-0 hover:scale-105 ${
-                                index === currentMediaIndex 
-                                  ? 'border-indigo-500 shadow-lg shadow-indigo-500/25 scale-105' 
-                                  : 'border-border/50 hover:border-indigo-500/50 opacity-70 hover:opacity-100'
+                              onClick={() => {
+                                if (mediaContainerRef.current) {
+                                  const itemWidth = mediaContainerRef.current.clientWidth;
+                                  mediaContainerRef.current.scrollTo({
+                                    left: index * itemWidth,
+                                    behavior: 'smooth'
+                                  });
+                                }
+                                setCurrentMediaIndex(index);
+                              }}
+                              className={`h-2 rounded-full transition-all duration-300 ${
+                                index === currentMediaIndex
+                                  ? 'w-8 bg-gradient-to-r from-purple-500 to-pink-500'
+                                  : 'w-2 bg-white/30 hover:bg-white/50'
                               }`}
-                            >
-                              {media.type === 'video' ? (
-                                <div className="relative w-full h-full">
-                                  <video
-                                    src={media.url}
-                                    className="w-full h-full object-cover"
-                                  />
-                                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                                    <Play className="w-4 h-4 text-white" />
-                                  </div>
-                                </div>
-                              ) : (
-                                <img
-                                  src={media.url}
-                                  alt={`Thumbnail ${index + 1}`}
-                                  className="w-full h-full object-cover"
-                                />
-                              )}
-                            </button>
+                            />
                           ))}
                         </div>
                       )}
 
-                      {/* Mobile Fullscreen Hint */}
-                      {typeof window !== 'undefined' && window.innerWidth < 768 && allMedia[currentMediaIndex]?.type === 'image' && (
-                        <div className="text-center text-sm text-muted-foreground">
-                          <p>{language === 'en' ? 'Tap image to view fullscreen' : 'Appuyez sur l\'image pour voir en plein écran'}</p>
+                      {/* Premium Thumbnail Navigation with Smooth Scrolling */}
+                      {allMedia.length > 1 && (
+                        <div className="flex justify-center gap-3 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-hide">
+                          {allMedia.map((media, index) => {
+                            const isActive = index === currentMediaIndex;
+                            return (
+                              <button
+                                key={index}
+                                onClick={() => goToMedia(index)}
+                                className={`relative w-20 h-20 md:w-24 md:h-24 rounded-xl overflow-hidden border-2 transition-all duration-300 flex-shrink-0 group ${
+                                  isActive 
+                                    ? 'border-primary shadow-lg shadow-primary/50 scale-110 ring-2 ring-primary/50' 
+                                    : 'border-border/50 hover:border-primary/50 opacity-70 hover:opacity-100 hover:scale-105'
+                                }`}
+                              >
+                                {media.type === 'video' ? (
+                                  <>
+                                    <video
+                                      src={media.url}
+                                      className="w-full h-full object-cover"
+                                      muted
+                                      playsInline
+                                    />
+                                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center group-hover:bg-black/20 transition-colors">
+                                      <Play className="w-4 h-4 text-white" />
+                                    </div>
+                                  </>
+                                ) : (
+                                  <img
+                                    src={media.url}
+                                    alt={`Thumbnail ${index + 1}`}
+                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                    loading="lazy"
+                                  />
+                                )}
+                                {/* Active Indicator */}
+                                {isActive && (
+                                  <div className="absolute inset-0 border-2 border-primary rounded-xl animate-pulse"></div>
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
+
+                      {/* Keyboard Navigation Hint */}
+                      <div className="text-center text-xs text-muted-foreground">
+                        <p>{language === 'en' ? 'Use arrow keys to navigate • Click image for fullscreen' : 'Utilisez les flèches pour naviguer • Cliquez sur l\'image pour plein écran'}</p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -954,6 +1317,161 @@ const Events = ({ language }: EventsProps) => {
             </div>
           )}
         </>
+      )}
+
+      {/* Premium Lightbox Modal with Fade-out UI */}
+      {lightboxOpen && selectedEvent && (
+        <div 
+          className="fixed inset-0 z-[70] bg-black/98 backdrop-blur-xl flex items-center justify-center"
+          onClick={closeLightbox}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+        >
+          {/* Minimal UI - Fades in on hover, fades out for immersion */}
+          <div className="absolute inset-0">
+            {/* Close Button - Always visible */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-primary/30 transition-all duration-300 hover:scale-110 z-30"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeLightbox();
+              }}
+            >
+              <X className="w-6 h-6" />
+            </Button>
+
+            {/* Media Counter - Always visible */}
+            {allMedia.length > 1 && (
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-purple-500/60 to-pink-500/60 text-white px-6 py-2 rounded-full backdrop-blur-md text-sm font-semibold border border-primary/30 shadow-lg z-30">
+                {lightboxIndex + 1} / {allMedia.length}
+              </div>
+            )}
+
+            {/* Navigation Arrows - Always visible */}
+            {allMedia.length > 1 && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute left-4 md:left-8 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-primary/30 transition-all duration-300 hover:scale-110 z-30 hover:border-primary/60"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    previousLightbox();
+                  }}
+                  style={{
+                    boxShadow: '0 0 20px hsl(285 85% 65% / 0.3)'
+                  }}
+                >
+                  <ChevronLeft className="w-8 h-8 md:w-10 md:h-10" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-4 md:right-8 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-primary/30 transition-all duration-300 hover:scale-110 z-30 hover:border-primary/60"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    nextLightbox();
+                  }}
+                  style={{
+                    boxShadow: '0 0 20px hsl(285 85% 65% / 0.3)'
+                  }}
+                >
+                  <ChevronRight className="w-8 h-8 md:w-10 md:h-10" />
+                </Button>
+              </>
+            )}
+          </div>
+
+          {/* Main Media Display */}
+          <div 
+            className="relative w-full h-full flex items-center justify-center p-4 md:p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {allMedia[lightboxIndex] && (
+              <div className="relative max-w-full max-h-full">
+                {allMedia[lightboxIndex].type === 'video' ? (
+                  <>
+                    <video
+                      src={allMedia[lightboxIndex].url}
+                      controls={!videoMuted}
+                      autoPlay
+                      loop
+                      playsInline
+                      className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                      muted={videoMuted}
+                    />
+                    {/* Mute/Unmute Toggle */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute bottom-4 right-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 hover:scale-110 z-30"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVideoMuted(!videoMuted);
+                      }}
+                    >
+                      {videoMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
+                    </Button>
+                  </>
+                ) : (
+                  <img
+                    src={allMedia[lightboxIndex].url}
+                    alt={`${selectedEvent.name} - Image ${lightboxIndex + 1}`}
+                    className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                    loading="eager"
+                  />
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Thumbnail Strip (Bottom) */}
+          {allMedia.length > 1 && (
+            <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 overflow-x-auto px-4 pb-2 scrollbar-hide">
+              {allMedia.map((media, index) => {
+                const isActive = index === lightboxIndex;
+                return (
+                  <button
+                    key={index}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLightboxIndex(index);
+                    }}
+                    className={`w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border-2 transition-all duration-200 flex-shrink-0 ${
+                      isActive 
+                        ? 'border-primary shadow-lg shadow-primary/50 scale-110 ring-2 ring-primary/50' 
+                        : 'border-white/30 hover:border-white/60 opacity-70 hover:opacity-100 hover:scale-105'
+                    }`}
+                  >
+                    {media.type === 'video' ? (
+                      <div className="relative w-full h-full">
+                        <video
+                          src={media.url}
+                          className="w-full h-full object-cover"
+                          muted
+                          playsInline
+                        />
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                          <Play className="w-3 h-3 md:w-4 md:h-4 text-white" />
+                        </div>
+                      </div>
+                    ) : (
+                      <img
+                        src={media.url}
+                        alt={`Thumbnail ${index + 1}`}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

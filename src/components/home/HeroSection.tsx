@@ -1,10 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import hero1 from "@/assets/1.jpg";
-import hero2 from "@/assets/2.jpg";
-import hero3 from "@/assets/3.jpg";
 import { useNavigate } from "react-router-dom";
 import TypewriterText from "./TypewriterText";
 
@@ -17,9 +14,74 @@ interface SiteContentItem {
   content: any; // Using any for Supabase Json type
 }
 
+interface HeroSlide {
+  type: 'image' | 'video';
+  src: string;
+  alt?: string;
+  poster?: string;
+}
+
+// Video slide component with lazy loading
+const VideoSlide = ({ slide, isActive, isPageInteractive }: { slide: HeroSlide; isActive: boolean; isPageInteractive: boolean }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Load video when page becomes interactive
+  useEffect(() => {
+    if (videoRef.current && isPageInteractive) {
+      const video = videoRef.current;
+      // Switch preload to auto to start loading
+      video.preload = 'auto';
+      // Load the video source
+      video.load();
+      // Try to play
+      video.play().catch((err) => {
+        console.warn('Video autoplay prevented:', err);
+      });
+    }
+  }, [isPageInteractive]);
+
+  return (
+    <video
+      ref={videoRef}
+      src={slide.src}
+      poster={slide.poster}
+      className="w-full h-full object-cover"
+      autoPlay
+      loop
+      muted
+      playsInline
+      preload="none"
+      style={{ 
+        objectFit: 'cover',
+        width: '100%',
+        height: '100%'
+      }}
+      onLoadedData={(e) => {
+        // Ensure video is muted and ready - critical for autoplay
+        const video = e.currentTarget;
+        video.muted = true;
+        video.volume = 0;
+        // Force play to ensure autoplay works
+        video.play().catch((err) => {
+          console.warn('Video autoplay prevented:', err);
+        });
+      }}
+      onPlay={(e) => {
+        // Ensure video stays muted even if browser tries to unmute
+        const video = e.currentTarget;
+        if (!video.muted) {
+          video.muted = true;
+          video.volume = 0;
+        }
+      }}
+    />
+  );
+};
+
 const HeroSection = ({ language }: HeroSectionProps) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [heroContent, setHeroContent] = useState<any>({});
+  const [isPageInteractive, setIsPageInteractive] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -41,6 +103,30 @@ const HeroSection = ({ language }: HeroSectionProps) => {
     };
 
     fetchSiteContent();
+  }, []);
+
+  // Wait for page to be interactive before loading videos
+  // This ensures the page loads fast with poster images, then loads videos in background
+  useEffect(() => {
+    // Use requestIdleCallback if available for better performance, otherwise use setTimeout
+    const loadVideos = () => {
+      // Small delay to ensure page is fully rendered and interactive
+      setTimeout(() => {
+        setIsPageInteractive(true);
+      }, 200);
+    };
+
+    // Check if page is already interactive
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      loadVideos();
+    } else {
+      // Wait for page load
+      const handleLoad = () => {
+        loadVideos();
+      };
+      window.addEventListener('load', handleLoad);
+      return () => window.removeEventListener('load', handleLoad);
+    }
   }, []);
 
   const defaultContent = {
@@ -83,54 +169,54 @@ const HeroSection = ({ language }: HeroSectionProps) => {
   // Use Supabase content if available, otherwise fall back to default
   const content = heroContent[language] || defaultContent[language];
   
-  // Get hero images from Supabase content or use default
-  const defaultSlides = [
-    {
-      type: "image",
-      src: hero1,
-      alt: "Hero Image 1"
-    },
-    {
-      type: "image", 
-      src: hero2,
-      alt: "Hero Image 2"
-    },
-    {
-      type: "image",
-      src: hero3,
-      alt: "Hero Image 3"
-    }
-  ];
-  
-  const heroSlides = heroContent.images || defaultSlides;
+  // Get hero images from Supabase content
+  // If no images are set in Supabase, use empty array (will show placeholder or nothing)
+  const heroSlides = heroContent.images || [];
 
+  // Handle slide transitions with crossfade effect
   useEffect(() => {
+    if (heroSlides.length === 0) return;
+    
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % heroSlides.length);
-    }, 5000);
+    }, 6000); // 6 seconds per slide for better video viewing
+    
     return () => clearInterval(timer);
   }, [heroSlides.length]);
 
 
   return (
     <section className="relative h-screen flex items-center justify-center overflow-hidden bg-gradient-dark">
-      {/* Background Slideshow */}
+      {/* Background Slideshow with Crossfade Transition */}
       <div className="absolute inset-0 z-0">
-        {heroSlides.map((slide, index) => (
-          <div
-            key={index}
-            className={`absolute inset-0 transition-opacity duration-1000 ${
-              index === currentSlide ? "opacity-100" : "opacity-0"
-            }`}
-          >
-            <img
-              src={slide.src}
-              alt={slide.alt}
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-black/60" />
-          </div>
-        ))}
+        {heroSlides.length > 0 ? heroSlides.map((slide, index) => {
+          const isActive = index === currentSlide;
+          
+          return (
+            <div
+              key={index}
+              className={`absolute inset-0 transition-opacity duration-[2s] ease-in-out ${
+                isActive ? "opacity-100 z-10" : "opacity-0 z-0"
+              }`}
+            >
+              {slide.type === 'video' ? (
+                <VideoSlide slide={slide} isActive={isActive} isPageInteractive={isPageInteractive} />
+              ) : (
+                <img
+                  src={slide.src}
+                  alt={slide.alt || `Hero slide ${index + 1}`}
+                  className="w-full h-full object-cover"
+                  style={{ objectFit: 'cover' }}
+                  loading={isActive ? 'eager' : 'lazy'}
+                />
+              )}
+              <div className="absolute inset-0 bg-black/60" />
+            </div>
+          );
+        }) : (
+          // Fallback when no slides are available
+          <div className="absolute inset-0 bg-gradient-dark" />
+        )}
       </div>
 
       {/* Animated Background Elements */}
@@ -162,9 +248,10 @@ const HeroSection = ({ language }: HeroSectionProps) => {
             {content?.subtitle || defaultContent[language].subtitle}
           </p>
           
-          <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto animate-fade-in-up" style={{ animationDelay: "0.4s" }}>
+          {/* Description text removed for testing */}
+          {/* <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto animate-fade-in-up" style={{ animationDelay: "0.4s" }}>
             {content?.description || defaultContent[language].description}
-          </p>
+          </p> */}
 
           <div className="flex justify-center items-center animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
             <Button
@@ -184,21 +271,23 @@ const HeroSection = ({ language }: HeroSectionProps) => {
       </div>
 
       {/* Slide Indicators */}
-      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20">
-        <div className="flex space-x-2">
-          {heroSlides.map((_, index) => (
-            <button
-              key={index}
-              onClick={() => setCurrentSlide(index)}
-              className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                index === currentSlide
-                  ? "bg-primary scale-125"
-                  : "bg-white/30 hover:bg-white/50"
-              }`}
-            />
-          ))}
+      {heroSlides.length > 0 && (
+        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20">
+          <div className="flex space-x-2">
+            {heroSlides.map((_, index) => (
+              <button
+                key={index}
+                onClick={() => setCurrentSlide(index)}
+                className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                  index === currentSlide
+                    ? "bg-primary scale-125"
+                    : "bg-white/30 hover:bg-white/50"
+                }`}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Scroll Indicator */}
       <div className="absolute bottom-8 right-8 z-20 animate-bounce">

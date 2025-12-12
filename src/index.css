@@ -1,40 +1,26 @@
-/* Current Fonts */
+/* All @import statements must be at the very top, before any other CSS rules */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap");
-
-/* Alternative Font Options for Testing */
-/* Option 1: Modern & Bold */
 @import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Work+Sans:wght@300;400;500;600;700&display=swap");
-
-/* Option 2: Clean & Contemporary */
 @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=DM+Sans:wght@300;400;500;600;700&display=swap");
-
-/* Option 3: Geometric & Modern */
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&display=swap");
-
-/* Option 4: Energetic & Dynamic */
 @import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap");
-
-/* Option 5: Bold & Impactful */
 @import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800&display=swap");
-
-/* Option 6: Bold & Playful - Great for Events */
 @import url("https://fonts.googleapis.com/css2?family=Bungee&family=Raleway:wght@300;400;500;600;700;800&display=swap");
-
-/* Option 7: Energetic & Dynamic */
 @import url("https://fonts.googleapis.com/css2?family=Righteous&family=Nunito:wght@300;400;500;600;700;800&display=swap");
-
-/* Option 8: Futuristic & Modern */
 @import url("https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700;800;900&family=Rubik:wght@300;400;500;600;700;800&display=swap");
-
-/* Option 9: Bold & Impactful */
 @import url("https://fonts.googleapis.com/css2?family=Anton&family=Source+Sans+Pro:wght@300;400;600;700&display=swap");
-
-/* Option 10: Modern & Geometric */
 @import url("https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&display=swap");
-
-/* Option 11: Josefin Sans - Elegant & Modern */
 @import url("https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&display=swap");
+
+/* Custom Andiamo Font */
+@font-face {
+  font-family: "AndiamoFont";
+  src: url("/fonts/AndiamoFont.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
 
 @tailwind base;
 @tailwind components;
@@ -189,14 +175,14 @@ All colors MUST be HSL.
 @layer base {
   * {
     @apply border-border;
-    /* Apply Josefin Sans globally to ALL elements - buttons, footer, navbar, everything */
-    font-family: "Josefin Sans", sans-serif;
+    /* Apply AndiamoFont globally to ALL elements - buttons, footer, navbar, everything */
+    font-family: "AndiamoFont", sans-serif;
   }
 
-  body {
+  html, body {
     @apply bg-background text-foreground;
-    font-family: "Josefin Sans", sans-serif; /* User requested - Elegant & Modern */
-    font-weight: 400;
+    font-family: "AndiamoFont", sans-serif;
+    font-weight: normal;
     letter-spacing: 0.025em;
     line-height: 1.6;
   }
@@ -222,6 +208,25 @@ All colors MUST be HSL.
   /* Glass Effect */
   .glass {
     @apply backdrop-blur-md bg-card/20 border border-border/30;
+  }
+  
+  /* Transparent Navbar */
+  .nav-transparent {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
+  
+  /* Force transparent navbar - more specific */
+  nav.nav-transparent,
+  nav.nav-transparent * {
+    background: transparent !important;
+    background-color: transparent !important;
+  }
+  
+  /* Ensure nav element itself has no background */
+  nav.fixed {
+    background: transparent !important;
+    background-color: transparent !important;
   }
   
   /* Animated Gradient Background */
@@ -466,6 +471,171 @@ All colors MUST be HSL.
 
 .animate-page-intro {
   animation: page-intro 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Premium Modal Animations */
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(100%) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes modal-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(100%) scale(0.98);
+  }
+}
+
+@keyframes backdrop-blur-in {
+  from {
+    backdrop-filter: blur(0px);
+    background: rgba(0, 0, 0, 0);
+  }
+  to {
+    backdrop-filter: blur(20px);
+    background: rgba(0, 0, 0, 0.85);
+  }
+}
+
+@keyframes backdrop-blur-out {
+  from {
+    backdrop-filter: blur(20px);
+    background: rgba(0, 0, 0, 0.85);
+  }
+  to {
+    backdrop-filter: blur(0px);
+    background: rgba(0, 0, 0, 0);
+  }
+}
+
+@keyframes card-scale-up {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes content-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes overlay-enter {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(8px);
+  }
+}
+
+@keyframes overlay-exit {
+  from {
+    opacity: 1;
+    backdrop-filter: blur(8px);
+  }
+  to {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+}
+
+@keyframes card-scale-feedback {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes blur-to-sharp {
+  from {
+    filter: blur(20px);
+    opacity: 0;
+  }
+  to {
+    filter: blur(0px);
+    opacity: 1;
+  }
+}
+
+@keyframes content-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes neon-glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px hsl(285 85% 65% / 0.3), 0 0 40px hsl(285 85% 65% / 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px hsl(285 85% 65% / 0.5), 0 0 60px hsl(285 85% 65% / 0.3);
+  }
+}
+
+.animate-modal-enter {
+  animation: modal-enter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-modal-exit {
+  animation: modal-exit 0.4s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards;
+}
+
+.animate-overlay-enter {
+  animation: overlay-enter 0.3s ease-out forwards;
+}
+
+.animate-overlay-exit {
+  animation: overlay-exit 0.3s ease-out forwards;
+}
+
+.animate-card-feedback {
+  animation: card-scale-feedback 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.animate-blur-to-sharp {
+  animation: blur-to-sharp 0.8s ease-out forwards;
+}
+
+.animate-content-fade-in {
+  animation: content-fade-in-up 0.6s ease-out forwards;
+}
+
+.animate-neon-glow {
+  animation: neon-glow-pulse 3s ease-in-out infinite;
 }
 
 @keyframes slideInScale {
@@ -890,4 +1060,17 @@ All colors MUST be HSL.
 .theme-particle {
   user-select: none;
   pointer-events: none;
+}
+
+/* Logo Styles */
+.logo {
+  height: 220px;
+  width: auto;
+  display: block;
+}
+
+@media (max-width: 480px) {
+  .logo {
+    height: 180px;
+  }
 }

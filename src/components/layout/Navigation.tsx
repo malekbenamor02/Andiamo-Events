@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Menu, X, MessageCircle, Home, Calendar, Info, Users, Mail, Instagram } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,7 +29,6 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
   const [navigationContent, setNavigationContent] = useState<NavigationContent>({});
   const [contactInfo, setContactInfo] = useState<ContactInfo>({});
   const location = useLocation();
-  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchContent = async () => {
@@ -83,27 +82,13 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <nav className="fixed top-0 w-full z-50 glass border-b border-border/20">
+    <nav className="fixed top-0 w-full z-50 backdrop-blur-2xl border-b border-border/20 nav-transparent">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <button
-            className="flex items-center space-x-2 focus:outline-none"
-            onClick={() => {
-              if (location.pathname === "/") {
-                // Just scroll to top, don't reload to prevent refresh loops
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              } else {
-                navigate("/");
-              }
-            }}
-            style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer' }}
-            aria-label="Go to home"
-          >
-            <div className="text-2xl font-heading font-bold text-gradient-neon">
-              ANDIAMO EVENTS
-            </div>
-          </button>
+          <Link to="/" className="flex items-center focus:outline-none" aria-label="Go to home">
+            <img src="/logo.svg" alt="Andiamo Events Logo" className="logo" />
+          </Link>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
@@ -155,7 +140,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
 
         {/* Mobile Navigation */}
         {isOpen && (
-          <div className="md:hidden absolute top-16 left-0 right-0 glass border-b border-border/20 p-4">
+          <div className="md:hidden absolute top-16 left-0 right-0 backdrop-blur-2xl border-b border-border/20 p-4 nav-transparent">
             <div className="flex flex-col space-y-4">
               {navigation.map((item) => {
                 let Icon = null;
