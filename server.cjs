@@ -258,6 +258,57 @@ app.get('/api/test-supabase', async (req, res) => {
   }
 });
 
+// Email tracking pixel endpoint
+// This endpoint is called when an email is opened (via tracking pixel)
+// Returns a 1x1 transparent PNG image and logs the email open event
+app.get('/api/track-email', async (req, res) => {
+  try {
+    const { ambassador_id, email_type } = req.query;
+
+    // Validate required parameters
+    if (!ambassador_id || !email_type) {
+      // Still return image even if params are missing (silent fail for tracking)
+      return res.type('image/png').send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+    }
+
+    // Validate email_type
+    if (!['approval', 'rejection', 'reset'].includes(email_type)) {
+      return res.type('image/png').send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+    }
+
+    // Log the email open event (if supabase is available)
+    if (supabase) {
+      try {
+        const userAgent = req.get('user-agent') || null;
+        const ipAddress = req.ip || req.connection.remoteAddress || null;
+
+        await supabase
+          .from('email_tracking')
+          .insert({
+            ambassador_id: ambassador_id,
+            email_type: email_type,
+            user_agent: userAgent,
+            ip_address: ipAddress,
+            opened_at: new Date().toISOString()
+          });
+      } catch (trackingError) {
+        // Silently fail tracking - don't break email rendering
+        console.error('Email tracking error (non-fatal):', trackingError);
+      }
+    }
+
+    // Return 1x1 transparent PNG image
+    // Base64 encoded 1x1 transparent PNG
+    const transparentPixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    res.type('image/png').send(transparentPixel);
+  } catch (error) {
+    // Always return the image even on error (silent fail for tracking)
+    console.error('Email tracking endpoint error:', error);
+    const transparentPixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    res.type('image/png').send(transparentPixel);
+  }
+});
+
 // Admin login endpoint
 app.post('/api/admin-login', async (req, res) => {
   try {

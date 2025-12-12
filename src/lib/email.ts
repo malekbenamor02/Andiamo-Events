@@ -20,7 +20,7 @@ interface AmbassadorData {
 
 // Email templates
 export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string, ambassadorId?: string): EmailConfig => {
-  const subject = "🎉 Welcome to Andiamo Events - Your Application Has Been Approved!";
+  const subject = "Welcome to Andiamo Events - Your Ambassador Journey Begins";
   
   // Create tracking pixel URL (only if ambassadorId is valid)
   let trackingPixel = '';
@@ -50,7 +50,6 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
       <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
       <style>
-        /* Force dark mode colors - prevent email clients from overriding */
         :root {
           color-scheme: dark light;
           supported-color-schemes: dark light;
@@ -88,11 +87,6 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           width: 200%;
           height: 200%;
           background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-          animation: pulse 4s ease-in-out infinite;
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(1.1); }
         }
         .header-content {
           position: relative;
@@ -115,21 +109,16 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           margin: 15px 0 10px;
           text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
         }
-        .header h2 {
-          font-size: 18px;
-          font-weight: 400;
-          color: rgba(255, 255, 255, 0.95);
-          margin-top: 10px;
-        }
         .content {
-          padding: 40px;
+          padding: 45px 40px;
           background: hsl(218, 23%, 12%);
         }
         .greeting {
-          font-size: 18px;
+          font-size: 20px;
           color: #ffffff;
           margin-bottom: 25px;
           font-weight: 500;
+          line-height: 1.6;
         }
         .greeting strong {
           color: hsl(285, 85%, 65%);
@@ -138,171 +127,130 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
         .intro-text {
           font-size: 16px;
           color: #d0d0d0;
-          margin-bottom: 30px;
+          margin-bottom: 25px;
           line-height: 1.8;
         }
-        .credentials-card {
-          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
-          border: 1px solid hsl(285, 85%, 65%, 0.3);
-          border-radius: 12px;
-          padding: 25px;
-          margin: 30px 0;
-          box-shadow: 0 0 20px rgba(185, 85, 211, 0.1), inset 0 0 20px rgba(185, 85, 211, 0.05);
-        }
-        .credentials-card h3 {
-          font-family: 'Orbitron', sans-serif;
-          font-size: 18px;
+        .intro-text strong {
           color: hsl(195, 100%, 50%);
-          margin-bottom: 20px;
-          display: flex;
-          align-items: center;
-          gap: 10px;
+          font-weight: 600;
         }
-        .credential-item {
-          margin: 15px 0;
-          font-size: 15px;
-          color: #e0e0e0;
+        .credentials-section {
+          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
+          border: 2px solid hsl(285, 85%, 65%, 0.3);
+          border-radius: 12px;
+          padding: 30px;
+          margin: 35px 0;
+          box-shadow: 0 0 30px rgba(185, 85, 211, 0.15), inset 0 0 20px rgba(185, 85, 211, 0.05);
         }
-        .credential-item strong {
-          color: #ffffff;
-          display: block;
-          margin-bottom: 5px;
+        .credentials-section h2 {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 20px;
+          color: hsl(195, 100%, 50%);
+          margin-bottom: 25px;
+          text-align: center;
+          letter-spacing: 0.5px;
+        }
+        .credential-row {
+          margin: 20px 0;
+          padding: 15px 0;
+          border-bottom: 1px solid hsl(218, 23%, 25%);
+        }
+        .credential-row:last-child {
+          border-bottom: none;
+        }
+        .credential-label {
+          font-size: 13px;
+          color: #b0b0b0;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          margin-bottom: 8px;
           font-weight: 600;
         }
         .credential-value {
           background: hsl(218, 23%, 8%);
-          padding: 10px 15px;
+          padding: 12px 18px;
           border-radius: 8px;
           font-family: 'Courier New', monospace;
           color: hsl(195, 100%, 50%);
-          border: 1px solid hsl(195, 100%, 50%, 0.2);
-          display: inline-block;
-          margin-top: 5px;
+          border: 1px solid hsl(195, 100%, 50%, 0.3);
+          display: block;
+          font-size: 16px;
+          font-weight: 600;
+          word-break: break-all;
+          letter-spacing: 0.5px;
         }
-        .email-copy {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          color: hsl(195, 100%, 50%);
-          text-decoration: none;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          padding: 8px 12px;
-          border-radius: 6px;
-          background: hsl(218, 23%, 15%);
-          border: 1px solid hsl(195, 100%, 50%, 0.2);
-        }
-        .email-copy:hover {
+        .security-note {
           background: hsl(218, 23%, 18%);
-          border-color: hsl(195, 100%, 50%);
-          transform: scale(1.05);
+          border-left: 4px solid hsl(330, 100%, 65%);
+          border-radius: 8px;
+          padding: 18px 20px;
+          margin: 25px 0;
+          font-size: 14px;
+          color: #d0d0d0;
+          line-height: 1.7;
         }
-        .email-copy-icon {
-          width: 16px;
-          height: 16px;
-          fill: currentColor;
+        .security-note strong {
+          color: hsl(330, 100%, 65%);
+          font-weight: 600;
         }
-        .button-container {
+        .cta-container {
           text-align: center;
-          margin: 35px 0;
+          margin: 40px 0;
         }
         .cta-button {
           display: inline-block;
           background: linear-gradient(135deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 100%);
           color: #ffffff;
-          padding: 16px 40px;
+          padding: 18px 45px;
           text-decoration: none;
           border-radius: 10px;
-          font-weight: 600;
+          font-weight: 700;
           font-size: 16px;
-          letter-spacing: 0.5px;
-          box-shadow: 0 4px 20px rgba(185, 85, 211, 0.4), 0 0 30px rgba(0, 195, 255, 0.2);
-          transition: all 0.3s ease;
+          letter-spacing: 1px;
+          box-shadow: 0 4px 25px rgba(185, 85, 211, 0.4), 0 0 30px rgba(0, 195, 255, 0.2);
           text-transform: uppercase;
           font-family: 'Orbitron', sans-serif;
+          transition: all 0.3s ease;
         }
-        .cta-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 30px rgba(185, 85, 211, 0.6), 0 0 40px rgba(0, 195, 255, 0.3);
-        }
-        .features-card {
-          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
-          border-left: 4px solid hsl(285, 85%, 65%);
-          border-radius: 12px;
-          padding: 25px;
-          margin: 30px 0;
-          box-shadow: 0 0 20px rgba(185, 85, 211, 0.1);
-        }
-        .features-card h3 {
-          font-family: 'Orbitron', sans-serif;
-          font-size: 20px;
-          color: hsl(285, 85%, 65%);
-          margin-bottom: 20px;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-        .features-list {
-          list-style: none;
-          padding: 0;
-        }
-        .features-list li {
-          padding: 12px 0;
-          color: #d0d0d0;
-          font-size: 15px;
-          border-bottom: 1px solid hsl(218, 23%, 20%);
-        }
-        .features-list li:last-child {
-          border-bottom: none;
-        }
-        .features-list li::before {
-          content: '✓';
-          color: hsl(195, 100%, 50%);
-          font-weight: bold;
-          margin-right: 12px;
-          font-size: 18px;
-        }
-        .commission-section {
-          margin: 30px 0;
-        }
-        .commission-section h3 {
-          font-family: 'Orbitron', sans-serif;
-          font-size: 20px;
-          color: hsl(330, 100%, 65%);
-          margin-bottom: 20px;
-        }
-        .commission-list {
-          list-style: none;
-          padding: 0;
-        }
-        .commission-list li {
-          padding: 12px 0;
-          color: #d0d0d0;
-          font-size: 15px;
-          border-bottom: 1px solid hsl(218, 23%, 20%);
-        }
-        .commission-list li:last-child {
-          border-bottom: none;
-        }
-        .commission-list li strong {
-          color: hsl(330, 100%, 65%);
-        }
-        .closing {
-          margin-top: 35px;
+        .closing-section {
+          margin-top: 40px;
           padding-top: 30px;
           border-top: 1px solid hsl(218, 23%, 20%);
-          color: #d0d0d0;
+        }
+        .closing-text {
           font-size: 15px;
+          color: #d0d0d0;
           line-height: 1.8;
+          margin-bottom: 25px;
         }
         .signature {
-          margin-top: 20px;
+          margin-top: 25px;
           color: #ffffff;
           font-weight: 600;
+          font-size: 16px;
         }
         .signature strong {
           color: hsl(285, 85%, 65%);
           font-family: 'Orbitron', sans-serif;
+          font-size: 18px;
+          letter-spacing: 1px;
+        }
+        .contact-info {
+          background: hsl(218, 23%, 15%);
+          border-radius: 10px;
+          padding: 20px;
+          margin-top: 25px;
+          text-align: center;
+        }
+        .contact-info p {
+          font-size: 14px;
+          color: #c0c0c0;
+          margin: 8px 0;
+        }
+        .contact-info a {
+          color: hsl(195, 100%, 50%);
+          text-decoration: none;
+          font-weight: 600;
         }
         .footer {
           background: hsl(218, 23%, 8%);
@@ -310,58 +258,20 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           text-align: center;
           border-top: 1px solid hsl(218, 23%, 20%);
         }
+        .footer-brand {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 16px;
+          color: hsl(285, 85%, 65%);
+          margin-bottom: 12px;
+          letter-spacing: 2px;
+          font-weight: 700;
+        }
         .footer-text {
           color: #888;
           font-size: 13px;
-          margin: 0;
+          margin: 6px 0;
+          line-height: 1.6;
         }
-        .footer-brand {
-          font-family: 'Orbitron', sans-serif;
-          font-size: 14px;
-          color: hsl(285, 85%, 65%);
-          margin-bottom: 10px;
-          letter-spacing: 1px;
-        }
-        /* Dark mode support - ensure colors work in both light and dark modes */
-        @media (prefers-color-scheme: dark) {
-          body {
-            background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important;
-            color: #e0e0e0 !important;
-          }
-          .email-wrapper {
-            background: hsl(218, 23%, 12%) !important;
-          }
-          .content {
-            background: hsl(218, 23%, 12%) !important;
-            color: #e0e0e0 !important;
-          }
-          .greeting {
-            color: #ffffff !important;
-          }
-          .intro-text, .message-text {
-            color: #d0d0d0 !important;
-          }
-          .credentials-card, .features-card, .appreciation-card, .future-opportunity {
-            background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%) !important;
-          }
-          .footer {
-            background: hsl(218, 23%, 8%) !important;
-          }
-          .footer-text {
-            color: #888 !important;
-          }
-        }
-        /* Light mode fallback - ensure readability if dark mode is disabled */
-        @media (prefers-color-scheme: light) {
-          body {
-            background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important;
-            color: #e0e0e0 !important;
-          }
-          .email-wrapper {
-            background: hsl(218, 23%, 12%) !important;
-          }
-        }
-        /* Mobile responsive */
         @media only screen and (max-width: 600px) {
           .email-wrapper {
             border-radius: 0;
@@ -370,13 +280,16 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
             padding: 40px 25px;
           }
           .header h1 {
-            font-size: 24px;
+            font-size: 26px;
           }
           .content {
-            padding: 30px 25px;
+            padding: 35px 25px;
           }
           .logo {
             font-size: 22px;
+          }
+          .credentials-section {
+            padding: 25px 20px;
           }
         }
       </style>
@@ -386,81 +299,68 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
         <div class="header">
           <div class="header-content">
             <div class="logo">ANDIAMO EVENTS</div>
-          <h1>🎉 Congratulations!</h1>
-          <h2>Your Ambassador Application Has Been Approved</h2>
+            <h1>Welcome Aboard</h1>
           </div>
         </div>
         
-        <div class="content" style="background: hsl(218, 23%, 12%) !important; color: #e0e0e0 !important; padding: 40px;">
+        <div class="content" style="background: hsl(218, 23%, 12%) !important; color: #e0e0e0 !important; padding: 45px 40px;">
           <p class="greeting">Dear <strong>${ambassador.fullName}</strong>,</p>
           
           <p class="intro-text">
-            We're thrilled to welcome you to the Andiamo family! After careful review, we're excited to inform you that your ambassador application has been approved. You're now part of Tunisia's premier nightlife community.
+            We are pleased to inform you that your ambassador application has been accepted. You are now an integral part of the Andiamo Events community—a curated platform that represents the energy, trust, and cultural essence of Tunisia's premier nightlife experience.
           </p>
           
-          <div class="credentials-card">
-            <h3>🔐 Your Login Credentials</h3>
-            <div class="credential-item">
-              <strong>Username (Phone):</strong>
-              <span class="credential-value">${ambassador.phone}</span>
+          <p class="intro-text">
+            As an Andiamo ambassador, you represent more than a role—you embody the spirit of connection, trust, and the vibrant nightlife culture that defines our brand. Your commitment to excellence and your ability to connect with our community makes you an essential part of our journey.
+          </p>
+          
+          <div class="credentials-section">
+            <h2>Your Login Credentials</h2>
+            
+            <div class="credential-row">
+              <div class="credential-label">Phone Number</div>
+              <div class="credential-value">${ambassador.phone}</div>
             </div>
-            <div class="credential-item">
-              <strong>Password:</strong>
-              <span class="credential-value">${ambassador.password}</span>
-            </div>
-            <div class="credential-item">
-              <strong>Login URL:</strong>
-              <a href="${loginUrl}" style="color: hsl(195, 100%, 50%); text-decoration: none; word-break: break-all;">${loginUrl}</a>
+            
+            <div class="credential-row">
+              <div class="credential-label">Temporary Password</div>
+              <div class="credential-value">${ambassador.password}</div>
             </div>
           </div>
           
-          <div class="button-container">
-            <a href="${loginUrl}" class="cta-button">Access Your Dashboard</a>
+          <div class="security-note">
+            <strong>Security Recommendation:</strong> For your account security, we recommend changing your password after your first login. You can update your password from your Ambassador Dashboard profile settings.
           </div>
           
-          <div class="features-card">
-            <h3>🎯 What You Can Do Now</h3>
-            <ul class="features-list">
-              <li>Access your personal ambassador dashboard</li>
-              <li>View upcoming events and ticket prices</li>
-              <li>Start selling tickets to your network</li>
-              <li>Track your sales and commissions in real-time</li>
-              <li>Earn rewards and exclusive perks</li>
-            </ul>
+          <div class="cta-container">
+            <a href="${loginUrl}" class="cta-button">Access Ambassador Dashboard</a>
           </div>
           
-          <div class="commission-section">
-            <h3>💰 Commission Structure</h3>
-            <ul class="commission-list">
-            <li><strong>Standard Tickets:</strong> 10% commission on each sale</li>
-            <li><strong>VIP Tickets:</strong> 15% commission on each sale</li>
-            <li><strong>Bonus:</strong> Extra rewards for top performers</li>
-          </ul>
-          </div>
-          
-          <div class="closing">
-            <p>If you have any questions or need assistance, please don't hesitate to contact us. We're here to support your success every step of the way.</p>
+          <div class="closing-section">
+            <p class="closing-text">
+              You are now part of an exclusive community that shapes Tunisia's nightlife landscape. We are committed to supporting your success and providing you with the tools and resources you need to thrive as an Andiamo ambassador.
+            </p>
+            
+            <p class="closing-text">
+              If you have any questions, need assistance, or want to connect with our team, we're here to support you every step of the way.
+            </p>
+            
+            <div class="contact-info">
+              <p>Need help? Contact us:</p>
+              <p><a href="mailto:support@andiamoevents.com">support@andiamoevents.com</a></p>
+            </div>
             
             <p class="signature">
               Best regards,<br>
-              <strong>The Andiamo Team</strong>
+              <strong>The Andiamo Events Team</strong>
             </p>
           </div>
         </div>
         
         <div class="footer" style="background: hsl(218, 23%, 8%) !important; padding: 30px 40px; text-align: center; border-top: 1px solid hsl(218, 23%, 20%);">
           <div class="footer-brand">ANDIAMO EVENTS</div>
-          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">© 2024 Andiamo Events. All rights reserved.</p>
-          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">Tunisia's Premier Nightlife Experience</p>
-          <p class="footer-text" style="margin-top: 15px; color: #888 !important; font-size: 13px; margin: 0;">
-            <a href="mailto:support@andiamoevents.com" class="email-copy" onclick="navigator.clipboard.writeText('support@andiamoevents.com'); this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z\'/></svg> Copied!'; setTimeout(() => { this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z\'/></svg> Copy Email'; }, 2000); return false;">
-              <svg class="email-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-              </svg>
-              Copy Email
-            </a>
-          </p>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 6px 0;">© 2024 Andiamo Events. All rights reserved.</p>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 6px 0;">Tunisia's Premier Nightlife Experience</p>
         </div>
       </div>
       ${trackingPixel}
@@ -497,7 +397,6 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
       <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
       <style>
-        /* Force dark mode colors - prevent email clients from overriding */
         :root {
           color-scheme: dark light;
           supported-color-schemes: dark light;
@@ -555,20 +454,16 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           color: #ffffff;
           margin: 15px 0 10px;
         }
-        .header-icon {
-          font-size: 48px;
-          margin-bottom: 15px;
-          opacity: 0.8;
-        }
         .content {
-          padding: 40px;
+          padding: 45px 40px;
           background: hsl(218, 23%, 12%);
         }
         .greeting {
-          font-size: 18px;
+          font-size: 20px;
           color: #ffffff;
           margin-bottom: 25px;
           font-weight: 500;
+          line-height: 1.6;
         }
         .greeting strong {
           color: hsl(285, 85%, 65%);
@@ -580,7 +475,7 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           margin-bottom: 25px;
           line-height: 1.8;
         }
-        .appreciation-card {
+        .acknowledgment-section {
           background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
           border-left: 4px solid hsl(195, 100%, 50%);
           border-radius: 12px;
@@ -588,13 +483,62 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           margin: 30px 0;
           box-shadow: 0 0 20px rgba(0, 195, 255, 0.1);
         }
-        .appreciation-card p {
+        .acknowledgment-section p {
           color: #d0d0d0;
           font-size: 15px;
           line-height: 1.8;
           margin: 0;
         }
-        .future-opportunity {
+        .decision-section {
+          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
+          border: 2px solid hsl(285, 85%, 65%, 0.3);
+          border-radius: 12px;
+          padding: 25px;
+          margin: 30px 0;
+          box-shadow: 0 0 20px rgba(185, 85, 211, 0.1);
+        }
+        .decision-section p {
+          color: #d0d0d0;
+          font-size: 15px;
+          line-height: 1.8;
+          margin: 0 0 15px 0;
+        }
+        .decision-section p:last-child {
+          margin-bottom: 0;
+        }
+        .reapply-section {
+          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
+          border: 2px solid hsl(285, 85%, 65%, 0.4);
+          border-radius: 12px;
+          padding: 25px;
+          margin: 30px 0;
+          box-shadow: 0 0 25px rgba(185, 85, 211, 0.15);
+        }
+        .reapply-section h3 {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 18px;
+          color: hsl(285, 85%, 65%);
+          margin-bottom: 15px;
+          font-weight: 600;
+        }
+        .reapply-section p {
+          color: #d0d0d0;
+          font-size: 15px;
+          line-height: 1.8;
+          margin: 10px 0;
+        }
+        .reapply-highlight {
+          background: hsl(218, 23%, 10%);
+          border-left: 3px solid hsl(285, 85%, 65%);
+          padding: 15px 20px;
+          margin: 15px 0;
+          border-radius: 8px;
+        }
+        .reapply-highlight strong {
+          color: hsl(285, 85%, 65%);
+          font-weight: 600;
+        }
+        .community-section {
           background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
           border-radius: 12px;
           padding: 25px;
@@ -602,34 +546,51 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           border: 1px solid hsl(285, 85%, 65%, 0.2);
           box-shadow: 0 0 20px rgba(185, 85, 211, 0.05);
         }
-        .future-opportunity h3 {
-          font-family: 'Orbitron', sans-serif;
-          font-size: 18px;
-          color: hsl(285, 85%, 65%);
-          margin-bottom: 15px;
-        }
-        .future-opportunity p {
+        .community-section p {
           color: #d0d0d0;
           font-size: 15px;
           line-height: 1.8;
           margin: 0;
         }
-        .closing {
-          margin-top: 35px;
+        .closing-section {
+          margin-top: 40px;
           padding-top: 30px;
           border-top: 1px solid hsl(218, 23%, 20%);
-          color: #d0d0d0;
+        }
+        .closing-text {
           font-size: 15px;
+          color: #d0d0d0;
           line-height: 1.8;
+          margin-bottom: 25px;
         }
         .signature {
-          margin-top: 20px;
+          margin-top: 25px;
           color: #ffffff;
           font-weight: 600;
+          font-size: 16px;
         }
         .signature strong {
           color: hsl(285, 85%, 65%);
           font-family: 'Orbitron', sans-serif;
+          font-size: 18px;
+          letter-spacing: 1px;
+        }
+        .contact-info {
+          background: hsl(218, 23%, 15%);
+          border-radius: 10px;
+          padding: 20px;
+          margin-top: 25px;
+          text-align: center;
+        }
+        .contact-info p {
+          font-size: 14px;
+          color: #c0c0c0;
+          margin: 8px 0;
+        }
+        .contact-info a {
+          color: hsl(195, 100%, 50%);
+          text-decoration: none;
+          font-weight: 600;
         }
         .footer {
           background: hsl(218, 23%, 8%);
@@ -637,58 +598,20 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           text-align: center;
           border-top: 1px solid hsl(218, 23%, 20%);
         }
+        .footer-brand {
+          font-family: 'Orbitron', sans-serif;
+          font-size: 16px;
+          color: hsl(285, 85%, 65%);
+          margin-bottom: 12px;
+          letter-spacing: 2px;
+          font-weight: 700;
+        }
         .footer-text {
           color: #888;
           font-size: 13px;
-          margin: 0;
+          margin: 6px 0;
+          line-height: 1.6;
         }
-        .footer-brand {
-          font-family: 'Orbitron', sans-serif;
-          font-size: 14px;
-          color: hsl(285, 85%, 65%);
-          margin-bottom: 10px;
-          letter-spacing: 1px;
-        }
-        /* Dark mode support - ensure colors work in both light and dark modes */
-        @media (prefers-color-scheme: dark) {
-          body {
-            background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important;
-            color: #e0e0e0 !important;
-          }
-          .email-wrapper {
-            background: hsl(218, 23%, 12%) !important;
-          }
-          .content {
-            background: hsl(218, 23%, 12%) !important;
-            color: #e0e0e0 !important;
-          }
-          .greeting {
-            color: #ffffff !important;
-          }
-          .message-text {
-            color: #d0d0d0 !important;
-          }
-          .appreciation-card, .future-opportunity {
-            background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%) !important;
-          }
-          .footer {
-            background: hsl(218, 23%, 8%) !important;
-          }
-          .footer-text {
-            color: #888 !important;
-          }
-        }
-        /* Light mode fallback - ensure readability if dark mode is disabled */
-        @media (prefers-color-scheme: light) {
-          body {
-            background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important;
-            color: #e0e0e0 !important;
-          }
-          .email-wrapper {
-            background: hsl(218, 23%, 12%) !important;
-          }
-        }
-        /* Mobile responsive */
         @media only screen and (max-width: 600px) {
           .email-wrapper {
             border-radius: 0;
@@ -700,7 +623,7 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
             font-size: 22px;
           }
           .content {
-            padding: 30px 25px;
+            padding: 35px 25px;
           }
           .logo {
             font-size: 22px;
@@ -713,58 +636,74 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
         <div class="header">
           <div class="header-content">
             <div class="logo">ANDIAMO EVENTS</div>
-            <div class="header-icon">📋</div>
-          <h1>Application Update</h1>
+            <h1>Application Update</h1>
           </div>
         </div>
         
-        <div class="content" style="background: hsl(218, 23%, 12%) !important; color: #e0e0e0 !important; padding: 40px;">
+        <div class="content" style="background: hsl(218, 23%, 12%) !important; color: #e0e0e0 !important; padding: 45px 40px;">
           <p class="greeting">Dear <strong>${ambassador.fullName}</strong>,</p>
           
           <p class="message-text">
-            Thank you for your interest in becoming an Andiamo ambassador and for taking the time to submit your application. We truly appreciate your enthusiasm and the effort you put into your submission.
+            Thank you for your interest in becoming an Andiamo ambassador and for the effort and time you invested in submitting your application. We genuinely appreciate your enthusiasm for joining our community and the consideration you've shown in this process.
           </p>
           
-          <div class="appreciation-card">
+          <div class="acknowledgment-section">
             <p>
-              After careful review of your application, we regret to inform you that we cannot approve your application at this time. This decision was not made lightly, and we reviewed each application thoroughly.
+              After careful consideration of your application, we regret to inform you that we are unable to approve your ambassador application at this time. Please know that this decision is part of our selective and continuously evolving recruitment process, which considers our current operational needs, regional balance, and capacity requirements—rather than a reflection on your individual qualifications or potential.
             </p>
           </div>
           
-          <p class="message-text">
-            We want you to know that we value your interest in our ambassador program and the passion you've shown for the Andiamo community.
-          </p>
-          
-          <div class="future-opportunity">
-            <h3>💫 Future Opportunities</h3>
+          <div class="decision-section">
             <p>
-              Our ambassador program continues to evolve, and we encourage you to stay connected with us. We may have opportunities that align better with your profile in the future. Keep an eye on our events and social media channels for updates.
+              We maintain a selective ambassador network to ensure we can provide the best support and resources to each member while maintaining the high standards that define the Andiamo Events experience.
+            </p>
+            <p>
+              Your profile remains valued in our system, and we appreciate the energy and commitment you've expressed toward our brand and community.
             </p>
           </div>
           
-          <div class="closing">
-            <p>We wish you the very best in your future endeavors and hope to see you at our events soon.</p>
+          <div class="reapply-section">
+            <h3>Future Application Opportunity</h3>
+            <p>
+              We are pleased to inform you that you are welcome to submit a new application after a 30-day period. This timeframe allows our ambassador network to evolve and gives us the opportunity to reassess our capacity and needs.
+            </p>
+            <div class="reapply-highlight">
+              <p style="margin: 0; color: #ffffff;">
+                <strong>You may reapply after 30 days</strong> from the date of this notification. We encourage you to keep an eye on our platform and consider submitting a new application when this period has elapsed.
+              </p>
+            </div>
+            <p>
+              This temporary pause should not be seen as a permanent decision, but rather as part of our strategic approach to building a strong, sustainable ambassador community.
+            </p>
+          </div>
+          
+          <div class="community-section">
+            <p>
+              We encourage you to stay connected with Andiamo Events and continue experiencing our events as a valued member of our community. Your engagement with our brand and presence at our gatherings remains important to us, and we look forward to seeing you at future events.
+            </p>
+          </div>
+          
+          <div class="closing-section">
+            <p class="closing-text">
+              Thank you again for your interest in joining the Andiamo ambassador program. We wish you all the best and hope to continue seeing you as part of our vibrant community.
+            </p>
+            
+            <div class="contact-info">
+              <p>Questions or concerns?</p>
+              <p><a href="mailto:support@andiamoevents.com">support@andiamoevents.com</a></p>
+            </div>
             
             <p class="signature">
               Best regards,<br>
-              <strong>The Andiamo Team</strong>
+              <strong>The Andiamo Events Team</strong>
             </p>
           </div>
         </div>
         
         <div class="footer" style="background: hsl(218, 23%, 8%) !important; padding: 30px 40px; text-align: center; border-top: 1px solid hsl(218, 23%, 20%);">
           <div class="footer-brand">ANDIAMO EVENTS</div>
-          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">© 2024 Andiamo Events. All rights reserved.</p>
-          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">Tunisia's Premier Nightlife Experience</p>
-          <p class="footer-text" style="margin-top: 15px; color: #888 !important; font-size: 13px; margin: 0;">
-            <a href="mailto:support@andiamoevents.com" class="email-copy" onclick="navigator.clipboard.writeText('support@andiamoevents.com'); this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z\'/></svg> Copied!'; setTimeout(() => { this.innerHTML='<svg class=\'email-copy-icon\' viewBox=\'0 0 24 24\'><path d=\'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z\'/></svg> Copy Email'; }, 2000); return false;">
-              <svg class="email-copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-              </svg>
-              Copy Email
-            </a>
-          </p>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 6px 0;">© 2024 Andiamo Events. All rights reserved.</p>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 6px 0;">Tunisia's Premier Nightlife Experience</p>
         </div>
       </div>
     </body>
