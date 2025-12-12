@@ -1128,17 +1128,6 @@ All colors MUST be HSL.
   will-change: transform, opacity;
 }
 
-@keyframes zoom-in {
-  from {
-    transform: scale(0);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
 @keyframes menu-overlay-in {
   from {
     opacity: 0;
