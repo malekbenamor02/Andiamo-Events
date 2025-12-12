@@ -2604,10 +2604,21 @@ app.get('/api/og-image', async (req, res) => {
     
     // Set headers for image response
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    // Facebook-friendly cache headers: short cache but allow revalidation
+    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600, must-revalidate');
     res.setHeader('Content-Length', imageData.byteLength);
     
-    // Return the image binary data
+    // Generate ETag for cache validation
+    const crypto = require('crypto');
+    const etag = crypto.createHash('md5').update(Buffer.from(imageData)).digest('hex');
+    res.setHeader('ETag', `"${etag}"`);
+    
+    // Handle If-None-Match (304 Not Modified)
+    if (req.headers['if-none-match'] === `"${etag}"`) {
+      return res.status(304).end();
+    }
+    
+    // Return the image binary data with 200 status
     return res.status(200).send(Buffer.from(imageData));
     
   } catch (error) {
