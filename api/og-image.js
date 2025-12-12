@@ -3,6 +3,7 @@
 // This endpoint always returns the latest image and never changes URL
 
 import { createClient } from '@supabase/supabase-js';
+import { createHash } from 'crypto';
 
 export default async (req, res) => {
   // Set CORS headers
@@ -73,8 +74,7 @@ export default async (req, res) => {
     res.setHeader('Content-Length', imageData.byteLength);
     
     // Generate ETag for cache validation
-    const crypto = require('crypto');
-    const etag = crypto.createHash('md5').update(Buffer.from(imageData)).digest('hex');
+    const etag = createHash('md5').update(Buffer.from(imageData)).digest('hex');
     res.setHeader('ETag', `"${etag}"`);
     
     // Handle If-None-Match (304 Not Modified)
