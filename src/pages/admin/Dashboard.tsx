@@ -2002,8 +2002,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         throw new Error(result.error || 'Failed to delete OG image');
       }
 
-      // Clear the current OG image URL
+      // Wait a moment for deletion to propagate
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Clear the current OG image URL immediately
       setCurrentOGImageUrl(null);
+
+      // Reload the OG image URL to verify deletion (should be null now)
+      const verifyUrl = await getOGImageUrl();
+      if (verifyUrl) {
+        console.warn('OG image URL still exists after deletion - might be cached or deletion failed');
+        // Still set to null in UI, but log the issue
+        setCurrentOGImageUrl(null);
+      }
 
       toast({
         title: language === 'en' ? 'OG Image Deleted' : 'Image OG Supprimée',

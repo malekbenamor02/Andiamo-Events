@@ -59,8 +59,11 @@ export default async (req, res) => {
       }
     }
     
-    // If no image found, return 404
+    // If no image found, return 404 with no-cache headers
     if (!imageData) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       return res.status(404).json({ 
         error: 'OG image not found',
         message: 'Please upload an OG image from the admin dashboard'

@@ -78,15 +78,14 @@ export const uploadOGImage = async (file: File): Promise<OGImageUploadResult> =>
     const filePath = `og-image/current.${fileExtension === 'jpeg' ? 'jpg' : fileExtension}`;
 
     // Delete old file if it exists (in case format changed)
+    // List all files and filter for current.* files
     try {
-      const { data: existingFiles } = await supabase.storage
+      const { data: allFiles } = await supabase.storage
         .from('images')
-        .list('og-image', {
-          search: 'current'
-        });
+        .list('og-image');
 
-      if (existingFiles && existingFiles.length > 0) {
-        const filesToDelete = existingFiles
+      if (allFiles && allFiles.length > 0) {
+        const filesToDelete = allFiles
           .filter(f => f.name.startsWith('current.'))
           .map(f => `og-image/${f.name}`);
         
@@ -94,10 +93,12 @@ export const uploadOGImage = async (file: File): Promise<OGImageUploadResult> =>
           await supabase.storage
             .from('images')
             .remove(filesToDelete);
+          // Wait a moment for deletion to propagate
+          await new Promise(resolve => setTimeout(resolve, 300));
         }
       }
     } catch (deleteError) {
-      // Continue even if old file deletion fails
+      // Continue even if old file deletion fails - upsert will handle overwrite
       console.warn('Could not delete old OG image:', deleteError);
     }
 
@@ -171,12 +172,10 @@ export const getOGImageUrl = async (): Promise<string | null> => {
  */
 export const deleteOGImage = async (): Promise<OGImageUploadResult> => {
   try {
-    // Get all current.* files in og-image folder
-    const { data: existingFiles, error: listError } = await supabase.storage
+    // List ALL files in og-image folder (search parameter doesn't work reliably)
+    const { data: allFiles, error: listError } = await supabase.storage
       .from('images')
-      .list('og-image', {
-        search: 'current'
-      });
+      .list('og-image');
 
     if (listError) {
       console.error('Error listing OG image files:', listError);
@@ -186,25 +185,26 @@ export const deleteOGImage = async (): Promise<OGImageUploadResult> => {
       };
     }
 
-    if (!existingFiles || existingFiles.length === 0) {
+    if (!allFiles || allFiles.length === 0) {
+      // No files in folder - already deleted or never existed
       return {
-        success: false,
-        error: 'No OG image found to delete'
+        success: true // Return success since there's nothing to delete
       };
     }
 
-    // Delete all current.* files
-    const filesToDelete = existingFiles
+    // Filter for files that start with "current."
+    const filesToDelete = allFiles
       .filter(f => f.name.startsWith('current.'))
       .map(f => `og-image/${f.name}`);
     
     if (filesToDelete.length === 0) {
+      // No current.* files found
       return {
-        success: false,
-        error: 'No OG image files found to delete'
+        success: true // Return success since there's nothing to delete
       };
     }
 
+    // Delete all current.* files
     const { error: deleteError } = await supabase.storage
       .from('images')
       .remove(filesToDelete);
@@ -215,6 +215,20 @@ export const deleteOGImage = async (): Promise<OGImageUploadResult> => {
         success: false,
         error: deleteError.message
       };
+    }
+
+    // Verify deletion by checking if files still exist
+    // Wait a moment for deletion to propagate
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Double-check by trying to download one of the files
+    const verifyDelete = await supabase.storage
+      .from('images')
+      .download(filesToDelete[0]);
+    
+    if (verifyDelete.data) {
+      // File still exists - deletion might have failed
+      console.warn('OG image deletion verification failed - file still exists');
     }
 
     return {
