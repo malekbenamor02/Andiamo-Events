@@ -741,7 +741,7 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    const { applicationId, status } = req.body;
+    const { applicationId, status, reapply_delay_date } = req.body;
 
     if (!applicationId || !status) {
       return res.status(400).json({ error: 'applicationId and status are required' });
@@ -753,7 +753,17 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
 
     // Update application status (using anon key - RLS policies should allow this)
     // If RLS blocks it, we'll get a clear error message
-    console.log('Attempting to update application:', { applicationId, status, adminId: req.admin.id });
+    console.log('Attempting to update application:', { applicationId, status, reapply_delay_date, adminId: req.admin.id });
+    
+    // Prepare update data
+    const updatePayload = {
+      status: status
+    };
+    
+    // Include reapply_delay_date if provided (for rejected status)
+    if (reapply_delay_date) {
+      updatePayload.reapply_delay_date = reapply_delay_date;
+    }
     
     // Update application status
     // Note: Don't include updated_at if column doesn't exist
@@ -764,7 +774,7 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
     const result = await supabase
       .from('ambassador_applications')
       .update({ 
-        status: status,
+        ...updatePayload,
         updated_at: new Date().toISOString()
       })
       .eq('id', applicationId)
@@ -778,7 +788,7 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
       console.log('updated_at column not found, updating without it');
       const retryResult = await supabase
         .from('ambassador_applications')
-        .update({ status: status })
+        .update(updatePayload)
         .eq('id', applicationId)
         .select();
       

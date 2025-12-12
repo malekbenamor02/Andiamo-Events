@@ -48,7 +48,7 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
       <title>Welcome to Andiamo Events</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
       <style>
         :root {
           color-scheme: dark light;
@@ -56,7 +56,7 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+          font-family: 'Orbitron', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
           line-height: 1.7; 
           color: #e0e0e0; 
           background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%);
@@ -307,11 +307,15 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           <p class="greeting">Dear <strong>${ambassador.fullName}</strong>,</p>
           
           <p class="intro-text">
-            We are pleased to inform you that your ambassador application has been accepted. You are now an integral part of the Andiamo Events community—a curated platform that represents the energy, trust, and cultural essence of Tunisia's premier nightlife experience.
+            We are pleased to inform you that your ambassador application has been accepted.
           </p>
           
           <p class="intro-text">
-            As an Andiamo ambassador, you represent more than a role—you embody the spirit of connection, trust, and the vibrant nightlife culture that defines our brand. Your commitment to excellence and your ability to connect with our community makes you an essential part of our journey.
+            You are now part of the Andiamo Events community—a curated platform that represents the energy, trust, and cultural essence of Tunisia's premier nightlife experience.
+          </p>
+          
+          <p class="intro-text">
+            As an Andiamo ambassador, you embody the spirit of connection, trust, and the vibrant nightlife culture that defines our brand.
           </p>
           
           <div class="credentials-section">
@@ -338,11 +342,15 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           
           <div class="closing-section">
             <p class="closing-text">
-              You are now part of an exclusive community that shapes Tunisia's nightlife landscape. We are committed to supporting your success and providing you with the tools and resources you need to thrive as an Andiamo ambassador.
+              You are now part of an exclusive community that shapes Tunisia's nightlife landscape.
             </p>
             
             <p class="closing-text">
-              If you have any questions, need assistance, or want to connect with our team, we're here to support you every step of the way.
+              We are committed to supporting your success and providing you with the tools and resources you need to thrive.
+            </p>
+            
+            <p class="closing-text">
+              If you have any questions or need assistance, we're here to support you every step of the way.
             </p>
             
             <div class="contact-info">
@@ -395,7 +403,7 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
       <title>Application Update - Andiamo Events</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
       <style>
         :root {
           color-scheme: dark light;
@@ -403,7 +411,7 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+          font-family: 'Orbitron', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
           line-height: 1.7; 
           color: #e0e0e0; 
           background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%);
