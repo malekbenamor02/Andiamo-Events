@@ -19,6 +19,20 @@ export default async (req, res) => {
   }
   
   try {
+    // Verify admin authentication - REQUIRED for all admin actions
+    const { verifyAdminAuth } = await import('./authAdminMiddleware.js');
+    const authResult = await verifyAdminAuth(req);
+    
+    if (!authResult.valid) {
+      // Clear invalid token
+      res.clearCookie('adminToken', { path: '/' });
+      return res.status(authResult.statusCode || 401).json({
+        error: authResult.error,
+        reason: authResult.reason || 'Authentication required',
+        valid: false
+      });
+    }
+    
     // Parse request body - Vercel provides body directly or as stream
     let bodyData;
     

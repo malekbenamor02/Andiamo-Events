@@ -83,7 +83,8 @@ const Footer = ({ language }: FooterProps) => {
       contact: "Contact",
       links: "Quick Links",
       privacy: "Privacy Policy",
-      terms: "Terms of Service"
+      terms: "Terms of Service",
+      refund: "Refund & Cancellation Policy"
     },
     fr: {
       newsletter: "Restez informé de nos derniers événements",
@@ -96,7 +97,8 @@ const Footer = ({ language }: FooterProps) => {
       contact: "Contact",
       links: "Liens Rapides",
       privacy: "Politique de Confidentialité",
-      terms: "Conditions d'Utilisation"
+      terms: "Conditions d'Utilisation",
+      refund: "Politique de Remboursement et d'Annulation"
     }
   };
 
@@ -306,25 +308,50 @@ const Footer = ({ language }: FooterProps) => {
 
         {/* Bottom Bar */}
         <div className="mt-12 pt-8 border-t border-border/20">
-          <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-            <p className="text-muted-foreground text-sm">
-              © 2025 Andiamo Events. {content[language].rights} <span className="mx-2">|</span> Developed by
-              <a
-                href="https://www.instagram.com/malek.bamor/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-semibold text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1 ml-1"
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            {/* Copyright & Developer Credit */}
+            <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 text-sm">
+              <span className="text-muted-foreground">
+                © 2025 Andiamo Events. {content[language].rights}
+              </span>
+              <span className="hidden sm:inline text-border/50">|</span>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Developed by</span>
+                <a
+                  href="https://www.instagram.com/malek.bamor/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group inline-flex items-center gap-1.5 font-semibold text-primary hover:text-secondary transition-all duration-300 hover:gap-2"
+                >
+                  <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                    Malek Ben Amor
+                  </span>
+                  <Instagram className="w-4 h-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12" />
+                </a>
+              </div>
+            </div>
+            
+            {/* Legal Links */}
+            <div className="flex items-center gap-4 sm:gap-6 text-sm flex-wrap justify-center">
+              <RouterLink 
+                to="/privacy-policy" 
+                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
               >
-                Malek Ben Amor
-                <Instagram className="w-4 h-4 ml-1" />
-              </a>
-            </p>
-            <div className="flex space-x-6 text-sm">
-              <RouterLink to="/privacy-policy" className="text-muted-foreground hover:text-primary transition-colors">
                 {content[language].privacy}
               </RouterLink>
-              <RouterLink to="/terms" className="text-muted-foreground hover:text-primary transition-colors">
+              <span className="text-border/50 hidden sm:inline">•</span>
+              <RouterLink 
+                to="/terms" 
+                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
+              >
                 {content[language].terms}
+              </RouterLink>
+              <span className="text-border/50 hidden sm:inline">•</span>
+              <RouterLink 
+                to="/refund-policy" 
+                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
+              >
+                {content[language].refund}
               </RouterLink>
             </div>
           </div>

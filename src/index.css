@@ -342,6 +342,10 @@ All colors MUST be HSL.
     position: relative;
     z-index: 10;
   }
+  
+  .btn-language:hover {
+    background: white;
+  }
 }
 
 @layer utilities {
@@ -358,7 +362,7 @@ All colors MUST be HSL.
     background: var(--gradient-dark);
   }
   
-  /* Text Gradients */
+  /* Text Gradients - Neon Purple/Cyan/Pink */
   .text-gradient-primary {
     @apply text-transparent bg-clip-text;
     background-image: var(--gradient-primary);

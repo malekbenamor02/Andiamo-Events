@@ -185,7 +185,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
       "Dansez toute la Nuit",
       "Vivez la Fête Ultime",
       "Rejoignez la Révolution Nocturne",
-      "Là où la Musique Rencontre la Magie",
+      "Où la Musique Rencontre la Magie",
     ],
   };
 

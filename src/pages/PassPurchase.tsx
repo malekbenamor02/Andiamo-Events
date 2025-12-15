@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Link } from 'react-router-dom';
 import { Calendar, MapPin, Users, CreditCard, ShoppingCart, ArrowLeft, CheckCircle, XCircle, Wallet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -62,6 +64,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [processing, setProcessing] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const t = {
     en: {
@@ -101,6 +104,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       selectAtLeastOnePass: "Please select at least one pass",
       selectPaymentMethod: "Please select a payment method",
       villeRequired: "Ville is required when city is Sousse",
+      acceptTerms: "By placing this order, you agree to our",
+      termsLink: "Terms of Service",
+      refundLink: "Refund & Cancellation Policy",
+      termsRequired: "You must accept the Terms of Service and Refund & Cancellation Policy",
       orderConfirmation: "Order Confirmation",
       orderNumber: "Order Number",
       thankYou: "Thank you for your order!",
@@ -144,6 +151,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       selectAtLeastOnePass: "Veuillez sélectionner au moins un pass",
       selectPaymentMethod: "Veuillez sélectionner une méthode de paiement",
       villeRequired: "Le quartier est requis lorsque la ville est Sousse",
+      acceptTerms: "En passant cette commande, vous acceptez nos",
+      termsLink: "Conditions d'Utilisation",
+      refundLink: "Politique de Remboursement et d'Annulation",
+      termsRequired: "Vous devez accepter les Conditions d'Utilisation et la Politique de Remboursement et d'Annulation",
       orderConfirmation: "Confirmation de Commande",
       orderNumber: "Numéro de Commande",
       thankYou: "Merci pour votre commande!",
@@ -276,6 +287,11 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     // Check COD availability
     if (paymentMethod === 'cod' && customerInfo.city !== 'Sousse') {
       errors.paymentMethod = t[language].codNotAvailable;
+    }
+
+    // Validate terms acceptance
+    if (!termsAccepted) {
+      errors.termsAccepted = t[language].termsRequired;
     }
 
     setValidationErrors(errors);
@@ -863,6 +879,33 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                         </div>
                       </div>
                     </div>
+                    
+                    {/* Terms Acceptance */}
+                    <div className="mb-4">
+                      <div className="flex items-start space-x-2">
+                        <Checkbox
+                          id="terms"
+                          checked={termsAccepted}
+                          onCheckedChange={(checked) => setTermsAccepted(checked === true)}
+                          className={validationErrors.termsAccepted ? 'border-red-500' : ''}
+                        />
+                        <Label htmlFor="terms" className="text-sm leading-relaxed peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                          {t[language].acceptTerms}{' '}
+                          <Link to="/terms" className="text-primary hover:underline underline-offset-2">
+                            {t[language].termsLink}
+                          </Link>
+                          {' '}{language === 'en' ? 'and' : 'et'}{' '}
+                          <Link to="/refund-policy" className="text-primary hover:underline underline-offset-2">
+                            {t[language].refundLink}
+                          </Link>
+                          .
+                        </Label>
+                      </div>
+                      {validationErrors.termsAccepted && (
+                        <p className="text-sm text-red-500 mt-1">{validationErrors.termsAccepted}</p>
+                      )}
+                    </div>
+                    
                     <Button
                       type="submit"
                       disabled={processing}

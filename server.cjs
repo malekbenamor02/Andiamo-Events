@@ -136,7 +136,7 @@ const limiter = rateLimit({
 });
 app.use('/api/send-email', limiter);
 
-app.post('/api/send-email', async (req, res) => {
+app.post('/api/send-email', requireAdminAuth, async (req, res) => {
   try {
     const { to, subject, html } = req.body;
     
@@ -592,37 +592,10 @@ app.post('/api/verify-recaptcha', async (req, res) => {
 });
 
 // Update sales settings endpoint
-app.post('/api/update-sales-settings', async (req, res) => {
+app.post('/api/update-sales-settings', requireAdminAuth, async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
-    }
-
-    // Verify admin authentication
-    const token = req.cookies.adminToken;
-    if (!token) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    // Verify JWT token
-    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
-    let decoded;
-    try {
-      decoded = jwt.verify(token, jwtSecret);
-    } catch (jwtError) {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
-
-    // Verify admin exists
-    const { data: admin, error: adminError } = await supabase
-      .from('admins')
-      .select('id, email')
-      .eq('id', decoded.id)
-      .eq('email', decoded.email)
-      .single();
-
-    if (adminError || !admin) {
-      return res.status(401).json({ error: 'Invalid admin' });
     }
 
     // Get the enabled value from request body
@@ -1046,7 +1019,7 @@ function formatPhoneNumber(phone) {
 }
 
 // POST /api/send-sms - Send SMS broadcast
-app.post('/api/send-sms', async (req, res) => {
+app.post('/api/send-sms', requireAdminAuth, async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
@@ -1230,7 +1203,7 @@ app.post('/api/send-sms', async (req, res) => {
 });
 
 // GET /api/sms-balance - Check SMS balance (as per WinSMS documentation)
-app.get('/api/sms-balance', async (req, res) => {
+app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
   try {
     // Build URL according to WinSMS documentation
     const url = `${WINSMS_API_PATH}?action=check-balance&api_key=${WINSMS_API_KEY}&response=json`;
@@ -1330,7 +1303,7 @@ app.get('/api/sms-balance', async (req, res) => {
 });
 
 // POST /api/bulk-phones - Add bulk phone numbers
-app.post('/api/bulk-phones', async (req, res) => {
+app.post('/api/bulk-phones', requireAdminAuth, async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
@@ -1463,7 +1436,7 @@ app.post('/api/assign-order', async (req, res) => {
 });
 
 // POST /api/auto-reassign - Auto-reassign ignored orders
-app.post('/api/auto-reassign', async (req, res) => {
+app.post('/api/auto-reassign', requireAdminAuth, async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
@@ -2154,7 +2127,7 @@ app.post('/api/generate-qr-code', async (req, res) => {
 });
 
 // POST /api/generate-tickets-for-order - Generate tickets when order reaches PAID status
-app.post('/api/generate-tickets-for-order', async (req, res) => {
+app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) => {
   try {
     console.log('🎫 ========== TICKET GENERATION STARTED ==========');
     console.log('🎫 Ticket generation request received:', req.body);
@@ -2533,7 +2506,7 @@ app.post('/api/generate-tickets-for-order', async (req, res) => {
 });
 
 // Test email endpoint
-app.post('/api/test-email', async (req, res) => {
+app.post('/api/test-email', requireAdminAuth, async (req, res) => {
   try {
     // Check if email service is configured
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {

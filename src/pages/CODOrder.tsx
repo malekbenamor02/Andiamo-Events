@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -52,8 +52,10 @@ const CODOrder = ({ language }: CODOrderProps) => {
     quantity: "Quantity",
     standard: "Standard Pass",
     vip: "VIP Pass",
-    acceptTerms: "I accept the terms and conditions",
-    termsRequired: "You must accept the terms and conditions",
+    acceptTerms: "By placing this order, you agree to our",
+    termsLink: "Terms of Service",
+    refundLink: "Refund & Cancellation Policy",
+    termsRequired: "You must accept the Terms of Service and Refund & Cancellation Policy",
     submit: "Submit Order",
     processing: "Processing...",
     success: "Order submitted successfully!",
@@ -76,8 +78,10 @@ const CODOrder = ({ language }: CODOrderProps) => {
     quantity: "Quantité",
     standard: "Pass Standard",
     vip: "Pass VIP",
-    acceptTerms: "J'accepte les termes et conditions",
-    termsRequired: "Vous devez accepter les termes et conditions",
+    acceptTerms: "En passant cette commande, vous acceptez nos",
+    termsLink: "Conditions d'Utilisation",
+    refundLink: "Politique de Remboursement et d'Annulation",
+    termsRequired: "Vous devez accepter les Conditions d'Utilisation et la Politique de Remboursement et d'Annulation",
     submit: "Soumettre la Commande",
     processing: "Traitement...",
     success: "Commande soumise avec succès!",
@@ -393,8 +397,16 @@ const CODOrder = ({ language }: CODOrderProps) => {
                   onCheckedChange={(checked) => setFormData({ ...formData, termsAccepted: checked === true })}
                   className={errors.termsAccepted ? 'border-red-500' : ''}
                 />
-                <Label htmlFor="terms" className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  {t.acceptTerms}
+                <Label htmlFor="terms" className="text-sm leading-relaxed peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  {t.acceptTerms}{' '}
+                  <Link to="/terms" className="text-primary hover:underline underline-offset-2">
+                    {t.termsLink}
+                  </Link>
+                  {' '}{language === 'en' ? 'and' : 'et'}{' '}
+                  <Link to="/refund-policy" className="text-primary hover:underline underline-offset-2">
+                    {t.refundLink}
+                  </Link>
+                  .
                 </Label>
               </div>
               {errors.termsAccepted && (

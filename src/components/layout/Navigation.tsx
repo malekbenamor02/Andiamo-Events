@@ -1,7 +1,7 @@
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, MessageCircle, Home, Calendar, Info, Users, Mail, Instagram } from "lucide-react";
+import { Instagram, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -25,12 +25,10 @@ interface ContactInfo {
 }
 
 const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
-  const [isOpen, setIsOpen] = useState(false);
   const [navigationContent, setNavigationContent] = useState<NavigationContent>({});
   const [contactInfo, setContactInfo] = useState<ContactInfo>({});
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
-  const menuRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const fetchContent = async () => {
@@ -56,55 +54,6 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
 
     fetchContent();
   }, []);
-
-  // Handle click outside menu to close it (backup handler)
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      if (
-        isOpen &&
-        menuRef.current &&
-        buttonRef.current &&
-        !menuRef.current.contains(event.target as Node) &&
-        !buttonRef.current.contains(event.target as Node)
-      ) {
-        closeMenu();
-      }
-    };
-
-    if (isOpen) {
-      // Add a small delay to prevent immediate close on open
-      const timeoutId = setTimeout(() => {
-        document.addEventListener('mousedown', handleClickOutside);
-        document.addEventListener('touchstart', handleClickOutside);
-      }, 100);
-
-      return () => {
-        clearTimeout(timeoutId);
-        document.removeEventListener('mousedown', handleClickOutside);
-        document.removeEventListener('touchstart', handleClickOutside);
-      };
-    }
-  }, [isOpen]);
-
-  // Prevent body scroll when menu is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
-
-  const openMenu = () => {
-    setIsOpen(true);
-  };
-
-  const closeMenu = () => {
-    setIsOpen(false);
-  };
 
   const defaultNavigation = {
     en: [
@@ -132,163 +81,169 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
 
   const isActive = (path: string) => location.pathname === path;
 
+  const toggleMenu = () => {
+    setIsMenuOpen(prev => !prev);
+  };
+
   return (
-    <nav className="fixed top-0 w-full z-50 backdrop-blur-2xl border-b border-border/20 nav-transparent">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <Link to="/" className="flex items-center focus:outline-none" aria-label="Go to home">
-            <img src="/logo.svg" alt="Andiamo Events Logo" className="logo" />
-          </Link>
+    <>
+      <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            {/* Logo */}
+            <Link to="/" className="flex items-center focus:outline-none" aria-label="Go to home">
+              <img src="/logo.svg" alt="Andiamo Events Logo" className="logo" />
+            </Link>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
-            {navigation.map((item) => (
-              <Link
-                key={item.href}
-                to={item.href}
-                className={`text-sm font-medium transition-colors hover:text-primary ${
-                  isActive(item.href) 
-                    ? "text-primary" 
-                    : "text-foreground/80"
-                }`}
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex items-center space-x-8">
+              {navigation.map((item) => (
+                <Link
+                  key={item.href}
+                  to={item.href}
+                  className={`text-sm font-medium transition-colors ${
+                    isActive(item.href) 
+                      ? "text-primary" 
+                      : "text-white hover:text-primary"
+                  }`}
+                >
+                  {item.name}
+                </Link>
+              ))}
+            </div>
+
+            {/* Desktop Actions */}
+            <div className="hidden md:flex items-center space-x-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleLanguage}
+                className="btn-language"
               >
-                {item.name}
-              </Link>
-            ))}
-          </div>
+                {language.toUpperCase()}
+              </Button>
+              <Button
+                onClick={instagramClick}
+                className="btn-gradient"
+              >
+                <Instagram className="w-4 h-4 mr-2" />
+                Instagram
+              </Button>
+            </div>
 
-          {/* Desktop Actions */}
-          <div className="hidden md:flex items-center space-x-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleLanguage}
-              className="btn-language"
+            {/* Mobile Menu Button */}
+            <button
+              type="button"
+              onClick={toggleMenu}
+              className="md:hidden p-2 text-white hover:text-primary transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-white/10 active:scale-95"
+              style={{
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent',
+                cursor: 'pointer',
+                position: 'relative',
+                zIndex: 100,
+              }}
+              aria-label="Toggle menu"
+              aria-expanded={isMenuOpen}
             >
-              {language.toUpperCase()}
-            </Button>
-            <Button
-              onClick={instagramClick}
-              className="btn-gradient"
-            >
-              <Instagram className="w-4 h-4 mr-2" />
-              Instagram
-            </Button>
-          </div>
-
-          {/* Mobile menu button */}
-          <div className="md:hidden">
-            <Button
-              ref={buttonRef}
-              variant="ghost"
-              size="sm"
-              onClick={() => (isOpen ? closeMenu() : openMenu())}
-              className="relative z-50 transition-all duration-300"
-              aria-label={isOpen ? "Close menu" : "Open menu"}
-            >
-              <div className="relative w-5 h-5">
-                <Menu
-                  className={`absolute inset-0 w-5 h-5 transition-all duration-300 ${
-                    isOpen
-                      ? "opacity-0 rotate-90 scale-0"
-                      : "opacity-100 rotate-0 scale-100"
+              <div className="relative w-6 h-6">
+                <Menu 
+                  className={`absolute inset-0 w-6 h-6 transition-all duration-300 ${
+                    isMenuOpen ? 'opacity-0 rotate-90 scale-0' : 'opacity-100 rotate-0 scale-100'
                   }`}
                 />
-                <X
-                  className={`absolute inset-0 w-5 h-5 transition-all duration-300 ${
-                    isOpen
-                      ? "opacity-100 rotate-0 scale-100"
-                      : "opacity-0 -rotate-90 scale-0"
+                <X 
+                  className={`absolute inset-0 w-6 h-6 transition-all duration-300 ${
+                    isMenuOpen ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-0'
                   }`}
                 />
               </div>
-            </Button>
+            </button>
           </div>
         </div>
+      </nav>
 
-        {/* Mobile Navigation */}
-        <div
-          className={`md:hidden fixed inset-0 z-30 ${
-            isOpen ? "pointer-events-auto" : "pointer-events-none"
-          }`}
-        >
-          {/* Overlay - covers full screen and closes menu on click */}
+      {/* Mobile Menu - Outside nav to avoid stacking context */}
+      {isMenuOpen && (
+        <>
+          {/* Backdrop */}
           <div
-            className={`fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ease-out ${
-              isOpen ? "opacity-100" : "opacity-0"
-            }`}
-            onClick={closeMenu}
+            className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] animate-fade-in"
+            onClick={() => setIsMenuOpen(false)}
+            onTouchEnd={(e) => {
+              e.preventDefault();
+              setIsMenuOpen(false);
+            }}
+            style={{ 
+              touchAction: 'manipulation',
+              animation: 'fadeIn 0.3s ease-out',
+            }}
           />
-          {/* Menu Content */}
-          <div
-            ref={menuRef}
+          {/* Menu Panel */}
+          <div 
+            className="md:hidden fixed top-16 left-0 right-0 z-[90] shadow-2xl"
             onClick={(e) => {
-              // Close menu if clicking on empty space (not on content)
+              // Close if clicking on the menu panel itself (not on content)
               if (e.target === e.currentTarget) {
-                closeMenu();
+                setIsMenuOpen(false);
               }
             }}
-            className={`fixed top-16 left-0 right-0 bottom-0 backdrop-blur-2xl border-b border-border/20 nav-transparent z-40 overflow-y-auto ${
-              isOpen ? "animate-menu-slide-in" : "animate-menu-slide-out"
-            }`}
+            onTouchEnd={(e) => {
+              if (e.target === e.currentTarget) {
+                e.preventDefault();
+                setIsMenuOpen(false);
+              }
+            }}
+            style={{
+              touchAction: 'manipulation',
+              animation: 'slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+              maxHeight: 'calc(100vh - 4rem)',
+              overflow: 'hidden',
+            }}
           >
-            <div className="p-4" onClick={(e) => e.stopPropagation()}>
-              <div className="flex flex-col space-y-4">
-                {navigation.map((item, index) => {
-                  let Icon = null;
-                  if (item.href === "/") Icon = Home;
-                  else if (item.href === "/events") Icon = Calendar;
-                  else if (item.href === "/about") Icon = Info;
-                  else if (item.href === "/ambassador") Icon = Users;
-                  else if (item.href === "/contact") Icon = Mail;
-                  return (
-                    <Link
-                      key={item.href}
-                      to={item.href}
-                      onClick={closeMenu}
-                      className={`flex items-center gap-3 text-base font-medium transition-all duration-300 py-2 px-3 rounded-lg hover:bg-primary/10 hover:text-primary ${
-                        isOpen
-                          ? "animate-menu-item-in"
-                          : "opacity-0"
-                      } ${
-                        isActive(item.href) 
-                          ? "text-primary bg-primary/10" 
-                          : "text-foreground/80"
-                      }`}
-                      style={{
-                        animationDelay: isOpen ? `${index * 50}ms` : "0ms",
-                      }}
-                    >
-                      {Icon && <Icon className="w-5 h-5 flex-shrink-0" />}
-                      {item.name}
-                    </Link>
-                  );
-                })}
-                <div
-                  className={`flex items-center space-x-4 pt-4 border-t border-border/20 ${
-                    isOpen
-                      ? "animate-menu-item-in"
-                      : "opacity-0"
-                  }`}
+            <div 
+              className="backdrop-blur-xl border-b border-border/50 bg-background"
+            >
+              <div className="p-6 space-y-1">
+                {navigation.map((item, index) => (
+                  <Link
+                    key={item.href}
+                    to={item.href}
+                    onClick={() => setIsMenuOpen(false)}
+                    className={`block px-4 py-3.5 rounded-md text-base font-medium transition-all duration-300 ${
+                      isActive(item.href)
+                        ? "text-primary bg-card"
+                        : "text-white hover:text-primary hover:bg-card/50"
+                    }`}
+                    style={{
+                      animation: `slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${index * 0.05}s both`,
+                    }}
+                  >
+                    {item.name}
+                  </Link>
+                ))}
+                <div 
+                  className="pt-6 mt-6 border-t border-border space-y-3"
                   style={{
-                    animationDelay: isOpen ? `${navigation.length * 50}ms` : "0ms",
+                    animation: `slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${navigation.length * 0.05 + 0.1}s both`,
                   }}
                 >
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={toggleLanguage}
-                    className="btn-language"
+                    onClick={() => {
+                      toggleLanguage();
+                    }}
+                    className="w-full justify-start hover:bg-card/50 transition-all duration-300 text-white"
                   >
                     {language.toUpperCase()}
                   </Button>
                   <Button
                     onClick={() => {
                       instagramClick();
-                      closeMenu();
+                      setIsMenuOpen(false);
                     }}
-                    className="btn-gradient flex-1"
+                    className="w-full btn-gradient transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-lg"
                   >
                     <Instagram className="w-4 h-4 mr-2" />
                     Instagram
@@ -297,9 +252,46 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </nav>
+        </>
+      )}
+
+      <style>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        @keyframes slideInLeft {
+          from {
+            opacity: 0;
+            transform: translateX(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        
+        .animate-fade-in {
+          animation: fadeIn 0.3s ease-out;
+        }
+      `}</style>
+    </>
   );
 };
 
