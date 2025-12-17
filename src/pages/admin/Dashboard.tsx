@@ -2634,8 +2634,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           toast({
             title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin Créé - Email Échoué',
             description: language === 'en' 
-              ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Password: ${password}`
-              : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Mot de passe: ${password}`,
+              ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Please check the password manually.`
+              : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Veuillez vérifier le mot de passe manuellement.`,
             variant: 'destructive',
             duration: 10000,
           });
@@ -2695,8 +2695,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             toast({
               title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin Créé - Email Échoué',
               description: language === 'en' 
-                ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Password: ${password}`
-                : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Mot de passe: ${password}`,
+                ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Please check the password manually.`
+                : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Veuillez vérifier le mot de passe manuellement.`,
               variant: 'destructive',
               duration: 10000,
             });
@@ -2741,8 +2741,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         toast({
           title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin Créé - Email Échoué',
           description: language === 'en' 
-            ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Password: ${password}`
-            : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Mot de passe: ${password}`,
+            ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Please check the password manually.`
+            : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Veuillez vérifier le mot de passe manuellement.`,
           variant: 'destructive',
           duration: 10000,
         });

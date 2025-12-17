@@ -1000,7 +1000,11 @@ app.get('/api/sms-test', (req, res) => {
 });
 
 // WinSMS API configuration
-const WINSMS_API_KEY = process.env.WINSMS_API_KEY || "iUOh18YaJE1Ea1keZgW72qg451g713r722EqWe9q1zS0kSAXcuL5lm3JWDFi";
+// SECURITY: API key must be provided via environment variable - no hardcoded fallback
+if (!process.env.WINSMS_API_KEY) {
+  console.warn('Warning: WINSMS_API_KEY not configured. SMS functionality will be disabled.');
+}
+const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
 const WINSMS_API_HOST = "www.winsmspro.com";
 const WINSMS_API_PATH = "/sms/sms/api";
 const WINSMS_SENDER = "Andiamo"; // Your sender ID
@@ -1023,6 +1027,10 @@ app.post('/api/send-sms', requireAdminAuth, async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
+    }
+
+    if (!WINSMS_API_KEY) {
+      return res.status(500).json({ success: false, error: 'SMS service not configured. WINSMS_API_KEY environment variable is required.' });
     }
 
     const { phoneNumbers, message } = req.body;
@@ -1205,6 +1213,15 @@ app.post('/api/send-sms', requireAdminAuth, async (req, res) => {
 // GET /api/sms-balance - Check SMS balance (as per WinSMS documentation)
 app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
   try {
+    if (!WINSMS_API_KEY) {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'SMS service not configured',
+        message: 'WINSMS_API_KEY environment variable is required',
+        configured: false
+      });
+    }
+    
     // Build URL according to WinSMS documentation
     const url = `${WINSMS_API_PATH}?action=check-balance&api_key=${WINSMS_API_KEY}&response=json`;
 
