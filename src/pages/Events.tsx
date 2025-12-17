@@ -1,11 +1,20 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, Users, Clock, DollarSign, Info, Image as ImageIcon, Maximize2, Minimize2, Volume2, VolumeX } from "lucide-react";
+import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, Users, Clock, DollarSign, Info, Image as ImageIcon, Maximize2, Minimize2, Volume2, VolumeX, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingScreen from "@/components/ui/LoadingScreen";
+import { generateSlug } from "@/lib/utils";
+
+interface EventPass {
+  id?: string;
+  name: string;
+  price: number;
+  description: string;
+  is_default: boolean;
+}
 
 interface Event {
   id: string;
@@ -15,10 +24,12 @@ interface Event {
   venue: string;
   city: string;
   poster_url: string;
-  whatsapp_link: string;
+  instagram_link?: string; // Changed from whatsapp_link to instagram_link
+  whatsapp_link?: string; // Keep for backward compatibility with database
   featured: boolean;
   standard_price?: number;
   vip_price?: number;
+  passes?: EventPass[]; // Array of passes for this event
   event_type?: 'upcoming' | 'gallery';
   gallery_images?: string[];
   gallery_videos?: string[];
@@ -162,12 +173,43 @@ const Events = ({ language }: EventsProps) => {
       console.log('✅ Events fetched successfully:', data?.length || 0);
       console.log('📋 All events:', data);
       
+      // Map database whatsapp_link to instagram_link for UI and load passes
+      const mappedEvents = await Promise.all(
+        (data || []).map(async (e: any) => {
+          // Fetch passes for this event
+          const { data: passesData, error: passesError } = await supabase
+            .from('event_passes')
+            .select('*')
+            .eq('event_id', e.id)
+            .order('is_default', { ascending: false })
+            .order('created_at', { ascending: true });
+
+          // Handle 404 errors gracefully (table might not exist yet)
+          if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
+            console.error(`Error fetching passes for event ${e.id}:`, passesError);
+          }
+
+          // Extract standard_price and vip_price from passes for backward compatibility
+          const passes = passesData || [];
+          const standardPass = passes.find((p: any) => p.is_default || p.name === 'Standard');
+          const vipPass = passes.find((p: any) => p.name === 'VIP' || p.name === 'Vip');
+          
+          return {
+            ...e,
+            instagram_link: e.whatsapp_link, // Map database field to UI field
+            passes: passes,
+            standard_price: standardPass?.price || e.standard_price || 0,
+            vip_price: vipPass?.price || e.vip_price || 0
+          };
+        })
+      );
+      
       // Check for gallery events specifically
-      const galleryEventsInData = (data || []).filter((e: any) => e.event_type === 'gallery');
+      const galleryEventsInData = mappedEvents.filter((e: any) => e.event_type === 'gallery');
       console.log('🖼️ Gallery events in data:', galleryEventsInData.length);
       console.log('🖼️ Gallery events details:', galleryEventsInData);
       
-      setEvents(data || []);
+      setEvents(mappedEvents);
     } catch (error) {
       console.error('❌ Error fetching events:', error);
     } finally {
@@ -543,7 +585,9 @@ const Events = ({ language }: EventsProps) => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 justify-items-center">
-              {upcomingEvents.map((event, index) => (
+              {upcomingEvents.map((event, index) => {
+                const eventUrl = `event-${event.id}`;
+                return (
                 <Card 
                   key={event.id} 
                   className={`upcoming-event-card glass hover-lift overflow-hidden cursor-pointer w-full max-w-md transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
@@ -551,7 +595,11 @@ const Events = ({ language }: EventsProps) => {
                       ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
                       : 'opacity-0 translate-y-8'
                   }`}
-                  onClick={() => openModal(event)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    navigate(`/event/${eventUrl}`);
+                  }}
                 >
                   <div className="relative">
                     <img
@@ -581,20 +629,44 @@ const Events = ({ language }: EventsProps) => {
                         <MapPin className="w-4 h-4 mr-2 animate-pulse" />
                         <span>{event.venue}, {event.city}</span>
                       </div>
-                      {(event.standard_price || (event.vip_price && Number(event.vip_price) > 0)) && (
-                        <div className="flex items-center text-sm text-muted-foreground mb-2 space-x-4 animate-in slide-in-from-left-4 duration-500 delay-500">
-                          {event.standard_price && (
-                            <span className="text-green-500 font-semibold">Standard: {event.standard_price} TND</span>
-                          )}
-                          {event.vip_price && Number(event.vip_price) > 0 && (
-                            <span className="text-blue-500 font-semibold">VIP: {event.vip_price} TND</span>
-                          )}
+                      {/* Display all passes */}
+                      {event.passes && event.passes.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-2 text-sm mb-2 animate-in slide-in-from-left-4 duration-500 delay-500">
+                          {event.passes.map((pass, idx) => (
+                            <span 
+                              key={idx}
+                              className={`font-semibold ${
+                                pass.is_default || pass.name === 'Standard' 
+                                  ? 'text-green-500' 
+                                  : pass.name === 'VIP' || pass.name === 'Vip'
+                                  ? 'text-blue-500'
+                                  : 'text-primary'
+                              }`}
+                            >
+                              {pass.name}: {pass.price} TND
+                            </span>
+                          ))}
+                        </div>
+                      ) : (event.standard_price || (event.vip_price && Number(event.vip_price) > 0)) && (
+                        <div className="mb-2 animate-in slide-in-from-left-4 duration-500 delay-500">
+                          <div className="text-xs font-semibold text-primary/70 mb-1.5 uppercase tracking-wide">
+                            {language === 'en' ? 'Tickets' : 'Billets'}
+                          </div>
+                          <div className="flex items-center text-sm text-muted-foreground space-x-4 pl-2 border-l-2 border-primary/20">
+                            {event.standard_price && (
+                              <span className="text-green-500 font-semibold">Standard: {event.standard_price} TND</span>
+                            )}
+                            {event.vip_price && Number(event.vip_price) > 0 && (
+                              <span className="text-blue-500 font-semibold">VIP: {event.vip_price} TND</span>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
                   </CardHeader>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>
@@ -604,8 +676,8 @@ const Events = ({ language }: EventsProps) => {
       <section className="py-20 bg-gradient-dark relative overflow-hidden">
         {/* Animated background effects */}
         <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-pink-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
         </div>
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -624,6 +696,9 @@ const Events = ({ language }: EventsProps) => {
                 const mediaCount = (event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0);
                 const isAnimated = scrollAnimatedGalleryEvents.has(event.id) || animatedGalleryEvents.has(event.id);
                 
+                // Use event ID for all gallery events
+                const eventUrl = `event-${event.id}`;
+                
                 return (
                   <div
                     key={event.id}
@@ -633,7 +708,11 @@ const Events = ({ language }: EventsProps) => {
                         : 'opacity-100 translate-y-0'
                     }`}
                     style={{ animationDelay: `${index * 100}ms` }}
-                    onClick={(e) => openModal(event, e.currentTarget)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      navigate(`/gallery/${eventUrl}`);
+                    }}
                   >
                     {/* Premium Card with Glass Effect */}
                     <div className="relative h-[420px] md:h-[480px] bg-gradient-to-br from-card/40 via-card/30 to-card/20 backdrop-blur-xl border border-primary/20 rounded-2xl overflow-hidden group-hover:border-primary/40 transition-all duration-500">
@@ -648,11 +727,11 @@ const Events = ({ language }: EventsProps) => {
                         />
                         
                         {/* Neon Glow Overlay on Hover */}
-                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 via-pink-500/0 to-cyan-500/0 group-hover:from-purple-500/20 group-hover:via-pink-500/10 group-hover:to-cyan-500/20 transition-all duration-500 z-20"></div>
+                        <div className="absolute inset-0 bg-gradient-to-br from-primary/0 via-accent/0 to-primary/0 group-hover:from-primary/20 group-hover:via-accent/10 group-hover:to-primary/20 transition-all duration-500 z-20"></div>
                         
                         {/* Media Count Badge */}
                         {mediaCount > 0 && (
-                          <Badge className="absolute top-4 left-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 shadow-lg shadow-purple-500/50 z-30 backdrop-blur-sm">
+                          <Badge className="absolute top-4 left-4 bg-gradient-to-r from-primary to-accent text-white border-0 shadow-lg shadow-primary/50 z-30 backdrop-blur-sm">
                             <ImageIcon className="w-3 h-3 mr-1" />
                             {mediaCount} {mediaCount === 1 ? 'Media' : 'Media'}
                           </Badge>
@@ -675,18 +754,18 @@ const Events = ({ language }: EventsProps) => {
                       
                       {/* Card Content */}
                       <div className="absolute bottom-0 left-0 right-0 p-5 z-20 bg-gradient-to-t from-black/90 via-black/70 to-transparent">
-                        <h3 className="text-lg md:text-xl font-bold text-white mb-2 line-clamp-2 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-pink-400 transition-all duration-300">
+                        <h3 className="text-lg md:text-xl font-bold text-white mb-2 line-clamp-2 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent transition-all duration-300">
                           {event.name}
                         </h3>
                         
                         <div className="space-y-2">
                           <div className="flex items-center text-sm text-white/80">
-                            <Calendar className="w-4 h-4 mr-2 text-purple-400" />
+                            <Calendar className="w-4 h-4 mr-2 text-primary" />
                             <span className="truncate">{formatDate(event.date)}</span>
                           </div>
                           
                           <div className="flex items-center text-sm text-white/80">
-                            <MapPin className="w-4 h-4 mr-2 text-pink-400" />
+                            <MapPin className="w-4 h-4 mr-2 text-accent" />
                             <span className="truncate">{event.city}</span>
                           </div>
                         </div>
@@ -694,12 +773,12 @@ const Events = ({ language }: EventsProps) => {
                       
                       {/* Neon Border Glow on Hover */}
                       <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
-                        <div className="absolute inset-0 rounded-2xl border-2 border-transparent bg-gradient-to-r from-purple-500/50 via-pink-500/50 to-cyan-500/50 bg-clip-border blur-sm"></div>
+                        <div className="absolute inset-0 rounded-2xl border-2 border-transparent bg-gradient-to-r from-primary/50 via-accent/50 to-primary/50 bg-clip-border blur-sm"></div>
                         <div className="absolute inset-[2px] rounded-2xl bg-gradient-to-br from-card/40 via-card/30 to-card/20 backdrop-blur-xl"></div>
                       </div>
                       
                       {/* Shadow Glow Effect */}
-                      <div className="absolute -inset-1 bg-gradient-to-r from-purple-500/20 via-pink-500/20 to-cyan-500/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10"></div>
+                      <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10"></div>
                     </div>
                   </div>
                 );
@@ -869,7 +948,7 @@ const Events = ({ language }: EventsProps) => {
                     
                     {/* Gradient Overlay for Readability */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/70 to-black/40"></div>
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/15 via-pink-500/10 to-cyan-500/15 pointer-events-none"></div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/15 via-accent/10 to-primary/15 pointer-events-none"></div>
                     
                     {/* Subtle Neon Glow Border */}
                     <div className="absolute inset-0 rounded-t-3xl pointer-events-none" 
@@ -891,7 +970,7 @@ const Events = ({ language }: EventsProps) => {
                   {/* Badges */}
                   <div className="absolute top-4 left-4 flex gap-2 flex-wrap z-20">
                     {selectedEvent.featured && (
-                      <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 shadow-lg backdrop-blur-sm">
+                      <Badge className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-lg backdrop-blur-sm">
                         ⭐ {content[language].featured}
                       </Badge>
                     )}
@@ -909,7 +988,7 @@ const Events = ({ language }: EventsProps) => {
                     </h2>
                     <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-6 text-white/95">
                       <div className="flex items-center text-sm md:text-base">
-                        <Calendar className="w-5 h-5 mr-2 text-purple-300" />
+                        <Calendar className="w-5 h-5 mr-2 text-primary" />
                         <span className="font-medium">{formatDate(selectedEvent.date)}</span>
                       </div>
                       <div className="flex items-center text-sm md:text-base">
@@ -982,12 +1061,12 @@ const Events = ({ language }: EventsProps) => {
                 >
                   {activeTab === 'details' ? (
                     <>
-                      {/* Pricing Section */}
-                      {(selectedEvent.standard_price || selectedEvent.vip_price) && (
+                      {/* Pricing Section - Show all passes */}
+                      {((selectedEvent.passes && selectedEvent.passes.length > 0) || selectedEvent.standard_price || selectedEvent.vip_price) && (
                         <div 
                           id="pricing-block"
                           data-content-block
-                          className={`bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl p-4 md:p-6 border border-purple-500/20 transition-all duration-700 ${
+                          className={`bg-gradient-to-r from-primary/10 to-accent/10 rounded-2xl p-4 md:p-6 border border-primary/20 transition-all duration-700 ${
                             contentBlocksAnimated.has('pricing-block')
                               ? 'opacity-100 translate-y-0'
                               : 'opacity-0 translate-y-8'
@@ -997,18 +1076,74 @@ const Events = ({ language }: EventsProps) => {
                             <DollarSign className="w-5 h-5" />
                             {content[language].ticketPricing}
                           </h3>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {selectedEvent.standard_price && (
-                              <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 hover:border-purple-500/40 transition-all duration-200">
-                                <h4 className="font-semibold text-base md:text-lg mb-2 text-purple-400">{content[language].standard}</h4>
-                                <p className="text-2xl md:text-3xl font-bold text-gradient-to-r from-purple-400 to-pink-400">{selectedEvent.standard_price} TND</p>
-                              </div>
-                            )}
-                            {selectedEvent.vip_price && (
-                              <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 hover:border-pink-500/40 transition-all duration-200">
-                                <h4 className="font-semibold text-base md:text-lg mb-2 text-pink-400">{content[language].vip}</h4>
-                                <p className="text-2xl md:text-3xl font-bold text-gradient-to-r from-pink-400 to-purple-400">{selectedEvent.vip_price} TND</p>
-                              </div>
+                          <div className={`grid gap-4 ${
+                            selectedEvent.passes && selectedEvent.passes.length > 0
+                              ? selectedEvent.passes.length === 1 
+                                ? 'grid-cols-1' 
+                                : selectedEvent.passes.length === 2
+                                ? 'grid-cols-1 md:grid-cols-2'
+                                : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+                              : 'grid-cols-1 md:grid-cols-2'
+                          }`}>
+                            {/* Display all passes from event_passes table */}
+                            {selectedEvent.passes && selectedEvent.passes.length > 0 ? (
+                              selectedEvent.passes.map((pass, idx) => {
+                                const isStandard = pass.is_default || pass.name === 'Standard';
+                                const isVip = pass.name === 'VIP' || pass.name === 'Vip';
+                                return (
+                                  <div 
+                                    key={idx}
+                                    className={`bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 transition-all duration-200 ${
+                                      isStandard 
+                                        ? 'hover:border-primary/40' 
+                                        : isVip
+                                        ? 'hover:border-pink-500/40'
+                                        : 'hover:border-cyan-500/40'
+                                    }`}
+                                  >
+                                    <h4 className={`font-semibold text-base md:text-lg mb-2 ${
+                                      isStandard 
+                                        ? 'text-primary' 
+                                        : isVip
+                                        ? 'text-pink-400'
+                                        : 'text-cyan-400'
+                                    }`}>
+                                      {pass.name}
+                                      {isStandard && ' (Default)'}
+                                    </h4>
+                                    <p className={`text-2xl md:text-3xl font-bold ${
+                                      isStandard 
+                                        ? 'text-gradient-to-r from-primary to-accent' 
+                                        : isVip
+                                        ? 'text-gradient-to-r from-accent to-primary'
+                                        : 'text-gradient-to-r from-accent to-primary'
+                                    }`}>
+                                      {pass.price} TND
+                                    </p>
+                                    {pass.description && (
+                                      <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
+                                        {pass.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              /* Fallback to legacy standard_price/vip_price */
+                              <>
+                                {selectedEvent.standard_price && (
+                                  <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 hover:border-primary/40 transition-all duration-200">
+                                    <h4 className="font-semibold text-base md:text-lg mb-2 text-primary">{content[language].standard}</h4>
+                                    <p className="text-2xl md:text-3xl font-bold text-gradient-to-r from-primary to-accent">{selectedEvent.standard_price} TND</p>
+                                  </div>
+                                )}
+                                {selectedEvent.vip_price && (
+                                  <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 hover:border-pink-500/40 transition-all duration-200">
+                                    <h4 className="font-semibold text-base md:text-lg mb-2 text-pink-400">{content[language].vip}</h4>
+                                    <p className="text-2xl md:text-3xl font-bold text-gradient-to-r from-accent to-primary">{selectedEvent.vip_price} TND</p>
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
@@ -1018,13 +1153,13 @@ const Events = ({ language }: EventsProps) => {
                       <div 
                         id="description-block"
                         data-content-block
-                        className={`bg-gradient-to-r from-blue-500/5 to-purple-500/5 rounded-2xl p-4 md:p-6 border border-blue-500/20 transition-all duration-700 ${
+                        className={`bg-gradient-to-r from-primary/5 to-primary/5 rounded-2xl p-4 md:p-6 border border-primary/20 transition-all duration-700 ${
                           contentBlocksAnimated.has('description-block')
                             ? 'opacity-100 translate-y-0'
                             : 'opacity-0 translate-y-8'
                         }`}
                       >
-                        <h3 className="text-lg md:text-xl font-bold text-gradient-to-r from-blue-400 to-purple-400 mb-4 flex items-center">
+                        <h3 className="text-lg md:text-xl font-bold text-gradient-to-r from-primary to-primary mb-4 flex items-center">
                           <span className="w-2 h-2 bg-blue-400 rounded-full mr-3"></span>
                           {content[language].aboutEvent}
                         </h3>
@@ -1118,9 +1253,9 @@ const Events = ({ language }: EventsProps) => {
 
                       {/* Action Buttons */}
                       {selectedEvent.event_type === 'upcoming' && (
-                        <div className="flex flex-col sm:flex-row gap-4">
+                        <div className="flex flex-col sm:flex-row gap-4 items-stretch">
                           <Button 
-                            className="btn-gradient flex-1 py-6 text-base md:text-lg font-semibold"
+                            className="btn-gradient flex-1 py-6 text-base md:text-lg font-semibold shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/60 hover:scale-[1.02] transition-all duration-300"
                             onClick={() => {
                               closeModal();
                               navigate(`/pass-purchase?eventId=${selectedEvent.id}`);
@@ -1129,13 +1264,17 @@ const Events = ({ language }: EventsProps) => {
                             <ExternalLink className="w-5 h-5 mr-2" />
                             {content[language].bookNow}
                           </Button>
-                          {selectedEvent.whatsapp_link && (
+                          {(selectedEvent.instagram_link || selectedEvent.whatsapp_link) && (
                             <Button
                               variant="outline"
-                              className="btn-neon flex-1 py-6 text-base md:text-lg font-semibold border-green-500 text-green-500 hover:border-green-400 hover:text-green-400"
-                              onClick={() => window.open(selectedEvent.whatsapp_link, '_blank')}
+                              className="flex-1 py-6 text-base md:text-lg font-semibold border border-pink-500/50 text-pink-500/80 hover:border-pink-500/70 hover:text-pink-500/90 hover:bg-pink-500/5 flex items-center justify-center gap-2 transition-all duration-300"
+                              onClick={() => window.open(selectedEvent.instagram_link || selectedEvent.whatsapp_link, '_blank')}
                             >
-                              💬 {content[language].joinEvent}
+                              <Camera className="w-5 h-5 flex-shrink-0" />
+                              <span className="flex flex-col items-start leading-tight">
+                                <span>{language === 'en' ? 'Join' : 'Rejoindre'}</span>
+                                {language === 'en' && <span className="leading-none">Event</span>}
+                              </span>
                             </Button>
                           )}
                         </div>
@@ -1205,7 +1344,7 @@ const Events = ({ language }: EventsProps) => {
                                   >
                                     {/* Progressive Blur Placeholder */}
                                     {!isLoaded && (
-                                      <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-pink-500/20 animate-pulse blur-2xl z-0"></div>
+                                      <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 animate-pulse blur-2xl z-0"></div>
                                     )}
                                     
                                     {/* Main Image */}
@@ -1253,7 +1392,7 @@ const Events = ({ language }: EventsProps) => {
                               }}
                               className={`h-2 rounded-full transition-all duration-300 ${
                                 index === currentMediaIndex
-                                  ? 'w-8 bg-gradient-to-r from-purple-500 to-pink-500'
+                                  ? 'w-8 bg-gradient-to-r from-primary to-accent'
                                   : 'w-2 bg-white/30 hover:bg-white/50'
                               }`}
                             />
@@ -1345,7 +1484,7 @@ const Events = ({ language }: EventsProps) => {
 
             {/* Media Counter - Always visible */}
             {allMedia.length > 1 && (
-              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-purple-500/60 to-pink-500/60 text-white px-6 py-2 rounded-full backdrop-blur-md text-sm font-semibold border border-primary/30 shadow-lg z-30">
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-primary/60 to-accent/60 text-white px-6 py-2 rounded-full backdrop-blur-md text-sm font-semibold border border-primary/30 shadow-lg z-30">
                 {lightboxIndex + 1} / {allMedia.length}
               </div>
             )}

@@ -212,7 +212,7 @@ const About = ({ language }: AboutProps) => {
       {/* Hero Section - Modern Redesign */}
       <section className="relative py-20 md:py-32 overflow-hidden animate-page-intro">
         {/* Enhanced animated background elements */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5" />
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-primary/5 to-primary/5" />
         <div className="absolute top-20 left-10 w-32 h-32 bg-primary/20 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '4s' }} />
         <div className="absolute top-40 right-20 w-40 h-40 bg-secondary/20 rounded-full blur-3xl animate-pulse delay-1000" style={{ animationDuration: '5s' }} />
         <div className="absolute bottom-20 left-1/4 w-24 h-24 bg-accent/20 rounded-full blur-3xl animate-pulse delay-2000" style={{ animationDuration: '6s' }} />
@@ -282,7 +282,7 @@ const About = ({ language }: AboutProps) => {
               
               {/* Enhanced Timeline */}
               <div className="relative pt-6">
-                <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary via-secondary to-accent"></div>
+                <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary via-primary/80 to-primary/60"></div>
                 <div className="space-y-6 pl-6">
                   {[
                     { year: '2020', text: language === 'en' ? 'Founded with a vision' : 'Fondé avec une vision' },
@@ -380,9 +380,9 @@ const About = ({ language }: AboutProps) => {
                   animationDelay: `${index * 100}ms`
                 }}
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                 <CardContent className="p-6 md:p-8 text-center relative z-10">
-                  <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-4 md:mb-6 rounded-full bg-gradient-to-br from-primary via-secondary to-accent flex items-center justify-center transform group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shadow-lg shadow-primary/20">
+                  <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-4 md:mb-6 rounded-full bg-gradient-to-br from-primary via-primary/80 to-primary/60 flex items-center justify-center transform group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shadow-lg shadow-primary/20">
                     <value.icon className="w-8 h-8 md:w-10 md:h-10 text-white" />
                   </div>
                   <h3 className="text-lg md:text-xl font-heading font-bold mb-3 md:mb-4 text-primary group-hover:text-primary/90 transition-colors">
@@ -401,7 +401,7 @@ const About = ({ language }: AboutProps) => {
 
 
       {/* CTA Section - Modern Redesign */}
-      <section className="py-20 md:py-32 bg-gradient-to-br from-primary via-secondary to-accent relative overflow-hidden">
+      <section className="py-20 md:py-32 bg-gradient-to-br from-primary via-primary/80 to-primary/60 relative overflow-hidden">
         {/* Enhanced animated background elements */}
         <div className="absolute top-10 left-10 w-40 h-40 bg-white/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '4s' }}></div>
         <div className="absolute bottom-20 right-20 w-32 h-32 bg-white/10 rounded-full blur-3xl animate-pulse delay-1000" style={{ animationDuration: '5s' }}></div>

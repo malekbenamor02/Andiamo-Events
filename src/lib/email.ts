@@ -53,11 +53,13 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
       <title>Welcome to Andiamo Events</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Saira:wght@100..900&display=swap" rel="stylesheet">
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Orbitron', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal; 
           line-height: 1.6; 
           color: #000000; 
           background: #ffffff;
@@ -362,7 +364,7 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
       <title>Application Update - Andiamo Events</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Saira:wght@100..900&display=swap" rel="stylesheet">
       <style>
         :root {
           color-scheme: dark light;
@@ -370,7 +372,9 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Orbitron', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal; 
           line-height: 1.6; 
           color: #000000; 
           background: #ffffff;
@@ -674,7 +678,7 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
       <title>Admin Account - Andiamo Events</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Saira:wght@100..900&display=swap" rel="stylesheet">
       <style>
         :root {
           color-scheme: dark light;
@@ -682,7 +686,9 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal; 
           line-height: 1.7; 
           color: #e0e0e0; 
           background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%);
@@ -719,7 +725,9 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
           z-index: 1;
         }
         .logo {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 32px;
           font-weight: 700;
           letter-spacing: 3px;
@@ -728,7 +736,9 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
           text-shadow: 0 0 20px rgba(255, 255, 255, 0.5), 0 0 40px rgba(185, 85, 211, 0.3);
         }
         .header h1 {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 36px;
           font-weight: 700;
           color: #ffffff;
@@ -782,7 +792,9 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
           background: linear-gradient(90deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 50%, hsl(330, 100%, 65%) 100%);
         }
         .credentials-card h3 {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 20px;
           color: hsl(195, 100%, 50%);
           margin-bottom: 25px;
@@ -843,7 +855,9 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
           letter-spacing: 1px;
           box-shadow: 0 6px 25px rgba(185, 85, 211, 0.5), 0 0 40px rgba(0, 195, 255, 0.3);
           text-transform: uppercase;
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           transition: all 0.3s ease;
         }
         .cta-button:hover {
@@ -859,7 +873,9 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
           box-shadow: 0 0 20px rgba(0, 195, 255, 0.1);
         }
         .login-info h4 {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 16px;
           color: hsl(195, 100%, 50%);
           margin-bottom: 10px;
@@ -884,7 +900,9 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
           box-shadow: 0 0 20px rgba(255, 0, 0, 0.1);
         }
         .security-notice h3 {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 18px;
           color: hsl(330, 100%, 65%);
           margin-bottom: 15px;
@@ -919,7 +937,9 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
         }
         .signature strong {
           color: hsl(285, 85%, 65%);
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
         }
         .footer {
           background: hsl(218, 23%, 8%);
@@ -933,7 +953,9 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
           margin: 5px 0;
         }
         .footer-brand {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 16px;
           color: hsl(285, 85%, 65%);
           margin-bottom: 10px;
@@ -1108,7 +1130,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
   // Build digital ticket section if available
   const digitalTicketSection = (orderData.qrCode || orderData.ticketNumber || orderData.referenceNumber) ? `
     <div class="ticket-card" style="background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%); border: 1px solid hsl(285, 85%, 65%, 0.3); border-radius: 12px; padding: 25px; margin: 30px 0; box-shadow: 0 0 20px rgba(185, 85, 211, 0.1);">
-      <h3 style="font-family: 'Orbitron', sans-serif; font-size: 18px; color: hsl(195, 100%, 50%); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+      <h3 style="font-family: 'Josefin Sans', sans-serif; font-optical-sizing: auto; font-style: normal; font-size: 18px; color: hsl(195, 100%, 50%); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
         🎫 Your Digital Ticket
       </h3>
       ${orderData.qrCode ? `
@@ -1145,7 +1167,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
       <title>Order Confirmation - Andiamo Events</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Orbitron:wght@600;700;800&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Saira:wght@100..900&display=swap" rel="stylesheet">
       <style>
         :root {
           color-scheme: dark light;
@@ -1153,7 +1175,9 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal; 
           line-height: 1.7; 
           color: #e0e0e0; 
           background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%);
@@ -1195,7 +1219,9 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           z-index: 1;
         }
         .logo {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 28px;
           font-weight: 700;
           letter-spacing: 2px;
@@ -1204,7 +1230,9 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
         }
         .header h1 {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 32px;
           font-weight: 700;
           color: #ffffff;
@@ -1240,7 +1268,9 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           box-shadow: 0 0 20px rgba(185, 85, 211, 0.1), inset 0 0 20px rgba(185, 85, 211, 0.05);
         }
         .order-info-card h3 {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 18px;
           color: hsl(195, 100%, 50%);
           margin-bottom: 20px;
@@ -1309,7 +1339,9 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           box-shadow: 0 0 20px rgba(0, 195, 255, 0.1);
         }
         .payment-confirmation h3 {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 18px;
           color: hsl(195, 100%, 50%);
           margin-bottom: 15px;
@@ -1329,7 +1361,9 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           box-shadow: 0 0 20px rgba(185, 85, 211, 0.05);
         }
         .support-section h3 {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 18px;
           color: hsl(285, 85%, 65%);
           margin-bottom: 15px;
@@ -1369,7 +1403,9 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
         }
         .signature strong {
           color: hsl(285, 85%, 65%);
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
         }
         .footer {
           background: hsl(218, 23%, 8%);
@@ -1383,7 +1419,9 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           margin: 0;
         }
         .footer-brand {
-          font-family: 'Orbitron', sans-serif;
+          font-family: 'Josefin Sans', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal;
           font-size: 14px;
           color: hsl(285, 85%, 65%);
           margin-bottom: 10px;

@@ -16,7 +16,22 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
   const [maintenanceMessage, setMaintenanceMessage] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
+  // Check if running on localhost
+  const isLocalhost = typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.startsWith('192.168.') ||
+    window.location.hostname.startsWith('10.0.')
+  );
+
   useEffect(() => {
+    // Skip maintenance mode check on localhost
+    if (isLocalhost) {
+      setIsMaintenanceMode(false);
+      setLoading(false);
+      return;
+    }
+
     const checkMaintenanceMode = async () => {
       try {
         const { data, error } = await supabase
@@ -95,28 +110,29 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
   // Admin and Ambassador dashboard routes are always accessible
   const isExcluded = isExcludedFromMaintenance(location.pathname);
 
-  if (isMaintenanceMode && !isExcluded) {
+  // Never show maintenance mode on localhost
+  if (isMaintenanceMode && !isExcluded && !isLocalhost) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
         {/* Background gradient matching site theme */}
         <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-background opacity-100"></div>
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-secondary/5 to-accent/10 opacity-50"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-primary/5 to-primary/10 opacity-50"></div>
         
         {/* Animated gradient orbs */}
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-        <div className="absolute top-1/2 right-1/3 w-64 h-64 bg-accent/15 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '2s' }}></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+        <div className="absolute top-1/2 right-1/3 w-64 h-64 bg-primary/15 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '2s' }}></div>
         
         <div className="max-w-2xl w-full text-center space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 relative z-10">
           <div className="flex justify-center">
             <div className="relative">
               {/* Outer glow effect */}
               <div className="absolute inset-0 bg-primary rounded-full blur-2xl opacity-40 animate-pulse"></div>
-              <div className="absolute inset-0 bg-secondary rounded-full blur-xl opacity-30 animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+              <div className="absolute inset-0 bg-primary rounded-full blur-xl opacity-30 animate-pulse" style={{ animationDelay: '0.5s' }}></div>
               
               {/* Icon container with gradient */}
-              <div className="relative bg-gradient-to-br from-primary via-secondary to-accent p-8 rounded-full shadow-2xl" style={{
-                boxShadow: '0 0 40px hsl(var(--primary) / 0.5), 0 0 80px hsl(var(--secondary) / 0.3)'
+              <div className="relative bg-gradient-to-br from-primary via-primary/80 to-primary/60 p-8 rounded-full shadow-2xl" style={{
+                boxShadow: '0 0 40px hsl(var(--primary) / 0.5), 0 0 80px hsl(var(--primary) / 0.3)'
               }}>
                 <Wrench className="w-16 h-16 text-white animate-spin" style={{ animationDuration: '3s' }} />
               </div>

@@ -28,6 +28,8 @@ import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute
 import AmbassadorApplication from "./pages/ambassador/Application";
 import PassPurchase from "./pages/PassPurchase";
 import CODOrder from "./pages/CODOrder";
+import GalleryEvent from "./pages/GalleryEvent";
+import UpcomingEvent from "./pages/UpcomingEvent";
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { FaviconLoader } from "./components/FaviconLoader";
@@ -57,6 +59,8 @@ const App = () => {
                 <Routes>
               <Route path="/" element={<Index language={language} />} />
               <Route path="/events" element={<Events language={language} />} />
+              <Route path="/gallery/:eventSlug" element={<GalleryEvent language={language} />} />
+              <Route path="/event/:eventSlug" element={<UpcomingEvent language={language} />} />
               <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
               <Route path="/cod-order" element={<CODOrder language={language} />} />
       

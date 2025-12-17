@@ -308,7 +308,8 @@ const Footer = ({ language }: FooterProps) => {
 
         {/* Bottom Bar */}
         <div className="mt-12 pt-8 border-t border-border/20">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          {/* Mobile: Original stacked layout */}
+          <div className="flex flex-col md:hidden justify-between items-center gap-4">
             {/* Copyright & Developer Credit */}
             <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 text-sm">
               <span className="text-muted-foreground">
@@ -350,6 +351,53 @@ const Footer = ({ language }: FooterProps) => {
               <RouterLink 
                 to="/refund-policy" 
                 className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
+              >
+                {content[language].refund}
+              </RouterLink>
+            </div>
+          </div>
+
+          {/* Desktop: Single line layout */}
+          <div className="hidden md:flex flex-row justify-between items-center gap-3 text-xs whitespace-nowrap">
+            {/* Copyright & Developer Credit */}
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-muted-foreground">
+                © 2025 Andiamo Events. {content[language].rights}
+              </span>
+              <span className="text-border/50">|</span>
+              <span className="text-muted-foreground">Developed by</span>
+              <a
+                href="https://www.instagram.com/malek.bamor/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex items-center gap-1 font-semibold text-primary hover:text-secondary transition-all duration-300 hover:gap-1.5 shrink-0"
+              >
+                <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                  Malek Ben Amor
+                </span>
+                <Instagram className="w-3.5 h-3.5 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12 shrink-0" />
+              </a>
+            </div>
+            
+            {/* Legal Links */}
+            <div className="flex items-center gap-3 shrink-0">
+              <RouterLink 
+                to="/privacy-policy" 
+                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
+              >
+                {content[language].privacy}
+              </RouterLink>
+              <span className="text-border/50">•</span>
+              <RouterLink 
+                to="/terms" 
+                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
+              >
+                {content[language].terms}
+              </RouterLink>
+              <span className="text-border/50">•</span>
+              <RouterLink 
+                to="/refund-policy" 
+                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
               >
                 {content[language].refund}
               </RouterLink>

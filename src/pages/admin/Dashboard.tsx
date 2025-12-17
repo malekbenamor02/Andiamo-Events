@@ -21,7 +21,7 @@ import { fetchSalesSettings, updateSalesSettings } from "@/lib/salesSettings";
 import {
   CheckCircle, XCircle, Clock, Users, TrendingUp, DollarSign, LogOut,
   Plus, Edit, Trash2, Calendar as CalendarIcon, MapPin, Phone, Mail, User, Settings,
-  Eye, EyeOff, Save, X, Image, Video, Upload,
+  Eye, EyeOff, Save, X, Image, Video, Upload, Info,
   Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
   PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
   Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Database,
@@ -61,6 +61,14 @@ interface AmbassadorApplication {
   manually_added?: boolean; // Indicator for manually added ambassadors
 }
 
+interface EventPass {
+  id?: string;
+  name: string;
+  price: number;
+  description: string;
+  is_default: boolean;
+}
+
 interface Event {
   id: string;
   name: string;
@@ -69,7 +77,7 @@ interface Event {
   city: string;
   description?: string;
   poster_url?: string;
-  whatsapp_link?: string;
+  instagram_link?: string;
   ticket_link?: string;
   featured?: boolean;
   standard_price?: number;
@@ -77,10 +85,12 @@ interface Event {
   event_type?: 'upcoming' | 'gallery'; // New field to distinguish event types
   gallery_images?: string[]; // Array of gallery image URLs
   gallery_videos?: string[]; // Array of gallery video URLs
+  passes?: EventPass[]; // Array of passes for this event
   created_at: string;
   updated_at: string;
   _uploadFile?: File | null;
-  _galleryFiles?: File[]; // Temporary storage for gallery files
+  _pendingGalleryImages?: File[]; // Temporary storage for pending gallery image files
+  _pendingGalleryVideos?: File[]; // Temporary storage for pending gallery video files
 }
 
 
@@ -164,6 +174,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [showPassword, setShowPassword] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
+  const [pendingGalleryImages, setPendingGalleryImages] = useState<File[]>([]);
+  const [pendingGalleryVideos, setPendingGalleryVideos] = useState<File[]>([]);
+  const [passValidationErrors, setPassValidationErrors] = useState<Record<number, {name?: string; price?: string; description?: string}>>({});
   const { toast } = useToast();
   const [ambassadorSales, setAmbassadorSales] = useState<Record<string, { standard: number; vip: number }>>({});
   const [ambassadorToDelete, setAmbassadorToDelete] = useState<Ambassador | null>(null);
@@ -436,7 +449,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       eventCity: "City",
       eventDescription: "Description",
       eventPoster: "Poster URL",
-      eventWhatsappLink: "WhatsApp Link",
+      eventInstagramLink: "Instagram Link",
       eventFeatured: "Featured Event",
       eventStandardPrice: "Standard Price (TND)",
       eventVipPrice: "VIP Price (TND)",
@@ -531,7 +544,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       eventCity: "Ville",
       eventDescription: "Description",
       eventPoster: "URL de l'Affiche",
-      eventWhatsappLink: "Lien WhatsApp",
+      eventInstagramLink: "Lien Instagram",
       eventFeatured: "Événement en Vedette",
       eventStandardPrice: "Prix Standard (TND)",
       eventVipPrice: "Prix VIP (TND)",
@@ -2947,6 +2960,64 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [activeTab, currentAdminRole]);
 
+  // Load passes when editing dialog opens for an existing event
+  useEffect(() => {
+    const loadPassesForEditing = async () => {
+      // Only run if dialog is open, we're editing (has id), and passes are missing or empty
+      if (isEventDialogOpen && editingEvent?.id && (!editingEvent.passes || editingEvent.passes.length === 0)) {
+        console.log('🔄 useEffect: Loading passes for event:', editingEvent.id);
+        
+        const { data: passesData, error: passesError } = await supabase
+          .from('event_passes')
+          .select('*')
+          .eq('event_id', editingEvent.id)
+          .order('is_default', { ascending: false })
+          .order('created_at', { ascending: true });
+        
+        if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
+          console.error(`Error fetching passes in useEffect:`, passesError);
+          return;
+        }
+        
+        const mappedPasses = (passesData || []).map((p: any) => ({
+          id: p.id,
+          name: p.name || '',
+          price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+          description: p.description || '',
+          is_default: p.is_default || false
+        }));
+        
+        const hasStandard = mappedPasses.some((p: any) => p.is_default || p.name === 'Standard');
+        let finalPasses = mappedPasses;
+        
+        if (!hasStandard) {
+          finalPasses = [{
+            name: 'Standard',
+            price: 0,
+            description: language === 'en' 
+              ? 'General entry access. Basic benefits included.' 
+              : 'Accès général. Avantages de base inclus.',
+            is_default: true
+          }, ...mappedPasses];
+        } else if (mappedPasses.length === 0) {
+          finalPasses = [{
+            name: 'Standard',
+            price: 0,
+            description: language === 'en' 
+              ? 'General entry access. Basic benefits included.' 
+              : 'Accès général. Avantages de base inclus.',
+            is_default: true
+          }];
+        }
+        
+        console.log('✅ useEffect: Setting passes:', finalPasses);
+        setEditingEvent(prev => prev ? { ...prev, passes: finalPasses } : null);
+      }
+    };
+    
+    loadPassesForEditing();
+  }, [isEventDialogOpen, editingEvent?.id, language]);
+
   const fetchAllData = async () => {
     try {
       setLoading(true);
@@ -2976,7 +3047,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         .order('date', { ascending: false });
 
       if (eventsError) console.error('Error fetching events:', eventsError);
-      else setEvents(eventsData || []);
+      else {
+        // Fetch passes for each event
+        const eventsWithPasses = await Promise.all(
+          (eventsData || []).map(async (event) => {
+            const { data: passesData, error: passesError } = await supabase
+              .from('event_passes')
+              .select('*')
+              .eq('event_id', event.id)
+              .order('is_default', { ascending: false })
+              .order('created_at', { ascending: true });
+
+            // Handle 404 errors gracefully (table might not exist yet)
+            if (passesError) {
+              // Only log non-404 errors
+              if (passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
+                console.error(`Error fetching passes for event ${event.id}:`, passesError);
+              }
+              return { ...event, passes: [], instagram_link: event.whatsapp_link }; // Map database field to UI field
+            }
+
+            return { ...event, passes: passesData || [], instagram_link: event.whatsapp_link }; // Map database field to UI field
+          })
+        );
+
+        setEvents(eventsWithPasses);
+      }
 
 
 
@@ -3831,6 +3927,137 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const handleSaveEvent = async (event: Event, uploadedFile?: File | null) => {
     try {
+      // Validate Instagram link
+      if (event.instagram_link && !isInstagramUrl(event.instagram_link)) {
+        toast({
+          title: language === 'en' ? "Invalid Instagram Link" : "Lien Instagram Invalide",
+          description: language === 'en' 
+            ? "Please enter a valid Instagram URL (e.g., https://www.instagram.com/username)" 
+            : "Veuillez entrer une URL Instagram valide (ex: https://www.instagram.com/username)",
+          variant: "destructive",
+        });
+        return;
+      }
+      // Validate passes before saving
+      const passes = event.passes || [];
+      
+      // Ensure at least one pass exists
+      if (passes.length === 0) {
+        toast({
+          title: t.error,
+          description: language === 'en' 
+            ? 'At least one pass (Standard) is required' 
+            : 'Au moins un pass (Standard) est requis',
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Ensure Standard pass exists
+      const hasStandardPass = passes.some(p => p.is_default || p.name === 'Standard');
+      if (!hasStandardPass) {
+        toast({
+          title: t.error,
+          description: language === 'en' 
+            ? 'Standard pass is mandatory. Please add a Standard pass.' 
+            : 'Le pass Standard est obligatoire. Veuillez ajouter un pass Standard.',
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate each pass with strict rules - collect all errors
+      const errors: Record<number, {name?: string; price?: string; description?: string}> = {};
+      const passNames = new Set<string>();
+      let hasErrors = false;
+
+      for (let i = 0; i < passes.length; i++) {
+        const pass = passes[i];
+        const isStandard = pass.is_default || pass.name === 'Standard';
+        const passErrors: {name?: string; price?: string; description?: string} = {};
+        
+        // Validate Standard pass name is fixed
+        if (isStandard && pass.name !== 'Standard') {
+          passErrors.name = language === 'en' 
+            ? 'Standard pass name must be "Standard" and cannot be changed' 
+            : 'Le nom du pass Standard doit être "Standard" et ne peut pas être modifié';
+          hasErrors = true;
+        }
+
+        // Check required fields - Name
+        if (!pass.name || pass.name.trim() === '') {
+          passErrors.name = language === 'en' 
+            ? 'Pass name is required' 
+            : 'Le nom du pass est requis';
+          hasErrors = true;
+        }
+
+        // Check for unique names (case-insensitive) - only if name is provided
+        if (pass.name && pass.name.trim() !== '') {
+          const normalizedName = pass.name.trim().toLowerCase();
+          if (passNames.has(normalizedName)) {
+            passErrors.name = language === 'en' 
+              ? `Duplicate pass name. Pass names must be unique.` 
+              : `Nom de pass dupliqué. Les noms de passes doivent être uniques.`;
+            hasErrors = true;
+          } else {
+            passNames.add(normalizedName);
+          }
+        }
+
+        // Check required fields - Price
+        if (pass.price === undefined || pass.price === null || isNaN(pass.price) || pass.price < 0) {
+          passErrors.price = language === 'en' 
+            ? 'Valid price is required (≥ 0 TND)' 
+            : 'Un prix valide est requis (≥ 0 TND)';
+          hasErrors = true;
+        }
+
+        // Check required fields - Description
+        if (!pass.description || pass.description.trim() === '') {
+          passErrors.description = language === 'en' 
+            ? 'Description is required' 
+            : 'La description est requise';
+          hasErrors = true;
+        }
+
+        if (Object.keys(passErrors).length > 0) {
+          errors[i] = passErrors;
+        }
+      }
+
+      // Set validation errors and prevent save if there are errors
+      setPassValidationErrors(errors);
+      
+      if (hasErrors) {
+        // Don't show toast - errors are displayed inline in the dialog
+        // Scroll to first error if needed
+        setTimeout(() => {
+          const firstErrorField = document.querySelector('.border-red-500');
+          if (firstErrorField) {
+            firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+        return; // Don't close dialog, just return
+      }
+
+      // Clear errors if validation passes
+      setPassValidationErrors({});
+
+      // Ensure Standard pass is marked as default
+      const updatedPasses = passes.map(p => {
+        if (p.is_default || p.name === 'Standard') {
+          return { ...p, name: 'Standard', is_default: true };
+        }
+        return p;
+      });
+
+      // Extract standard_price and vip_price from passes for backward compatibility
+      const standardPass = updatedPasses.find(p => p.is_default || p.name === 'Standard');
+      const vipPass = updatedPasses.find(p => p.name === 'VIP' || p.name === 'Vip');
+      const standardPrice = standardPass?.price || 0;
+      const vipPrice = vipPass?.price || 0;
+
       let posterUrl = event.poster_url;
 
       // Upload image if file is provided
@@ -3852,6 +4079,42 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setUploadingImage(false);
       }
 
+      // Upload pending gallery files if event is gallery type
+      let finalGalleryImages = event.gallery_images || [];
+      let finalGalleryVideos = event.gallery_videos || [];
+      
+      if (event.event_type === 'gallery') {
+        setUploadingGallery(true);
+        try {
+          // Upload pending images
+          if (pendingGalleryImages.length > 0) {
+            const uploadedImageUrls = await uploadPendingGalleryFiles('images');
+            finalGalleryImages = [...finalGalleryImages, ...uploadedImageUrls];
+          }
+          
+          // Upload pending videos
+          if (pendingGalleryVideos.length > 0) {
+            const uploadedVideoUrls = await uploadPendingGalleryFiles('videos');
+            finalGalleryVideos = [...finalGalleryVideos, ...uploadedVideoUrls];
+          }
+        } catch (error) {
+          console.error('Error uploading gallery files:', error);
+          toast({
+            title: language === 'en' ? "Upload failed" : "Échec du téléchargement",
+            description: language === 'en' 
+              ? "Failed to upload gallery files" 
+              : "Échec du téléchargement des fichiers de galerie",
+            variant: "destructive",
+          });
+          setUploadingGallery(false);
+          return;
+        } finally {
+          setUploadingGallery(false);
+        }
+      }
+
+      let eventId = event.id;
+
       if (event.id) {
         // Update existing event
         const { error } = await supabase
@@ -3864,21 +4127,55 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             description: event.description,
             poster_url: posterUrl,
             ticket_link: event.ticket_link,
-            whatsapp_link: event.whatsapp_link,
+            whatsapp_link: event.instagram_link, // Database column is still whatsapp_link, but we use instagram_link in UI
             featured: event.featured,
-            standard_price: event.standard_price,
-            vip_price: event.vip_price,
             event_type: event.event_type || 'upcoming',
-            gallery_images: event.gallery_images || [],
-            gallery_videos: event.gallery_videos || [],
+            gallery_images: finalGalleryImages,
+            gallery_videos: finalGalleryVideos,
+            standard_price: standardPrice, // Set from passes for backward compatibility
+            vip_price: vipPrice, // Set from passes for backward compatibility
             updated_at: new Date().toISOString()
           })
           .eq('id', event.id);
 
         if (error) throw error;
+
+        // Update passes: delete existing and insert new ones
+        // First, delete all existing passes for this event
+        const { error: deleteError } = await supabase
+          .from('event_passes')
+          .delete()
+          .eq('event_id', event.id);
+
+        // Handle 404 errors gracefully (table might not exist yet)
+        if (deleteError && deleteError.code !== 'PGRST116' && deleteError.message !== 'relation "public.event_passes" does not exist') {
+          console.warn('Error deleting passes (non-critical):', deleteError);
+          // Don't throw, just log - passes will be stored in event object
+        }
+
+        // Insert updated passes
+        if (updatedPasses.length > 0) {
+          const passesToInsert = updatedPasses.map(p => ({
+            event_id: event.id,
+            name: p.name,
+            price: p.price,
+            description: p.description,
+            is_default: p.is_default
+          }));
+
+          const { error: insertError } = await supabase
+            .from('event_passes')
+            .insert(passesToInsert);
+
+          // Handle 404 errors gracefully (table might not exist yet)
+          if (insertError && insertError.code !== 'PGRST116' && insertError.message !== 'relation "public.event_passes" does not exist') {
+            console.warn('Error inserting passes (non-critical):', insertError);
+            // Don't throw, just log - passes will be stored in event object
+          }
+        }
       } else {
         // Create new event
-        const { error } = await supabase
+        const { data: newEventData, error } = await supabase
           .from('events')
           .insert({
             name: event.name,
@@ -3888,16 +4185,41 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             description: event.description,
             poster_url: posterUrl,
             ticket_link: event.ticket_link,
-            whatsapp_link: event.whatsapp_link,
+            whatsapp_link: event.instagram_link, // Database column is still whatsapp_link, but we use instagram_link in UI
             featured: event.featured,
-            standard_price: event.standard_price,
-            vip_price: event.vip_price,
             event_type: event.event_type || 'upcoming',
-            gallery_images: event.gallery_images || [],
-            gallery_videos: event.gallery_videos || []
-          });
+            gallery_images: finalGalleryImages,
+            gallery_videos: finalGalleryVideos,
+            standard_price: standardPrice, // Set from passes for backward compatibility
+            vip_price: vipPrice // Set from passes for backward compatibility
+          })
+          .select()
+          .single();
 
         if (error) throw error;
+
+        eventId = newEventData.id;
+
+        // Insert passes for the new event
+        if (updatedPasses.length > 0) {
+          const passesToInsert = updatedPasses.map(p => ({
+            event_id: eventId,
+            name: p.name,
+            price: p.price,
+            description: p.description,
+            is_default: p.is_default
+          }));
+
+          const { error: insertError } = await supabase
+            .from('event_passes')
+            .insert(passesToInsert);
+
+          // Handle 404 errors gracefully (table might not exist yet)
+          if (insertError && insertError.code !== 'PGRST116' && insertError.message !== 'relation "public.event_passes" does not exist') {
+            console.warn('Error inserting passes (non-critical):', insertError);
+            // Don't throw, just log - passes will be stored in event object
+          }
+        }
       }
 
       toast({
@@ -3910,21 +4232,43 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // Update existing event in the list
         setEvents(prev => prev.map(e => 
           e.id === event.id
-            ? { ...event, poster_url: posterUrl, updated_at: new Date().toISOString() }
+            ? { 
+                ...e, 
+                ...event, 
+                poster_url: posterUrl, 
+                passes: updatedPasses, 
+                gallery_images: finalGalleryImages,
+                gallery_videos: finalGalleryVideos,
+                instagram_link: event.instagram_link,
+                updated_at: new Date().toISOString() 
+              }
             : e
         ));
       } else {
-        // For new events, we need to fetch to get the ID
-        // But update optimistically
-        const newEvent = { ...event, poster_url: posterUrl, id: 'temp-' + Date.now() };
+        // For new events, use the data returned from database and add passes/gallery
+        const newEvent: Event = {
+          ...newEventData,
+          instagram_link: newEventData.whatsapp_link || event.instagram_link, // Map from database whatsapp_link to UI instagram_link
+          passes: updatedPasses,
+          gallery_images: finalGalleryImages,
+          gallery_videos: finalGalleryVideos,
+        };
+        // Add to the beginning of the list (newest first)
         setEvents(prev => [newEvent, ...prev]);
       }
 
+      // Clear pending files after successful save
+      setPendingGalleryImages([]);
+      setPendingGalleryVideos([]);
       setEditingEvent(null);
       setIsEventDialogOpen(false);
       
-      // Refresh all data to ensure consistency
-      await fetchAllData();
+      // Refresh all data to ensure consistency (but don't wait for it to close dialog)
+      // The optimistic update above already shows the event immediately
+      fetchAllData().catch(err => {
+        console.error('Error refreshing data after save:', err);
+        // If refresh fails, the optimistic update is still there, so UI is fine
+      });
 
     } catch (error) {
       console.error('Error saving event:', error, error?.message, error?.details);
@@ -4901,13 +5245,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'approved':
-        return <div className="w-3 h-3 rounded-full bg-green-500" title={t.approved} />;
+        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#E21836' }} title={t.approved} />;
       case 'rejected':
-        return <div className="w-3 h-3 rounded-full bg-red-500" title={t.rejected} />;
+        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#8C8C8C' }} title={t.rejected} />;
       case 'removed':
-        return <div className="w-3 h-3 rounded-full bg-gray-500" title={language === 'en' ? 'Removed' : 'Retiré'} />;
+        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#8C8C8C' }} title={language === 'en' ? 'Removed' : 'Retiré'} />;
       default:
-        return <div className="w-3 h-3 rounded-full bg-yellow-500" title={t.pending} />;
+        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#FFC93C' }} title={t.pending} />;
     }
   };
 
@@ -4915,99 +5259,135 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const getOrderStatusInfo = (status: string): { color: string; label: string } => {
     const normalizedStatus = (status || '').toUpperCase();
     
-    // Status color and label mapping
-    const statusConfig: Record<string, { color: string; label: string }> = {
-      // Completed statuses - Green
+    // Status color and label mapping - Using brand semantic colors
+    const statusConfig: Record<string, { color: string; label: string; bgColor: string; textColor: string }> = {
+      // Enabled/Active/Open statuses - Red
       'COMPLETED': {
-        color: 'bg-green-500',
+        color: '#E21836',
+        bgColor: 'rgba(226, 24, 54, 0.15)',
+        textColor: '#E21836',
         label: language === 'en' ? 'Completed' : 'Terminé'
       },
       'MANUAL_COMPLETED': {
-        color: 'bg-green-500',
+        color: '#E21836',
+        bgColor: 'rgba(226, 24, 54, 0.15)',
+        textColor: '#E21836',
         label: language === 'en' ? 'Manual Completed' : 'Terminé Manuel'
       },
-      
-      // Accepted statuses - Purple
       'ACCEPTED': {
-        color: 'bg-purple-500',
+        color: '#E21836',
+        bgColor: 'rgba(226, 24, 54, 0.15)',
+        textColor: '#E21836',
         label: language === 'en' ? 'Accepted' : 'Accepté'
       },
       'MANUAL_ACCEPTED': {
-        color: 'bg-purple-500',
+        color: '#E21836',
+        bgColor: 'rgba(226, 24, 54, 0.15)',
+        textColor: '#E21836',
         label: language === 'en' ? 'Manual Accepted' : 'Accepté Manuel'
       },
-      
-      // Pending statuses - Cyan/Blue
-      'PENDING_AMBASSADOR': {
-        color: 'bg-cyan-500',
-        label: language === 'en' ? 'Pending Ambassador' : 'En Attente Ambassadeur'
-      },
-      'AUTO_REASSIGNED': {
-        color: 'bg-cyan-500',
-        label: language === 'en' ? 'Auto Reassigned' : 'Réassigné Auto'
-      },
-      'PENDING': {
-        color: 'bg-cyan-500',
-        label: language === 'en' ? 'Pending' : 'En Attente'
-      },
-      'PENDING_PAYMENT': {
-        color: 'bg-yellow-500',
-        label: language === 'en' ? 'Pending Payment' : 'Paiement en Attente'
+      'PAID': {
+        color: '#E21836',
+        bgColor: 'rgba(226, 24, 54, 0.15)',
+        textColor: '#E21836',
+        label: language === 'en' ? 'Paid' : 'Payé'
       },
       'ASSIGNED': {
-        color: 'bg-blue-500',
+        color: '#E21836',
+        bgColor: 'rgba(226, 24, 54, 0.15)',
+        textColor: '#E21836',
         label: language === 'en' ? 'Assigned' : 'Assigné'
       },
       
-      // Cancelled statuses - Red
+      // Warning/Maintenance statuses - Gold
+      'PENDING_AMBASSADOR': {
+        color: '#FFC93C',
+        bgColor: 'rgba(255, 201, 60, 0.15)',
+        textColor: '#FFC93C',
+        label: language === 'en' ? 'Pending Ambassador' : 'En Attente Ambassadeur'
+      },
+      'AUTO_REASSIGNED': {
+        color: '#FFC93C',
+        bgColor: 'rgba(255, 201, 60, 0.15)',
+        textColor: '#FFC93C',
+        label: language === 'en' ? 'Auto Reassigned' : 'Réassigné Auto'
+      },
+      'PENDING': {
+        color: '#FFC93C',
+        bgColor: 'rgba(255, 201, 60, 0.15)',
+        textColor: '#FFC93C',
+        label: language === 'en' ? 'Pending' : 'En Attente'
+      },
+      'PENDING_PAYMENT': {
+        color: '#FFC93C',
+        bgColor: 'rgba(255, 201, 60, 0.15)',
+        textColor: '#FFC93C',
+        label: language === 'en' ? 'Pending Payment' : 'Paiement en Attente'
+      },
+      'ON_HOLD': {
+        color: '#FFC93C',
+        bgColor: 'rgba(255, 201, 60, 0.15)',
+        textColor: '#FFC93C',
+        label: language === 'en' ? 'On Hold' : 'En Attente'
+      },
+      'REFUNDED': {
+        color: '#FFC93C',
+        bgColor: 'rgba(255, 201, 60, 0.15)',
+        textColor: '#FFC93C',
+        label: language === 'en' ? 'Refunded' : 'Remboursé'
+      },
+      'FRAUD_FLAGGED': {
+        color: '#FFC93C',
+        bgColor: 'rgba(255, 201, 60, 0.15)',
+        textColor: '#FFC93C',
+        label: language === 'en' ? 'Fraud Flagged' : 'Signalé comme Fraude'
+      },
+      
+      // Info statuses - Cyan
       'CANCELLED': {
-        color: 'bg-red-500',
+        color: '#00CFFF',
+        bgColor: 'rgba(0, 207, 255, 0.15)',
+        textColor: '#00CFFF',
         label: language === 'en' ? 'Cancelled' : 'Annulé'
       },
       'CANCELLED_BY_AMBASSADOR': {
-        color: 'bg-red-500',
+        color: '#00CFFF',
+        bgColor: 'rgba(0, 207, 255, 0.15)',
+        textColor: '#00CFFF',
         label: language === 'en' ? 'Cancelled by Ambassador' : 'Annulé par Ambassadeur'
       },
       'CANCELLED_BY_ADMIN': {
-        color: 'bg-red-500',
+        color: '#00CFFF',
+        bgColor: 'rgba(0, 207, 255, 0.15)',
+        textColor: '#00CFFF',
         label: language === 'en' ? 'Cancelled by Admin' : 'Annulé par Admin'
       },
       
-      // Payment statuses
-      'PAID': {
-        color: 'bg-green-500',
-        label: language === 'en' ? 'Paid' : 'Payé'
-      },
+      // Disabled statuses - Gray
       'FAILED': {
-        color: 'bg-red-500',
+        color: '#8C8C8C',
+        bgColor: 'rgba(140, 140, 140, 0.15)',
+        textColor: '#8C8C8C',
         label: language === 'en' ? 'Failed' : 'Échoué'
       },
-      'REFUNDED': {
-        color: 'bg-orange-500',
-        label: language === 'en' ? 'Refunded' : 'Remboursé'
-      },
-      
-      // Other statuses
-      'ON_HOLD': {
-        color: 'bg-yellow-500',
-        label: language === 'en' ? 'On Hold' : 'En Attente'
-      },
       'IGNORED': {
-        color: 'bg-gray-500',
+        color: '#8C8C8C',
+        bgColor: 'rgba(140, 140, 140, 0.15)',
+        textColor: '#8C8C8C',
         label: language === 'en' ? 'Ignored' : 'Ignoré'
       },
       'FRAUD_SUSPECT': {
-        color: 'bg-red-600',
+        color: '#8C8C8C',
+        bgColor: 'rgba(140, 140, 140, 0.15)',
+        textColor: '#8C8C8C',
         label: language === 'en' ? 'Fraud Suspect' : 'Fraude Suspecte'
-      },
-      'FRAUD_FLAGGED': {
-        color: 'bg-orange-500',
-        label: language === 'en' ? 'Fraud Flagged' : 'Signalé comme Fraude'
       }
     };
     
     const config = statusConfig[normalizedStatus] || {
-      color: 'bg-gray-500',
+      color: '#8C8C8C',
+      bgColor: 'rgba(140, 140, 140, 0.15)',
+      textColor: '#8C8C8C',
       label: status || (language === 'en' ? 'Unknown' : 'Inconnu')
     };
     
@@ -5049,10 +5429,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         onMouseLeave={handleMouseLeave}
       >
         <div
-          className={cn(
-            "w-3 h-3 rounded-full cursor-help shadow-sm",
-            statusInfo.color
-          )}
+          className="w-3 h-3 rounded-full cursor-help shadow-sm"
+          style={{ backgroundColor: statusInfo.color }}
         />
         {showTooltip && (
           <div
@@ -5069,7 +5447,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Helper function to detect Instagram URLs
   const isInstagramUrl = (url: string) => {
-    return url.includes('instagram.com') || url.includes('ig.com');
+    if (!url) return false;
+    const instagramPattern = /^https?:\/\/(www\.)?(instagram\.com|ig\.com)\/.+/i;
+    return instagramPattern.test(url);
   };
 
   // Social link component with icon only for table
@@ -5101,40 +5481,79 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     );
   };
 
-  const handleGalleryFileUpload = async (files: File[]) => {
-    setUploadingGallery(true);
-    try {
-      const uploadedUrls: string[] = [];
+  // Store gallery files temporarily (upload on save)
+  const handleGalleryFileSelect = (files: File[], type: 'images' | 'videos') => {
+    if (type === 'images') {
+      setPendingGalleryImages(prev => [...prev, ...files]);
+    } else {
+      setPendingGalleryVideos(prev => [...prev, ...files]);
+    }
+    
+    toast({
+      title: language === 'en' ? "Files selected" : "Fichiers sélectionnés",
+      description: language === 'en' 
+        ? `${files.length} file(s) will be uploaded when you save` 
+        : `${files.length} fichier(s) seront téléchargés lors de l'enregistrement`,
+    });
+  };
+
+  // Remove pending gallery file
+  const removePendingGalleryFile = (index: number, type: 'images' | 'videos') => {
+    if (type === 'images') {
+      setPendingGalleryImages(prev => {
+        const newFiles = [...prev];
+        newFiles.splice(index, 1);
+        return newFiles;
+      });
+    } else {
+      setPendingGalleryVideos(prev => {
+        const newFiles = [...prev];
+        newFiles.splice(index, 1);
+        return newFiles;
+      });
+    }
+  };
+
+  // Ensure Standard pass always exists when editing event
+  useEffect(() => {
+    if (editingEvent && isEventDialogOpen) {
+      const passes = editingEvent.passes || [];
+      const hasStandard = passes.some(p => (p.is_default || p.name === 'Standard'));
       
-      for (const file of files) {
-        const uploadResult = await uploadImage(file, 'gallery');
-        
-        if (uploadResult.error) {
-          throw new Error(uploadResult.error);
-        }
-        
-        uploadedUrls.push(uploadResult.url);
+      if (!hasStandard) {
+        setEditingEvent(prev => ({
+          ...prev!,
+          passes: [{
+            name: 'Standard',
+            price: 0,
+            description: language === 'en' 
+              ? 'General entry access. Basic benefits included.' 
+              : 'Accès général. Avantages de base inclus.',
+            is_default: true
+          }, ...(prev?.passes || [])]
+        }));
+      }
+    }
+  }, [editingEvent?.id, isEventDialogOpen, language]);
+
+  // Upload all pending gallery files
+  const uploadPendingGalleryFiles = async (type: 'images' | 'videos'): Promise<string[]> => {
+    const files = type === 'images' ? pendingGalleryImages : pendingGalleryVideos;
+    if (files.length === 0) return [];
+
+    const uploadedUrls: string[] = [];
+    
+    for (const file of files) {
+      const uploadResult = await uploadImage(file, 'gallery');
+      
+      if (uploadResult.error) {
+        throw new Error(uploadResult.error);
       }
       
-      setEditingEvent(prev => ({
-        ...prev!,
-        gallery_images: [...(prev?.gallery_images || []), ...uploadedUrls]
-      }));
-      
-      toast({
-        title: "Gallery files uploaded successfully!",
-        description: `${files.length} file(s) uploaded`,
-      });
-    } catch (error) {
-      console.error('Error uploading gallery files:', error);
-      toast({
-        title: "Upload failed",
-        description: "Failed to upload gallery files",
-        variant: "destructive",
-      });
-    } finally {
-      setUploadingGallery(false);
+      uploadedUrls.push(uploadResult.url);
     }
+    
+    return uploadedUrls;
   };
 
   const removeGalleryFile = (index: number, type: 'images' | 'videos') => {
@@ -5562,7 +5981,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <div className="flex justify-center">
               <div className="relative">
                 <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse" />
-                <div className="relative bg-gradient-to-br from-primary to-secondary p-4 rounded-2xl shadow-lg">
+                <div className="relative bg-gradient-to-br from-primary to-primary/80 p-4 rounded-2xl shadow-lg">
                   <Settings className="w-12 h-12 text-primary-foreground" />
                 </div>
               </div>
@@ -5570,7 +5989,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
             {/* Title */}
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-secondary to-primary bg-clip-text text-transparent mb-2">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary bg-clip-text text-transparent mb-2">
                 {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
               </h1>
               <p className="text-muted-foreground text-lg">
@@ -5593,7 +6012,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <div className="pt-4">
               <Button 
                 onClick={() => navigate('/admin/login')}
-                className="w-full bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 h-12 text-base font-semibold"
+                className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 h-12 text-base font-semibold"
               >
                 {language === 'en' ? 'Back to Login' : 'Retour à la Connexion'}
               </Button>
@@ -5601,7 +6020,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
             {/* Decorative elements */}
             <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
-            <div className="absolute -top-10 -left-10 w-24 h-24 bg-secondary/5 rounded-full blur-2xl" />
+            <div className="absolute -top-10 -left-10 w-24 h-24 bg-primary/5 rounded-full blur-2xl" />
           </div>
         </div>
       </div>
@@ -5612,7 +6031,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     <div className="pt-16 min-h-screen bg-background min-w-0">
       <div className="flex">
         {/* Sidebar */}
-        <div className="w-64 bg-card border-r border-border/20 min-h-screen flex flex-col">
+        <div 
+          className="w-64 min-h-screen flex flex-col"
+          style={{
+            background: '#000000',
+            borderRight: '1px solid #424242'
+          }}
+        >
           <div className="p-4 border-b border-border/20">
             <h2 className="text-lg font-semibold">Navigation</h2>
           </div>
@@ -5622,9 +6047,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onClick={() => setActiveTab("overview")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-100 ${
                   activeTab === "overview" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
+                    ? "shadow-lg" 
+                    : ""
                 }`}
+                style={{
+                  color: activeTab === "overview" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "overview" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
               >
                 <BarChart3 className={`w-4 h-4 transition-transform duration-300 ${activeTab === "overview" ? "animate-pulse" : ""}`} />
                 <span>{t.overview}</span>
@@ -5633,9 +6062,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onClick={() => setActiveTab("events")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-200 ${
                   activeTab === "events" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
+                    ? "shadow-lg" 
+                    : ""
                 }`}
+                style={{
+                  color: activeTab === "events" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "events" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
               >
                 <CalendarIcon className={`w-4 h-4 transition-transform duration-300 ${activeTab === "events" ? "animate-pulse" : ""}`} />
                 <span>{t.events}</span>
@@ -5644,9 +6077,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onClick={() => setActiveTab("ambassadors")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-300 ${
                   activeTab === "ambassadors" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
+                    ? "shadow-lg" 
+                    : ""
                 }`}
+                style={{
+                  color: activeTab === "ambassadors" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "ambassadors" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
               >
                 <Users className={`w-4 h-4 transition-transform duration-300 ${activeTab === "ambassadors" ? "animate-pulse" : ""}`} />
                 <span>{t.ambassadors}</span>
@@ -5655,9 +6092,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onClick={() => setActiveTab("applications")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-400 ${
                   activeTab === "applications" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
+                    ? "shadow-lg" 
+                    : ""
                 }`}
+                style={{
+                  color: activeTab === "applications" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "applications" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
               >
                 <FileText className={`w-4 h-4 transition-transform duration-300 ${activeTab === "applications" ? "animate-pulse" : ""}`} />
                 <span>{t.applications}</span>
@@ -5666,9 +6107,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onClick={() => setActiveTab("sponsors")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-500 ${
                   activeTab === "sponsors" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
+                    ? "shadow-lg" 
+                    : ""
                 }`}
+                style={{
+                  color: activeTab === "sponsors" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "sponsors" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
               >
                 <Building2 className={`w-4 h-4 transition-transform duration-300 ${activeTab === "sponsors" ? "animate-pulse" : ""}`} />
                 <span>Sponsors</span>
@@ -5677,9 +6122,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onClick={() => setActiveTab("team")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-600 ${
                   activeTab === "team" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
+                    ? "shadow-lg" 
+                    : ""
                 }`}
+                style={{
+                  color: activeTab === "team" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "team" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
               >
                 <Users2 className={`w-4 h-4 transition-transform duration-300 ${activeTab === "team" ? "animate-pulse" : ""}`} />
                 <span>Team</span>
@@ -5695,9 +6144,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   onClick={() => setActiveTab("admins")}
                   className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-700 ${
                     activeTab === "admins" 
-                      ? "bg-primary text-primary-foreground shadow-lg" 
-                      : "hover:bg-accent hover:shadow-md"
+                      ? "shadow-lg" 
+                      : ""
                   }`}
+                  style={{
+                    color: activeTab === "admins" ? '#E21836' : '#B8B8B8',
+                    background: activeTab === "admins" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                  }}
                 >
                   <User className={`w-4 h-4 transition-transform duration-300 ${activeTab === "admins" ? "animate-pulse" : ""}`} />
                   <span>{language === 'en' ? 'Admins' : 'Administrateurs'}</span>
@@ -5707,9 +6160,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onClick={() => setActiveTab("contact")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-${currentAdminRole === 'super_admin' ? '800' : '700'} ${
                   activeTab === "contact" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
+                    ? "shadow-lg" 
+                    : ""
                 }`}
+                style={{
+                  color: activeTab === "contact" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "contact" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
               >
                 <MessageCircle className={`w-4 h-4 transition-transform duration-300 ${activeTab === "contact" ? "animate-pulse" : ""}`} />
                 <span>Contact Messages</span>
@@ -5718,9 +6175,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onClick={() => setActiveTab("tickets")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-800 ${
                   activeTab === "tickets" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
+                    ? "shadow-lg" 
+                    : ""
                 }`}
+                style={{
+                  color: activeTab === "tickets" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "tickets" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
               >
                 <DollarSign className={`w-4 h-4 transition-transform duration-300 ${activeTab === "tickets" ? "animate-pulse" : ""}`} />
                 <span>Ticket Management</span>
@@ -5734,9 +6195,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 }}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-825 ${
                   activeTab === "ambassador-sales" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
+                    ? "shadow-lg" 
+                    : ""
                 }`}
+                style={{
+                  color: activeTab === "ambassador-sales" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "ambassador-sales" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
               >
                 <Package className={`w-4 h-4 transition-transform duration-300 ${activeTab === "ambassador-sales" ? "animate-pulse" : ""}`} />
                 <span>{language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs'}</span>
@@ -5750,9 +6215,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 }}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
                   activeTab === "online-orders" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
+                    ? "shadow-lg" 
+                    : ""
                 }`}
+                style={{
+                  color: activeTab === "online-orders" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "online-orders" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
               >
                 <CreditCard className={`w-4 h-4 transition-transform duration-300 ${activeTab === "online-orders" ? "animate-pulse" : ""}`} />
                 <span>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</span>
@@ -5761,9 +6230,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onClick={() => setActiveTab("marketing")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
                   activeTab === "marketing" 
-                    ? "bg-primary text-primary-foreground shadow-lg" 
-                    : "hover:bg-accent hover:shadow-md"
+                    ? "shadow-lg" 
+                    : ""
                 }`}
+                style={{
+                  color: activeTab === "marketing" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "marketing" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
               >
                 <Megaphone className={`w-4 h-4 transition-transform duration-300 ${activeTab === "marketing" ? "animate-pulse" : ""}`} />
                 <span>{language === 'en' ? 'Marketing' : 'Marketing'}</span>
@@ -5778,9 +6251,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   }}
                   className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-875 ${
                     activeTab === "logs" 
-                      ? "bg-primary text-primary-foreground shadow-lg" 
-                      : "hover:bg-accent hover:shadow-md"
+                      ? "shadow-lg" 
+                      : ""
                   }`}
+                  style={{
+                    color: activeTab === "logs" ? '#E21836' : '#B8B8B8',
+                    background: activeTab === "logs" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                  }}
                 >
                   <Activity className={`w-4 h-4 transition-transform duration-300 ${activeTab === "logs" ? "animate-pulse" : ""}`} />
                   <span>{language === 'en' ? 'Logs' : 'Journaux'}</span>
@@ -5791,9 +6268,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   onClick={() => setActiveTab("settings")}
                   className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-925 ${
                     activeTab === "settings" 
-                      ? "bg-primary text-primary-foreground shadow-lg" 
-                      : "hover:bg-accent hover:shadow-md"
+                      ? "shadow-lg" 
+                      : ""
                   }`}
+                  style={{
+                    color: activeTab === "settings" ? '#E21836' : '#B8B8B8',
+                    background: activeTab === "settings" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                  }}
                 >
                   <Settings className={`w-4 h-4 transition-transform duration-300 ${activeTab === "settings" ? "animate-pulse" : ""}`} />
                   <span>{t.settings}</span>
@@ -5819,16 +6300,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             {/* Header */}
             <div className="mb-8 flex justify-between items-start min-w-0 animate-in slide-in-from-top-4 fade-in duration-700">
               <div>
-                <h1 className="text-4xl font-heading font-bold text-gradient-neon mb-2 animate-in slide-in-from-left-4 duration-1000">
+                <h1 
+                  className="text-4xl font-heading font-bold mb-2 animate-in slide-in-from-left-4 duration-1000"
+                  style={{
+                    color: '#E21836',
+                    textShadow: '0 0 12px rgba(226, 24, 54, 0.45)'
+                  }}
+                >
                   {t.title}
                 </h1>
-                <p className="text-muted-foreground animate-in slide-in-from-left-4 duration-1000 delay-300">
+                <p 
+                  className="animate-in slide-in-from-left-4 duration-1000 delay-300"
+                  style={{ color: '#B8B8B8' }}
+                >
                   {t.subtitle}
                 </p>
               </div>
               {/* Session Timer */}
-              <div className="flex items-center gap-2 bg-card/50 px-4 py-2 rounded-lg border border-border/20">
-                <Clock className="w-4 h-4 text-primary animate-pulse" />
+              <div 
+                className="flex items-center gap-2 px-4 py-2 rounded-lg"
+                style={{
+                  background: '#1A1A1A',
+                  border: '1px solid #424242',
+                  color: '#B8B8B8'
+                }}
+              >
+                <Clock className="w-4 h-4 animate-pulse" style={{ color: '#E21836' }} />
                 <span className="text-sm font-medium">
                   {language === 'en' ? 'Session:' : 'Session:'} {Math.floor(sessionTimeLeft / 3600)}h {Math.floor((sessionTimeLeft % 3600) / 60)}m {sessionTimeLeft % 60}s
                 </span>
@@ -5851,7 +6348,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               <TabsContent value="overview" className="space-y-6 mt-20 sm:mt-0">
                 {/* Welcome Header */}
                 <div className="animate-in slide-in-from-top-4 fade-in duration-700">
-                  <Card className="bg-gradient-to-br from-primary/10 via-secondary/5 to-background border-primary/20 shadow-xl">
+                  <Card className="bg-gradient-to-br from-primary/10 via-primary/5 to-background border-primary/20 shadow-xl">
                     <CardContent className="p-8">
                       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                         <div className="space-y-2">
@@ -5905,8 +6402,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           <Clock className="w-6 h-6 text-yellow-500" />
                         </div>
                         <div className="flex items-center gap-1 text-xs font-heading">
-                          <TrendingUp className="w-3 h-3 text-green-500" />
-                          <span className="text-green-500">+12%</span>
+                          <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
+                          <span style={{ color: '#E21836' }}>+12%</span>
                         </div>
                       </div>
                       <div className="space-y-1">
@@ -5939,15 +6436,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         : 'opacity-0 translate-y-8'
                     }`}
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl" />
+                    <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl" style={{ backgroundColor: 'rgba(226, 24, 54, 0.05)' }} />
                     <CardContent className="p-6 relative z-10">
                       <div className="flex items-start justify-between mb-4">
-                        <div className="p-3 bg-green-500/20 rounded-xl">
-                          <CheckCircle className="w-6 h-6 text-green-500" />
+                        <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(226, 24, 54, 0.2)' }}>
+                          <CheckCircle className="w-6 h-6" style={{ color: '#E21836' }} />
                         </div>
                         <div className="flex items-center gap-1 text-xs font-heading">
-                          <TrendingUp className="w-3 h-3 text-green-500" />
-                          <span className="text-green-500">+8%</span>
+                          <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
+                          <span style={{ color: '#E21836' }}>+8%</span>
                         </div>
                       </div>
                       <div className="space-y-1">
@@ -5964,7 +6461,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         {[5, 7, 6, 8, 9, 10, approvedCount].map((h, i) => (
                           <div 
                             key={i}
-                            className="flex-1 bg-green-500/30 rounded-t transition-all duration-300 hover:bg-green-500/50"
+                            className="flex-1 rounded-t transition-all duration-300"
+                            style={{ backgroundColor: 'rgba(226, 24, 54, 0.3)' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(226, 24, 54, 0.5)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(226, 24, 54, 0.3)'}
                             style={{ height: `${(h / 15) * 100}%` }}
                           />
                         ))}
@@ -5980,15 +6480,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         : 'opacity-0 translate-y-8'
                     }`}
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl" />
+                    <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl" style={{ backgroundColor: 'rgba(0, 207, 255, 0.05)' }} />
                     <CardContent className="p-6 relative z-10">
                       <div className="flex items-start justify-between mb-4">
-                        <div className="p-3 bg-blue-500/20 rounded-xl">
-                          <CalendarIcon className="w-6 h-6 text-blue-500" />
+                        <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(0, 207, 255, 0.2)' }}>
+                          <CalendarIcon className="w-6 h-6" style={{ color: '#00CFFF' }} />
                         </div>
                         <div className="flex items-center gap-1 text-xs font-heading">
-                          <TrendingUp className="w-3 h-3 text-green-500" />
-                          <span className="text-green-500">+15%</span>
+                          <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
+                          <span style={{ color: '#E21836' }}>+15%</span>
                         </div>
                       </div>
                       <div className="space-y-1">
@@ -6005,7 +6505,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         {[2, 3, 4, 5, 6, 7, events.length].map((h, i) => (
                           <div 
                             key={i}
-                            className="flex-1 bg-blue-500/30 rounded-t transition-all duration-300 hover:bg-blue-500/50"
+                            className="flex-1 rounded-t transition-all duration-300"
+                            style={{ backgroundColor: 'rgba(0, 207, 255, 0.3)' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 207, 255, 0.5)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 207, 255, 0.3)'}
                             style={{ height: `${(h / 10) * 100}%` }}
                           />
                         ))}
@@ -6015,21 +6518,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
                   {/* Approved Ambassadors Card */}
                   <Card 
-                    className={`group relative overflow-hidden bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-background border-purple-500/20 transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                    className={`group relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-background border-primary/20 transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
                       animatedCards.has(3) 
                         ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600' 
                         : 'opacity-0 translate-y-8'
                     }`}
                   >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
                     <CardContent className="p-6 relative z-10">
                       <div className="flex items-start justify-between mb-4">
-                        <div className="p-3 bg-purple-500/20 rounded-xl">
-                          <Users className="w-6 h-6 text-purple-500" />
+                        <div className="p-3 bg-primary/20 rounded-xl">
+                          <Users className="w-6 h-6 text-primary" />
                         </div>
                         <div className="flex items-center gap-1 text-xs font-heading">
-                          <TrendingUp className="w-3 h-3 text-green-500" />
-                          <span className="text-green-500">+22%</span>
+                          <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
+                          <span style={{ color: '#E21836' }}>+22%</span>
                         </div>
                       </div>
                       <div className="space-y-1">
@@ -6046,7 +6549,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         {[4, 5, 6, 7, 8, 9, ambassadors.length].map((h, i) => (
                           <div 
                             key={i}
-                            className="flex-1 bg-purple-500/30 rounded-t transition-all duration-300 hover:bg-purple-500/50"
+                            className="flex-1 bg-primary/30 rounded-t transition-all duration-300 hover:bg-primary/50"
                             style={{ height: `${(h / 12) * 100}%` }}
                           />
                         ))}
@@ -6078,7 +6581,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
                             <div className="relative w-full">
                               <div 
-                                className="w-full bg-gradient-to-t from-primary to-secondary rounded-t transition-all duration-300 group-hover:opacity-80 cursor-pointer"
+                                className="w-full bg-gradient-to-t from-primary to-primary/80 rounded-t transition-all duration-300 group-hover:opacity-80 cursor-pointer"
                                 style={{ height: `${(value / 30) * 100}%` }}
                               />
                               <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-background border border-border px-2 py-1 rounded text-xs font-heading whitespace-nowrap">
@@ -6319,17 +6822,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           }`}
                         >
                           <div className="flex items-center gap-4 flex-1">
-                            <div className={`p-2 rounded-lg ${
-                              app.status === 'approved' ? 'bg-green-500/20' :
-                              app.status === 'rejected' ? 'bg-red-500/20' :
-                              'bg-yellow-500/20'
-                            }`}>
+                            <div 
+                              className="p-2 rounded-lg"
+                              style={{
+                                backgroundColor: app.status === 'approved' 
+                                  ? 'rgba(226, 24, 54, 0.2)' 
+                                  : app.status === 'rejected' 
+                                  ? 'rgba(140, 140, 140, 0.2)' 
+                                  : 'rgba(255, 201, 60, 0.2)'
+                              }}
+                            >
                               {app.status === 'approved' ? (
-                                <CheckCircle className="w-5 h-5 text-green-500" />
+                                <CheckCircle className="w-5 h-5" style={{ color: '#E21836' }} />
                               ) : app.status === 'rejected' ? (
-                                <XCircle className="w-5 h-5 text-red-500" />
+                                <XCircle className="w-5 h-5" style={{ color: '#8C8C8C' }} />
                               ) : (
-                                <Clock className="w-5 h-5 text-yellow-500" />
+                                <Clock className="w-5 h-5" style={{ color: '#FFC93C' }} />
                               )}
                           </div>
                             <div className="flex-1">
@@ -6377,7 +6885,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     <DialogTrigger asChild>
                       <Button 
                         onClick={() => {
-                          setEditingEvent({} as Event);
+                          // Initialize with default Standard pass
+                          setEditingEvent({
+                            passes: [{
+                              name: 'Standard',
+                              price: 0,
+                              description: language === 'en' 
+                                ? 'General entry access. Basic benefits included.' 
+                                : 'Accès général. Avantages de base inclus.',
+                              is_default: true
+                            }]
+                          } as Event);
+                          // Clear pending files and validation errors when opening dialog
+                          setPendingGalleryImages([]);
+                          setPendingGalleryVideos([]);
+                          setPassValidationErrors({});
                           setIsEventDialogOpen(true);
                         }}
                         className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
@@ -6441,31 +6963,363 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           />
                         </div>
                         <div>
-                          <Label htmlFor="eventWhatsappLink">{t.eventWhatsappLink}</Label>
+                          <Label htmlFor="eventInstagramLink" className="flex items-center gap-2">
+                            <Instagram className="w-4 h-4" />
+                            {t.eventInstagramLink} *
+                          </Label>
                           <Input
-                            id="eventWhatsappLink"
-                            value={editingEvent?.whatsapp_link || ''}
-                            onChange={(e) => setEditingEvent(prev => ({ ...prev, whatsapp_link: e.target.value }))}
+                            id="eventInstagramLink"
+                            type="url"
+                            value={editingEvent?.instagram_link || ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setEditingEvent(prev => ({ ...prev, instagram_link: value }));
+                            }}
+                            placeholder="https://www.instagram.com/username"
+                            className={editingEvent?.instagram_link && !isInstagramUrl(editingEvent.instagram_link) ? 'border-red-500' : ''}
+                            required
                           />
+                          {editingEvent?.instagram_link && !isInstagramUrl(editingEvent.instagram_link) && (
+                            <p className="text-sm text-red-500 mt-1">
+                              {language === 'en' 
+                                ? 'Must be a valid Instagram URL (e.g., https://www.instagram.com/username)' 
+                                : 'Doit être une URL Instagram valide (ex: https://www.instagram.com/username)'}
+                            </p>
+                          )}
+                          {!editingEvent?.instagram_link && (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {language === 'en' 
+                                ? 'Must start with https://www.instagram.com/ or https://instagram.com/' 
+                                : 'Doit commencer par https://www.instagram.com/ ou https://instagram.com/'}
+                            </p>
+                          )}
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="eventStandardPrice">{t.eventStandardPrice}</Label>
-                            <Input
-                              id="eventStandardPrice"
-                              type="number"
-                              value={editingEvent?.standard_price || ''}
-                              onChange={(e) => setEditingEvent(prev => ({ ...prev, standard_price: parseFloat(e.target.value) || 0 }))}
-                            />
+                        {/* Pass Management Section - All Passes Always Visible */}
+                        <div className="space-y-4 border-t pt-6">
+                          {/* Error Summary Banner - Show if there are validation errors */}
+                          {Object.keys(passValidationErrors).length > 0 && (
+                            <Alert variant="destructive" className="mb-4 animate-in slide-in-from-top-4">
+                              <XCircle className="h-4 w-4" />
+                              <AlertDescription>
+                                <div className="font-semibold mb-2">
+                                  {language === 'en' ? 'Please fix the following errors before saving:' : 'Veuillez corriger les erreurs suivantes avant d\'enregistrer :'}
+                                </div>
+                                <ul className="list-disc list-inside space-y-1 text-sm">
+                                  {Object.entries(passValidationErrors).map(([index, errors]) => {
+                                    const pass = editingEvent?.passes?.[parseInt(index)];
+                                    const passName = pass?.name || (language === 'en' ? `Pass #${parseInt(index) + 1}` : `Pass #${parseInt(index) + 1}`);
+                                    return Object.entries(errors).map(([field, message]) => (
+                                      <li key={`${index}-${field}`}>
+                                        <strong>{passName}</strong> - {field === 'name' 
+                                          ? (language === 'en' ? 'Name: ' : 'Nom : ') 
+                                          : field === 'price' 
+                                          ? (language === 'en' ? 'Price: ' : 'Prix : ')
+                                          : (language === 'en' ? 'Description: ' : 'Description : ')}
+                                        {message}
+                                      </li>
+                                    ));
+                                  })}
+                                </ul>
+                              </AlertDescription>
+                            </Alert>
+                          )}
+                          
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <Label className="text-lg font-semibold">
+                                {language === 'en' ? 'Pass Management' : 'Gestion des Passes'}
+                              </Label>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {language === 'en' 
+                                  ? 'All passes are displayed below. Standard pass is mandatory and cannot be removed.' 
+                                  : 'Tous les passes sont affichés ci-dessous. Le pass Standard est obligatoire et ne peut pas être supprimé.'}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                // Check for duplicate names before adding
+                                const existingNames = (editingEvent?.passes || []).map(p => p.name.trim().toLowerCase());
+                                const newPass: EventPass = {
+                                  name: '',
+                                  price: 0,
+                                  description: '',
+                                  is_default: false
+                                };
+                                setEditingEvent(prev => ({
+                                  ...prev,
+                                  passes: [...(prev?.passes || []), newPass]
+                                }));
+                              }}
+                              className="flex items-center gap-2"
+                            >
+                              <Plus className="w-4 h-4" />
+                              {language === 'en' ? 'Add New Pass' : 'Ajouter un Pass'}
+                            </Button>
                           </div>
-                          <div>
-                            <Label htmlFor="eventVipPrice">{t.eventVipPrice}</Label>
-                            <Input
-                              id="eventVipPrice"
-                              type="number"
-                              value={editingEvent?.vip_price || ''}
-                              onChange={(e) => setEditingEvent(prev => ({ ...prev, vip_price: parseFloat(e.target.value) || 0 }))}
-                            />
+                          
+                          {/* Display ALL passes - Standard first, then custom passes */}
+                          <div className="space-y-4">
+                            {(() => {
+                              const passes = editingEvent?.passes || [];
+                              console.log('📋 Current passes in editingEvent (render):', passes);
+                              console.log('📋 editingEvent object:', editingEvent);
+                              console.log('📋 editingEvent?.passes:', editingEvent?.passes);
+                              
+                              if (passes.length === 0) {
+                                return (
+                                  <div className="text-sm text-muted-foreground p-4 bg-muted/50 rounded-lg">
+                                    {language === 'en' 
+                                      ? 'No passes found. Loading passes from database...' 
+                                      : 'Aucun pass trouvé. Chargement des passes depuis la base de données...'}
+                                  </div>
+                                );
+                              }
+                              
+                              // Sort: Standard first, then others, but keep track of original indices
+                              const passesWithIndex = passes.map((pass, idx) => ({ pass, originalIndex: idx }));
+                              const sortedPassesWithIndex = [...passesWithIndex].sort((a, b) => {
+                                const aIsStandard = a.pass.is_default || a.pass.name === 'Standard';
+                                const bIsStandard = b.pass.is_default || b.pass.name === 'Standard';
+                                if (aIsStandard && !bIsStandard) return -1;
+                                if (!aIsStandard && bIsStandard) return 1;
+                                return 0;
+                              });
+
+                              return sortedPassesWithIndex.map(({ pass, originalIndex }) => {
+                                const isStandard = pass.is_default || pass.name === 'Standard';
+                                
+                                return (
+                                  <Card 
+                                    key={originalIndex} 
+                                    className={`${isStandard ? 'border-2 border-primary/50 bg-primary/5 shadow-md' : 'border border-border'}`}
+                                  >
+                                    <CardContent className="p-5">
+                                      {/* Header with Badge and Delete */}
+                                      <div className="flex items-start justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                          {isStandard && (
+                                            <Badge variant="default" className="text-xs font-semibold">
+                                              {language === 'en' ? 'MANDATORY - Default Pass' : 'OBLIGATOIRE - Pass par Défaut'}
+                                            </Badge>
+                                          )}
+                                          {!isStandard && (
+                                            <Badge variant="outline" className="text-xs">
+                                              {language === 'en' ? 'Custom Pass' : 'Pass Personnalisé'}
+                                            </Badge>
+                                          )}
+                                          <div className="flex flex-col">
+                                            <span className="text-sm font-semibold text-foreground">
+                                              {isStandard ? 'Standard Pass' : pass.name || (language === 'en' ? 'New Pass' : 'Nouveau Pass')}
+                                            </span>
+                                            {pass.price !== undefined && pass.price !== null && (
+                                              <span className="text-lg font-bold text-primary">
+                                                {typeof pass.price === 'number' ? pass.price.toFixed(2) : parseFloat(pass.price).toFixed(2)} TND
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        {!isStandard && (
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              const updatedPasses = editingEvent.passes?.filter((_, i) => i !== originalIndex) || [];
+                                              setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
+                                            }}
+                                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            title={language === 'en' ? 'Remove this pass' : 'Supprimer ce pass'}
+                                          >
+                                            <X className="w-4 h-4" />
+                                          </Button>
+                                        )}
+                                      </div>
+                                      
+                                      {/* Pass Details - Always Visible */}
+                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {/* Pass Name - Disabled for Standard */}
+                                        <div>
+                                          <Label htmlFor={`pass-name-${originalIndex}`} className="flex items-center gap-2">
+                                            {language === 'en' ? 'Pass Name' : 'Nom du Pass'} *
+                                            {isStandard && (
+                                              <Badge variant="secondary" className="text-xs">
+                                                {language === 'en' ? 'Fixed' : 'Fixe'}
+                                              </Badge>
+                                            )}
+                                          </Label>
+                                          <Input
+                                            id={`pass-name-${originalIndex}`}
+                                            value={pass.name}
+                                            onChange={(e) => {
+                                              const newName = e.target.value;
+                                              // Clear error for this field when user types
+                                              if (passValidationErrors[originalIndex]?.name) {
+                                                const newErrors = { ...passValidationErrors };
+                                                delete newErrors[originalIndex]?.name;
+                                                if (Object.keys(newErrors[originalIndex] || {}).length === 0) {
+                                                  delete newErrors[originalIndex];
+                                                }
+                                                setPassValidationErrors(newErrors);
+                                              }
+                                              
+                                              // Check for duplicates (case-insensitive)
+                                              const existingNames = editingEvent.passes
+                                                ?.filter((p, i) => i !== originalIndex)
+                                                .map(p => p.name.trim().toLowerCase()) || [];
+                                              
+                                              if (existingNames.includes(newName.trim().toLowerCase()) && newName.trim() !== '') {
+                                                setPassValidationErrors(prev => ({
+                                                  ...prev,
+                                                  [originalIndex]: {
+                                                    ...prev[originalIndex],
+                                                    name: language === 'en' 
+                                                      ? `A pass with the name "${newName}" already exists.` 
+                                                      : `Un pass avec le nom "${newName}" existe déjà.`
+                                                  }
+                                                }));
+                                                return;
+                                              }
+                                              
+                                              const updatedPasses = [...(editingEvent.passes || [])];
+                                              updatedPasses[originalIndex] = { ...pass, name: newName };
+                                              setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
+                                            }}
+                                            disabled={isStandard}
+                                            placeholder={language === 'en' ? 'e.g., VIP, Early Bird' : 'ex: VIP, Early Bird'}
+                                            className={`${isStandard ? 'bg-muted cursor-not-allowed' : ''} ${passValidationErrors[originalIndex]?.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+                                            required
+                                          />
+                                          {passValidationErrors[originalIndex]?.name && (
+                                            <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                                              <XCircle className="w-3 h-3" />
+                                              {passValidationErrors[originalIndex].name}
+                                            </p>
+                                          )}
+                                          {!passValidationErrors[originalIndex]?.name && isStandard && (
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                              {language === 'en' 
+                                                ? 'Standard pass name cannot be changed' 
+                                                : 'Le nom du pass Standard ne peut pas être modifié'}
+                                            </p>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Price - Always Editable */}
+                                        <div>
+                                          <Label htmlFor={`pass-price-${originalIndex}`}>
+                                            {language === 'en' ? 'Price (TND)' : 'Prix (TND)'} *
+                                          </Label>
+                                          <Input
+                                            id={`pass-price-${originalIndex}`}
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={pass.price !== undefined && pass.price !== null ? pass.price : ''}
+                                            onChange={(e) => {
+                                              const value = e.target.value;
+                                              // Allow empty input while typing
+                                              if (value === '') {
+                                                const updatedPasses = [...(editingEvent.passes || [])];
+                                                updatedPasses[originalIndex] = { ...pass, price: undefined };
+                                                setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
+                                                return;
+                                              }
+                                              
+                                              const numValue = parseFloat(value);
+                                              
+                                              // Clear error for this field when user types valid value
+                                              if (passValidationErrors[originalIndex]?.price && !isNaN(numValue) && numValue >= 0) {
+                                                const newErrors = { ...passValidationErrors };
+                                                delete newErrors[originalIndex]?.price;
+                                                if (Object.keys(newErrors[originalIndex] || {}).length === 0) {
+                                                  delete newErrors[originalIndex];
+                                                }
+                                                setPassValidationErrors(newErrors);
+                                              }
+                                              
+                                              if (isNaN(numValue) || numValue < 0) {
+                                                return;
+                                              }
+                                              
+                                              const updatedPasses = [...(editingEvent.passes || [])];
+                                              updatedPasses[originalIndex] = { ...pass, price: numValue };
+                                              setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
+                                            }}
+                                            placeholder="0.00"
+                                            required
+                                            className={`font-semibold ${passValidationErrors[originalIndex]?.price ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+                                          />
+                                          {passValidationErrors[originalIndex]?.price && (
+                                            <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                                              <XCircle className="w-3 h-3" />
+                                              {passValidationErrors[originalIndex].price}
+                                            </p>
+                                          )}
+                                          {!passValidationErrors[originalIndex]?.price && (
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                              {language === 'en' ? 'Must be ≥ 0' : 'Doit être ≥ 0'}
+                                            </p>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Description - Always Editable */}
+                                        <div className="md:col-span-1">
+                                          <Label htmlFor={`pass-description-${originalIndex}`}>
+                                            {language === 'en' ? 'Description' : 'Description'} *
+                                          </Label>
+                                          <Textarea
+                                            id={`pass-description-${originalIndex}`}
+                                            value={pass.description || ''}
+                                            onChange={(e) => {
+                                              // Clear error for this field when user types
+                                              if (passValidationErrors[originalIndex]?.description) {
+                                                const newErrors = { ...passValidationErrors };
+                                                delete newErrors[originalIndex]?.description;
+                                                if (Object.keys(newErrors[originalIndex] || {}).length === 0) {
+                                                  delete newErrors[originalIndex];
+                                                }
+                                                setPassValidationErrors(newErrors);
+                                              }
+                                              
+                                              const updatedPasses = [...(editingEvent.passes || [])];
+                                              updatedPasses[originalIndex] = { ...pass, description: e.target.value };
+                                              setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
+                                            }}
+                                            placeholder={language === 'en' 
+                                              ? 'What does this pass include?' 
+                                              : 'Que comprend ce pass ?'}
+                                            rows={3}
+                                            required
+                                            className={passValidationErrors[originalIndex]?.description ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
+                                          />
+                                          {passValidationErrors[originalIndex]?.description && (
+                                            <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                                              <XCircle className="w-3 h-3" />
+                                              {passValidationErrors[originalIndex].description}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Info Message for Standard */}
+                                      {isStandard && (
+                                        <div className="mt-4 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                                          <p className="text-xs text-foreground flex items-center gap-2">
+                                            <Info className="w-4 h-4 text-primary" />
+                                            {language === 'en' 
+                                              ? 'The Standard pass is mandatory. You can only edit its price and description.' 
+                                              : 'Le pass Standard est obligatoire. Vous ne pouvez modifier que son prix et sa description.'}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </CardContent>
+                                  </Card>
+                                );
+                              });
+                            })()}
                           </div>
                         </div>
                         <div>
@@ -6480,15 +7334,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            id="eventFeatured"
-                            checked={editingEvent?.featured || false}
-                            onChange={(e) => setEditingEvent(prev => ({ ...prev, featured: e.target.checked }))}
-                          />
-                          <Label htmlFor="eventFeatured">{t.eventFeatured}</Label>
-                        </div>
                         <div>
                           <Label>{t.eventPoster}</Label>
                           <FileUpload
@@ -6498,6 +7343,214 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             accept="image/*"
                           />
                         </div>
+                        {/* Gallery Images & Videos - Only show for Gallery Events */}
+                        {editingEvent?.event_type === 'gallery' && (
+                          <div className="space-y-6 border-t pt-6">
+                            {/* Gallery Images Section */}
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-lg font-semibold flex items-center gap-2">
+                                  <Image className="w-5 h-5" />
+                                  {t.galleryImages}
+                                </Label>
+                                <div className="relative">
+                                  <input
+                                    type="file"
+                                    id="gallery-images-upload"
+                                    multiple
+                                    accept="image/*"
+                                    onChange={(e) => {
+                                      const files = Array.from(e.target.files || []);
+                                      if (files.length > 0) {
+                                        handleGalleryFileSelect(files, 'images');
+                                      }
+                                      // Reset input
+                                      e.target.value = '';
+                                    }}
+                                    className="hidden"
+                                  />
+                                  <Label
+                                    htmlFor="gallery-images-upload"
+                                    className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                                  >
+                                    <Upload className="w-4 h-4" />
+                                    {t.addGalleryFile}
+                                  </Label>
+                                </div>
+                              </div>
+                              {/* Existing uploaded images */}
+                              {editingEvent?.gallery_images && editingEvent.gallery_images.length > 0 && (
+                                <div>
+                                  <Label className="text-sm text-muted-foreground mb-2 block">
+                                    {language === 'en' ? 'Uploaded Images' : 'Images Téléchargées'}
+                                  </Label>
+                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    {editingEvent.gallery_images.map((url, index) => (
+                                      <div key={`uploaded-${index}`} className="relative group">
+                                        <img
+                                          src={url}
+                                          alt={`Gallery image ${index + 1}`}
+                                          className="w-full h-32 object-cover rounded-lg border border-border"
+                                        />
+                                        <Button
+                                          type="button"
+                                          variant="destructive"
+                                          size="sm"
+                                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
+                                          onClick={() => removeGalleryFile(index, 'images')}
+                                        >
+                                          <X className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {/* Pending images (to be uploaded on save) */}
+                              {pendingGalleryImages.length > 0 && (
+                                <div>
+                                  <Label className="text-sm text-muted-foreground mb-2 block">
+                                    {language === 'en' ? `Pending Images (${pendingGalleryImages.length}) - Will upload on save` : `Images en Attente (${pendingGalleryImages.length}) - Sera téléchargé lors de l'enregistrement`}
+                                  </Label>
+                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    {pendingGalleryImages.map((file, index) => (
+                                      <div key={`pending-${index}`} className="relative group">
+                                        <img
+                                          src={URL.createObjectURL(file)}
+                                          alt={`Pending image ${index + 1}`}
+                                          className="w-full h-32 object-cover rounded-lg border border-dashed border-primary"
+                                        />
+                                        <div className="absolute inset-0 bg-primary/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <Badge variant="secondary" className="text-xs">
+                                            {language === 'en' ? 'Pending' : 'En Attente'}
+                                          </Badge>
+                                        </div>
+                                        <Button
+                                          type="button"
+                                          variant="destructive"
+                                          size="sm"
+                                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
+                                          onClick={() => removePendingGalleryFile(index, 'images')}
+                                        >
+                                          <X className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {(!editingEvent?.gallery_images || editingEvent.gallery_images.length === 0) && pendingGalleryImages.length === 0 && (
+                                <p className="text-sm text-muted-foreground">
+                                  {language === 'en' 
+                                    ? 'No gallery images. Select images to upload when you save.' 
+                                    : 'Aucune image de galerie. Sélectionnez des images à télécharger lors de l\'enregistrement.'}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Gallery Videos Section */}
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-lg font-semibold flex items-center gap-2">
+                                  <Video className="w-5 h-5" />
+                                  {t.galleryVideos}
+                                </Label>
+                                <div className="relative">
+                                  <input
+                                    type="file"
+                                    id="gallery-videos-upload"
+                                    multiple
+                                    accept="video/*"
+                                    onChange={(e) => {
+                                      const files = Array.from(e.target.files || []);
+                                      if (files.length > 0) {
+                                        handleGalleryFileSelect(files, 'videos');
+                                      }
+                                      // Reset input
+                                      e.target.value = '';
+                                    }}
+                                    className="hidden"
+                                  />
+                                  <Label
+                                    htmlFor="gallery-videos-upload"
+                                    className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                                  >
+                                    <Upload className="w-4 h-4" />
+                                    {t.addGalleryFile}
+                                  </Label>
+                                </div>
+                              </div>
+                              {/* Existing uploaded videos */}
+                              {editingEvent?.gallery_videos && editingEvent.gallery_videos.length > 0 && (
+                                <div>
+                                  <Label className="text-sm text-muted-foreground mb-2 block">
+                                    {language === 'en' ? 'Uploaded Videos' : 'Vidéos Téléchargées'}
+                                  </Label>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {editingEvent.gallery_videos.map((url, index) => (
+                                      <div key={`uploaded-video-${index}`} className="relative group">
+                                        <video
+                                          src={url}
+                                          controls
+                                          className="w-full h-48 object-cover rounded-lg border border-border"
+                                        />
+                                        <Button
+                                          type="button"
+                                          variant="destructive"
+                                          size="sm"
+                                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
+                                          onClick={() => removeGalleryFile(index, 'videos')}
+                                        >
+                                          <X className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {/* Pending videos (to be uploaded on save) */}
+                              {pendingGalleryVideos.length > 0 && (
+                                <div>
+                                  <Label className="text-sm text-muted-foreground mb-2 block">
+                                    {language === 'en' ? `Pending Videos (${pendingGalleryVideos.length}) - Will upload on save` : `Vidéos en Attente (${pendingGalleryVideos.length}) - Sera téléchargé lors de l'enregistrement`}
+                                  </Label>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {pendingGalleryVideos.map((file, index) => (
+                                      <div key={`pending-video-${index}`} className="relative group">
+                                        <video
+                                          src={URL.createObjectURL(file)}
+                                          controls
+                                          className="w-full h-48 object-cover rounded-lg border border-dashed border-primary"
+                                        />
+                                        <div className="absolute top-2 left-2 bg-primary/90 text-primary-foreground px-2 py-1 rounded text-xs">
+                                          <Badge variant="secondary">
+                                            {language === 'en' ? 'Pending' : 'En Attente'}
+                                          </Badge>
+                                        </div>
+                                        <Button
+                                          type="button"
+                                          variant="destructive"
+                                          size="sm"
+                                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
+                                          onClick={() => removePendingGalleryFile(index, 'videos')}
+                                        >
+                                          <X className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {(!editingEvent?.gallery_videos || editingEvent.gallery_videos.length === 0) && pendingGalleryVideos.length === 0 && (
+                                <p className="text-sm text-muted-foreground">
+                                  {language === 'en' 
+                                    ? 'No gallery videos. Select videos to upload when you save.' 
+                                    : 'Aucune vidéo de galerie. Sélectionnez des vidéos à télécharger lors de l\'enregistrement.'}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-800">
                         <DialogClose asChild>
@@ -6576,9 +7629,97 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           <Button 
                             size="sm" 
                             variant="outline" 
-                            onClick={() => {
-                              setEditingEvent(event);
-                              setIsEventDialogOpen(true);
+                            onClick={async () => {
+                              // Always fetch fresh passes from database to get current values
+                              console.log('🔍 Fetching passes for event:', event.id);
+                              const { data: passesData, error: passesError } = await supabase
+                                .from('event_passes')
+                                .select('*')
+                                .eq('event_id', event.id)
+                                .order('is_default', { ascending: false })
+                                .order('created_at', { ascending: true });
+                              
+                              console.log('📦 Raw passes data from DB:', passesData);
+                              console.log('❌ Passes error:', passesError);
+                              
+                              // Handle 404 errors gracefully (table might not exist yet)
+                              if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
+                                console.error(`Error fetching passes for event ${event.id}:`, passesError);
+                              }
+                              
+                              // Map database passes to EventPass format with all current values
+                              const mappedPasses = (passesData || []).map((p: any) => {
+                                const mapped = {
+                                  id: p.id,
+                                  name: p.name || '',
+                                  price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+                                  description: p.description || '',
+                                  is_default: p.is_default || false
+                                };
+                                console.log('🔄 Mapped pass:', mapped);
+                                return mapped;
+                              });
+                              
+                              console.log('✅ All mapped passes:', mappedPasses);
+                              
+                              // Ensure Standard pass always exists
+                              const hasStandard = mappedPasses.some((p: any) => p.is_default || p.name === 'Standard');
+                              let finalPasses = mappedPasses;
+                              
+                              if (!hasStandard) {
+                                console.log('⚠️ No Standard pass found, adding default');
+                                finalPasses = [{
+                                  name: 'Standard',
+                                  price: 0,
+                                  description: language === 'en' 
+                                    ? 'General entry access. Basic benefits included.' 
+                                    : 'Accès général. Avantages de base inclus.',
+                                  is_default: true
+                                }, ...mappedPasses];
+                              } else if (mappedPasses.length === 0) {
+                                console.log('⚠️ No passes found, adding default Standard');
+                                finalPasses = [{
+                                  name: 'Standard',
+                                  price: 0,
+                                  description: language === 'en' 
+                                    ? 'General entry access. Basic benefits included.' 
+                                    : 'Accès général. Avantages de base inclus.',
+                                  is_default: true
+                                }];
+                              }
+                              
+                              console.log('🎯 Final passes to display:', finalPasses);
+                              
+                              // Create event with all current pass values from database
+                              // Create a new object without the passes property first, then add it explicitly
+                              const { passes: _, ...eventWithoutPasses } = event;
+                              const eventWithPasses: Event = { 
+                                ...eventWithoutPasses,
+                                passes: finalPasses, // Explicitly set passes - this ensures it's not empty
+                                instagram_link: event.instagram_link || event.whatsapp_link
+                              };
+                              
+                              console.log('📝 Event with passes BEFORE setState:', eventWithPasses);
+                              console.log('📝 Event passes array length:', eventWithPasses.passes?.length);
+                              console.log('📝 Event passes array:', eventWithPasses.passes);
+                              console.log('📝 Original event.passes:', event.passes);
+                              
+                              // Clear pending files and validation errors when opening edit dialog
+                              setPendingGalleryImages([]);
+                              setPendingGalleryVideos([]);
+                              setPassValidationErrors({});
+                              
+                              // Set editingEvent first, then open dialog after a microtask
+                              // This ensures the state is set before the dialog renders
+                              setEditingEvent(eventWithPasses);
+                              
+                              console.log('✅ setEditingEvent called with passes:', finalPasses);
+                              
+                              // Use setTimeout to ensure state update completes before dialog opens
+                              // This prevents the dialog from rendering with stale/empty passes
+                              setTimeout(() => {
+                                setIsEventDialogOpen(true);
+                              }, 0);
                             }}
                             className="transform hover:scale-105 transition-all duration-300"
                           >
@@ -7334,7 +8475,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             {ambassador.full_name}
                           </h3>
                           {ambassador.commission_rate >= 15 && (
-                            <Badge className="bg-green-500 animate-pulse">
+                            <Badge 
+                              className="animate-pulse"
+                              style={{
+                                background: 'rgba(226, 24, 54, 0.15)',
+                                color: '#E21836'
+                              }}
+                            >
                               Top Performer
                             </Badge>
                           )}
@@ -7414,7 +8561,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
                   <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">Ambassador Applications</h2>
                   <div className="flex items-center gap-3 animate-in slide-in-from-right-4 duration-1000 delay-300">
-                    <Badge className="bg-blue-500 animate-pulse">
+                    <Badge 
+                      className="animate-pulse"
+                      style={{
+                        background: 'rgba(0, 207, 255, 0.15)',
+                        color: '#00CFFF'
+                      }}
+                    >
                       {filteredApplications.length} Applications
                     </Badge>
                     {getAmbassadorsWithoutApplications().length > 0 && (
@@ -7690,7 +8843,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     onClick={() => handleApprove(application)}
                                     disabled={processingId === application.id}
                                     size="sm"
-                                    className="bg-green-600 hover:bg-green-700 transform hover:scale-105 transition-all duration-300"
+                                    style={{
+                                      background: '#E21836',
+                                      color: '#FFFFFF'
+                                    }}
+                                    className="transform hover:scale-105 transition-all duration-300"
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#FF3B5C'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = '#E21836'}
                                   >
                                     {processingId === application.id ? (
                                       <>
@@ -8654,7 +9813,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         {/* Mini sparkline */}
                         <div className="h-8 w-full flex items-end gap-1 opacity-60">
                           {[70, 68, 72, 65, 70, 68, 66].map((h, i) => (
-                            <div key={i} className="flex-1 bg-purple-500 rounded-t" style={{ height: `${h}%` }} />
+                            <div key={i} className="flex-1 bg-primary rounded-t" style={{ height: `${h}%` }} />
                           ))}
                   </div>
                       </div>
@@ -8981,9 +10140,49 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                       <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={(e) => {
+                                        onClick={async (e) => {
                                           e.stopPropagation();
-                                          setEditingEvent(event);
+                                          // Ensure passes are loaded for this event
+                                          let eventWithPasses = event;
+                                          if (!event.passes || event.passes.length === 0) {
+                                            const { data: passesData, error: passesError } = await supabase
+                                              .from('event_passes')
+                                              .select('*')
+                                              .eq('event_id', event.id)
+                                              .order('is_default', { ascending: false })
+                                              .order('created_at', { ascending: true });
+                                            
+                                            // Handle 404 errors gracefully (table might not exist yet)
+                                            if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
+                                              console.error(`Error fetching passes for event ${event.id}:`, passesError);
+                                            }
+                                            
+                                            eventWithPasses = { ...event, passes: passesData || [] };
+                                            
+                                            // Ensure Standard pass always exists
+                                            const hasStandard = (passesData || []).some((p: any) => p.is_default || p.name === 'Standard');
+                                            if (!hasStandard) {
+                                              eventWithPasses.passes = [{
+                                                name: 'Standard',
+                                                price: 0,
+                                                description: language === 'en' 
+                                                  ? 'General entry access. Basic benefits included.' 
+                                                  : 'Accès général. Avantages de base inclus.',
+                                                is_default: true
+                                              }, ...(passesData || [])];
+                                            } else if (!passesData || passesData.length === 0) {
+                                              eventWithPasses.passes = [{
+                                                name: 'Standard',
+                                                price: 0,
+                                                description: language === 'en' 
+                                                  ? 'General entry access. Basic benefits included.' 
+                                                  : 'Accès général. Avantages de base inclus.',
+                                                is_default: true
+                                              }];
+                                            }
+                                          }
+                                          setPassValidationErrors({});
+                                          setEditingEvent(eventWithPasses);
                                           setIsEventDialogOpen(true);
                                         }}
                                         className="h-8 w-8 p-0"
@@ -9131,7 +10330,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             <Card className="bg-card">
                               <CardContent className="p-4">
                                 <p className="text-sm text-muted-foreground font-heading mb-1">Conversion Rate</p>
-                                <p className="text-2xl font-heading font-bold text-purple-500">68%</p>
+                                <p className="text-2xl font-heading font-bold text-primary">68%</p>
                               </CardContent>
                             </Card>
                             <Card className="bg-card">
@@ -9153,7 +10352,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   { source: 'Meta Ads', percentage: 35, color: 'bg-blue-500' },
                                   { source: 'Instagram', percentage: 28, color: 'bg-pink-500' },
                                   { source: 'Google Ads', percentage: 20, color: 'bg-green-500' },
-                                  { source: 'Direct', percentage: 12, color: 'bg-purple-500' },
+                                  { source: 'Direct', percentage: 12, color: 'bg-primary' },
                                   { source: 'Other', percentage: 5, color: 'bg-gray-500' }
                                 ].map((item, i) => (
                                   <div key={i} className="space-y-1">

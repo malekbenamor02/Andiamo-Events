@@ -67,64 +67,19 @@ export default {
 					cyan: 'hsl(var(--neon-cyan))',
 					pink: 'hsl(var(--neon-pink))',
 					yellow: 'hsl(var(--neon-yellow))',
-					orange: 'hsl(var(--neon-orange))'
+					orange: 'hsl(var(--neon-orange))',
+					red: 'hsl(var(--neon-purple))', // Neon Red uses neon-purple variable
+					gold: 'hsl(var(--neon-yellow))' // Neon Gold uses neon-yellow variable
 				}
 			},
 			fontFamily: {
-				// Custom Andiamo Font - Global Default
-				andiamo: ['AndiamoFont', 'sans-serif'],
+				// AndiamoFont - Global Default (Local Font)
 				sans: ['AndiamoFont', 'sans-serif'], // Set as default sans-serif
-				
-				// Current fonts
-				orbitron: ['Orbitron', 'monospace'],
-				
-				// Font testing options - uncomment to test
-				// Option 1: Modern & Bold
-				// heading: ['Bebas Neue', 'sans-serif'],
-				// body: ['Work Sans', 'sans-serif'],
-				
-				// AndiamoFont - ACTIVE (User Requested) ⭐
 				heading: ['AndiamoFont', 'sans-serif'],
 				body: ['AndiamoFont', 'sans-serif'],
-				
-				// Option 2: Clean & Contemporary
-				// heading: ['Outfit', 'sans-serif'],
-				// body: ['DM Sans', 'sans-serif'],
-				
-				// Option 3: Geometric & Modern
-				// heading: ['Space Grotesk', 'sans-serif'],
-				// body: ['Manrope', 'sans-serif'],
-				
-				// Option 4: Energetic & Dynamic
-				// heading: ['Rajdhani', 'sans-serif'],
-				// body: ['Plus Jakarta Sans', 'sans-serif'],
-				
-				// Option 5: Bold & Impactful
-				// heading: ['Montserrat', 'sans-serif'],
-				// body: ['Poppins', 'sans-serif'],
-				
-				// Option 6: Bold & Playful - Great for Events
-				// heading: ['Bungee', 'sans-serif'],
-				// body: ['Raleway', 'sans-serif'],
-				
-				// Option 7: Energetic & Dynamic
-				// heading: ['Righteous', 'sans-serif'],
-				// body: ['Nunito', 'sans-serif'],
-				
-				// Option 8: Futuristic & Modern
-				// heading: ['Exo 2', 'sans-serif'],
-				// body: ['Rubik', 'sans-serif'],
-				
-				// Option 9: Bold & Impactful
-				// heading: ['Anton', 'sans-serif'],
-				// body: ['Source Sans Pro', 'sans-serif'],
-				
-				// Option 10: Modern & Geometric
-				// heading: ['Kanit', 'sans-serif'],
-				// body: ['Quicksand', 'sans-serif'],
-				
-				// Option 11: Josefin Sans - Elegant & Modern (User Requested)
-				josefin: ['Josefin Sans', 'sans-serif'],
+				// Legacy font names for backward compatibility
+				josefin: ['AndiamoFont', 'sans-serif'],
+				saira: ['AndiamoFont', 'sans-serif'],
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

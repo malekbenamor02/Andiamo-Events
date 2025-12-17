@@ -530,7 +530,7 @@ const Application = ({ language }: ApplicationProps) => {
       <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
         </div>
 
         <div className="max-w-3xl w-full relative z-10">
@@ -539,8 +539,8 @@ const Application = ({ language }: ApplicationProps) => {
               <div className="flex justify-center">
                 <div className="relative">
                   <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-ping" style={{ animationDuration: '3s' }}></div>
-                  <div className="relative bg-gradient-to-br from-primary via-primary/80 to-secondary p-6 md:p-8 rounded-2xl shadow-2xl">
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary/50 to-secondary/50 rounded-2xl blur-sm"></div>
+                  <div className="relative bg-gradient-to-br from-primary via-primary/80 to-primary/60 p-6 md:p-8 rounded-2xl shadow-2xl">
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/50 to-primary/50 rounded-2xl blur-sm"></div>
                     <XCircle className="w-12 h-12 md:w-16 md:h-16 text-white relative z-10" />
                   </div>
                 </div>
@@ -548,10 +548,10 @@ const Application = ({ language }: ApplicationProps) => {
               
               <div className="space-y-6 pt-4">
                 <div className="space-y-3">
-                  <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
+                  <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
                     {language === 'en' ? 'Applications Closed' : 'Candidatures Fermées'}
                   </h1>
-                  <div className="h-1 w-24 bg-gradient-to-r from-primary to-secondary mx-auto rounded-full"></div>
+                  <div className="h-1 w-24 bg-gradient-to-r from-primary to-primary/80 mx-auto rounded-full"></div>
                 </div>
                 
                 <p className="text-lg md:text-xl lg:text-2xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
@@ -577,8 +577,8 @@ const Application = ({ language }: ApplicationProps) => {
     <div className="min-h-screen bg-gradient-dark flex flex-col items-center justify-start p-0 md:p-8 relative overflow-hidden animate-page-intro">
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-float" />
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-float delay-1000" />
-        <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-accent/5 rounded-full blur-3xl animate-float delay-2000" />
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-float delay-1000" />
+        <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-primary/5 rounded-full blur-3xl animate-float delay-2000" />
         
         <div className="absolute inset-0 opacity-[0.03]" style={{
           backgroundImage: `radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)`,
@@ -592,7 +592,7 @@ const Application = ({ language }: ApplicationProps) => {
           <Star className="w-4 h-4 text-blue-300/20" />
         </div>
         <div className="absolute top-60 left-1/4 animate-pulse delay-2000">
-          <Star className="w-5 h-5 text-purple-300/20" />
+          <Star className="w-5 h-5 text-primary/20" />
         </div>
         <div className="absolute top-80 right-1/3 animate-pulse delay-1500">
           <Star className="w-3 h-3 text-pink-300/20" />
@@ -643,7 +643,7 @@ const Application = ({ language }: ApplicationProps) => {
         <div className="flex flex-col lg:flex-row gap-6">
           <div className="flex-1">
             <Card className="glass border-border/50 shadow-2xl overflow-hidden">
-              <div className="relative bg-gradient-to-r from-primary/10 via-secondary/10 to-accent/10 p-6 border-b border-border/20">
+              <div className="relative bg-gradient-to-r from-primary/10 via-primary/10 to-accent/10 p-6 border-b border-border/20">
                 <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-50" />
                 <CardHeader className="text-center pb-0 relative z-10">
                   <CardTitle className="text-3xl font-heading font-bold text-gradient-neon flex items-center justify-center gap-3">
@@ -735,8 +735,8 @@ const Application = ({ language }: ApplicationProps) => {
                     
                     <div className="space-y-2 group">
                       <Label htmlFor="email" className="flex items-center gap-2 text-sm font-semibold text-foreground/90">
-                        <div className="p-1.5 rounded-lg bg-purple-500/10 group-hover:bg-purple-500/20 transition-colors">
-                          <Mail className="w-4 h-4 text-purple-500" />
+                        <div className="p-1.5 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                          <Mail className="w-4 h-4 text-primary" />
                         </div>
                         {t.email}
                       </Label>
@@ -747,9 +747,9 @@ const Application = ({ language }: ApplicationProps) => {
                           value={formData.email} 
                           onChange={e => setFormData({ ...formData, email: e.target.value })} 
                           required 
-                          className="pl-12 h-12 bg-background/50 border-border/50 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-300 group-hover:border-purple-500/50"
+                          className="pl-12 h-12 bg-background/50 border-border/50 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group-hover:border-primary/50"
                         />
-                        <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-purple-500 transition-colors" />
+                        <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                       </div>
                     </div>
                     
@@ -812,7 +812,7 @@ const Application = ({ language }: ApplicationProps) => {
                     <div className="space-y-2 md:col-span-2 group">
                       <Label htmlFor="socialLink" className="flex items-center gap-2 text-sm font-semibold text-foreground/90">
                         <div className="p-1.5 rounded-lg bg-pink-500/10 group-hover:bg-pink-500/20 transition-colors">
-                          <Instagram className="w-4 h-4 text-pink-500" />
+                          <Instagram className="w-4 h-4 text-primary" />
                         </div>
                         {t.socialLink}
                       </Label>
@@ -826,7 +826,7 @@ const Application = ({ language }: ApplicationProps) => {
                           placeholder="https://www.instagram.com/username"
                           className="pl-12 h-12 bg-background/50 border-border/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 transition-all duration-300 group-hover:border-pink-500/50"
                         />
-                        <Instagram className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-pink-500 transition-colors" />
+                        <Instagram className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {language === 'en' 
@@ -872,7 +872,7 @@ const Application = ({ language }: ApplicationProps) => {
                         </>
                       )}
                     </span>
-                    <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-secondary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-accent/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                     <div className="absolute inset-0 bg-[length:200%_200%] animate-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ backgroundImage: 'linear-gradient(to right, transparent 0%, rgba(255,255,255,0.1) 30%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.1) 70%, transparent 100%)' }} />
                   </Button>
                   
@@ -889,9 +889,9 @@ const Application = ({ language }: ApplicationProps) => {
         
           <div 
             ref={benefitsRef}
-            className="hidden lg:flex flex-col justify-center bg-gradient-to-br from-primary via-secondary to-accent text-white w-full max-w-sm p-8 gap-6 transform transition-all duration-1000 ease-out relative rounded-2xl shadow-2xl overflow-hidden"
+            className="hidden lg:flex flex-col justify-center bg-gradient-to-br from-primary via-primary/80 to-primary/60 text-white w-full max-w-sm p-8 gap-6 transform transition-all duration-1000 ease-out relative rounded-2xl shadow-2xl overflow-hidden"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/90 via-secondary/90 to-accent/90" />
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/90 via-primary/70 to-primary/60" />
             <div className="absolute inset-0 opacity-20" style={{
               backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
               backgroundSize: '20px 20px',

@@ -208,7 +208,7 @@ const Contact = ({ language }: ContactProps) => {
           <Star className="w-4 h-4 text-blue-300/30" />
         </div>
         <div className="absolute top-60 left-1/4 animate-pulse delay-2000">
-          <Star className="w-3 h-3 text-purple-300/40" />
+          <Star className="w-3 h-3 text-primary/40" />
         </div>
         <div className="absolute top-80 right-1/3 animate-pulse delay-1500">
           <Star className="w-4 h-4 text-pink-300/30" />

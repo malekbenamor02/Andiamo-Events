@@ -21,7 +21,8 @@ interface Event {
   poster_url?: string;
   ticket_link?: string;
   featured?: boolean;
-  whatsapp_link?: string;
+  instagram_link?: string; // Changed from whatsapp_link to instagram_link
+  whatsapp_link?: string; // Keep for backward compatibility
 }
 
 interface IndexProps {

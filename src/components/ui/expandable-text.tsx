@@ -29,25 +29,48 @@ export function ExpandableText({
 
   return (
     <div className={className}>
-      <p>{displayText}</p>
+      <p 
+        className={`transition-all duration-500 ease-in-out ${
+          isExpanded ? 'opacity-100' : 'opacity-90'
+        }`}
+        style={{
+          animation: isExpanded ? 'fadeIn 0.5s ease-in-out' : 'none'
+        }}
+      >
+        {displayText}
+      </p>
       <Button
         variant="ghost"
         size="sm"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="mt-2 h-auto p-0 text-primary hover:text-primary/80 hover:bg-transparent"
+        className="mt-3 h-auto p-2 text-primary hover:text-primary/80 hover:bg-primary/10 transition-all duration-300 rounded-lg group transform hover:scale-105"
       >
-        {isExpanded ? (
-          <>
-            {showLessText}
-            <ChevronUp className="ml-1 h-4 w-4" />
-          </>
-        ) : (
-          <>
-            {showMoreText}
-            <ChevronDown className="ml-1 h-4 w-4" />
-          </>
-        )}
+        <span className="flex items-center gap-1">
+          {isExpanded ? (
+            <>
+              {showLessText}
+              <ChevronUp className="ml-1 h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
+            </>
+          ) : (
+            <>
+              {showMoreText}
+              <ChevronDown className="ml-1 h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
+            </>
+          )}
+        </span>
       </Button>
+      <style>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-5px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 } 

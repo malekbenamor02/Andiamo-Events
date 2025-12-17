@@ -310,7 +310,12 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
                   }}
                 />
               )}
-              <div className="absolute inset-0 bg-black/60" />
+              <div 
+                className="absolute inset-0" 
+                style={{
+                  background: 'linear-gradient(rgba(0,0,0,0.75), rgba(0,0,0,0.85))'
+                }}
+              />
             </div>
           );
         }) : (
@@ -321,15 +326,15 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
 
       {/* Animated Background Elements */}
       <div className="absolute inset-0 z-10">
-        <div className="absolute top-1/4 left-1/4 w-32 h-32 rounded-full bg-gradient-to-r from-primary/20 to-secondary/20 animate-float" />
-        <div className="absolute bottom-1/3 right-1/4 w-24 h-24 rounded-full bg-gradient-to-r from-accent/20 to-primary/20 animate-float" style={{ animationDelay: "1s" }} />
-        <div className="absolute top-1/2 right-1/3 w-16 h-16 rounded-full bg-gradient-to-r from-secondary/20 to-accent/20 animate-float" style={{ animationDelay: "2s" }} />
+        <div className="absolute top-1/4 left-1/4 w-32 h-32 rounded-full bg-gradient-to-r from-primary/20 to-primary/10 animate-float" />
+        <div className="absolute bottom-1/3 right-1/4 w-24 h-24 rounded-full bg-gradient-to-r from-primary/20 to-primary/10 animate-float" style={{ animationDelay: "1s" }} />
+        <div className="absolute top-1/2 right-1/3 w-16 h-16 rounded-full bg-gradient-to-r from-primary/20 to-primary/10 animate-float" style={{ animationDelay: "2s" }} />
       </div>
 
       {/* Content */}
       <div className="relative z-20 text-center max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="animate-fade-in-up">
-          <h1 className="text-5xl md:text-7xl font-heading font-bold mb-6 min-h-[1.2em]">
+          <h1 className="text-3xl sm:text-4xl md:text-7xl font-heading font-bold mb-6 min-h-[1.2em]">
             <span className="block text-gradient-neon animate-pulse-glow">
               <TypewriterText 
                 texts={typewriterTexts[language]}
@@ -344,7 +349,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
             </span>
           </h1>
           
-          <p className="text-xl md:text-2xl text-secondary font-medium mb-4 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
+          <p className="text-base sm:text-lg md:text-2xl text-muted-foreground font-medium mb-4 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
             {content?.subtitle || defaultContent[language].subtitle}
           </p>
           
@@ -353,18 +358,30 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
             {content?.description || defaultContent[language].description}
           </p> */}
 
-          <div className="flex justify-center items-center animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
+          <div className="flex justify-center items-center mt-8 animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
             <Button
-              variant="outline"
+              variant="default"
               size="lg"
-              className="btn-neon text-lg px-8 py-4 hover:scale-110 active:scale-95 transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-primary/50 relative overflow-hidden group"
+              className="text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 hover:scale-110 active:scale-95 transition-all duration-300 relative overflow-hidden group"
+              style={{
+                backgroundColor: '#E21836',
+                color: '#FFFFFF',
+                boxShadow: '0 0 30px rgba(226, 24, 54, 0.6)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#FF3B5C';
+                e.currentTarget.style.boxShadow = '0 0 30px rgba(226, 24, 54, 0.6)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#E21836';
+                e.currentTarget.style.boxShadow = '0 0 30px rgba(226, 24, 54, 0.6)';
+              }}
               onClick={() => navigate('/events')}
             >
               <span className="relative z-10 flex items-center">
                 <Play className="w-5 h-5 mr-2 transition-transform duration-300 group-hover:scale-110" />
                 {content?.watchVideo || defaultContent[language].watchVideo}
               </span>
-              <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-secondary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             </Button>
           </div>
         </div>

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { ArrowRight } from 'lucide-react';
 
 interface Sponsor {
   id: string;
@@ -16,6 +17,9 @@ interface SponsorsSectionProps {
 
 const SponsorsSection = ({ language }: SponsorsSectionProps) => {
   const [sponsors, setSponsors] = useState<Sponsor[]>([]);
+  const [isHovered, setIsHovered] = useState(false);
+  const marqueeRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<Animation | null>(null);
 
   useEffect(() => {
     const fetchSponsors = async () => {
@@ -23,11 +27,142 @@ const SponsorsSection = ({ language }: SponsorsSectionProps) => {
         .from('sponsors')
         .select('*')
         .eq('is_global', true)
-        .order('created_at', { ascending: true });
-      if (!error && data) setSponsors(data);
+        .order('name', { ascending: true });
+      if (!error && data) {
+        // Sort by category first, then by name for better organization
+        const sorted = [...data].sort((a, b) => {
+          if (a.category && b.category && a.category !== b.category) {
+            return a.category.localeCompare(b.category);
+          }
+          return a.name.localeCompare(b.name);
+        });
+        setSponsors(sorted);
+      }
     };
     fetchSponsors();
   }, []);
+
+  // Initialize animation once when sponsors are loaded
+  useEffect(() => {
+    if (!marqueeRef.current || sponsors.length === 0 || animationRef.current) return;
+
+    const element = marqueeRef.current;
+    const isMobile = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    const duration = isMobile 
+      ? Math.max(12, sponsors.length * 2) * 1000 
+      : Math.max(15, sponsors.length * 1.5) * 1000;
+
+    // Create Web Animation API for smooth control - only once
+    // Use percentage for seamless infinite loop
+    animationRef.current = element.animate(
+      [
+        { transform: 'translateX(0%)' },
+        { transform: 'translateX(-50%)' }
+      ],
+      {
+        duration: duration,
+        iterations: Infinity,
+        easing: 'linear'
+      }
+    );
+
+    // Cleanup on unmount
+    return () => {
+      if (animationRef.current) {
+        animationRef.current.cancel();
+        animationRef.current = null;
+      }
+    };
+  }, [sponsors.length]);
+
+  // Handle pause/resume separately
+  useEffect(() => {
+    if (!animationRef.current) return;
+
+    if (isHovered) {
+      animationRef.current.pause();
+    } else {
+      animationRef.current.play();
+    }
+  }, [isHovered]);
+
+  // Sponsor card component with enhanced hover effects
+  const SponsorCard = ({ sponsor }: { sponsor: Sponsor }) => {
+    const [isCardHovered, setIsCardHovered] = useState(false);
+    const [isLinkHovered, setIsLinkHovered] = useState(false);
+
+    return (
+      <div 
+        className="flex-shrink-0 w-[280px] md:w-[320px]"
+        onMouseEnter={() => setIsCardHovered(true)}
+        onMouseLeave={() => {
+          setIsCardHovered(false);
+          setIsLinkHovered(false);
+        }}
+      >
+        <div className={`
+          bg-card/50 backdrop-blur-sm rounded-xl p-6 flex flex-col items-center h-full 
+          border transition-all duration-300
+          ${isCardHovered 
+            ? 'border-primary/70 shadow-lg shadow-primary/20 -translate-y-1 bg-card/70' 
+            : 'border-border/30 hover:border-primary/50'
+          }
+        `}>
+          {sponsor.logo_url && (
+            <div className={`
+              mb-4 w-28 h-28 md:w-32 md:h-32 flex items-center justify-center 
+              rounded-lg p-3 border transition-all duration-300
+              ${isCardHovered 
+                ? 'bg-background/70 border-primary/30 scale-105' 
+                : 'bg-background/50 border-border/20'
+              }
+            `}>
+              <img
+                src={sponsor.logo_url}
+                alt={sponsor.name}
+                className="w-full h-full object-contain"
+              />
+            </div>
+          )}
+          <h3 className={`
+            font-semibold text-center mb-2 transition-colors duration-300
+            ${isCardHovered ? 'text-foreground' : 'text-foreground'}
+          `}>
+            {sponsor.name}
+          </h3>
+          {sponsor.description && (
+            <p className="text-sm text-muted-foreground text-center mb-3 line-clamp-2 min-h-[2.5rem]">
+              {sponsor.description}
+            </p>
+          )}
+          {sponsor.website_url && (
+            <a
+              href={sponsor.website_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`
+                inline-flex items-center gap-1.5 text-sm font-medium transition-all duration-300 mt-auto
+                ${isLinkHovered 
+                  ? 'text-primary scale-105' 
+                  : 'text-primary/80 hover:text-primary'
+                }
+              `}
+              onMouseEnter={() => setIsLinkHovered(true)}
+              onMouseLeave={() => setIsLinkHovered(false)}
+            >
+              <span>{language === 'en' ? 'Visit Website' : 'Visiter le Site'}</span>
+              <ArrowRight 
+                className={`
+                  w-3.5 h-3.5 transition-transform duration-300
+                  ${isLinkHovered ? 'translate-x-1' : ''}
+                `} 
+              />
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   if (!sponsors.length) return null;
 
@@ -44,37 +179,31 @@ const SponsorsSection = ({ language }: SponsorsSectionProps) => {
               : 'Nous sommes fiers d\'être soutenus par ces partenaires incroyables.'}
           </p>
         </div>
-        <div className="relative overflow-x-hidden">
-          <div className="flex items-center gap-4 md:gap-8 animate-marquee whitespace-nowrap will-change-transform">
+        <div 
+          className="relative overflow-hidden marquee-wrapper"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          onTouchStart={() => setIsHovered(true)}
+          onTouchEnd={() => setIsHovered(false)}
+        >
+          {/* Infinite scroll marquee container */}
+          <div 
+            ref={marqueeRef}
+            className="flex gap-6 md:gap-8 marquee-container"
+          >
+            {/* First set of sponsors */}
             {sponsors.map((sponsor, idx) => (
-              <div
-                key={sponsor.id + '-' + idx}
-                className="rounded-lg p-6 flex flex-col items-center min-w-[220px] max-w-xs mx-2 hover:shadow-xl transition-shadow"
-              >
-                {sponsor.logo_url && (
-                  <img
-                    src={sponsor.logo_url}
-                    alt={sponsor.name}
-                    className="w-24 h-24 object-contain mb-2 rounded-lg border"
-                  />
-                )}
-                <h3 className="font-semibold text-center mb-1">{sponsor.name}</h3>
-                {sponsor.description && (
-                  <p className="text-xs text-muted-foreground text-center mb-2 line-clamp-2">
-                    {sponsor.description}
-                  </p>
-                )}
-                {sponsor.website_url && (
-                  <a
-                    href={sponsor.website_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline text-xs"
-                  >
-                    {language === 'en' ? 'Visit Website' : 'Visiter le Site'}
-                  </a>
-                )}
-              </div>
+              <SponsorCard 
+                key={`first-${sponsor.id}-${idx}`} 
+                sponsor={sponsor}
+              />
+            ))}
+            {/* Duplicate set for seamless infinite scroll */}
+            {sponsors.map((sponsor, idx) => (
+              <SponsorCard 
+                key={`second-${sponsor.id}-${idx}`} 
+                sponsor={sponsor}
+              />
             ))}
           </div>
         </div>
@@ -87,14 +216,28 @@ const SponsorsSection = ({ language }: SponsorsSectionProps) => {
           </button>
         </div>
       </div>
-      {/* Marquee animation style */}
+      {/* Premium Infinite Marquee Animation - using Web Animation API for smooth pause/resume */}
       <style>{`
-        @keyframes marquee {
-          0% { transform: translateX(100%); }
-          100% { transform: translateX(-100%); }
+        .marquee-container {
+          display: flex;
+          will-change: transform;
+          width: fit-content;
         }
-        .animate-marquee {
-          animation: marquee 10s linear infinite;
+        
+        /* Ensure no transitions that could cause jumps */
+        .marquee-container {
+          transition: none !important;
+        }
+        
+        /* Premium feel - subtle and elegant */
+        .marquee-container * {
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+        
+        /* Ensure cards don't interfere with animation */
+        .marquee-container > div {
+          pointer-events: auto;
         }
       `}</style>
     </section>

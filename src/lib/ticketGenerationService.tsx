@@ -326,7 +326,9 @@ const composeConfirmationEmail = (
       <title>Order Confirmation - Andiamo Events</title>
       <style>
         body { 
-          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-optical-sizing: auto;
+          font-style: normal; 
           line-height: 1.7; 
           color: #333; 
           background: #f4f4f4; 

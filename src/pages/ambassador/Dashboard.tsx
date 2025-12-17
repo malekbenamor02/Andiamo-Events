@@ -1001,7 +1001,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     // Status badge styling with proper colors
     if (normalizedStatus === 'ACCEPTED' || normalizedStatus === 'MANUAL_ACCEPTED') {
       return (
-        <Badge className="bg-gradient-to-r from-purple-500 to-purple-600 text-white border-0 shadow-lg shadow-purple-500/30">
+        <Badge className="bg-gradient-to-r from-primary to-primary/90 text-white border-0 shadow-lg shadow-primary/30">
           {t.accepted}
         </Badge>
       );
@@ -1228,7 +1228,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                                     <Button
                                       size="sm"
                                       onClick={() => handleAcceptOrder(order.id)}
-                                      className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white border-0 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all duration-300"
+                                      className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-white border-0 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300"
                                     >
                                       <CheckCircle className="w-4 h-4 mr-1" />
                                       {t.accept}
@@ -1254,7 +1254,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                                     <Button
                                       size="sm"
                                       onClick={() => handleCompleteOrder(order.id)}
-                                      className="bg-gradient-to-r from-purple-400 to-pink-500 hover:from-purple-500 hover:to-pink-600 text-white border-0 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all duration-300"
+                                      className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white border-0 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300"
                                     >
                                       <CheckCircle className="w-4 h-4 mr-1" />
                                       {t.complete}
@@ -1337,7 +1337,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                                   <Button
                                     size="sm"
                                     onClick={() => handleAcceptOrder(order.id)}
-                                    className="flex-1 sm:flex-none bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white border-0 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all duration-300 min-w-[100px]"
+                                    className="flex-1 sm:flex-none bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-white border-0 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 min-w-[100px]"
                                   >
                                     <CheckCircle className="w-4 h-4 mr-1" />
                                     {t.accept}
@@ -1363,7 +1363,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                                   <Button
                                     size="sm"
                                     onClick={() => handleCompleteOrder(order.id)}
-                                    className="flex-1 sm:flex-none bg-gradient-to-r from-purple-400 to-pink-500 hover:from-purple-500 hover:to-pink-600 text-white border-0 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all duration-300 min-w-[100px]"
+                                    className="flex-1 sm:flex-none bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white border-0 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 min-w-[100px]"
                                   >
                                     <CheckCircle className="w-4 h-4 mr-1" />
                                     {t.complete}
@@ -1518,7 +1518,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                   <Button 
                     onClick={handleCreateManualOrder} 
                     disabled={!salesEnabled}
-                    className="w-full bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white border-0 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-white border-0 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     {t.createOrder}
@@ -1768,7 +1768,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                   )}
                   <Button 
                     onClick={() => setIsProfileDialogOpen(true)}
-                    className="w-full sm:w-auto bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white border-0 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all duration-300"
+                    className="w-full sm:w-auto bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-white border-0 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300"
                   >
                     <Edit className="w-4 h-4 mr-2" />
                     {t.editProfile}

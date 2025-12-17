@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-export type ThemeName = 'default' | 'halloween' | 'icy' | 'spicy' | 'summer';
+export type ThemeName = 'default';
 
 export interface ThemeColors {
   primary: string;
@@ -13,6 +13,8 @@ export interface ThemeColors {
   neon1: string;
   neon2: string;
   neon3: string;
+  neon4?: string; // Optional for neon-gold
+  neon5?: string; // Optional for neon-orange
 }
 
 export interface ThemeEffects {
@@ -35,17 +37,19 @@ export interface Theme {
 export const themes: Record<ThemeName, Theme> = {
   default: {
     name: 'default',
-    displayName: 'Default (Nightlife)',
+    displayName: 'Default (Nightlife Black & Red)',
     colors: {
-      primary: '285 85% 65%', // Purple
-      secondary: '195 100% 50%', // Cyan
-      accent: '330 100% 65%', // Pink
-      background: '218 23% 8%',
-      card: '218 23% 12%',
-      border: '218 23% 20%',
-      neon1: '285 85% 65%',
-      neon2: '195 100% 50%',
-      neon3: '330 100% 65%',
+      primary: '352 80% 49%', // Red #E21836
+      secondary: '270 80% 60%', // Purple #9D6BFF
+      accent: '195 100% 55%', // Cyan #00CFFF
+      background: '0 0% 0%', // Black #000000
+      card: '0 0% 10%', // Dark Gray #1A1A1A
+      border: '0 0% 26%', // Gray #424242
+      neon1: '352 100% 65%', // Neon Red #FF3B5C
+      neon2: '270 90% 65%', // Neon Purple #B084FF
+      neon3: '195 100% 55%', // Neon Cyan #00CFFF
+      neon4: '45 100% 55%', // Neon Gold #FFC93C
+      neon5: '25 100% 60%', // Neon Orange #FF9F3D
     },
     effects: {
       particles: true,
@@ -53,100 +57,8 @@ export const themes: Record<ThemeName, Theme> = {
       animation: 'pulse',
       objects: ['stars', 'sparkles'],
     },
-    gradient: 'linear-gradient(135deg, hsl(285 85% 65%), hsl(195 100% 50%), hsl(330 100% 65%))',
-    shadow: '0 0 20px hsl(285 85% 65% / 0.5)',
-  },
-  halloween: {
-    name: 'halloween',
-    displayName: 'Halloween',
-    colors: {
-      primary: '284 46% 23%', // Imperial Purple #4b1f57
-      secondary: '21 100% 58%', // Pumpkin Accent #ff8a2a
-      accent: '284 46% 35%', // Imperial Purple lighter
-      background: '0 0% 5%', // Charcoal Black #0e0e0e
-      card: '0 0% 18%', // Misty Grey #2e2e2e
-      border: '284 20% 25%',
-      neon1: '284 46% 23%', // Imperial Purple
-      neon2: '21 100% 58%', // Pumpkin Accent
-      neon3: '0 0% 18%', // Misty Grey
-    },
-    effects: {
-      particles: true,
-      glow: true,
-      animation: 'flicker',
-      objects: ['bats-silhouette', 'pumpkins-minimal', 'fog-layers', 'spider-webs-elegant', 'full-moon', 'candlelight'],
-    },
-    gradient: 'linear-gradient(135deg, hsl(0 0% 5%), hsl(284 46% 23%), hsl(21 100% 58%))',
-    shadow: '0 0 25px hsl(21 100% 58% / 0.4), 0 0 50px hsl(284 46% 23% / 0.3)',
-  },
-  icy: {
-    name: 'icy',
-    displayName: 'Winter Is Coming',
-    colors: {
-      primary: '204 100% 87%', // Glacier Ice Blue #b7e4ff
-      secondary: '218 62% 10%', // Deep Navy #0a1a2f
-      accent: '215 100% 98%', // Crystal White #f8fbff
-      background: '218 62% 10%', // Deep Navy #0a1a2f
-      card: '215 30% 15%', // Frosted glass effect
-      border: '215 22% 40%', // Metallic Silver border #cfd8e3 adjusted
-      neon1: '204 100% 87%', // Glacier Ice Blue
-      neon2: '215 100% 98%', // Crystal White
-      neon3: '215 22% 85%', // Metallic Silver #cfd8e3
-    },
-    effects: {
-      particles: true,
-      glow: true,
-      animation: 'sparkle',
-      objects: ['snow-realistic', 'ice-shards', 'frosted-glass', 'aurora-glow', 'pine-silhouettes', 'winter-moon', 'ice-patterns'],
-    },
-    gradient: 'linear-gradient(135deg, hsl(218 62% 10%), hsl(204 100% 87%), hsl(215 100% 98%))',
-    shadow: '0 0 30px hsl(204 100% 87% / 0.4), 0 0 60px hsl(215 100% 98% / 0.2)',
-  },
-  spicy: {
-    name: 'spicy',
-    displayName: 'Spicy',
-    colors: {
-      primary: '0 84% 60%', // Red
-      secondary: '15 100% 65%', // Orange
-      accent: '30 100% 55%', // Hot Orange
-      background: '0 0% 8%',
-      card: '0 0% 12%',
-      border: '0 50% 25%',
-      neon1: '0 84% 60%',
-      neon2: '15 100% 65%',
-      neon3: '30 100% 55%',
-    },
-    effects: {
-      particles: true,
-      glow: true,
-      animation: 'flame',
-      objects: ['flames', 'sparks', 'embers'],
-    },
-    gradient: 'linear-gradient(135deg, hsl(0 84% 60%), hsl(15 100% 65%), hsl(30 100% 55%))',
-    shadow: '0 0 30px hsl(0 84% 60% / 0.8)',
-  },
-  summer: {
-    name: 'summer',
-    displayName: 'Summer',
-    colors: {
-      primary: '181 73% 46%', // Ocean Turquoise #20c7c9
-      secondary: '189 90% 24%', // Deep Marine Blue #065f74
-      accent: '18 100% 64%', // Sunset Orange #ff8746
-      background: '189 30% 10%', // Deep marine dark
-      card: '35 40% 18%', // Sand beige dark adjusted #f2d7b4
-      border: '181 50% 50%',
-      neon1: '181 73% 46%', // Ocean Turquoise
-      neon2: '18 100% 64%', // Sunset Orange
-      neon3: '145 58% 40%', // Tropical Green #2b9f62
-    },
-    effects: {
-      particles: true,
-      glow: true,
-      animation: 'sunshine',
-      objects: ['palm-shadows', 'wave-dividers', 'sun-glow', 'bokeh-dots', 'beach-elements', 'sunset-gradient', 'ocean-reflection'],
-    },
-    gradient: 'linear-gradient(135deg, hsl(181 73% 46%), hsl(189 90% 24%), hsl(18 100% 64%))',
-    shadow: '0 0 30px hsl(181 73% 46% / 0.5), 0 0 60px hsl(18 100% 64% / 0.3)',
+    gradient: 'linear-gradient(135deg, hsl(352 80% 49%), hsl(352 100% 65%), hsl(25 100% 60%))', // Red → Neon Red → Orange
+    shadow: '0 0 30px hsl(352 100% 65% / 0.6)',
   },
 };
 
@@ -206,11 +118,11 @@ export const ThemeProvider = ({ children }: ThemeProviderProps) => {
     fetchTheme();
   }, []);
 
-  // Apply theme to CSS variables
+  // Apply theme to CSS variables immediately and on theme change
   useEffect(() => {
-    if (loading) return;
-
     const theme = themes[currentTheme];
+    if (!theme) return; // Safety check
+    
     const root = document.documentElement;
 
     // Apply color variables
@@ -223,18 +135,52 @@ export const ThemeProvider = ({ children }: ThemeProviderProps) => {
     root.style.setProperty('--neon-purple', theme.colors.neon1);
     root.style.setProperty('--neon-cyan', theme.colors.neon2);
     root.style.setProperty('--neon-pink', theme.colors.neon3);
+    if (theme.colors.neon4) {
+      root.style.setProperty('--neon-yellow', theme.colors.neon4);
+    }
+    if (theme.colors.neon5) {
+      root.style.setProperty('--neon-orange', theme.colors.neon5);
+    }
+    
+    // Apply additional CSS variables
+    root.style.setProperty('--muted', '0 0% 22%');
+    root.style.setProperty('--muted-foreground', '0 0% 72%');
+    root.style.setProperty('--input', '0 0% 16%');
+    root.style.setProperty('--popover', theme.colors.card);
+    root.style.setProperty('--popover-foreground', '0 0% 100%');
+    root.style.setProperty('--card-foreground', '0 0% 100%');
+    root.style.setProperty('--primary-foreground', '0 0% 100%');
+    root.style.setProperty('--secondary-foreground', '0 0% 100%');
+    root.style.setProperty('--accent-foreground', '0 0% 100%');
+    root.style.setProperty('--destructive', '352 85% 42%');
+    root.style.setProperty('--destructive-foreground', '0 0% 100%');
+    root.style.setProperty('--ring', theme.colors.primary);
+    
+    // Sidebar colors
+    root.style.setProperty('--sidebar-background', '0 0% 0%');
+    root.style.setProperty('--sidebar-foreground', '0 0% 100%');
+    root.style.setProperty('--sidebar-primary', theme.colors.primary);
+    root.style.setProperty('--sidebar-primary-foreground', '0 0% 100%');
+    root.style.setProperty('--sidebar-accent', '0 0% 16%');
+    root.style.setProperty('--sidebar-accent-foreground', '0 0% 100%');
+    root.style.setProperty('--sidebar-border', theme.colors.border);
+    root.style.setProperty('--sidebar-ring', theme.colors.primary);
 
     // Apply gradients
     root.style.setProperty('--gradient-primary', theme.gradient);
     root.style.setProperty('--gradient-neon', theme.gradient);
+    root.style.setProperty('--gradient-dark', 'linear-gradient(135deg, hsl(0 0% 0%), hsl(0 0% 10%))');
 
     // Apply shadows
     root.style.setProperty('--shadow-neon', theme.shadow);
+    root.style.setProperty('--shadow-neon-strong', '0 0 40px hsl(352 100% 65% / 0.8)');
+    root.style.setProperty('--shadow-cyan', '0 0 20px hsl(195 100% 55% / 0.5)');
+    root.style.setProperty('--shadow-pink', '0 0 20px hsl(270 90% 65% / 0.5)');
 
     // Add theme class to body for theme-specific effects
     document.body.className = document.body.className.replace(/theme-\w+/g, '');
-    document.body.classList.add(`theme-${currentTheme}`);
-  }, [currentTheme, loading]);
+    document.body.classList.add('theme-default');
+  }, [currentTheme]); // Removed loading dependency to apply immediately
 
   const setTheme = async (theme: ThemeName) => {
     try {
