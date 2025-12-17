@@ -17,7 +17,6 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Terms from "./pages/Terms";
 import RefundPolicy from "./pages/RefundPolicy";
 import ScrollToTop from "./components/layout/ScrollToTop";
-import PhoneSubscriptionPopup from "./components/layout/PhoneSubscriptionPopup";
 import Auth from "./pages/ambassador/Auth";
 import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -86,7 +85,6 @@ const App = () => {
               <Route path="*" element={<NotFound />} />
               </Routes>
                 <Footer language={language} />
-                <PhoneSubscriptionPopup language={language} />
               </div>
             </MaintenanceMode>
           </BrowserRouter>
