@@ -3470,6 +3470,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             full_name: application.full_name,
             email: application.email,
             city: application.city,
+            ville: application.city === 'Sousse' ? (application.ville?.trim() || null) : null,
             password: hashedPassword, // Store hashed password
             status: 'approved',
             commission_rate: 10,
@@ -3487,6 +3488,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             phone: application.phone_number,
             email: application.email,
             city: application.city,
+            ville: application.city === 'Sousse' ? (application.ville?.trim() || null) : null,
             password: hashedPassword, // Store hashed password
             status: 'approved',
             commission_rate: 10,
@@ -3660,7 +3662,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // Update existing ambassador in the list
         setAmbassadors(prev => prev.map(amb => 
           amb.id === ambassadorId
-            ? { ...amb, status: 'approved', updated_at: new Date().toISOString() }
+            ? { 
+                ...amb, 
+                status: 'approved', 
+                ville: application.city === 'Sousse' ? (application.ville?.trim() || null) : null,
+                updated_at: new Date().toISOString() 
+              }
             : amb
         ));
       }
