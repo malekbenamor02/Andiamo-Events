@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import LoadingScreen from "@/components/ui/LoadingScreen";
+import TeamSection from "@/components/home/TeamSection";
 
 interface AboutProps {
   language: 'en' | 'fr';
@@ -398,7 +399,10 @@ const About = ({ language }: AboutProps) => {
         </div>
       </section>
 
-
+      {/* Team Section */}
+      <section className="py-16 md:py-24 relative">
+        <TeamSection language={language} />
+      </section>
 
       {/* CTA Section - Modern Redesign */}
       <section className="py-20 md:py-32 bg-gradient-to-br from-primary via-primary/80 to-primary/60 relative overflow-hidden">
@@ -432,7 +436,7 @@ const About = ({ language }: AboutProps) => {
           </p>
           <Button 
             size="lg" 
-            className="bg-white text-primary hover:bg-white/90 text-base md:text-lg px-8 md:px-12 py-6 md:py-7 rounded-full font-semibold transform hover:scale-105 hover:shadow-2xl transition-all duration-300 border-2 border-white/20"
+            className="bg-white text-primary hover:bg-white/90 text-base md:text-lg px-8 md:px-12 py-6 md:py-7 rounded-full font-medium transform hover:scale-105 hover:shadow-2xl transition-all duration-300 border-2 border-white/20"
             onClick={() => navigate('/ambassador')}
           >
             <span className="flex items-center gap-2">

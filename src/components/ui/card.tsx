@@ -13,20 +13,18 @@ const Card = React.forwardRef<
       className
     )}
     style={{
-      background: '#1A1A1A',
-      borderColor: '#424242',
+      background: '#1F1F1F',
+      borderColor: '#2A2A2A',
       ...(props.style || {})
     }}
     onMouseEnter={(e) => {
       if (!className?.includes('hover:')) {
-        e.currentTarget.style.borderColor = '#E21836';
-        e.currentTarget.style.boxShadow = '0 0 20px rgba(226, 24, 54, 0.15)';
+        e.currentTarget.style.borderColor = '#3A3A3A';
       }
     }}
     onMouseLeave={(e) => {
       if (!className?.includes('hover:')) {
-        e.currentTarget.style.borderColor = '#424242';
-        e.currentTarget.style.boxShadow = '';
+        e.currentTarget.style.borderColor = '#2A2A2A';
       }
     }}
     {...props}

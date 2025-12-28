@@ -21,12 +21,10 @@ interface AmbassadorData {
 
 // Email templates
 export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string, ambassadorId?: string): EmailConfig => {
-  const subject = "Welcome to Andiamo Events";
+  const subject = "Welcome to Andiamo Events - Ambassador Approved";
   
-  // Get base URL for tracking (logos are now embedded as base64)
+  // Get base URL for tracking
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://www.andiamoevents.com';
-  const logoBlackUrl = EMAIL_LOGOS.logoBlack;
-  const logoWhiteUrl = EMAIL_LOGOS.logoWhite;
   
   // Create tracking pixel URL (only if ambassadorId is valid)
   let trackingPixel = '';
@@ -48,250 +46,309 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="color-scheme" content="dark light">
-      <meta name="supported-color-schemes" content="dark light">
-      <title>Welcome to Andiamo Events</title>
-      <link rel="preconnect" href="https://fonts.googleapis.com">
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Saira:wght@100..900&display=swap" rel="stylesheet">
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
+      <title>Ambassador Approved - Andiamo Events</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal; 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
           line-height: 1.6; 
-          color: #000000; 
-          background: #ffffff;
+          color: #1A1A1A; 
+          background: #FFFFFF;
           padding: 0;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
         }
         @media (prefers-color-scheme: dark) {
           body {
-            background: #1a1a1a;
-            color: #ffffff;
+            color: #FFFFFF;
+            background: #1A1A1A;
           }
+        }
+        a {
+          color: #E21836 !important;
+          text-decoration: none;
         }
         .email-wrapper {
           max-width: 600px;
           margin: 0 auto;
-          background: #ffffff;
+          background: #FFFFFF;
         }
         @media (prefers-color-scheme: dark) {
           .email-wrapper {
-            background: #1a1a1a;
+            background: #1A1A1A;
           }
         }
-        .logo-container {
-          padding: 50px 40px 30px;
+        .content-card {
+          background: #F5F5F5;
+          margin: 0 20px 30px;
+          border-radius: 12px;
+          padding: 50px 40px;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .content-card {
+            background: #1F1F1F;
+            border: 1px solid rgba(42, 42, 42, 0.5);
+          }
+        }
+        .title-section {
           text-align: center;
-        }
-        .logo {
-          max-width: 200px;
-          height: auto;
-          display: block;
-          margin: 0 auto;
-        }
-        .logo-dark {
-          display: block;
+          margin-bottom: 40px;
+          padding-bottom: 30px;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
         }
         @media (prefers-color-scheme: dark) {
-          .logo-dark {
-            display: none;
+          .title-section {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
           }
         }
-        .logo-light {
-          display: none;
-        }
-        @media (prefers-color-scheme: dark) {
-          .logo-light {
-            display: block;
-          }
-        }
-        .content {
-          padding: 0 40px 50px;
-        }
-        h1 {
-          font-size: 28px;
-          font-weight: 600;
-          color: #000000;
-          margin-bottom: 35px;
+        .title {
+          font-size: 32px;
+          font-weight: 700;
+          color: #1A1A1A;
+          margin-bottom: 12px;
           letter-spacing: -0.5px;
         }
         @media (prefers-color-scheme: dark) {
-          h1 {
-            color: #ffffff;
+          .title {
+            color: #FFFFFF;
+          }
+        }
+        .subtitle {
+          font-size: 16px;
+          color: #666666;
+          font-weight: 400;
+        }
+        @media (prefers-color-scheme: dark) {
+          .subtitle {
+            color: #B0B0B0;
           }
         }
         .greeting {
-          font-size: 16px;
-          color: #000000;
+          font-size: 18px;
+          color: #1A1A1A;
           margin-bottom: 30px;
           line-height: 1.7;
         }
         @media (prefers-color-scheme: dark) {
           .greeting {
-            color: #ffffff;
+            color: #FFFFFF;
           }
         }
         .greeting strong {
+          color: #E21836;
           font-weight: 600;
-          color: #000000;
         }
-        @media (prefers-color-scheme: dark) {
-          .greeting strong {
-            color: #ffffff;
-          }
-        }
-        .message-text {
+        .message {
           font-size: 16px;
-          color: #333333;
+          color: #666666;
           margin-bottom: 25px;
           line-height: 1.7;
         }
         @media (prefers-color-scheme: dark) {
-          .message-text {
-            color: #e0e0e0;
+          .message {
+            color: #B0B0B0;
           }
         }
-        .credentials-section {
+        .credentials-block {
+          background: #E8E8E8;
+          border: 1px solid rgba(0, 0, 0, 0.15);
+          border-radius: 8px;
+          padding: 30px;
           margin: 40px 0;
-          padding: 30px 0;
-          border-top: 1px solid #e0e0e0;
-          border-bottom: 1px solid #e0e0e0;
         }
         @media (prefers-color-scheme: dark) {
-          .credentials-section {
-            border-top-color: #333333;
-            border-bottom-color: #333333;
+          .credentials-block {
+            background: #252525;
+            border: 1px solid rgba(42, 42, 42, 0.8);
           }
         }
         .credential-row {
-          margin: 20px 0;
+          margin-bottom: 25px;
+        }
+        .credential-row:last-child {
+          margin-bottom: 0;
         }
         .credential-label {
-          font-size: 12px;
-          color: #666666;
+          font-size: 11px;
+          color: #999999;
           text-transform: uppercase;
-          letter-spacing: 1px;
-          margin-bottom: 8px;
+          letter-spacing: 1.2px;
+          margin-bottom: 10px;
           font-weight: 600;
         }
         @media (prefers-color-scheme: dark) {
           .credential-label {
-            color: #999999;
+            color: #6B6B6B;
           }
         }
         .credential-value {
-          font-family: 'Courier New', monospace;
-          font-size: 16px;
-          color: #000000;
+          font-family: 'Courier New', 'Monaco', monospace;
+          font-size: 18px;
+          color: #1A1A1A;
           font-weight: 500;
           word-break: break-all;
           letter-spacing: 0.5px;
         }
         @media (prefers-color-scheme: dark) {
           .credential-value {
-            color: #ffffff;
+            color: #FFFFFF;
           }
         }
-        .security-note {
+        .cta-button {
+          display: block;
+          width: 100%;
+          max-width: 320px;
+          margin: 40px auto;
+          padding: 16px 32px;
+          background: #E21836;
+          color: #FFFFFF !important;
+          text-decoration: none;
+          text-align: center;
+          font-size: 16px;
+          font-weight: 600;
+          border-radius: 8px;
+          transition: background 0.3s ease;
+        }
+        .cta-button:hover {
+          background: #C81430;
+        }
+        .support-section {
+          background: #E8E8E8;
+          border-left: 3px solid rgba(226, 24, 54, 0.3);
+          padding: 20px 25px;
+          margin: 35px 0;
+          border-radius: 4px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .support-section {
+            background: #252525;
+          }
+        }
+        .support-text {
           font-size: 14px;
           color: #666666;
-          margin: 35px 0;
           line-height: 1.7;
-          font-style: italic;
         }
         @media (prefers-color-scheme: dark) {
-          .security-note {
-            color: #999999;
+          .support-text {
+            color: #B0B0B0;
           }
         }
-        .cta-link {
-          display: inline-block;
-          color: #000000;
-          text-decoration: underline;
+        .support-email {
+          color: #E21836 !important;
+          text-decoration: none;
           font-weight: 500;
-          margin: 30px 0;
+        }
+        .closing-section {
+          text-align: center;
+          margin: 50px 0 40px;
+          padding-top: 40px;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
         }
         @media (prefers-color-scheme: dark) {
-          .cta-link {
-            color: #ffffff;
+          .closing-section {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
           }
+        }
+        .slogan {
+          font-size: 24px;
+          font-style: italic;
+          color: #E21836;
+          font-weight: 300;
+          letter-spacing: 1px;
+          margin-bottom: 30px;
         }
         .signature {
-          margin-top: 40px;
           font-size: 16px;
-          color: #000000;
+          color: #666666;
           line-height: 1.7;
         }
         @media (prefers-color-scheme: dark) {
           .signature {
-            color: #ffffff;
+            color: #B0B0B0;
           }
         }
         .footer {
-          margin-top: 60px;
-          padding-top: 40px;
-          border-top: 1px solid #e0e0e0;
+          margin-top: 50px;
+          padding: 40px 20px 30px;
           text-align: center;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
         }
         @media (prefers-color-scheme: dark) {
           .footer {
-            border-top-color: #333333;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
           }
         }
         .footer-text {
           font-size: 12px;
           color: #999999;
-          margin: 8px 0;
+          margin-bottom: 20px;
           line-height: 1.6;
         }
+        @media (prefers-color-scheme: dark) {
+          .footer-text {
+            color: #6B6B6B;
+          }
+        }
+        .footer-links {
+          margin: 15px auto 0;
+          text-align: center;
+        }
         .footer-link {
-          color: #000000;
-          text-decoration: underline;
+          color: #999999;
+          text-decoration: none;
+          font-size: 13px;
+          margin: 0 8px;
         }
         @media (prefers-color-scheme: dark) {
           .footer-link {
-            color: #ffffff;
+            color: #6B6B6B;
           }
         }
+        .footer-link:hover {
+          color: #E21836 !important;
+        }
         @media only screen and (max-width: 600px) {
-          .content {
-            padding: 0 25px 40px;
+          .content-card {
+            margin: 0 15px 20px;
+            padding: 35px 25px;
           }
-          .logo-container {
-            padding: 40px 25px 25px;
+          .title {
+            font-size: 26px;
           }
-          h1 {
-            font-size: 24px;
-            margin-bottom: 30px;
+          .credentials-block {
+            padding: 25px 20px;
+          }
+          .cta-button {
+            max-width: 100%;
+            margin: 30px 0;
           }
         }
       </style>
     </head>
     <body>
       <div class="email-wrapper">
-        <div class="logo-container">
-          <img src="${logoBlackUrl}" alt="Andiamo Events" class="logo logo-dark" style="max-width: 200px; height: auto;" />
-          <img src="${logoWhiteUrl}" alt="Andiamo Events" class="logo logo-light" style="max-width: 200px; height: auto;" />
-        </div>
-        
-        <div class="content">
-          <h1>Approval</h1>
+        <!-- Main Content Card -->
+        <div class="content-card">
+          <!-- Title Section -->
+          <div class="title-section">
+            <h1 class="title">Approval Confirmed</h1>
+            <p class="subtitle">Welcome to the Andiamo Events Ambassador Program</p>
+          </div>
           
+          <!-- Greeting -->
           <p class="greeting">Dear <strong>${ambassador.fullName}</strong>,</p>
           
-          <p class="message-text">
-            We are pleased to inform you that your ambassador application has been accepted.
+          <!-- Message -->
+          <p class="message">
+            We are thrilled to inform you that your ambassador application has been approved. You are now part of an exclusive community that shapes Tunisia's nightlife landscape.
           </p>
           
-          <p class="message-text">
-            You are now part of the Andiamo Events community—a curated platform that represents the energy, trust, and cultural essence of Tunisia's premier nightlife experience.
-          </p>
-          
-          <div class="credentials-section">
+          <!-- Credentials Section -->
+          <div class="credentials-block">
             <div class="credential-row">
               <div class="credential-label">Phone Number</div>
               <div class="credential-value">${ambassador.phone}</div>
@@ -303,28 +360,33 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
             </div>
           </div>
           
-          <p class="security-note">
-            For your account security, we recommend changing your password after your first login.
-          </p>
+          <!-- CTA Button -->
+          <a href="${loginUrl}" class="cta-button">Access Ambassador Dashboard</a>
           
-          <p class="message-text">
-            <a href="${loginUrl}" class="cta-link">Access Ambassador Dashboard</a>
-          </p>
-          
-          <p class="message-text">
-            You are now part of an exclusive community that shapes Tunisia's nightlife landscape. We are committed to supporting your success.
-          </p>
-          
-          <p class="signature">
-            Best regards,<br>
-            The Andiamo Events Team
-          </p>
-          
-          <div class="footer">
-            <p class="footer-text">Developed by Malek Ben Amor</p>
-            <p class="footer-text">
-              On press, visit <a href="https://www.instagram.com/malek.bamor/" class="footer-link" target="_blank">Instagram</a>
+          <!-- Support Section -->
+          <div class="support-section">
+            <p class="support-text">
+              Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>
             </p>
+          </div>
+          
+          <!-- Closing Section -->
+          <div class="closing-section">
+            <p class="slogan">We Create Memories</p>
+            <p class="signature">
+              Best regards,<br>
+              The Andiamo Events Team
+            </p>
+          </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+          <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+          <div class="footer-links">
+            <a href="https://www.instagram.com/malek.bamor/" target="_blank" class="footer-link">Instagram</a>
+            <span style="color: #999999;">•</span>
+            <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
           </div>
         </div>
       </div>
@@ -349,238 +411,302 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
 export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig => {
   const subject = "Andiamo Events - Application Update";
   
-  // Use embedded base64 logos (no need for origin URL)
-  const logoBlackUrl = EMAIL_LOGOS.logoBlack;
-  const logoWhiteUrl = EMAIL_LOGOS.logoWhite;
-  
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="color-scheme" content="dark light">
-      <meta name="supported-color-schemes" content="dark light">
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
       <title>Application Update - Andiamo Events</title>
-      <link rel="preconnect" href="https://fonts.googleapis.com">
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Saira:wght@100..900&display=swap" rel="stylesheet">
       <style>
-        :root {
-          color-scheme: dark light;
-          supported-color-schemes: dark light;
-        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal; 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
           line-height: 1.6; 
-          color: #000000; 
-          background: #ffffff;
+          color: #1A1A1A; 
+          background: #FFFFFF;
           padding: 0;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
         }
         @media (prefers-color-scheme: dark) {
           body {
-            background: #1a1a1a;
-            color: #ffffff;
+            color: #FFFFFF;
+            background: #1A1A1A;
           }
+        }
+        a {
+          color: #E21836 !important;
+          text-decoration: none;
         }
         .email-wrapper {
           max-width: 600px;
           margin: 0 auto;
-          background: #ffffff;
+          background: #FFFFFF;
         }
         @media (prefers-color-scheme: dark) {
           .email-wrapper {
-            background: #1a1a1a;
+            background: #1A1A1A;
           }
         }
-        .logo-container {
-          padding: 50px 40px 30px;
+        .content-card {
+          background: #F5F5F5;
+          margin: 0 20px 30px;
+          border-radius: 12px;
+          padding: 50px 40px;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .content-card {
+            background: #1F1F1F;
+            border: 1px solid rgba(42, 42, 42, 0.5);
+          }
+        }
+        .title-section {
           text-align: center;
-        }
-        .logo {
-          max-width: 200px;
-          height: auto;
-          display: block;
-          margin: 0 auto;
-        }
-        .logo-dark {
-          display: block;
+          margin-bottom: 40px;
+          padding-bottom: 30px;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
         }
         @media (prefers-color-scheme: dark) {
-          .logo-dark {
-            display: none;
+          .title-section {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
           }
         }
-        .logo-light {
-          display: none;
-        }
-        @media (prefers-color-scheme: dark) {
-          .logo-light {
-            display: block;
-          }
-        }
-        .content {
-          padding: 0 40px 50px;
-        }
-        h1 {
-          font-size: 28px;
-          font-weight: 600;
-          color: #000000;
-          margin-bottom: 35px;
+        .title {
+          font-size: 32px;
+          font-weight: 700;
+          color: #1A1A1A;
+          margin-bottom: 12px;
           letter-spacing: -0.5px;
         }
         @media (prefers-color-scheme: dark) {
-          h1 {
-            color: #ffffff;
+          .title {
+            color: #FFFFFF;
+          }
+        }
+        .subtitle {
+          font-size: 16px;
+          color: #666666;
+          font-weight: 400;
+        }
+        @media (prefers-color-scheme: dark) {
+          .subtitle {
+            color: #B0B0B0;
           }
         }
         .greeting {
-          font-size: 16px;
-          color: #000000;
+          font-size: 18px;
+          color: #1A1A1A;
           margin-bottom: 30px;
           line-height: 1.7;
         }
         @media (prefers-color-scheme: dark) {
           .greeting {
-            color: #ffffff;
+            color: #FFFFFF;
           }
         }
         .greeting strong {
+          color: #E21836;
           font-weight: 600;
-          color: #000000;
         }
-        @media (prefers-color-scheme: dark) {
-          .greeting strong {
-            color: #ffffff;
-          }
-        }
-        .message-text {
+        .message {
           font-size: 16px;
-          color: #333333;
+          color: #666666;
           margin-bottom: 25px;
           line-height: 1.7;
         }
         @media (prefers-color-scheme: dark) {
-          .message-text {
-            color: #e0e0e0;
+          .message {
+            color: #B0B0B0;
           }
         }
         .section-divider {
+          background: #E8E8E8;
+          border-left: 3px solid rgba(226, 24, 54, 0.3);
+          padding: 20px 25px;
           margin: 35px 0;
-          padding: 30px 0;
-          border-top: 1px solid #e0e0e0;
-          border-bottom: 1px solid #e0e0e0;
+          border-radius: 4px;
         }
         @media (prefers-color-scheme: dark) {
           .section-divider {
-            border-top-color: #333333;
-            border-bottom-color: #333333;
+            background: #252525;
           }
         }
+        .support-section {
+          background: #E8E8E8;
+          border-left: 3px solid rgba(226, 24, 54, 0.3);
+          padding: 20px 25px;
+          margin: 35px 0;
+          border-radius: 4px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .support-section {
+            background: #252525;
+          }
+        }
+        .support-text {
+          font-size: 14px;
+          color: #666666;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .support-text {
+            color: #B0B0B0;
+          }
+        }
+        .support-email {
+          color: #E21836 !important;
+          text-decoration: none;
+          font-weight: 500;
+        }
+        .closing-section {
+          text-align: center;
+          margin: 50px 0 40px;
+          padding-top: 40px;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .closing-section {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+          }
+        }
+        .slogan {
+          font-size: 24px;
+          font-style: italic;
+          color: #E21836;
+          font-weight: 300;
+          letter-spacing: 1px;
+          margin-bottom: 30px;
+        }
         .signature {
-          margin-top: 40px;
           font-size: 16px;
-          color: #000000;
+          color: #666666;
           line-height: 1.7;
         }
         @media (prefers-color-scheme: dark) {
           .signature {
-            color: #ffffff;
+            color: #B0B0B0;
           }
         }
         .footer {
-          margin-top: 60px;
-          padding-top: 40px;
-          border-top: 1px solid #e0e0e0;
+          margin-top: 50px;
+          padding: 40px 20px 30px;
           text-align: center;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
         }
         @media (prefers-color-scheme: dark) {
           .footer {
-            border-top-color: #333333;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
           }
         }
         .footer-text {
           font-size: 12px;
           color: #999999;
-          margin: 8px 0;
+          margin-bottom: 20px;
           line-height: 1.6;
         }
+        @media (prefers-color-scheme: dark) {
+          .footer-text {
+            color: #6B6B6B;
+          }
+        }
+        .footer-links {
+          margin: 15px auto 0;
+          text-align: center;
+        }
         .footer-link {
-          color: #000000;
-          text-decoration: underline;
+          color: #999999;
+          text-decoration: none;
+          font-size: 13px;
+          margin: 0 8px;
         }
         @media (prefers-color-scheme: dark) {
           .footer-link {
-            color: #ffffff;
+            color: #6B6B6B;
           }
         }
+        .footer-link:hover {
+          color: #E21836 !important;
+        }
         @media only screen and (max-width: 600px) {
-          .content {
-            padding: 0 25px 40px;
+          .content-card {
+            margin: 0 15px 20px;
+            padding: 35px 25px;
           }
-          .logo-container {
-            padding: 40px 25px 25px;
-          }
-          h1 {
-            font-size: 24px;
-            margin-bottom: 30px;
+          .title {
+            font-size: 26px;
           }
         }
       </style>
     </head>
     <body>
       <div class="email-wrapper">
-        <div class="logo-container">
-          <img src="${logoBlackUrl}" alt="Andiamo Events" class="logo logo-dark" style="max-width: 200px; height: auto;" />
-          <img src="${logoWhiteUrl}" alt="Andiamo Events" class="logo logo-light" style="max-width: 200px; height: auto;" />
-        </div>
-        
-        <div class="content">
-          <h1>Application Update</h1>
+        <!-- Main Content Card -->
+        <div class="content-card">
+          <!-- Title Section -->
+          <div class="title-section">
+            <h1 class="title">Application Update</h1>
+            <p class="subtitle">Andiamo Events Ambassador Program</p>
+          </div>
           
+          <!-- Greeting -->
           <p class="greeting">Dear <strong>${ambassador.fullName}</strong>,</p>
           
-          <p class="message-text">
+          <!-- Message -->
+          <p class="message">
             Thank you for your interest in becoming an Andiamo ambassador and for the effort and time you invested in submitting your application.
           </p>
           
-          <p class="message-text">
+          <p class="message">
             After careful consideration, we regret to inform you that we are unable to approve your ambassador application at this time. This decision is part of our selective and continuously evolving recruitment process, which considers our current operational needs, regional balance, and capacity requirements—rather than a reflection on your individual qualifications or potential.
           </p>
           
-          <p class="message-text">
+          <p class="message">
             We maintain a selective ambassador network to ensure we can provide the best support and resources to each member while maintaining the high standards that define the Andiamo Events experience.
           </p>
           
+          <!-- Section Divider -->
           <div class="section-divider">
-            <p class="message-text" style="margin: 0;">
+            <p class="support-text" style="margin: 0;">
               You are welcome to submit a new application after a 30-day period. This timeframe allows our ambassador network to evolve and gives us the opportunity to reassess our capacity and needs.
             </p>
           </div>
           
-          <p class="message-text">
+          <p class="message">
             We encourage you to stay connected with Andiamo Events and continue experiencing our events as a valued member of our community.
           </p>
           
-          <p class="message-text">
+          <p class="message">
             Thank you again for your interest in joining the Andiamo ambassador program. We wish you all the best and hope to continue seeing you as part of our vibrant community.
           </p>
           
-          <p class="signature">
-            Best regards,<br>
-            The Andiamo Events Team
-          </p>
-          
-          <div class="footer">
-            <p class="footer-text">Developed by Malek Ben Amor</p>
-            <p class="footer-text">
-              On press, visit <a href="https://www.instagram.com/malek.bamor/" class="footer-link" target="_blank">Instagram</a>
+          <!-- Support Section -->
+          <div class="support-section">
+            <p class="support-text">
+              Questions? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>
             </p>
+          </div>
+          
+          <!-- Closing Section -->
+          <div class="closing-section">
+            <p class="slogan">We Create Memories</p>
+            <p class="signature">
+              Best regards,<br>
+              The Andiamo Events Team
+            </p>
+          </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+          <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+          <div class="footer-links">
+            <a href="https://www.instagram.com/malek.bamor/" target="_blank" class="footer-link">Instagram</a>
+            <span style="color: #999999;">•</span>
+            <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
           </div>
         </div>
       </div>
@@ -673,376 +799,371 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="color-scheme" content="dark light">
-      <meta name="supported-color-schemes" content="dark light">
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
       <title>Admin Account - Andiamo Events</title>
-      <link rel="preconnect" href="https://fonts.googleapis.com">
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100..700;1,100..700&family=Saira:wght@100..900&display=swap" rel="stylesheet">
       <style>
-        :root {
-          color-scheme: dark light;
-          supported-color-schemes: dark light;
-        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal; 
-          line-height: 1.7; 
-          color: #e0e0e0; 
-          background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%);
-          padding: 20px;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+          line-height: 1.6; 
+          color: #1A1A1A; 
+          background: #FFFFFF;
+          padding: 0;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
+        }
+        @media (prefers-color-scheme: dark) {
+          body {
+            color: #FFFFFF;
+            background: #1A1A1A;
+          }
+        }
+        a {
+          color: #E21836 !important;
+          text-decoration: none;
         }
         .email-wrapper {
           max-width: 600px;
           margin: 0 auto;
-          background: hsl(218, 23%, 12%);
-          border-radius: 16px;
-          overflow: hidden;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(185, 85, 211, 0.1);
+          background: #FFFFFF;
         }
-        .header {
-          background: linear-gradient(135deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 50%, hsl(330, 100%, 65%) 100%);
+        @media (prefers-color-scheme: dark) {
+          .email-wrapper {
+            background: #1A1A1A;
+          }
+        }
+        .content-card {
+          background: #F5F5F5;
+          margin: 0 20px 30px;
+          border-radius: 12px;
           padding: 50px 40px;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .content-card {
+            background: #1F1F1F;
+            border: 1px solid rgba(42, 42, 42, 0.5);
+          }
+        }
+        .title-section {
           text-align: center;
-          position: relative;
-          overflow: hidden;
+          margin-bottom: 40px;
+          padding-bottom: 30px;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
         }
-        .header::before {
-          content: '';
-          position: absolute;
-          top: -50%;
-          left: -50%;
-          width: 200%;
-          height: 200%;
-          background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        @media (prefers-color-scheme: dark) {
+          .title-section {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          }
         }
-        .header-content {
-          position: relative;
-          z-index: 1;
-        }
-        .logo {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal;
+        .title {
           font-size: 32px;
           font-weight: 700;
-          letter-spacing: 3px;
-          color: #ffffff;
-          margin-bottom: 15px;
-          text-shadow: 0 0 20px rgba(255, 255, 255, 0.5), 0 0 40px rgba(185, 85, 211, 0.3);
+          color: #1A1A1A;
+          margin-bottom: 12px;
+          letter-spacing: -0.5px;
         }
-        .header h1 {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal;
-          font-size: 36px;
-          font-weight: 700;
-          color: #ffffff;
-          margin: 15px 0 10px;
-          text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        @media (prefers-color-scheme: dark) {
+          .title {
+            color: #FFFFFF;
+          }
         }
-        .header-subtitle {
-          font-size: 18px;
+        .subtitle {
+          font-size: 16px;
+          color: #666666;
           font-weight: 400;
-          color: rgba(255, 255, 255, 0.95);
-          margin-top: 10px;
         }
-        .content {
-          padding: 40px;
-          background: hsl(218, 23%, 12%);
+        @media (prefers-color-scheme: dark) {
+          .subtitle {
+            color: #B0B0B0;
+          }
         }
         .greeting {
-          font-size: 20px;
-          color: #ffffff;
-          margin-bottom: 25px;
-          font-weight: 500;
+          font-size: 18px;
+          color: #1A1A1A;
+          margin-bottom: 30px;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .greeting {
+            color: #FFFFFF;
+          }
         }
         .greeting strong {
-          color: hsl(285, 85%, 65%);
+          color: #E21836;
           font-weight: 600;
-          font-size: 22px;
         }
-        .intro-text {
+        .message {
           font-size: 16px;
-          color: #d0d0d0;
-          margin-bottom: 30px;
-          line-height: 1.8;
-        }
-        .credentials-card {
-          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
-          border: 2px solid hsl(285, 85%, 65%, 0.4);
-          border-radius: 16px;
-          padding: 30px;
-          margin: 30px 0;
-          box-shadow: 0 0 30px rgba(185, 85, 211, 0.2), inset 0 0 30px rgba(185, 85, 211, 0.05);
-          position: relative;
-          overflow: hidden;
-        }
-        .credentials-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 4px;
-          background: linear-gradient(90deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 50%, hsl(330, 100%, 65%) 100%);
-        }
-        .credentials-card h3 {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal;
-          font-size: 20px;
-          color: hsl(195, 100%, 50%);
+          color: #666666;
           margin-bottom: 25px;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          text-shadow: 0 0 10px rgba(0, 195, 255, 0.3);
+          line-height: 1.7;
         }
-        .credential-item {
-          margin: 20px 0;
-          font-size: 15px;
-          color: #e0e0e0;
+        @media (prefers-color-scheme: dark) {
+          .message {
+            color: #B0B0B0;
+          }
         }
-        .credential-item strong {
-          color: #ffffff;
-          display: block;
-          margin-bottom: 8px;
-          font-weight: 600;
-          font-size: 14px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          color: hsl(285, 85%, 65%);
-        }
-        .credential-value {
-          background: hsl(218, 23%, 8%);
-          padding: 14px 18px;
-          border-radius: 10px;
-          font-family: 'Courier New', monospace;
-          color: hsl(195, 100%, 50%);
-          border: 2px solid hsl(195, 100%, 50%, 0.3);
-          display: block;
-          margin-top: 8px;
-          font-size: 16px;
-          font-weight: 600;
-          word-break: break-all;
-          box-shadow: 0 0 15px rgba(0, 195, 255, 0.1);
-          text-shadow: 0 0 10px rgba(0, 195, 255, 0.3);
-        }
-        .copy-hint {
-          font-size: 12px;
-          color: #888;
-          margin-top: 5px;
-          font-style: italic;
-        }
-        .button-container {
-          text-align: center;
+        .credentials-block {
+          background: #E8E8E8;
+          border: 1px solid rgba(0, 0, 0, 0.15);
+          border-radius: 8px;
+          padding: 30px;
           margin: 40px 0;
         }
-        .cta-button {
-          display: inline-block;
-          background: linear-gradient(135deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 100%);
-          color: #ffffff;
-          padding: 18px 45px;
-          text-decoration: none;
-          border-radius: 12px;
-          font-weight: 600;
-          font-size: 16px;
-          letter-spacing: 1px;
-          box-shadow: 0 6px 25px rgba(185, 85, 211, 0.5), 0 0 40px rgba(0, 195, 255, 0.3);
+        @media (prefers-color-scheme: dark) {
+          .credentials-block {
+            background: #252525;
+            border: 1px solid rgba(42, 42, 42, 0.8);
+          }
+        }
+        .credential-row {
+          margin-bottom: 25px;
+        }
+        .credential-row:last-child {
+          margin-bottom: 0;
+        }
+        .credential-label {
+          font-size: 11px;
+          color: #999999;
           text-transform: uppercase;
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal;
-          transition: all 0.3s ease;
+          letter-spacing: 1.2px;
+          margin-bottom: 10px;
+          font-weight: 600;
+        }
+        @media (prefers-color-scheme: dark) {
+          .credential-label {
+            color: #6B6B6B;
+          }
+        }
+        .credential-value {
+          font-family: 'Courier New', 'Monaco', monospace;
+          font-size: 18px;
+          color: #1A1A1A;
+          font-weight: 500;
+          word-break: break-all;
+          letter-spacing: 0.5px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .credential-value {
+            color: #FFFFFF;
+          }
+        }
+        .cta-button {
+          display: block;
+          width: 100%;
+          max-width: 320px;
+          margin: 40px auto;
+          padding: 16px 32px;
+          background: #E21836;
+          color: #FFFFFF !important;
+          text-decoration: none;
+          text-align: center;
+          font-size: 16px;
+          font-weight: 600;
+          border-radius: 8px;
+          transition: background 0.3s ease;
         }
         .cta-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 30px rgba(185, 85, 211, 0.6), 0 0 50px rgba(0, 195, 255, 0.4);
+          background: #C81430;
         }
-        .login-info {
-          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
-          border-left: 4px solid hsl(195, 100%, 50%);
-          border-radius: 12px;
-          padding: 20px;
-          margin: 30px 0;
-          box-shadow: 0 0 20px rgba(0, 195, 255, 0.1);
+        .support-section {
+          background: #E8E8E8;
+          border-left: 3px solid rgba(226, 24, 54, 0.3);
+          padding: 20px 25px;
+          margin: 35px 0;
+          border-radius: 4px;
         }
-        .login-info h4 {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal;
-          font-size: 16px;
-          color: hsl(195, 100%, 50%);
-          margin-bottom: 10px;
+        @media (prefers-color-scheme: dark) {
+          .support-section {
+            background: #252525;
+          }
         }
-        .login-info p {
-          color: #d0d0d0;
+        .support-text {
           font-size: 14px;
-          line-height: 1.6;
-          margin: 5px 0;
+          color: #666666;
+          line-height: 1.7;
         }
-        .login-info a {
-          color: hsl(285, 85%, 65%);
+        @media (prefers-color-scheme: dark) {
+          .support-text {
+            color: #B0B0B0;
+          }
+        }
+        .support-email {
+          color: #E21836 !important;
           text-decoration: none;
-          word-break: break-all;
+          font-weight: 500;
         }
         .security-notice {
-          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
-          border-left: 4px solid hsl(330, 100%, 65%);
-          border-radius: 12px;
-          padding: 20px;
-          margin: 30px 0;
-          box-shadow: 0 0 20px rgba(255, 0, 0, 0.1);
+          background: #E8E8E8;
+          border-left: 3px solid rgba(226, 24, 54, 0.5);
+          padding: 20px 25px;
+          margin: 35px 0;
+          border-radius: 4px;
         }
-        .security-notice h3 {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal;
-          font-size: 18px;
-          color: hsl(330, 100%, 65%);
-          margin-bottom: 15px;
+        @media (prefers-color-scheme: dark) {
+          .security-notice {
+            background: #252525;
+          }
         }
-        .security-notice p {
-          color: #d0d0d0;
-          font-size: 14px;
-          line-height: 1.6;
+        .security-notice-title {
+          font-size: 16px;
+          color: #E21836;
+          font-weight: 600;
+          margin-bottom: 12px;
         }
         .security-notice ul {
-          color: #d0d0d0;
           font-size: 14px;
+          color: #666666;
           line-height: 1.8;
           margin-top: 10px;
           padding-left: 20px;
         }
+        @media (prefers-color-scheme: dark) {
+          .security-notice ul {
+            color: #B0B0B0;
+          }
+        }
         .security-notice li {
           margin: 5px 0;
         }
-        .closing {
-          margin-top: 35px;
-          padding-top: 30px;
-          border-top: 1px solid hsl(218, 23%, 20%);
-          color: #d0d0d0;
-          font-size: 15px;
-          line-height: 1.8;
+        .closing-section {
+          text-align: center;
+          margin: 50px 0 40px;
+          padding-top: 40px;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .closing-section {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+          }
+        }
+        .slogan {
+          font-size: 24px;
+          font-style: italic;
+          color: #E21836;
+          font-weight: 300;
+          letter-spacing: 1px;
+          margin-bottom: 30px;
         }
         .signature {
-          margin-top: 20px;
-          color: #ffffff;
-          font-weight: 600;
+          font-size: 16px;
+          color: #666666;
+          line-height: 1.7;
         }
-        .signature strong {
-          color: hsl(285, 85%, 65%);
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal;
+        @media (prefers-color-scheme: dark) {
+          .signature {
+            color: #B0B0B0;
+          }
         }
         .footer {
-          background: hsl(218, 23%, 8%);
-          padding: 30px 40px;
+          margin-top: 50px;
+          padding: 40px 20px 30px;
           text-align: center;
-          border-top: 1px solid hsl(218, 23%, 20%);
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer {
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+          }
         }
         .footer-text {
-          color: #888;
-          font-size: 13px;
-          margin: 5px 0;
+          font-size: 12px;
+          color: #999999;
+          margin-bottom: 20px;
+          line-height: 1.6;
         }
-        .footer-brand {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal;
-          font-size: 16px;
-          color: hsl(285, 85%, 65%);
-          margin-bottom: 10px;
-          letter-spacing: 2px;
-          text-shadow: 0 0 10px rgba(185, 85, 211, 0.3);
+        @media (prefers-color-scheme: dark) {
+          .footer-text {
+            color: #6B6B6B;
+          }
+        }
+        .footer-links {
+          margin: 15px auto 0;
+          text-align: center;
+        }
+        .footer-link {
+          color: #999999;
+          text-decoration: none;
+          font-size: 13px;
+          margin: 0 8px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer-link {
+            color: #6B6B6B;
+          }
+        }
+        .footer-link:hover {
+          color: #E21836 !important;
         }
         @media only screen and (max-width: 600px) {
-          .email-wrapper {
-            border-radius: 0;
+          .content-card {
+            margin: 0 15px 20px;
+            padding: 35px 25px;
           }
-          .header {
-            padding: 40px 25px;
+          .title {
+            font-size: 26px;
           }
-          .header h1 {
-            font-size: 28px;
-          }
-          .logo {
-            font-size: 24px;
-          }
-          .content {
-            padding: 30px 25px;
-          }
-          .credentials-card {
-            padding: 20px;
+          .credentials-block {
+            padding: 25px 20px;
           }
           .cta-button {
-            padding: 16px 35px;
-            font-size: 14px;
+            max-width: 100%;
+            margin: 30px 0;
           }
         }
       </style>
     </head>
-    <body style="background: linear-gradient(135deg, hsl(218, 23%, 8%) 0%, hsl(218, 23%, 12%) 100%) !important; color: #e0e0e0 !important; padding: 20px; margin: 0;">
-      <div class="email-wrapper" style="background: hsl(218, 23%, 12%) !important; max-width: 600px; margin: 0 auto; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(185, 85, 211, 0.1);">
-        <div class="header">
-          <div class="header-content">
-            <div class="logo">ANDIAMO EVENTS</div>
-            <h1>🔐 Admin Account Created</h1>
-            <div class="header-subtitle">Your Admin Dashboard Access</div>
+    <body>
+      <div class="email-wrapper">
+        <!-- Main Content Card -->
+        <div class="content-card">
+          <!-- Title Section -->
+          <div class="title-section">
+            <h1 class="title">Admin Account Created</h1>
+            <p class="subtitle">Welcome to the Andiamo Events Admin Team</p>
           </div>
-        </div>
-        
-        <div class="content" style="background: hsl(218, 23%, 12%) !important; color: #e0e0e0 !important; padding: 40px;">
+          
+          <!-- Greeting -->
           <p class="greeting">Hello <strong>${admin.name}</strong>,</p>
           
-          <p class="intro-text">
-            You have been added as an administrator on the <strong style="color: hsl(285, 85%, 65%);">Andiamo Events</strong> platform by our Super Admin team.
+          <!-- Message -->
+          <p class="message">
+            You have been added as an administrator on the Andiamo Events platform by our Super Admin team. Your admin account is now ready and you can access the admin dashboard to manage events, ambassadors, applications, orders, and more.
           </p>
           
-          <p class="intro-text">
-            Your admin account is now ready and you can access the admin dashboard to manage events, ambassadors, applications, orders, and more.
-          </p>
-          
-          <div class="credentials-card">
-            <h3>🔑 Your Login Credentials</h3>
-            <div class="credential-item">
-              <strong>Login Email:</strong>
+          <!-- Credentials Section -->
+          <div class="credentials-block">
+            <div class="credential-row">
+              <div class="credential-label">Login Email</div>
               <div class="credential-value">${admin.email}</div>
             </div>
-            <div class="credential-item">
-              <strong>Password:</strong>
+            
+            <div class="credential-row">
+              <div class="credential-label">Password</div>
               <div class="credential-value">${admin.password}</div>
             </div>
-            <div class="credential-item">
-              <strong>Admin Dashboard URL:</strong>
-              <div class="credential-value" style="font-size: 14px; word-break: break-all;">${loginUrl}</div>
+            
+            <div class="credential-row">
+              <div class="credential-label">Admin Dashboard URL</div>
+              <div class="credential-value" style="font-size: 14px;">${loginUrl}</div>
             </div>
+            
             ${admin.phone ? `
-            <div class="credential-item">
-              <strong>Phone Number:</strong>
+            <div class="credential-row">
+              <div class="credential-label">Phone Number</div>
               <div class="credential-value">${admin.phone}</div>
             </div>
             ` : ''}
-            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid hsl(285, 85%, 65%, 0.2);">
-              <p style="color: hsl(330, 100%, 65%); font-size: 14px; font-weight: 600; margin: 0;">
-                ⚠️ WARNING: NEVER share this password with anyone, including other staff members or administrators.
-              </p>
-            </div>
           </div>
           
-          <div class="button-container">
-            <a href="${loginUrl}" class="cta-button">🚀 Access Admin Dashboard</a>
-          </div>
+          <!-- CTA Button -->
+          <a href="${loginUrl}" class="cta-button">Access Admin Dashboard</a>
           
+          <!-- Security Notice -->
           <div class="security-notice">
-            <h3>🔒 Security Instructions</h3>
-            <p><strong>Important Security Information:</strong></p>
+            <div class="security-notice-title">Security Instructions</div>
             <ul>
               <li>Keep your credentials secure and confidential at all times</li>
               <li>Your password is encrypted and not visible to any staff members, including Super Admins</li>
@@ -1052,28 +1173,31 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
             </ul>
           </div>
           
-          <div class="login-info">
-            <h4>💬 Need Help?</h4>
-            <p><strong>If you experience any login issues or need assistance:</strong></p>
-            <p>Please contact the Super Admin team or reach out to our support at <a href="mailto:support@andiamoevents.com">support@andiamoevents.com</a></p>
+          <!-- Support Section -->
+          <div class="support-section">
+            <p class="support-text">
+              Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>
+            </p>
           </div>
           
-          <div class="closing">
+          <!-- Closing Section -->
+          <div class="closing-section">
+            <p class="slogan">We Create Memories</p>
             <p class="signature">
               Best regards,<br>
-              <strong>The Andiamo Events Team</strong><br>
-              <span style="color: #888; font-size: 14px; font-weight: normal;">Andiamo Events</span>
-            </p>
-            <p style="margin-top: 15px; color: #888; font-size: 13px;">
-              Support Email: <a href="mailto:support@andiamoevents.com" style="color: hsl(285, 85%, 65%); text-decoration: none;">support@andiamoevents.com</a>
+              The Andiamo Events Team
             </p>
           </div>
         </div>
         
-        <div class="footer" style="background: hsl(218, 23%, 8%) !important; padding: 30px 40px; text-align: center; border-top: 1px solid hsl(218, 23%, 20%);">
-          <div class="footer-brand">ANDIAMO EVENTS</div>
-          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 5px 0;">© 2024 Andiamo Events. All rights reserved.</p>
-          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 5px 0;">Tunisia's Premier Nightlife Experience</p>
+        <!-- Footer -->
+        <div class="footer">
+          <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+          <div class="footer-links">
+            <a href="https://www.instagram.com/malek.bamor/" target="_blank" class="footer-link">Instagram</a>
+            <span style="color: #999999;">•</span>
+            <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
+          </div>
         </div>
       </div>
     </body>
@@ -1529,7 +1653,6 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
         <div class="footer" style="background: hsl(218, 23%, 8%) !important; padding: 30px 40px; text-align: center; border-top: 1px solid hsl(218, 23%, 20%);">
           <div class="footer-brand">ANDIAMO EVENTS</div>
           <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">© 2024 Andiamo Events. All rights reserved.</p>
-          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">Tunisia's Premier Nightlife Experience</p>
         </div>
       </div>
     </body>
@@ -1608,4 +1731,4 @@ export const sendEmailWithDetails = async (emailConfig: EmailConfig): Promise<Em
       error: errorMessage
     };
   }
-}; 
+};

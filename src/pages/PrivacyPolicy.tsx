@@ -59,7 +59,7 @@ const PrivacyPolicy = ({ language }: PrivacyPolicyProps) => {
         },
         {
           title: "How We Use Your Information",
-          content: "We use the information we collect to: process your ticket orders and generate QR codes, assign ambassadors for Cash on Delivery orders, send you event notifications and updates, communicate with you about your orders, and improve our services."
+          content: "We use the information we collect to: process your ticket orders and generate QR codes, send you event notifications and updates, communicate with you about your orders, and improve our services."
         },
         {
           title: "Information Sharing",

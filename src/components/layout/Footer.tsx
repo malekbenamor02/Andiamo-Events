@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { Instagram, MessageCircle, Mail, MapPin, Music } from "lucide-react";
+import { Instagram, MessageCircle, Mail, MapPin, Music, Phone, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
@@ -229,31 +229,38 @@ const Footer = ({ language }: FooterProps) => {
           <div>
             <h4 className="font-semibold text-primary mb-4">{content[language].contact}</h4>
             <div className="space-y-3">
+              <a 
+                href={`tel:28070128`}
+                className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Phone className="w-4 h-4 flex-shrink-0" />
+                <span className="font-medium">28070128</span>
+              </a>
+              {contactInfo?.email && (
+                <a 
+                  href={`mailto:${contactInfo.email}`}
+                  className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <Mail className="w-4 h-4 flex-shrink-0" />
+                  <span className="font-medium">{contactInfo.email}</span>
+                </a>
+              )}
+              {contactInfo?.address && (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <MapPin className="w-4 h-4 flex-shrink-0" />
+                  <span className="font-medium">{contactInfo.address}</span>
+                </div>
+              )}
               {contactInfo?.phone && (
                 <a 
                   href={`https://wa.me/${contactInfo.phone.replace(/\D/g, '')}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center text-muted-foreground hover:text-primary transition-colors"
+                  className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
                 >
-                  <MessageCircle className="w-4 h-4 mr-2" />
-                  WhatsApp
+                  <MessageCircle className="w-4 h-4 flex-shrink-0" />
+                  <span className="font-medium">WhatsApp</span>
                 </a>
-              )}
-              {contactInfo?.email && (
-                <a 
-                  href={`mailto:${contactInfo.email}`}
-                  className="flex items-center text-muted-foreground hover:text-primary transition-colors"
-                >
-                  <Mail className="w-4 h-4 mr-2" />
-                  {contactInfo.email}
-                </a>
-              )}
-              {contactInfo?.address && (
-                <div className="flex items-center text-muted-foreground">
-                  <MapPin className="w-4 h-4 mr-2" />
-                  {contactInfo.address}
-                </div>
               )}
             </div>
 
@@ -318,16 +325,22 @@ const Footer = ({ language }: FooterProps) => {
               <span className="hidden sm:inline text-border/50">|</span>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Developed by</span>
+                <span className="font-semibold text-primary">Malek Ben Amor</span>
+                <a
+                  href="https://malekbenamor.dev"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:text-secondary transition-all duration-300"
+                >
+                  <Globe className="w-4 h-4 transition-transform duration-300 hover:scale-110" />
+                </a>
                 <a
                   href="https://www.instagram.com/malek.bamor/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group inline-flex items-center gap-1.5 font-semibold text-primary hover:text-secondary transition-all duration-300 hover:gap-2"
+                  className="text-primary hover:text-secondary transition-all duration-300"
                 >
-                  <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                    Malek Ben Amor
-                  </span>
-                  <Instagram className="w-4 h-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12" />
+                  <Instagram className="w-4 h-4 transition-transform duration-300 hover:scale-110 group-hover:rotate-12" />
                 </a>
               </div>
             </div>
@@ -366,16 +379,22 @@ const Footer = ({ language }: FooterProps) => {
               </span>
               <span className="text-border/50">|</span>
               <span className="text-muted-foreground">Developed by</span>
+              <span className="font-semibold text-primary shrink-0">Malek Ben Amor</span>
+              <a
+                href="https://malekbenamor.dev"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:text-secondary transition-all duration-300 shrink-0"
+              >
+                <Globe className="w-3.5 h-3.5 transition-transform duration-300 hover:scale-110 shrink-0" />
+              </a>
               <a
                 href="https://www.instagram.com/malek.bamor/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group inline-flex items-center gap-1 font-semibold text-primary hover:text-secondary transition-all duration-300 hover:gap-1.5 shrink-0"
+                className="text-primary hover:text-secondary transition-all duration-300 shrink-0"
               >
-                <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                  Malek Ben Amor
-                </span>
-                <Instagram className="w-3.5 h-3.5 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12 shrink-0" />
+                <Instagram className="w-3.5 h-3.5 transition-transform duration-300 hover:scale-110 group-hover:rotate-12 shrink-0" />
               </a>
             </div>
             

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
 import { uploadFavicon, deleteFavicon, fetchFaviconSettings, FaviconSettings } from "@/lib/favicon";
@@ -18,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, sendEmailWithDetails, createAdminCredentialsEmail } from "@/lib/email";
 import { fetchSalesSettings, updateSalesSettings } from "@/lib/salesSettings";
+import ExcelJS from "exceljs";
 import {
   CheckCircle, XCircle, Clock, Users, TrendingUp, DollarSign, LogOut,
   Plus, Edit, Trash2, Calendar as CalendarIcon, MapPin, Phone, Mail, User, Settings,
@@ -25,7 +27,7 @@ import {
   Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
   PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
   Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Database,
-  Search, Filter, MoreVertical, ExternalLink, Ticket, TrendingDown, Percent, Target, Package
+  Search, Filter, MoreVertical, ExternalLink, Ticket, TrendingDown, Percent, Target, Package, Pause
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
@@ -66,7 +68,7 @@ interface EventPass {
   name: string;
   price: number;
   description: string;
-  is_default: boolean;
+  is_primary: boolean;
 }
 
 interface Event {
@@ -80,12 +82,10 @@ interface Event {
   instagram_link?: string;
   ticket_link?: string;
   featured?: boolean;
-  standard_price?: number;
-  vip_price?: number;
   event_type?: 'upcoming' | 'gallery'; // New field to distinguish event types
   gallery_images?: string[]; // Array of gallery image URLs
   gallery_videos?: string[]; // Array of gallery video URLs
-  passes?: EventPass[]; // Array of passes for this event
+  passes?: EventPass[]; // Array of passes for this event - REQUIRED for publishing
   created_at: string;
   updated_at: string;
   _uploadFile?: File | null;
@@ -108,6 +108,7 @@ interface Ambassador {
   created_at: string;
   updated_at: string;
   age?: number; // Age from corresponding application
+  social_link?: string; // Social link from corresponding application
 }
 
 interface PassPurchase {
@@ -169,7 +170,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     email: '',
     city: '',
     ville: '',
-    social_link: ''
+    social_link: '',
+    motivation: ''
   });
   const [showPassword, setShowPassword] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -329,6 +331,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Ambassador Sales System state
   const [codOrders, setCodOrders] = useState<any[]>([]);
   const [manualOrders, setManualOrders] = useState<any[]>([]);
+  const [codAmbassadorOrders, setCodAmbassadorOrders] = useState<any[]>([]);
   const [allAmbassadorOrders, setAllAmbassadorOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [selectedOrderAmbassador, setSelectedOrderAmbassador] = useState<any>(null);
@@ -336,12 +339,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [loadingEmailLogs, setLoadingEmailLogs] = useState(false);
   const [resendingEmail, setResendingEmail] = useState(false);
   const [isOrderDetailsOpen, setIsOrderDetailsOpen] = useState(false);
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
   const [orderLogs, setOrderLogs] = useState<any[]>([]);
-  const [roundRobinData, setRoundRobinData] = useState<any[]>([]);
   const [performanceReports, setPerformanceReports] = useState<any>(null);
-  const [salesSystemTab, setSalesSystemTab] = useState('cod-orders');
+  const [salesSystemTab, setSalesSystemTab] = useState('cod-ambassador-orders');
   const [loadingOrders, setLoadingOrders] = useState(false);
-  const [loadingRoundRobin, setLoadingRoundRobin] = useState(false);
   const [loadingPerformance, setLoadingPerformance] = useState(false);
 
   // Online Orders state
@@ -1148,16 +1152,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         ambassadorNameMap.set(amb.id, amb.full_name);
       });
 
-      // Fetch COD orders
-      const { data: codData, error: codError } = await (supabase as any)
-        .from('orders')
-        .select('*')
-        .eq('source', 'platform_cod')
-        .order('created_at', { ascending: false });
-
-      if (codError) throw codError;
-
-      // Fetch manual orders
+      // Note: COD orders are now all ambassador_manual source (platform_cod is deprecated)
+      // Fetch manual orders (includes all COD orders created by ambassadors)
       const { data: manualData, error: manualError } = await (supabase as any)
         .from('orders')
         .select('*')
@@ -1166,21 +1162,77 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (manualError) throw manualError;
 
-      // Fetch all ambassador orders (COD + manual)
+      // Fetch COD ambassador orders (ambassador_manual + payment_method = cod)
+      const { data: codAmbassadorData, error: codAmbassadorError } = await (supabase as any)
+        .from('orders')
+        .select('*')
+        .eq('source', 'ambassador_manual')
+        .eq('payment_method', 'cod')
+        .order('created_at', { ascending: false });
+
+      if (codAmbassadorError) throw codAmbassadorError;
+
+      // Enrich COD ambassador orders with event and pass info
+      const enrichedCodAmbassadorOrders = await Promise.all(
+        (codAmbassadorData || []).map(async (order: any) => {
+          let eventInfo = null;
+          let passInfo = null;
+
+          // Parse notes to get pass_id and event_id
+          let notesData = null;
+          if (order.notes) {
+            try {
+              notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+            } catch (e) {
+              console.error('Error parsing order notes:', e);
+            }
+          }
+
+          const passId = notesData?.pass_id || null;
+          const eventId = order.event_id || notesData?.event_id || null;
+
+          // Fetch event info
+          if (eventId) {
+            const { data: eventData } = await (supabase as any)
+              .from('events')
+              .select('id, name, date, venue')
+              .eq('id', eventId)
+              .single();
+            eventInfo = eventData;
+          }
+
+          // Fetch pass info
+          if (passId) {
+            const { data: passData } = await (supabase as any)
+              .from('event_passes')
+              .select('id, name, price, description')
+              .eq('id', passId)
+              .single();
+            passInfo = passData;
+          }
+
+          return {
+            ...order,
+            ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || 'Unknown') : null,
+            event: eventInfo,
+            pass: passInfo
+          };
+        })
+      );
+      setCodAmbassadorOrders(enrichedCodAmbassadorOrders);
+
+      // Fetch all ambassador orders (all COD orders are now ambassador_manual)
       const { data: allData, error: allError } = await (supabase as any)
         .from('orders')
         .select('*')
-        .in('source', ['platform_cod', 'ambassador_manual'])
+        .eq('source', 'ambassador_manual')
         .order('created_at', { ascending: false });
 
       if (allError) throw allError;
 
-      // Enrich orders with ambassador names
-      const enrichedCodOrders = (codData || []).map((order: any) => ({
-        ...order,
-        ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || 'Unknown') : null
-      }));
-      setCodOrders(enrichedCodOrders);
+      // Legacy: Keep codOrders state for backward compatibility (empty array since platform_cod is deprecated)
+      // All COD orders are now in codAmbassadorOrders (ambassador_manual + payment_method = cod)
+      setCodOrders([]);
       
       const enrichedManualOrders = (manualData || []).map((order: any) => ({
         ...order,
@@ -1204,64 +1256,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (logsError) throw logsError;
       setOrderLogs(logsData || []);
 
-      // Fetch round robin data - get all villes from ambassadors and calculate active counts
-      // Filter ambassadors for Sousse only for round robin
-      const allAmbassadors = (allAmbassadorsData || []).filter((amb: any) => amb.city === 'Sousse');
-
-      // Get unique villes from ambassadors
-      const uniqueVilles = [...new Set((allAmbassadors || []).map(a => (a as any).ville).filter(Boolean))].sort();
-
-      // Fetch round robin tracker data
-      const { data: trackerData, error: trackerError } = await (supabase as any)
-        .from('round_robin_tracker')
-        .select('*');
-
-      if (trackerError) throw trackerError;
-
-      // Build round robin data with active ambassador counts
-      const roundRobinDataWithCounts = await Promise.all(
-        uniqueVilles.map(async (villeName: string) => {
-          // Count active ambassadors for this ville
-          const activeCount = (allAmbassadors || []).filter(
-            (a: any) => a.ville === villeName && a.status === 'approved'
-          ).length;
-
-          // Get tracker data for this ville
-          const tracker = (trackerData || []).find((t: any) => t.ville === villeName);
-
-          // Get last assigned ambassador name
-          let lastAssigned = 'None';
-          if (tracker?.last_assigned_ambassador_id) {
-            const lastAmb = (allAmbassadors || []).find((a: any) => a.id === tracker.last_assigned_ambassador_id);
-            lastAssigned = lastAmb?.full_name || 'Unknown';
-          }
-
-          // Get next ambassador using the function
-          let nextAmbassador = 'N/A';
-          try {
-            const { data: nextAmb } = await (supabase as any).rpc('get_next_ambassador_for_ville', {
-              p_ville: villeName
-            });
-            if (nextAmb && nextAmb.length > 0) {
-              nextAmbassador = nextAmb[0].ambassador_name || 'N/A';
-            }
-          } catch (error) {
-            console.error('Error getting next ambassador:', error);
-          }
-
-          return {
-            ville: villeName,
-            active_ambassadors: activeCount,
-            last_assigned: lastAssigned,
-            next_ambassador: nextAmbassador,
-            rotation_mode: tracker?.rotation_mode || 'automatic',
-            last_assigned_ambassador_id: tracker?.last_assigned_ambassador_id,
-            last_assigned_at: tracker?.last_assigned_at
-          };
-        })
-      );
-
-      setRoundRobinData(roundRobinDataWithCounts);
 
       // Calculate performance reports
       await fetchPerformanceReports();
@@ -1370,66 +1364,257 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   // Admin order management functions
-  const handleAssignOrder = async (orderId: string, ville: string) => {
+  // Approve COD Ambassador order (with email and SMS)
+  const handleApproveCodAmbassadorOrder = async (orderId: string) => {
     try {
-      const response = await apiFetch(API_ROUTES.ASSIGN_ORDER, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: orderId, ville })
-      });
-      const data = await response.json();
-      if (data.success) {
+      // Get full order details
+      const { data: order, error: fetchError } = await (supabase as any)
+        .from('orders')
+        .select('*')
+        .eq('id', orderId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Validate order
+      if (order.source !== 'ambassador_manual' || order.payment_method !== 'cod' || order.status !== 'PENDING_ADMIN_APPROVAL') {
         toast({
-          title: language === 'en' ? 'Success' : 'Succès',
+          title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
-            ? `Order assigned to ${data.ambassador?.full_name || 'ambassador'}` 
-            : `Commande assignée à ${data.ambassador?.full_name || 'ambassadeur'}`,
-          variant: 'default'
+            ? 'Only COD ambassador orders with PENDING_ADMIN_APPROVAL status can be approved'
+            : 'Seules les commandes COD ambassadeur avec le statut PENDING_ADMIN_APPROVAL peuvent être approuvées',
+          variant: 'destructive'
         });
-        fetchAmbassadorSalesData();
-        if (selectedOrder?.id === orderId) {
-          setIsOrderDetailsOpen(false);
+        return;
+      }
+
+      // Update order status
+      const { error: updateError } = await (supabase as any)
+        .from('orders')
+        .update({
+          status: 'APPROVED',
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orderId);
+
+      if (updateError) throw updateError;
+
+      // Send email to client
+      let emailSent = false;
+      if (order.user_email) {
+        try {
+          // Parse notes to get event and pass info
+          let notesData = null;
+          if (order.notes) {
+            try {
+              notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+            } catch (e) {
+              console.error('Error parsing order notes:', e);
+            }
+          }
+
+          // Fetch event info
+          let eventName = 'Event';
+          if (order.event_id) {
+            const { data: eventData } = await (supabase as any)
+              .from('events')
+              .select('name')
+              .eq('id', order.event_id)
+              .single();
+            if (eventData) eventName = eventData.name;
+          }
+
+          const emailSubject = language === 'en' 
+            ? `✅ Order Approved - ${eventName}`
+            : `✅ Commande Approuvée - ${eventName}`;
+          
+          const emailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #4CAF50;">${language === 'en' ? 'Order Approved!' : 'Commande Approuvée!'}</h2>
+              <p>${language === 'en' ? 'Dear' : 'Cher/Chère'} ${order.user_name},</p>
+              <p>${language === 'en' 
+                ? `Your order for ${eventName} has been approved. Your order details:` 
+                : `Votre commande pour ${eventName} a été approuvée. Détails de votre commande:`}</p>
+              <ul>
+                <li>${language === 'en' ? 'Event' : 'Événement'}: ${eventName}</li>
+                <li>${language === 'en' ? 'Pass Type' : 'Type de Pass'}: ${order.pass_type}</li>
+                <li>${language === 'en' ? 'Quantity' : 'Quantité'}: ${order.quantity}</li>
+                <li>${language === 'en' ? 'Total Price' : 'Prix Total'}: ${order.total_price.toFixed(2)} TND</li>
+              </ul>
+              <p>${language === 'en' 
+                ? 'Thank you for your order!' 
+                : 'Merci pour votre commande!'}</p>
+            </div>
+          `;
+
+          const emailResponse = await apiFetch(API_ROUTES.SEND_EMAIL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: order.user_email,
+              subject: emailSubject,
+              html: emailHtml
+            })
+          });
+
+          if (emailResponse.ok) {
+            emailSent = true;
+          }
+        } catch (emailError) {
+          console.error('Error sending approval email:', emailError);
         }
-      } else {
-        throw new Error(data.error);
+      }
+
+      // Send SMS to client
+      let smsSent = false;
+      if (order.user_phone) {
+        try {
+          const cleanPhone = order.user_phone.trim().replace(/\s+/g, '');
+          const phoneRegex = /^\d{8}$/;
+          
+          if (phoneRegex.test(cleanPhone)) {
+            let notesData = null;
+            if (order.notes) {
+              try {
+                notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+              } catch (e) {
+                console.error('Error parsing order notes:', e);
+              }
+            }
+
+            let eventName = 'Event';
+            if (order.event_id) {
+              const { data: eventData } = await (supabase as any)
+                .from('events')
+                .select('name')
+                .eq('id', order.event_id)
+                .single();
+              if (eventData) eventName = eventData.name;
+            }
+
+            const smsMessage = language === 'en'
+              ? `Your order for ${eventName} has been approved! Total: ${order.total_price.toFixed(2)} TND. Thank you! - Andiamo Events`
+              : `Votre commande pour ${eventName} a été approuvée! Total: ${order.total_price.toFixed(2)} TND. Merci! - Andiamo Events`;
+
+            const smsResponse = await apiFetch(API_ROUTES.SEND_SMS, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phoneNumbers: [cleanPhone],
+                message: smsMessage
+              })
+            });
+
+            if (smsResponse.ok) {
+              const smsData = await smsResponse.json();
+              if (smsData.success) {
+                smsSent = true;
+              }
+            }
+          }
+        } catch (smsError) {
+          console.error('Error sending approval SMS:', smsError);
+        }
+      }
+
+      // Log the approval
+      await (supabase as any)
+        .from('order_logs')
+        .insert({
+          order_id: orderId,
+          action: 'approved',
+          performed_by: null,
+          performed_by_type: 'admin',
+          details: { 
+            old_status: 'PENDING_ADMIN_APPROVAL',
+            new_status: 'APPROVED',
+            email_sent: emailSent,
+            sms_sent: smsSent,
+            admin_action: true 
+          }
+        });
+
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' 
+          ? `Order approved${emailSent ? ' - Email sent' : ''}${smsSent ? ' - SMS sent' : ''}`
+          : `Commande approuvée${emailSent ? ' - Email envoyé' : ''}${smsSent ? ' - SMS envoyé' : ''}`,
+        variant: 'default'
+      });
+      
+      fetchAmbassadorSalesData();
+      if (selectedOrder?.id === orderId) {
+        setIsOrderDetailsOpen(false);
       }
     } catch (error: any) {
-      console.error('Error assigning order:', error);
+      console.error('Error approving COD ambassador order:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to assign order' : 'Échec de l\'assignation de la commande'),
+        description: error.message || (language === 'en' ? 'Failed to approve order' : 'Échec de l\'approbation de la commande'),
         variant: 'destructive'
       });
     }
   };
 
-  const handleAcceptOrderAsAdmin = async (orderId: string) => {
+  // Approve COD order (changes status from PENDING_ADMIN_APPROVAL to APPROVED)
+  const handleApproveOrderAsAdmin = async (orderId: string) => {
     try {
+      // Get current order to check if it's a COD order
+      const { data: order, error: fetchError } = await (supabase as any)
+        .from('orders')
+        .select('payment_method, status, source')
+        .eq('id', orderId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // If it's an ambassador-created COD order, use the special approval function
+      if (order.source === 'ambassador_manual' && order.payment_method === 'cod') {
+        return handleApproveCodAmbassadorOrder(orderId);
+      }
+
+      // Only approve COD orders that are pending approval
+      if (order.payment_method !== 'cod' || order.status !== 'PENDING_ADMIN_APPROVAL') {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? 'Only COD orders with PENDING_ADMIN_APPROVAL status can be approved'
+            : 'Seules les commandes COD avec le statut PENDING_ADMIN_APPROVAL peuvent être approuvées',
+          variant: 'destructive'
+        });
+        return;
+      }
+
       const { error } = await (supabase as any)
         .from('orders')
         .update({
-          status: 'ACCEPTED',
-          accepted_at: new Date().toISOString(),
+          status: 'APPROVED',
+          approved_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('id', orderId);
 
       if (error) throw error;
 
-      // Log the acceptance
+      // Log the approval
       await (supabase as any)
         .from('order_logs')
         .insert({
           order_id: orderId,
-          action: 'accepted',
+          action: 'approved',
           performed_by: null,
           performed_by_type: 'admin',
-          details: { admin_action: true }
+          details: { 
+            old_status: 'PENDING_ADMIN_APPROVAL',
+            new_status: 'APPROVED',
+            admin_action: true 
+          }
         });
 
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
-        description: language === 'en' ? 'Order accepted' : 'Commande acceptée',
+        description: language === 'en' ? 'Order approved' : 'Commande approuvée',
         variant: 'default'
       });
       fetchAmbassadorSalesData();
@@ -1437,17 +1622,214 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setIsOrderDetailsOpen(false);
       }
     } catch (error: any) {
-      console.error('Error accepting order:', error);
+      console.error('Error approving order:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to accept order' : 'Échec de l\'acceptation de la commande'),
+        description: error.message || (language === 'en' ? 'Failed to approve order' : 'Échec de l\'approbation de la commande'),
         variant: 'destructive'
       });
     }
   };
 
+  // Reject COD Ambassador order (no email/SMS)
+  const handleRejectCodAmbassadorOrder = async (orderId: string, rejectionReason: string) => {
+    try {
+      // Get current order to check if it's a COD ambassador order
+      const { data: order, error: fetchError } = await (supabase as any)
+        .from('orders')
+        .select('payment_method, status, source')
+        .eq('id', orderId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Only reject COD ambassador orders that are pending approval
+      if (order.source !== 'ambassador_manual' || order.payment_method !== 'cod' || order.status !== 'PENDING_ADMIN_APPROVAL') {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? 'Only COD ambassador orders with PENDING_ADMIN_APPROVAL status can be rejected'
+            : 'Seules les commandes COD ambassadeur avec le statut PENDING_ADMIN_APPROVAL peuvent être rejetées',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      if (!rejectionReason || !rejectionReason.trim()) {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? 'Rejection reason is required'
+            : 'La raison du rejet est requise',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      const { error } = await (supabase as any)
+        .from('orders')
+        .update({
+          status: 'REJECTED',
+          rejected_at: new Date().toISOString(),
+          rejection_reason: rejectionReason.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      // Log the rejection (NO email or SMS sent)
+      await (supabase as any)
+        .from('order_logs')
+        .insert({
+          order_id: orderId,
+          action: 'rejected',
+          performed_by: null,
+          performed_by_type: 'admin',
+          details: { 
+            old_status: 'PENDING_ADMIN_APPROVAL',
+            new_status: 'REJECTED',
+            rejection_reason: rejectionReason.trim(),
+            email_sent: false,
+            sms_sent: false,
+            admin_action: true 
+          }
+        });
+
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' ? 'Order rejected' : 'Commande rejetée',
+        variant: 'default'
+      });
+      
+      setIsRejectDialogOpen(false);
+      setRejectingOrderId(null);
+      setRejectionReason('');
+      fetchAmbassadorSalesData();
+      if (selectedOrder?.id === orderId) {
+        setIsOrderDetailsOpen(false);
+      }
+    } catch (error: any) {
+      console.error('Error rejecting COD ambassador order:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to reject order' : 'Échec du rejet de la commande'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Reject COD order (changes status from PENDING_ADMIN_APPROVAL to REJECTED)
+  const handleRejectOrderAsAdmin = async (orderId: string, rejectionReason?: string) => {
+    try {
+      // Get current order to check if it's a COD order
+      const { data: order, error: fetchError } = await (supabase as any)
+        .from('orders')
+        .select('payment_method, status, source')
+        .eq('id', orderId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // If it's an ambassador-created COD order, use the special rejection function
+      if (order.source === 'ambassador_manual' && order.payment_method === 'cod') {
+        if (!rejectionReason) {
+          // Open rejection dialog
+          setRejectingOrderId(orderId);
+          setIsRejectDialogOpen(true);
+          return;
+        }
+        return handleRejectCodAmbassadorOrder(orderId, rejectionReason);
+      }
+
+      // Only reject COD orders that are pending approval
+      if (order.payment_method !== 'cod' || order.status !== 'PENDING_ADMIN_APPROVAL') {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? 'Only COD orders with PENDING_ADMIN_APPROVAL status can be rejected'
+            : 'Seules les commandes COD avec le statut PENDING_ADMIN_APPROVAL peuvent être rejetées',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      const updateData: any = {
+        status: 'REJECTED',
+        rejected_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      if (rejectionReason) {
+        updateData.rejection_reason = rejectionReason;
+      }
+
+      const { error } = await (supabase as any)
+        .from('orders')
+        .update(updateData)
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      // Log the rejection
+      await (supabase as any)
+        .from('order_logs')
+        .insert({
+          order_id: orderId,
+          action: 'rejected',
+          performed_by: null,
+          performed_by_type: 'admin',
+          details: { 
+            old_status: 'PENDING_ADMIN_APPROVAL',
+            new_status: 'REJECTED',
+            rejection_reason: rejectionReason || null,
+            admin_action: true 
+          }
+        });
+
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' ? 'Order rejected' : 'Commande rejetée',
+        variant: 'default'
+      });
+      fetchAmbassadorSalesData();
+      if (selectedOrder?.id === orderId) {
+        setIsOrderDetailsOpen(false);
+      }
+    } catch (error: any) {
+      console.error('Error rejecting order:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to reject order' : 'Échec du rejet de la commande'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Complete COD order (changes status from APPROVED to COMPLETED)
   const handleCompleteOrderAsAdmin = async (orderId: string) => {
     try {
+      // Get current order to check status
+      const { data: order, error: fetchError } = await (supabase as any)
+        .from('orders')
+        .select('payment_method, status')
+        .eq('id', orderId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // For COD orders, only complete if status is APPROVED
+      if (order.payment_method === 'cod' && order.status !== 'APPROVED') {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? 'COD orders must be approved before they can be completed'
+            : 'Les commandes COD doivent être approuvées avant de pouvoir être terminées',
+          variant: 'destructive'
+        });
+        return;
+      }
+
       const { error } = await (supabase as any)
         .from('orders')
         .update({
@@ -1467,7 +1849,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           action: 'completed',
           performed_by: null,
           performed_by_type: 'admin',
-          details: { admin_action: true }
+          details: { 
+            old_status: order.status,
+            new_status: 'COMPLETED',
+            admin_action: true 
+          }
         });
 
       toast({
@@ -1488,69 +1874,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
     }
   };
-
-  const handleBulkAssignPendingOrders = async () => {
-    if (!confirm(language === 'en' 
-      ? 'Assign all PENDING_AMBASSADOR orders using round robin? This may take a moment.' 
-      : 'Assigner toutes les commandes PENDING_AMBASSADOR en utilisant le tourniquet ? Cela peut prendre un moment.')) {
-      return;
-    }
-
-    try {
-      // Get all pending orders with ville
-      const { data: pendingOrders, error } = await (supabase as any)
-        .from('orders')
-        .select('id, ville')
-        .eq('status', 'PENDING_AMBASSADOR')
-        .eq('source', 'platform_cod')
-        .not('ville', 'is', null);
-
-      if (error) throw error;
-
-      if (!pendingOrders || pendingOrders.length === 0) {
-        toast({
-          title: language === 'en' ? 'Info' : 'Info',
-          description: language === 'en' ? 'No pending orders to assign' : 'Aucune commande en attente à assigner',
-          variant: 'default'
-        });
-        return;
-      }
-
-      let assignedCount = 0;
-      for (const order of pendingOrders) {
-        try {
-          const response = await apiFetch(API_ROUTES.ASSIGN_ORDER, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ order_id: (order as any).id, ville: (order as any).ville })
-          });
-          const data = await response.json();
-          if (data.success) {
-            assignedCount++;
-          }
-        } catch (err) {
-          console.error(`Error assigning order ${order.id}:`, err);
-        }
-      }
-
-      toast({
-        title: language === 'en' ? 'Success' : 'Succès',
-        description: language === 'en' 
-          ? `Assigned ${assignedCount} out of ${pendingOrders.length} orders` 
-          : `${assignedCount} commandes assignées sur ${pendingOrders.length}`,
-        variant: 'default'
-      });
-      fetchAmbassadorSalesData();
-    } catch (error: any) {
-      console.error('Error bulk assigning orders:', error);
-      toast({
-        title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to assign orders' : 'Échec de l\'assignation des commandes'),
-        variant: 'destructive'
-      });
-    }
-  };
-
 
   // Update online order payment status
   const updateOnlineOrderStatus = async (orderId: string, newStatus: 'PENDING_PAYMENT' | 'PAID' | 'FAILED' | 'REFUNDED') => {
@@ -2971,7 +3294,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           .from('event_passes')
           .select('*')
           .eq('event_id', editingEvent.id)
-          .order('is_default', { ascending: false })
+          .order('is_primary', { ascending: false })
           .order('created_at', { ascending: true });
         
         if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
@@ -2984,34 +3307,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           name: p.name || '',
           price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
           description: p.description || '',
-          is_default: p.is_default || false
+          is_primary: p.is_primary || false
         }));
         
-        const hasStandard = mappedPasses.some((p: any) => p.is_default || p.name === 'Standard');
-        let finalPasses = mappedPasses;
-        
-        if (!hasStandard) {
-          finalPasses = [{
-            name: 'Standard',
-            price: 0,
-            description: language === 'en' 
-              ? 'General entry access. Basic benefits included.' 
-              : 'Accès général. Avantages de base inclus.',
-            is_default: true
-          }, ...mappedPasses];
-        } else if (mappedPasses.length === 0) {
-          finalPasses = [{
-            name: 'Standard',
-            price: 0,
-            description: language === 'en' 
-              ? 'General entry access. Basic benefits included.' 
-              : 'Accès général. Avantages de base inclus.',
-            is_default: true
-          }];
-        }
-        
-        console.log('✅ useEffect: Setting passes:', finalPasses);
-        setEditingEvent(prev => prev ? { ...prev, passes: finalPasses } : null);
+        console.log('✅ useEffect: Setting passes:', mappedPasses);
+        setEditingEvent(prev => prev ? { ...prev, passes: mappedPasses } : null);
       }
     };
     
@@ -3055,7 +3355,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               .from('event_passes')
               .select('*')
               .eq('event_id', event.id)
-              .order('is_default', { ascending: false })
+              .order('is_primary', { ascending: false })
               .order('created_at', { ascending: true });
 
             // Handle 404 errors gracefully (table might not exist yet)
@@ -3067,7 +3367,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               return { ...event, passes: [], instagram_link: event.whatsapp_link }; // Map database field to UI field
             }
 
-            return { ...event, passes: passesData || [], instagram_link: event.whatsapp_link }; // Map database field to UI field
+            const mappedPasses = (passesData || []).map((p: any) => ({
+              id: p.id,
+              name: p.name || '',
+              price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+              description: p.description || '',
+              is_primary: p.is_primary || false
+            }));
+
+            return { ...event, passes: mappedPasses, instagram_link: event.whatsapp_link }; // Map database field to UI field
           })
         );
 
@@ -3373,6 +3681,461 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   // Function to resend approval email
+  // Helper function to extract Instagram username and format it
+  const formatInstagramLink = (link: string | undefined): { displayText: string; url: string } | null => {
+    if (!link || link === '-') return null;
+    
+    let username = link.trim();
+    
+    // Remove common URL patterns
+    username = username.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '');
+    username = username.replace(/^instagram\.com\//i, '');
+    username = username.replace(/^@/, '');
+    username = username.replace(/\/$/, ''); // Remove trailing slash
+    username = username.split('?')[0]; // Remove query parameters
+    username = username.split('/')[0]; // Take only the first part
+    
+    if (!username) return null;
+    
+    // Format as @username
+    const displayText = username.startsWith('@') ? username : `@${username}`;
+    const url = `https://instagram.com/${username.replace('@', '')}`;
+    
+    return { displayText, url };
+  };
+
+  // Export approved ambassadors list to Excel with branded styling
+  const exportApprovedAmbassadorsToExcel = async () => {
+    try {
+      const approvedAmbassadors = ambassadors.filter(amb => amb.status === 'approved');
+      
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Approved Ambassadors');
+
+      // Define colors matching Andiamo Events theme
+      const darkBackground = { argb: 'FF2A2A2A' }; // Grey background (lighter than black)
+      const darkCharcoal = { argb: 'FF3A3A3A' }; // Dark grey for headers
+      const darkGray1 = { argb: 'FF2F2F2F' }; // Zebra stripe 1
+      const darkGray2 = { argb: 'FF353535' }; // Zebra stripe 2
+      const white = { argb: 'FFFFFFFF' }; // White text
+      const lightGray = { argb: 'FFB0B0B0' }; // Light gray text
+      const green = { argb: 'FF00C96D' }; // Green for active
+
+      // Title row - merged cells with centered title
+      worksheet.mergeCells('A1:H1');
+      const titleRow = worksheet.getRow(1);
+      titleRow.height = 30;
+      const titleCell = worksheet.getCell('A1');
+      titleCell.value = 'ANDIAMO EVENTS – APPROVED AMBASSADORS LIST';
+      titleCell.font = { name: 'Arial', size: 16, bold: true, color: white };
+      titleCell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: darkBackground
+      };
+      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      titleRow.getCell(1).border = {
+        top: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+        bottom: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+        left: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+        right: { style: 'thin', color: { argb: 'FF3A3A3A' } }
+      };
+
+      // Empty row for spacing
+      worksheet.getRow(2).height = 10;
+
+      // Headers row
+      const headers = ['Name', 'Age', 'Phone', 'Email', 'City', 'Ville', 'Instagram', 'Joined Date'];
+      const headerRow = worksheet.getRow(3);
+      headerRow.height = 25;
+      
+      headers.forEach((header, index) => {
+        const cell = headerRow.getCell(index + 1);
+        cell.value = header;
+        cell.font = { name: 'Arial', size: 11, bold: true, color: white };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: darkCharcoal
+        };
+        cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+          bottom: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+          left: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+          right: { style: 'thin', color: { argb: 'FF3A3A3A' } }
+        };
+      });
+
+      // Set column widths
+      worksheet.getColumn(1).width = 25; // Name
+      worksheet.getColumn(2).width = 8;  // Age
+      worksheet.getColumn(3).width = 15; // Phone
+      worksheet.getColumn(4).width = 30; // Email
+      worksheet.getColumn(5).width = 15; // City
+      worksheet.getColumn(6).width = 15; // Ville
+      worksheet.getColumn(7).width = 25; // Instagram
+      worksheet.getColumn(8).width = 15; // Joined Date
+
+      // Fetch age and social_link for each ambassador from applications
+      const ambassadorsWithAge = await Promise.all(
+        approvedAmbassadors.map(async (ambassador) => {
+          let age: number | undefined = ambassador.age;
+          let socialLink: string | undefined = ambassador.social_link;
+          
+          // If age or social_link not in ambassador object, fetch from application
+          if (!age || !socialLink) {
+            const { data: appData } = await supabase
+              .from('ambassador_applications')
+              .select('age, social_link')
+              .eq('phone_number', ambassador.phone)
+              .eq('status', 'approved')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            
+            if (appData) {
+              if (!age) age = appData.age;
+              if (!socialLink) socialLink = appData.social_link;
+            }
+          }
+          
+          return { ...ambassador, age: age || 0, social_link: socialLink };
+        })
+      );
+
+      // Data rows with alternating colors
+      ambassadorsWithAge.forEach((ambassador, index) => {
+        const row = worksheet.getRow(index + 4);
+        row.height = 20;
+        
+        // Alternating row colors (zebra pattern)
+        const rowColor = index % 2 === 0 ? darkGray1 : darkGray2;
+
+        const instagramInfo = formatInstagramLink(ambassador.social_link);
+        const instagramDisplay = instagramInfo ? instagramInfo.displayText : '-';
+        
+        const cells = [
+          ambassador.full_name,
+          ambassador.age || 0,
+          ambassador.phone,
+          ambassador.email || '-',
+          ambassador.city,
+          ambassador.ville || '-',
+          instagramDisplay,
+          new Date(ambassador.created_at).toLocaleDateString()
+        ];
+
+        cells.forEach((value, cellIndex) => {
+          const cell = row.getCell(cellIndex + 1);
+          
+          // Instagram column - make it a hyperlink if it's a valid URL
+          if (cellIndex === 6 && instagramInfo) {
+            cell.value = { text: instagramInfo.displayText, hyperlink: instagramInfo.url };
+            cell.font = { name: 'Arial', size: 10, color: { argb: 'FF6B7280' }, underline: true };
+          } else {
+            cell.value = value;
+            // Name and Phone in slightly bolder
+            if (cellIndex === 0 || cellIndex === 2) {
+              cell.font = { name: 'Arial', size: 10, bold: true, color: white };
+            } else {
+              cell.font = { name: 'Arial', size: 10, color: lightGray };
+            }
+          }
+          
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: rowColor
+          };
+          cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FF2A2A2A' } },
+            bottom: { style: 'thin', color: { argb: 'FF2A2A2A' } },
+            left: { style: 'thin', color: { argb: 'FF2A2A2A' } },
+            right: { style: 'thin', color: { argb: 'FF2A2A2A' } }
+          };
+        });
+      });
+
+      // Add outer border to entire table
+      const lastRow = ambassadorsWithAge.length + 3;
+      for (let row = 1; row <= lastRow; row++) {
+        for (let col = 1; col <= 8; col++) {
+          const cell = worksheet.getCell(row, col);
+          if (row === 1 || row === lastRow || col === 1 || col === 8) {
+            if (!cell.border) cell.border = {};
+            if (row === 1) cell.border.top = { style: 'medium', color: { argb: 'FF3A3A3A' } };
+            if (row === lastRow) cell.border.bottom = { style: 'medium', color: { argb: 'FF3A3A3A' } };
+            if (col === 1) cell.border.left = { style: 'medium', color: { argb: 'FF3A3A3A' } };
+            if (col === 8) cell.border.right = { style: 'medium', color: { argb: 'FF3A3A3A' } };
+          }
+        }
+      }
+
+      // Add export date at bottom
+      const footerRow = worksheet.getRow(lastRow + 2);
+      footerRow.height = 20;
+      const footerCell = worksheet.getCell(`A${lastRow + 2}`);
+      footerCell.value = `Generated by Andiamo Events on ${new Date().toLocaleString()}`;
+      footerCell.font = { name: 'Arial', size: 9, color: lightGray, italic: true };
+      footerCell.alignment = { horizontal: 'right' };
+      worksheet.mergeCells(`A${lastRow + 2}:H${lastRow + 2}`);
+
+      // Generate buffer and download
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+      link.download = `Andiamo_Events_Approved_Ambassadors_${dateStr}_${timeStr}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: language === 'en' ? 'Export Successful' : 'Exportation réussie',
+        description: language === 'en' 
+          ? `Exported ${approvedAmbassadors.length} approved ambassadors to Excel`
+          : `${approvedAmbassadors.length} ambassadeurs approuvés exportés vers Excel`,
+      });
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      toast({
+        title: language === 'en' ? 'Export Failed' : 'Échec de l\'exportation',
+        description: language === 'en' 
+          ? 'Failed to export ambassadors list. Please try again.'
+          : 'Échec de l\'exportation de la liste des ambassadeurs. Veuillez réessayer.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Export ambassadors list to Excel with branded styling
+  const exportAmbassadorsToExcel = async () => {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Ambassadors List');
+
+      // Define colors matching Andiamo Events theme
+      const darkBackground = { argb: 'FF2A2A2A' }; // Grey background (lighter than black)
+      const darkCharcoal = { argb: 'FF3A3A3A' }; // Dark grey for headers
+      const darkGray1 = { argb: 'FF2F2F2F' }; // Zebra stripe 1
+      const darkGray2 = { argb: 'FF353535' }; // Zebra stripe 2
+      const white = { argb: 'FFFFFFFF' }; // White text
+      const lightGray = { argb: 'FFB0B0B0' }; // Light gray text
+      const red = { argb: 'FFE21836' }; // Red accent
+      const green = { argb: 'FF22C55E' }; // Green for approved
+      const redStatus = { argb: 'FFEF4444' }; // Red for rejected/removed
+      const orange = { argb: 'FFF97316' }; // Orange for pending
+      const grey = { argb: 'FF6B7280' }; // Grey for suspended
+
+      // Title row - merged cells with centered title
+      worksheet.mergeCells('A1:I1');
+      const titleRow = worksheet.getRow(1);
+      titleRow.height = 30;
+      const titleCell = worksheet.getCell('A1');
+      titleCell.value = 'ANDIAMO EVENTS – AMBASSADORS LIST';
+      titleCell.font = { name: 'Arial', size: 16, bold: true, color: white };
+      titleCell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: darkBackground
+      };
+      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      titleRow.getCell(1).border = {
+        top: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+        bottom: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+        left: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+        right: { style: 'thin', color: { argb: 'FF3A3A3A' } }
+      };
+
+      // Empty row for spacing
+      worksheet.getRow(2).height = 10;
+
+      // Headers row
+      const headers = ['Name', 'Age', 'Phone', 'Email', 'City', 'Ville', 'Status', 'Instagram', 'Applied Date'];
+      const headerRow = worksheet.getRow(3);
+      headerRow.height = 25;
+      
+      headers.forEach((header, index) => {
+        const cell = headerRow.getCell(index + 1);
+        cell.value = header;
+        cell.font = { name: 'Arial', size: 11, bold: true, color: white };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: darkCharcoal
+        };
+        cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+          bottom: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+          left: { style: 'thin', color: { argb: 'FF3A3A3A' } },
+          right: { style: 'thin', color: { argb: 'FF3A3A3A' } }
+        };
+      });
+
+      // Set column widths
+      worksheet.getColumn(1).width = 25; // Name
+      worksheet.getColumn(2).width = 8;  // Age
+      worksheet.getColumn(3).width = 15; // Phone
+      worksheet.getColumn(4).width = 30; // Email
+      worksheet.getColumn(5).width = 15; // City
+      worksheet.getColumn(6).width = 15; // Ville
+      worksheet.getColumn(7).width = 12; // Status
+      worksheet.getColumn(8).width = 25; // Instagram
+      worksheet.getColumn(9).width = 15; // Applied Date
+
+      // Data rows with alternating colors
+      filteredApplications.forEach((application, index) => {
+        const row = worksheet.getRow(index + 4);
+        row.height = 20;
+        
+        // Alternating row colors (zebra pattern)
+        const rowColor = index % 2 === 0 ? darkGray1 : darkGray2;
+        
+        // Get ville from application or matching ambassador
+        let ville = application.ville || '';
+        if (!ville && application.city === 'Sousse') {
+          const matchingAmbassador = ambassadors.find(amb => 
+            amb.phone === application.phone_number || 
+            (application.email && amb.email === application.email)
+          );
+          ville = matchingAmbassador?.ville || '';
+        }
+
+        // Status color
+        let statusColor = lightGray;
+        let statusText = application.status;
+        if (application.status === 'approved') {
+          statusColor = green; // Green
+          statusText = 'Active';
+        } else if (application.status === 'pending') {
+          statusColor = orange; // Orange
+          statusText = 'Pending';
+        } else if (application.status === 'rejected') {
+          statusColor = redStatus; // Red
+          statusText = 'Rejected';
+        } else if (application.status === 'removed') {
+          statusColor = redStatus; // Red
+          statusText = 'Removed';
+        } else if (application.status === 'suspended') {
+          statusColor = grey; // Grey
+          statusText = 'Paused';
+        }
+
+        const instagramInfo = formatInstagramLink(application.social_link);
+        const instagramDisplay = instagramInfo ? instagramInfo.displayText : '-';
+        
+        const cells = [
+          application.full_name,
+          application.age || 0,
+          application.phone_number,
+          application.email || '-',
+          application.city,
+          ville || '-',
+          statusText,
+          instagramDisplay,
+          new Date(application.created_at).toLocaleDateString()
+        ];
+
+        cells.forEach((value, cellIndex) => {
+          const cell = row.getCell(cellIndex + 1);
+          
+          // Instagram column - make it a hyperlink if it's a valid URL
+          if (cellIndex === 7 && instagramInfo) {
+            cell.value = { text: instagramInfo.displayText, hyperlink: instagramInfo.url };
+            cell.font = { name: 'Arial', size: 10, color: { argb: 'FF6B7280' }, underline: true };
+          } else {
+            cell.value = value;
+            // Status column gets special color
+            if (cellIndex === 6) {
+              cell.font = { name: 'Arial', size: 10, bold: true, color: statusColor };
+            } else if (cellIndex === 0 || cellIndex === 2) {
+              // Name and Phone in slightly bolder
+              cell.font = { name: 'Arial', size: 10, bold: true, color: white };
+            } else {
+              cell.font = { name: 'Arial', size: 10, color: lightGray };
+            }
+          }
+          
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: rowColor
+          };
+          cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FF2A2A2A' } },
+            bottom: { style: 'thin', color: { argb: 'FF2A2A2A' } },
+            left: { style: 'thin', color: { argb: 'FF2A2A2A' } },
+            right: { style: 'thin', color: { argb: 'FF2A2A2A' } }
+          };
+        });
+      });
+
+      // Add outer border to entire table
+      const lastRow = filteredApplications.length + 3;
+      for (let row = 1; row <= lastRow; row++) {
+        for (let col = 1; col <= 9; col++) {
+          const cell = worksheet.getCell(row, col);
+          if (row === 1 || row === lastRow || col === 1 || col === 9) {
+            if (!cell.border) cell.border = {};
+            if (row === 1) cell.border.top = { style: 'medium', color: { argb: 'FF3A3A3A' } };
+            if (row === lastRow) cell.border.bottom = { style: 'medium', color: { argb: 'FF3A3A3A' } };
+            if (col === 1) cell.border.left = { style: 'medium', color: { argb: 'FF3A3A3A' } };
+            if (col === 9) cell.border.right = { style: 'medium', color: { argb: 'FF3A3A3A' } };
+          }
+        }
+      }
+
+      // Add export date at bottom
+      const footerRow = worksheet.getRow(lastRow + 2);
+      footerRow.height = 20;
+      const footerCell = worksheet.getCell(`A${lastRow + 2}`);
+      footerCell.value = `Generated by Andiamo Events on ${new Date().toLocaleString()}`;
+      footerCell.font = { name: 'Arial', size: 9, color: lightGray, italic: true };
+      footerCell.alignment = { horizontal: 'right' };
+      worksheet.mergeCells(`A${lastRow + 2}:I${lastRow + 2}`);
+
+      // Generate buffer and download
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+      link.download = `Andiamo_Events_Ambassadors_List_${dateStr}_${timeStr}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: language === 'en' ? 'Export Successful' : 'Exportation réussie',
+        description: language === 'en' 
+          ? `Exported ${filteredApplications.length} ambassadors to Excel`
+          : `${filteredApplications.length} ambassadeurs exportés vers Excel`,
+      });
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      toast({
+        title: language === 'en' ? 'Export Failed' : 'Échec de l\'exportation',
+        description: language === 'en' 
+          ? 'Failed to export ambassadors list. Please try again.'
+          : 'Échec de l\'exportation de la liste des ambassadeurs. Veuillez réessayer.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const resendEmail = async (application: AmbassadorApplication) => {
     setProcessingId(application.id);
     
@@ -3953,36 +4716,49 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Ensure Standard pass exists
-      const hasStandardPass = passes.some(p => p.is_default || p.name === 'Standard');
-      if (!hasStandardPass) {
+      // Validate passes with strict rules
+      if (!passes || passes.length === 0) {
         toast({
-          title: t.error,
+          title: language === 'en' ? "Validation Error" : "Erreur de validation",
           description: language === 'en' 
-            ? 'Standard pass is mandatory. Please add a Standard pass.' 
-            : 'Le pass Standard est obligatoire. Veuillez ajouter un pass Standard.',
+            ? "At least one pass is required. You cannot publish an event without passes." 
+            : "Au moins un pass est requis. Vous ne pouvez pas publier un événement sans passes.",
           variant: "destructive",
         });
         return;
       }
 
-      // Validate each pass with strict rules - collect all errors
+      // Count primary passes
+      const primaryPassCount = passes.filter(p => p.is_primary).length;
+      if (primaryPassCount === 0) {
+        toast({
+          title: language === 'en' ? "Validation Error" : "Erreur de validation",
+          description: language === 'en' 
+            ? "Exactly one primary pass is required. Please mark one pass as primary." 
+            : "Exactement un pass principal est requis. Veuillez marquer un pass comme principal.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (primaryPassCount > 1) {
+        toast({
+          title: language === 'en' ? "Validation Error" : "Erreur de validation",
+          description: language === 'en' 
+            ? "Only one primary pass is allowed. Please ensure exactly one pass is marked as primary." 
+            : "Un seul pass principal est autorisé. Veuillez vous assurer qu'exactement un pass est marqué comme principal.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate each pass - collect all errors
       const errors: Record<number, {name?: string; price?: string; description?: string}> = {};
       const passNames = new Set<string>();
       let hasErrors = false;
 
       for (let i = 0; i < passes.length; i++) {
         const pass = passes[i];
-        const isStandard = pass.is_default || pass.name === 'Standard';
         const passErrors: {name?: string; price?: string; description?: string} = {};
-        
-        // Validate Standard pass name is fixed
-        if (isStandard && pass.name !== 'Standard') {
-          passErrors.name = language === 'en' 
-            ? 'Standard pass name must be "Standard" and cannot be changed' 
-            : 'Le nom du pass Standard doit être "Standard" et ne peut pas être modifié';
-          hasErrors = true;
-        }
 
         // Check required fields - Name
         if (!pass.name || pass.name.trim() === '') {
@@ -4005,20 +4781,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           }
         }
 
-        // Check required fields - Price
-        if (pass.price === undefined || pass.price === null || isNaN(pass.price) || pass.price < 0) {
+        // Check required fields - Price MUST be > 0
+        if (pass.price === undefined || pass.price === null || isNaN(pass.price) || pass.price <= 0) {
           passErrors.price = language === 'en' 
-            ? 'Valid price is required (≥ 0 TND)' 
-            : 'Un prix valide est requis (≥ 0 TND)';
+            ? 'Price is required and must be greater than 0 TND' 
+            : 'Le prix est requis et doit être supérieur à 0 TND';
           hasErrors = true;
         }
 
-        // Check required fields - Description
-        if (!pass.description || pass.description.trim() === '') {
-          passErrors.description = language === 'en' 
-            ? 'Description is required' 
-            : 'La description est requise';
-          hasErrors = true;
+        // Description is optional, but if provided, it should not be empty
+        if (pass.description !== undefined && pass.description !== null && pass.description.trim() === '') {
+          // Allow empty description, but if it's explicitly set to empty string, that's fine
+          // Only validate if it's a required field (which it's not according to requirements)
         }
 
         if (Object.keys(passErrors).length > 0) {
@@ -4044,19 +4818,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Clear errors if validation passes
       setPassValidationErrors({});
 
-      // Ensure Standard pass is marked as default
-      const updatedPasses = passes.map(p => {
-        if (p.is_default || p.name === 'Standard') {
-          return { ...p, name: 'Standard', is_default: true };
-        }
-        return p;
-      });
-
-      // Extract standard_price and vip_price from passes for backward compatibility
-      const standardPass = updatedPasses.find(p => p.is_default || p.name === 'Standard');
-      const vipPass = updatedPasses.find(p => p.name === 'VIP' || p.name === 'Vip');
-      const standardPrice = standardPass?.price || 0;
-      const vipPrice = vipPass?.price || 0;
+      // Passes are ready to save - no transformation needed
+      const updatedPasses = passes;
 
       let posterUrl = event.poster_url;
 
@@ -4115,13 +4878,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       let eventId = event.id;
 
+      // Convert date from datetime-local format to ISO string if needed
+      let eventDate = event.date;
+      if (eventDate) {
+        // Check if date is in datetime-local format (YYYY-MM-DDTHH:mm) without timezone
+        // ISO format includes 'Z' or timezone offset (+/-HH:mm)
+        const isDatetimeLocal = eventDate.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+        if (isDatetimeLocal) {
+          // Convert datetime-local to ISO by creating a Date object
+          const dateObj = new Date(eventDate);
+          if (!isNaN(dateObj.getTime())) {
+            eventDate = dateObj.toISOString();
+          }
+        }
+      }
+
       if (event.id) {
         // Update existing event
         const { error } = await supabase
           .from('events')
           .update({
             name: event.name,
-            date: event.date,
+            date: eventDate,
             venue: event.venue,
             city: event.city,
             description: event.description,
@@ -4132,8 +4910,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             event_type: event.event_type || 'upcoming',
             gallery_images: finalGalleryImages,
             gallery_videos: finalGalleryVideos,
-            standard_price: standardPrice, // Set from passes for backward compatibility
-            vip_price: vipPrice, // Set from passes for backward compatibility
             updated_at: new Date().toISOString()
           })
           .eq('id', event.id);
@@ -4147,30 +4923,37 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           .delete()
           .eq('event_id', event.id);
 
-        // Handle 404 errors gracefully (table might not exist yet)
         if (deleteError && deleteError.code !== 'PGRST116' && deleteError.message !== 'relation "public.event_passes" does not exist') {
-          console.warn('Error deleting passes (non-critical):', deleteError);
-          // Don't throw, just log - passes will be stored in event object
+          throw deleteError;
         }
 
         // Insert updated passes
         if (updatedPasses.length > 0) {
-          const passesToInsert = updatedPasses.map(p => ({
-            event_id: event.id,
-            name: p.name,
-            price: p.price,
-            description: p.description,
-            is_default: p.is_default
-          }));
+          const passesToInsert = updatedPasses.map(p => {
+            // Ensure price is a valid number > 0 (NUMERIC(10, 2) in database)
+            const price = typeof p.price === 'number' 
+              ? Number(p.price.toFixed(2))
+              : Number(parseFloat(String(p.price)).toFixed(2));
+            
+            if (price <= 0) {
+              throw new Error(`Invalid price for pass "${p.name}": price must be > 0`);
+            }
+            
+            return {
+              event_id: event.id,
+              name: p.name.trim(),
+              price: price,
+              description: p.description || '',
+              is_primary: p.is_primary || false
+            };
+          });
 
           const { error: insertError } = await supabase
             .from('event_passes')
             .insert(passesToInsert);
 
-          // Handle 404 errors gracefully (table might not exist yet)
-          if (insertError && insertError.code !== 'PGRST116' && insertError.message !== 'relation "public.event_passes" does not exist') {
-            console.warn('Error inserting passes (non-critical):', insertError);
-            // Don't throw, just log - passes will be stored in event object
+          if (insertError) {
+            throw insertError;
           }
         }
       } else {
@@ -4179,7 +4962,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           .from('events')
           .insert({
             name: event.name,
-            date: event.date,
+            date: eventDate,
             venue: event.venue,
             city: event.city,
             description: event.description,
@@ -4189,9 +4972,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             featured: event.featured,
             event_type: event.event_type || 'upcoming',
             gallery_images: finalGalleryImages,
-            gallery_videos: finalGalleryVideos,
-            standard_price: standardPrice, // Set from passes for backward compatibility
-            vip_price: vipPrice // Set from passes for backward compatibility
+            gallery_videos: finalGalleryVideos
           })
           .select()
           .single();
@@ -4202,22 +4983,31 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         // Insert passes for the new event
         if (updatedPasses.length > 0) {
-          const passesToInsert = updatedPasses.map(p => ({
-            event_id: eventId,
-            name: p.name,
-            price: p.price,
-            description: p.description,
-            is_default: p.is_default
-          }));
+          const passesToInsert = updatedPasses.map(p => {
+            // Ensure price is a valid number > 0 (NUMERIC(10, 2) in database)
+            const price = typeof p.price === 'number' 
+              ? Number(p.price.toFixed(2))
+              : Number(parseFloat(String(p.price)).toFixed(2));
+            
+            if (price <= 0) {
+              throw new Error(`Invalid price for pass "${p.name}": price must be > 0`);
+            }
+            
+            return {
+              event_id: eventId,
+              name: p.name.trim(),
+              price: price,
+              description: p.description || '',
+              is_primary: p.is_primary || false
+            };
+          });
 
           const { error: insertError } = await supabase
             .from('event_passes')
             .insert(passesToInsert);
 
-          // Handle 404 errors gracefully (table might not exist yet)
-          if (insertError && insertError.code !== 'PGRST116' && insertError.message !== 'relation "public.event_passes" does not exist') {
-            console.warn('Error inserting passes (non-critical):', insertError);
-            // Don't throw, just log - passes will be stored in event object
+          if (insertError) {
+            throw insertError;
           }
         }
       }
@@ -4303,6 +5093,125 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     return password.length >= 6;
   };
 
+  // Toggle ambassador status between approved and suspended
+  const handleToggleAmbassadorStatus = async (ambassador: Ambassador) => {
+    const newStatus = ambassador.status === 'approved' ? 'suspended' : 'approved';
+    setProcessingId(ambassador.id);
+
+    try {
+      // Update ambassador status
+      const { error: ambassadorError } = await supabase
+        .from('ambassadors')
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ambassador.id);
+
+      if (ambassadorError) {
+        console.error('Error updating ambassador status:', ambassadorError);
+        throw ambassadorError;
+      }
+
+      // Find and update corresponding application(s) by phone number or email
+      let matchingApplications: any[] = [];
+      
+      // Query by phone number
+      const { data: phoneMatches, error: phoneError } = await supabase
+        .from('ambassador_applications')
+        .select('id')
+        .eq('phone_number', ambassador.phone)
+        .in('status', ['approved', 'suspended']);
+
+      if (!phoneError && phoneMatches) {
+        matchingApplications = phoneMatches;
+      }
+
+      // If email exists, also query by email and combine results
+      if (ambassador.email) {
+        const { data: emailMatches, error: emailError } = await supabase
+          .from('ambassador_applications')
+          .select('id')
+          .eq('email', ambassador.email)
+          .in('status', ['approved', 'suspended']);
+
+        if (!emailError && emailMatches) {
+          // Combine results, avoiding duplicates
+          const existingIds = new Set(matchingApplications.map(app => app.id));
+          emailMatches.forEach(app => {
+            if (!existingIds.has(app.id)) {
+              matchingApplications.push(app);
+            }
+          });
+        }
+      }
+
+      if (matchingApplications && matchingApplications.length > 0) {
+        // Update all matching applications
+        const { error: updateAppError } = await supabase
+          .from('ambassador_applications')
+          .update({ 
+            status: newStatus,
+            updated_at: new Date().toISOString()
+          })
+          .in('id', matchingApplications.map(app => app.id));
+
+        if (updateAppError) {
+          console.error('Error updating application status:', updateAppError);
+          // Show warning but continue - ambassador update succeeded
+          toast({
+            title: language === 'en' ? '⚠️ Partial Update' : '⚠️ Mise à Jour Partielle',
+            description: language === 'en' 
+              ? `Ambassador status updated, but application status update failed: ${updateAppError.message}`
+              : `Statut de l'ambassadeur mis à jour, mais la mise à jour du statut de la candidature a échoué : ${updateAppError.message}`,
+            variant: 'destructive',
+          });
+        } else {
+          // Update local state for applications
+          setApplications(prev => prev.map(app => {
+            const phoneMatch = app.phone_number === ambassador.phone;
+            const emailMatch = ambassador.email && app.email && app.email === ambassador.email;
+            if ((phoneMatch || emailMatch) && (app.status === 'approved' || app.status === 'suspended')) {
+              return { ...app, status: newStatus as 'approved' | 'suspended' };
+            }
+            return app;
+          }));
+        }
+      } else {
+        // No matching applications found - this is okay, might be a manually added ambassador
+        console.log('No matching applications found for ambassador:', ambassador.id);
+      }
+
+      // Update local state for ambassadors
+      setAmbassadors(prev => prev.map(amb => 
+        amb.id === ambassador.id 
+          ? { ...amb, status: newStatus }
+          : amb
+      ));
+
+      // Refresh data to ensure consistency
+      await fetchAllData();
+
+      toast({
+        title: language === 'en' ? 'Status Updated' : 'Statut Mis à Jour',
+        description: language === 'en' 
+          ? `Ambassador ${newStatus === 'suspended' ? 'paused' : 'activated'} successfully`
+          : `Ambassadeur ${newStatus === 'suspended' ? 'mis en pause' : 'activé'} avec succès`,
+      });
+    } catch (error) {
+      console.error('Error toggling ambassador status:', error);
+      toast({
+        title: language === 'en' ? 'Update Failed' : 'Échec de la Mise à Jour',
+        description: language === 'en' 
+          ? 'Failed to update ambassador status. Please try again.'
+          : 'Échec de la mise à jour du statut. Veuillez réessayer.',
+        variant: 'destructive',
+      });
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const handleSaveAmbassador = async (ambassador: Ambassador) => {
     try {
       // For editing existing ambassadors, use the old logic
@@ -4329,6 +5238,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             updated_at: new Date().toISOString()
         };
 
+        // Validate social_link format if provided
+        if (ambassador.social_link && ambassador.social_link.trim() && 
+            !ambassador.social_link.trim().startsWith('https://www.instagram.com/') && 
+            !ambassador.social_link.trim().startsWith('https://instagram.com/')) {
+          toast({
+            title: language === 'en' ? "Validation Error" : "Erreur de validation",
+            description: language === 'en' ? "Instagram link must start with https://www.instagram.com/ or https://instagram.com/" : "Le lien Instagram doit commencer par https://www.instagram.com/ ou https://instagram.com/",
+            variant: "destructive",
+          });
+          return;
+        }
+
         // Only update password if it's provided and different
         if (ambassador.password && ambassador.password.trim()) {
           if (!validatePassword(ambassador.password)) {
@@ -4350,24 +5271,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         if (error) throw error;
 
-        // Update age in corresponding application record(s) if age was provided
-        // This ensures age is synchronized between ambassador and application records
+        // Update age and social_link in corresponding application record(s) if provided
+        // This ensures age and social_link are synchronized between ambassador and application records
+        const appUpdateData: any = {};
         if (ambassador.age !== undefined && ambassador.age !== null) {
+          appUpdateData.age = ambassador.age;
+        }
+        if (ambassador.social_link !== undefined) {
+          appUpdateData.social_link = ambassador.social_link.trim() || null;
+        }
+
+        if (Object.keys(appUpdateData).length > 0) {
           // Find all application records for this ambassador (by phone number)
           // Update all statuses to ensure complete synchronization
           const { error: appUpdateError } = await supabase
             .from('ambassador_applications')
-            .update({ age: ambassador.age })
+            .update(appUpdateData)
             .eq('phone_number', ambassador.phone);
 
           if (appUpdateError) {
-            console.error('Error updating application age:', appUpdateError);
+            console.error('Error updating application:', appUpdateError);
             // Don't fail the whole operation, just log the error
             toast({
               title: language === 'en' ? "Warning" : "Avertissement",
               description: language === 'en' 
-                ? "Ambassador updated, but age synchronization with application may have failed" 
-                : "Ambassadeur mis à jour, mais la synchronisation de l'âge avec la candidature a peut-être échoué",
+                ? "Ambassador updated, but synchronization with application may have failed" 
+                : "Ambassadeur mis à jour, mais la synchronisation avec la candidature a peut-être échoué",
               variant: "default",
             });
           }
@@ -4442,6 +5371,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         hasErrors = true;
       }
 
+      // Validate Instagram link format if provided
+      if (newAmbassadorForm.social_link && newAmbassadorForm.social_link.trim() && 
+          !newAmbassadorForm.social_link.trim().startsWith('https://www.instagram.com/') && 
+          !newAmbassadorForm.social_link.trim().startsWith('https://instagram.com/')) {
+        errors.social_link = language === 'en' ? "Instagram link must start with https://www.instagram.com/ or https://instagram.com/" : "Le lien Instagram doit commencer par https://www.instagram.com/ ou https://instagram.com/";
+        hasErrors = true;
+      }
+
       if (hasErrors) {
         setAmbassadorErrors(errors);
         toast({
@@ -4452,7 +5389,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Check for duplicate phone or email
+      // Check for duplicate phone number in both ambassadors and applications tables
       const { data: existingAmbByPhone } = await supabase
         .from('ambassadors')
         .select('id')
@@ -4468,6 +5405,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
+      // Check for duplicate phone in applications (approved/pending statuses)
+      const { data: existingAppByPhone } = await supabase
+        .from('ambassador_applications')
+        .select('id, status')
+        .eq('phone_number', newAmbassadorForm.phone_number)
+        .in('status', ['pending', 'approved', 'suspended'])
+        .maybeSingle();
+
+      if (existingAppByPhone) {
+        toast({
+          title: language === 'en' ? "Duplicate Phone Number" : "Numéro de téléphone dupliqué",
+          description: language === 'en' 
+            ? `An application with this phone number already exists with status: ${existingAppByPhone.status}`
+            : `Une candidature avec ce numéro de téléphone existe déjà avec le statut : ${existingAppByPhone.status}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Check for duplicate email in both ambassadors and applications tables
       if (newAmbassadorForm.email) {
         const { data: existingAmbByEmail } = await supabase
           .from('ambassadors')
@@ -4479,6 +5436,25 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           toast({
             title: language === 'en' ? "Duplicate Email" : "Email dupliqué",
             description: language === 'en' ? "An ambassador with this email already exists" : "Un ambassadeur avec cet email existe déjà",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Check for duplicate email in applications (approved/pending statuses)
+        const { data: existingAppByEmail } = await supabase
+          .from('ambassador_applications')
+          .select('id, status')
+          .eq('email', newAmbassadorForm.email)
+          .in('status', ['pending', 'approved', 'suspended'])
+          .maybeSingle();
+
+        if (existingAppByEmail) {
+          toast({
+            title: language === 'en' ? "Duplicate Email" : "Email dupliqué",
+            description: language === 'en' 
+              ? `An application with this email already exists with status: ${existingAppByEmail.status}`
+              : `Une candidature avec cet email existe déjà avec le statut : ${existingAppByEmail.status}`,
             variant: "destructive",
           });
           return;
@@ -4516,36 +5492,79 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (!newAmbassador) throw new Error('Failed to create ambassador');
 
       // Create application record with approved status and manual indicator
+      // This is mandatory - every ambassador must have a corresponding application record
+      const applicationData: any = {
+        full_name: newAmbassadorForm.full_name.trim(),
+        age: parseInt(newAmbassadorForm.age),
+        phone_number: cleanedPhone,
+        email: newAmbassadorForm.email.trim().toLowerCase(),
+        city: newAmbassadorForm.city.trim(),
+        ville: newAmbassadorForm.city === 'Sousse' ? newAmbassadorForm.ville.trim() : null,
+        social_link: newAmbassadorForm.social_link?.trim() || null,
+        motivation: newAmbassadorForm.motivation?.trim() || (language === 'en' ? 'Manually added by admin' : 'Ajouté manuellement par l\'administrateur'),
+        status: 'approved'
+      };
+
+      // Add manually_added field if column exists (will be added via migration)
+      // Try to include it, but if it fails due to missing column, we'll retry without it
       const { error: appError } = await supabase
         .from('ambassador_applications')
         .insert({
-          full_name: newAmbassadorForm.full_name.trim(),
-          age: parseInt(newAmbassadorForm.age),
-          phone_number: cleanedPhone,
-          email: newAmbassadorForm.email.trim().toLowerCase(),
-          city: newAmbassadorForm.city.trim(),
-          ville: newAmbassadorForm.city === 'Sousse' ? newAmbassadorForm.ville.trim() : null,
-          social_link: newAmbassadorForm.social_link?.trim() || null,
-          motivation: language === 'en' ? 'Manually added by admin' : 'Ajouté manuellement par l\'administrateur',
-          status: 'approved',
+          ...applicationData,
           manually_added: true
         });
 
-      if (appError) {
-        console.error('Error creating application record:', appError);
-        // Don't fail the whole operation if application creation fails
+      // If error is due to missing column, retry without manually_added
+      let finalAppError = appError;
+      if (appError && appError.message?.includes('manually_added')) {
+        const { error: retryError } = await supabase
+          .from('ambassador_applications')
+          .insert(applicationData);
+        finalAppError = retryError;
+      }
+
+      if (finalAppError) {
+        console.error('Error creating application record:', finalAppError);
+        // If application creation fails, delete the ambassador to maintain data consistency
+        await supabase
+          .from('ambassadors')
+          .delete()
+          .eq('id', newAmbassador.id);
+        
+        throw new Error(language === 'en' 
+          ? `Failed to create application record: ${finalAppError.message}. Ambassador creation was rolled back. Please run the migration: 20250203000001-ensure-manually-added-column.sql`
+          : `Échec de la création de la candidature : ${finalAppError.message}. La création de l'ambassadeur a été annulée. Veuillez exécuter la migration : 20250203000001-ensure-manually-added-column.sql`);
       }
 
       // Find the application record we just created to get its ID
-      const result: any = await (supabase as any)
+      // Try to find by manually_added first, if that fails, find by phone and status
+      let result: any = await (supabase as any)
         .from('ambassador_applications')
         .select('id')
         .eq('phone_number', cleanedPhone)
         .eq('status', 'approved')
-        .eq('manually_added', true)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+      
+      // If manually_added column exists, filter by it
+      try {
+        const resultWithManual = await (supabase as any)
+          .from('ambassador_applications')
+          .select('id')
+          .eq('phone_number', cleanedPhone)
+          .eq('status', 'approved')
+          .eq('manually_added', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (resultWithManual?.data || resultWithManual) {
+          result = resultWithManual;
+        }
+      } catch (e) {
+        // Column doesn't exist, use the result without manually_added filter
+      }
+      
       const createdApp = (result?.data || result) as { id: string } | null;
 
       const applicationId = createdApp?.id || newAmbassador.id;
@@ -5245,13 +6264,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'approved':
-        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#E21836' }} title={t.approved} />;
+        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22C55E' }} title={t.approved} />; // Green
       case 'rejected':
-        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#8C8C8C' }} title={t.rejected} />;
+        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#EF4444' }} title={t.rejected} />; // Red
       case 'removed':
-        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#8C8C8C' }} title={language === 'en' ? 'Removed' : 'Retiré'} />;
+        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#EF4444' }} title={language === 'en' ? 'Removed' : 'Retiré'} />; // Red
+      case 'suspended':
+        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6B7280' }} title={language === 'en' ? 'Paused' : 'En Pause'} />; // Grey
       default:
-        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#FFC93C' }} title={t.pending} />;
+        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#F97316' }} title={t.pending} />; // Orange
     }
   };
 
@@ -5291,26 +6312,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         bgColor: 'rgba(226, 24, 54, 0.15)',
         textColor: '#E21836',
         label: language === 'en' ? 'Paid' : 'Payé'
-      },
-      'ASSIGNED': {
-        color: '#E21836',
-        bgColor: 'rgba(226, 24, 54, 0.15)',
-        textColor: '#E21836',
-        label: language === 'en' ? 'Assigned' : 'Assigné'
-      },
-      
-      // Warning/Maintenance statuses - Gold
-      'PENDING_AMBASSADOR': {
-        color: '#FFC93C',
-        bgColor: 'rgba(255, 201, 60, 0.15)',
-        textColor: '#FFC93C',
-        label: language === 'en' ? 'Pending Ambassador' : 'En Attente Ambassadeur'
-      },
-      'AUTO_REASSIGNED': {
-        color: '#FFC93C',
-        bgColor: 'rgba(255, 201, 60, 0.15)',
-        textColor: '#FFC93C',
-        label: language === 'en' ? 'Auto Reassigned' : 'Réassigné Auto'
       },
       'PENDING': {
         color: '#FFC93C',
@@ -5514,27 +6515,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Ensure Standard pass always exists when editing event
-  useEffect(() => {
-    if (editingEvent && isEventDialogOpen) {
-      const passes = editingEvent.passes || [];
-      const hasStandard = passes.some(p => (p.is_default || p.name === 'Standard'));
-      
-      if (!hasStandard) {
-        setEditingEvent(prev => ({
-          ...prev!,
-          passes: [{
-            name: 'Standard',
-            price: 0,
-            description: language === 'en' 
-              ? 'General entry access. Basic benefits included.' 
-              : 'Accès général. Avantages de base inclus.',
-            is_default: true
-          }, ...(prev?.passes || [])]
-        }));
-      }
-    }
-  }, [editingEvent?.id, isEventDialogOpen, language]);
+  // Passes are managed by admin - no auto-adding of passes
 
   // Upload all pending gallery files
   const uploadPendingGalleryFiles = async (type: 'images' | 'videos'): Promise<string[]> => {
@@ -5623,7 +6604,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         event_id: event.id,
         event_name: event.name,
         ticket_type: index % 3 === 0 ? 'VIP' : index % 3 === 1 ? 'Standard' : 'Premium',
-        price: event.standard_price || 50 + (index * 10),
+        price: (event.passes && event.passes.length > 0 && event.passes[0]?.price) ? event.passes[0].price : 50 + (index * 10),
         quantity: 100,
         available_quantity: 100 - (Math.floor(Math.random() * 80) + 10),
         description: `${index % 3 === 0 ? 'VIP' : index % 3 === 1 ? 'Standard' : 'Premium'} ticket for ${event.name}`,
@@ -6028,18 +7009,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }
   
   return (
-    <div className="pt-16 min-h-screen bg-background min-w-0">
+    <div className="pt-16 min-h-screen min-w-0" style={{ backgroundColor: '#1A1A1A' }}>
       <div className="flex">
         {/* Sidebar */}
         <div 
           className="w-64 min-h-screen flex flex-col"
           style={{
-            background: '#000000',
-            borderRight: '1px solid #424242'
+            background: '#1A1A1A',
+            borderRight: '1px solid #2A2A2A'
           }}
         >
-          <div className="p-4 border-b border-border/20">
-            <h2 className="text-lg font-semibold">Navigation</h2>
+          <div className="p-4 border-b" style={{ borderColor: '#2A2A2A' }}>
+            <h2 className="text-lg font-semibold" style={{ color: '#FFFFFF' }}>Navigation</h2>
           </div>
           <div className="p-2 flex-1">
             <div className="space-y-1 animate-in slide-in-from-left-4 duration-700">
@@ -6051,8 +7032,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     : ""
                 }`}
                 style={{
-                  color: activeTab === "overview" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "overview" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                  color: activeTab === "overview" ? '#E21836' : '#B0B0B0',
+                  background: activeTab === "overview" ? 'rgba(226, 24, 54, 0.15)' : 'transparent'
+                }}
+                onMouseEnter={(e) => {
+                  if (activeTab !== "overview") {
+                    e.currentTarget.style.color = '#E21836';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeTab !== "overview") {
+                    e.currentTarget.style.color = '#B0B0B0';
+                  }
                 }}
               >
                 <BarChart3 className={`w-4 h-4 transition-transform duration-300 ${activeTab === "overview" ? "animate-pulse" : ""}`} />
@@ -6189,7 +7180,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               <button
                 onClick={() => {
                   setActiveTab("ambassador-sales");
-                  if (codOrders.length === 0) {
+                  if (codAmbassadorOrders.length === 0) {
                     fetchAmbassadorSalesData();
                   }
                 }}
@@ -6311,7 +7302,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </h1>
                 <p 
                   className="animate-in slide-in-from-left-4 duration-1000 delay-300"
-                  style={{ color: '#B8B8B8' }}
+                  style={{ color: '#B0B0B0' }}
                 >
                   {t.subtitle}
                 </p>
@@ -6320,8 +7311,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               <div 
                 className="flex items-center gap-2 px-4 py-2 rounded-lg"
                 style={{
-                  background: '#1A1A1A',
-                  border: '1px solid #424242',
+                  background: '#1F1F1F',
+                  border: '1px solid #2A2A2A',
                   color: '#B8B8B8'
                 }}
               >
@@ -6348,14 +7339,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               <TabsContent value="overview" className="space-y-6 mt-20 sm:mt-0">
                 {/* Welcome Header */}
                 <div className="animate-in slide-in-from-top-4 fade-in duration-700">
-                  <Card className="bg-gradient-to-br from-primary/10 via-primary/5 to-background border-primary/20 shadow-xl">
+                  <Card 
+                    className="shadow-xl"
+                    style={{
+                      backgroundColor: '#1F1F1F',
+                      borderColor: '#2A2A2A'
+                    }}
+                  >
                     <CardContent className="p-8">
                       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                         <div className="space-y-2">
-                          <h2 className="text-3xl font-heading font-bold text-gradient-neon">
+                          <h2 className="text-3xl font-heading font-bold" style={{ color: '#E21836' }}>
                             {language === 'en' ? 'Welcome Back!' : 'Bon Retour !'}
                           </h2>
-                          <p className="text-muted-foreground text-lg font-heading">
+                          <p className="text-lg font-heading" style={{ color: '#B0B0B0' }}>
                             {language === 'en' 
                               ? 'Here\'s what\'s happening with your events today'
                               : 'Voici ce qui se passe avec vos événements aujourd\'hui'}
@@ -6363,19 +7360,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
-                            <p className="text-sm text-muted-foreground font-heading">
+                            <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>
                               {language === 'en' ? 'Active Events' : 'Événements Actifs'}
                             </p>
-                            <p className="text-2xl font-bold text-primary font-heading">
+                            <p className="text-2xl font-bold font-heading" style={{ color: '#E21836' }}>
                               {events.filter(e => e.event_type === 'upcoming' && new Date(e.date) >= new Date()).length}
                             </p>
                           </div>
-                          <div className="h-12 w-px bg-border" />
+                          <div className="h-12 w-px" style={{ backgroundColor: '#2A2A2A' }} />
                           <div className="text-right">
-                            <p className="text-sm text-muted-foreground font-heading">
+                            <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>
                               {language === 'en' ? 'Total Revenue' : 'Revenus Totaux'}
                             </p>
-                            <p className="text-2xl font-bold text-secondary font-heading">
+                            <p className="text-2xl font-bold font-heading" style={{ color: '#E21836' }}>
                               {passPurchases.reduce((sum, p) => sum + (p.total_price || 0), 0).toLocaleString()} TND
                             </p>
                           </div>
@@ -6389,17 +7386,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full px-2">
                   {/* Pending Applications Card */}
                   <Card 
-                    className={`group relative overflow-hidden bg-gradient-to-br from-yellow-500/10 via-yellow-500/5 to-background border-yellow-500/20 transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                    className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
                       animatedCards.has(0) 
                         ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
                         : 'opacity-0 translate-y-8'
                     }`}
+                    style={{
+                      backgroundColor: '#1F1F1F',
+                      borderColor: '#2A2A2A'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#3A3A3A';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#2A2A2A';
+                    }}
                   >
                     <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl" />
                     <CardContent className="p-6 relative z-10">
                       <div className="flex items-start justify-between mb-4">
-                        <div className="p-3 bg-yellow-500/20 rounded-xl">
-                          <Clock className="w-6 h-6 text-yellow-500" />
+                        <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(107, 107, 107, 0.2)' }}>
+                          <Clock className="w-6 h-6" style={{ color: '#6B6B6B' }} />
                         </div>
                         <div className="flex items-center gap-1 text-xs font-heading">
                           <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
@@ -6407,11 +7414,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground font-heading">{t.pendingApplications}</p>
-                        <p className="text-3xl font-bold font-heading text-foreground">
+                        <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>{t.pendingApplications}</p>
+                        <p className="text-3xl font-bold font-heading" style={{ color: '#FFFFFF' }}>
                             {pendingApplications.length}
                           </p>
-                        <p className="text-xs text-muted-foreground font-heading">
+                        <p className="text-xs font-heading" style={{ color: '#B0B0B0' }}>
                           {language === 'en' ? 'Awaiting review' : 'En attente de révision'}
                         </p>
                         </div>
@@ -6430,11 +7437,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
                   {/* Approved Applications Card */}
                   <Card 
-                    className={`group relative overflow-hidden bg-gradient-to-br from-green-500/10 via-green-500/5 to-background border-green-500/20 transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                    className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
                       animatedCards.has(1) 
                         ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200' 
                         : 'opacity-0 translate-y-8'
                     }`}
+                    style={{
+                      backgroundColor: '#1F1F1F',
+                      borderColor: '#2A2A2A'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#3A3A3A';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#2A2A2A';
+                    }}
                   >
                     <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl" style={{ backgroundColor: 'rgba(226, 24, 54, 0.05)' }} />
                     <CardContent className="p-6 relative z-10">
@@ -6462,10 +7479,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           <div 
                             key={i}
                             className="flex-1 rounded-t transition-all duration-300"
-                            style={{ backgroundColor: 'rgba(226, 24, 54, 0.3)' }}
+                            style={{ backgroundColor: 'rgba(226, 24, 54, 0.3)', height: `${(h / 15) * 100}%` }}
                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(226, 24, 54, 0.5)'}
                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(226, 24, 54, 0.3)'}
-                            style={{ height: `${(h / 15) * 100}%` }}
                           />
                         ))}
                       </div>
@@ -6474,17 +7490,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
                   {/* Total Events Card */}
                   <Card 
-                    className={`group relative overflow-hidden bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-background border-blue-500/20 transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                    className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
                       animatedCards.has(2) 
                         ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400' 
                         : 'opacity-0 translate-y-8'
                     }`}
+                    style={{
+                      backgroundColor: '#1F1F1F',
+                      borderColor: '#2A2A2A'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#3A3A3A';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#2A2A2A';
+                    }}
                   >
                     <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl" style={{ backgroundColor: 'rgba(0, 207, 255, 0.05)' }} />
                     <CardContent className="p-6 relative z-10">
                       <div className="flex items-start justify-between mb-4">
-                        <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(0, 207, 255, 0.2)' }}>
-                          <CalendarIcon className="w-6 h-6" style={{ color: '#00CFFF' }} />
+                        <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(107, 107, 107, 0.2)' }}>
+                          <CalendarIcon className="w-6 h-6" style={{ color: '#6B6B6B' }} />
                         </div>
                         <div className="flex items-center gap-1 text-xs font-heading">
                           <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
@@ -6506,10 +7532,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           <div 
                             key={i}
                             className="flex-1 rounded-t transition-all duration-300"
-                            style={{ backgroundColor: 'rgba(0, 207, 255, 0.3)' }}
+                            style={{ backgroundColor: 'rgba(0, 207, 255, 0.3)', height: `${(h / 10) * 100}%` }}
                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 207, 255, 0.5)'}
                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 207, 255, 0.3)'}
-                            style={{ height: `${(h / 10) * 100}%` }}
                           />
                         ))}
                       </div>
@@ -6518,17 +7543,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
                   {/* Approved Ambassadors Card */}
                   <Card 
-                    className={`group relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-background border-primary/20 transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                    className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
                       animatedCards.has(3) 
                         ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600' 
                         : 'opacity-0 translate-y-8'
                     }`}
+                    style={{
+                      backgroundColor: '#1F1F1F',
+                      borderColor: '#2A2A2A'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#3A3A3A';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#2A2A2A';
+                    }}
                   >
                     <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
                     <CardContent className="p-6 relative z-10">
                       <div className="flex items-start justify-between mb-4">
-                        <div className="p-3 bg-primary/20 rounded-xl">
-                          <Users className="w-6 h-6 text-primary" />
+                        <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(107, 107, 107, 0.2)' }}>
+                          <Users className="w-6 h-6" style={{ color: '#6B6B6B' }} />
                         </div>
                         <div className="flex items-center gap-1 text-xs font-heading">
                           <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
@@ -6561,7 +7596,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 {/* Charts & Analytics Section */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Activity Timeline Chart */}
-                  <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-800 hover:shadow-lg transition-all duration-300">
+                  <Card 
+                    className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-800 hover:shadow-lg transition-all duration-300"
+                    style={{
+                      backgroundColor: '#1F1F1F',
+                      borderColor: '#2A2A2A'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#3A3A3A';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#2A2A2A';
+                    }}
+                  >
                   <CardHeader>
                       <CardTitle className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -6677,18 +7724,40 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 {/* Quick Actions & Upcoming Events */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Quick Actions */}
-                  <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-1000 hover:shadow-lg transition-all duration-300">
+                  <Card 
+                    className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-1000 hover:shadow-lg transition-all duration-300"
+                    style={{
+                      backgroundColor: '#1F1F1F',
+                      borderColor: '#2A2A2A'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#3A3A3A';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#2A2A2A';
+                    }}
+                  >
                     <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-heading">
-                        <Target className="w-5 h-5 text-primary" />
+                      <CardTitle className="flex items-center gap-2 font-heading" style={{ color: '#FFFFFF' }}>
+                        <Target className="w-5 h-5" style={{ color: '#E21836' }} />
                         {language === 'en' ? 'Quick Actions' : 'Actions Rapides'}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <Button 
                         onClick={() => setActiveTab("events")}
-                        className="w-full justify-start font-heading btn-gradient"
-                        variant="outline"
+                        className="w-full justify-start font-heading"
+                        style={{
+                          backgroundColor: '#E21836',
+                          color: '#FFFFFF',
+                          border: 'none'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#C4162F';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#E21836';
+                        }}
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         {language === 'en' ? 'Create New Event' : 'Créer un Nouvel Événement'}
@@ -6696,7 +7765,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       <Button 
                         onClick={() => setActiveTab("applications")}
                         className="w-full justify-start font-heading"
-                        variant="outline"
+                        style={{
+                          backgroundColor: '#1F1F1F',
+                          color: '#FFFFFF',
+                          borderColor: '#2A2A2A'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#252525';
+                          e.currentTarget.style.borderColor = '#3A3A3A';
+                          e.currentTarget.style.color = '#E21836';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#1F1F1F';
+                          e.currentTarget.style.borderColor = '#2A2A2A';
+                          e.currentTarget.style.color = '#FFFFFF';
+                        }}
                       >
                         <FileText className="w-4 h-4 mr-2" />
                         {language === 'en' ? 'Review Applications' : 'Examiner les Candidatures'}
@@ -6704,7 +7787,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       <Button 
                         onClick={() => setActiveTab("ambassadors")}
                         className="w-full justify-start font-heading"
-                        variant="outline"
+                        style={{
+                          backgroundColor: '#1F1F1F',
+                          color: '#FFFFFF',
+                          borderColor: '#2A2A2A'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#252525';
+                          e.currentTarget.style.borderColor = '#3A3A3A';
+                          e.currentTarget.style.color = '#E21836';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#1F1F1F';
+                          e.currentTarget.style.borderColor = '#2A2A2A';
+                          e.currentTarget.style.color = '#FFFFFF';
+                        }}
                       >
                         <Users className="w-4 h-4 mr-2" />
                         {language === 'en' ? 'Manage Ambassadors' : 'Gérer les Ambassadeurs'}
@@ -6712,7 +7809,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       <Button 
                         onClick={() => setActiveTab("tickets")}
                         className="w-full justify-start font-heading"
-                        variant="outline"
+                        style={{
+                          backgroundColor: '#1F1F1F',
+                          color: '#FFFFFF',
+                          borderColor: '#2A2A2A'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#252525';
+                          e.currentTarget.style.borderColor = '#3A3A3A';
+                          e.currentTarget.style.color = '#E21836';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#1F1F1F';
+                          e.currentTarget.style.borderColor = '#2A2A2A';
+                          e.currentTarget.style.color = '#FFFFFF';
+                        }}
                       >
                         <Ticket className="w-4 h-4 mr-2" />
                         {language === 'en' ? 'View Ticket Sales' : 'Voir les Ventes de Billets'}
@@ -6826,18 +7937,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               className="p-2 rounded-lg"
                               style={{
                                 backgroundColor: app.status === 'approved' 
-                                  ? 'rgba(226, 24, 54, 0.2)' 
-                                  : app.status === 'rejected' 
-                                  ? 'rgba(140, 140, 140, 0.2)' 
-                                  : 'rgba(255, 201, 60, 0.2)'
+                                  ? 'rgba(34, 197, 94, 0.2)' // Green
+                                  : app.status === 'rejected' || app.status === 'removed'
+                                  ? 'rgba(239, 68, 68, 0.2)' // Red
+                                  : app.status === 'suspended'
+                                  ? 'rgba(107, 114, 128, 0.2)' // Grey
+                                  : 'rgba(249, 115, 22, 0.2)' // Orange
                               }}
                             >
                               {app.status === 'approved' ? (
-                                <CheckCircle className="w-5 h-5" style={{ color: '#E21836' }} />
-                              ) : app.status === 'rejected' ? (
-                                <XCircle className="w-5 h-5" style={{ color: '#8C8C8C' }} />
+                                <CheckCircle className="w-5 h-5" style={{ color: '#22C55E' }} /> // Green
+                              ) : app.status === 'rejected' || app.status === 'removed' ? (
+                                <XCircle className="w-5 h-5" style={{ color: '#EF4444' }} /> // Red
+                              ) : app.status === 'suspended' ? (
+                                <Pause className="w-5 h-5" style={{ color: '#6B7280' }} /> // Grey
                               ) : (
-                                <Clock className="w-5 h-5" style={{ color: '#FFC93C' }} />
+                                <Clock className="w-5 h-5" style={{ color: '#F97316' }} /> // Orange
                               )}
                           </div>
                             <div className="flex-1">
@@ -6885,16 +8000,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     <DialogTrigger asChild>
                       <Button 
                         onClick={() => {
-                          // Initialize with default Standard pass
+                          // Initialize with empty passes and default event_type - admin must add at least one pass
                           setEditingEvent({
-                            passes: [{
-                              name: 'Standard',
-                              price: 0,
-                              description: language === 'en' 
-                                ? 'General entry access. Basic benefits included.' 
-                                : 'Accès général. Avantages de base inclus.',
-                              is_default: true
-                            }]
+                            passes: [],
+                            event_type: 'upcoming',
+                            featured: false
                           } as Event);
                           // Clear pending files and validation errors when opening dialog
                           setPendingGalleryImages([]);
@@ -7031,8 +8141,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               </Label>
                               <p className="text-sm text-muted-foreground mt-1">
                                 {language === 'en' 
-                                  ? 'All passes are displayed below. Standard pass is mandatory and cannot be removed.' 
-                                  : 'Tous les passes sont affichés ci-dessous. Le pass Standard est obligatoire et ne peut pas être supprimé.'}
+                                  ? 'All passes are displayed below. At least one pass is required. Exactly one pass must be marked as primary.' 
+                                  : 'Tous les passes sont affichés ci-dessous. Au moins un pass est requis. Exactement un pass doit être marqué comme principal.'}
                               </p>
                             </div>
                             <Button
@@ -7046,7 +8156,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   name: '',
                                   price: 0,
                                   description: '',
-                                  is_default: false
+                                  is_primary: false
                                 };
                                 setEditingEvent(prev => ({
                                   ...prev,
@@ -7060,95 +8170,86 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </Button>
                           </div>
                           
-                          {/* Display ALL passes - Standard first, then custom passes */}
+                          {/* Display ALL passes - Primary first, then by price */}
                           <div className="space-y-4">
                             {(() => {
                               const passes = editingEvent?.passes || [];
-                              console.log('📋 Current passes in editingEvent (render):', passes);
-                              console.log('📋 editingEvent object:', editingEvent);
-                              console.log('📋 editingEvent?.passes:', editingEvent?.passes);
                               
                               if (passes.length === 0) {
                                 return (
                                   <div className="text-sm text-muted-foreground p-4 bg-muted/50 rounded-lg">
                                     {language === 'en' 
-                                      ? 'No passes found. Loading passes from database...' 
-                                      : 'Aucun pass trouvé. Chargement des passes depuis la base de données...'}
+                                      ? 'No passes found. Add at least one pass to publish this event.' 
+                                      : 'Aucun pass trouvé. Ajoutez au moins un pass pour publier cet événement.'}
                                   </div>
                                 );
                               }
                               
-                              // Sort: Standard first, then others, but keep track of original indices
+                              // Sort: Primary first, then others by price, but keep track of original indices
                               const passesWithIndex = passes.map((pass, idx) => ({ pass, originalIndex: idx }));
                               const sortedPassesWithIndex = [...passesWithIndex].sort((a, b) => {
-                                const aIsStandard = a.pass.is_default || a.pass.name === 'Standard';
-                                const bIsStandard = b.pass.is_default || b.pass.name === 'Standard';
-                                if (aIsStandard && !bIsStandard) return -1;
-                                if (!aIsStandard && bIsStandard) return 1;
-                                return 0;
+                                if (a.pass.is_primary && !b.pass.is_primary) return -1;
+                                if (!a.pass.is_primary && b.pass.is_primary) return 1;
+                                // If both primary or both non-primary, sort by price
+                                const priceA = typeof a.pass.price === 'number' ? a.pass.price : parseFloat(String(a.pass.price)) || 0;
+                                const priceB = typeof b.pass.price === 'number' ? b.pass.price : parseFloat(String(b.pass.price)) || 0;
+                                return priceA - priceB;
                               });
 
                               return sortedPassesWithIndex.map(({ pass, originalIndex }) => {
-                                const isStandard = pass.is_default || pass.name === 'Standard';
+                                const isPrimary = pass.is_primary;
                                 
                                 return (
                                   <Card 
                                     key={originalIndex} 
-                                    className={`${isStandard ? 'border-2 border-primary/50 bg-primary/5 shadow-md' : 'border border-border'}`}
+                                    className={`${isPrimary ? 'border-2 border-primary/50 bg-primary/5 shadow-md' : 'border border-border'}`}
                                   >
                                     <CardContent className="p-5">
                                       {/* Header with Badge and Delete */}
                                       <div className="flex items-start justify-between mb-4">
                                         <div className="flex items-center gap-3">
-                                          {isStandard && (
+                                          {isPrimary && (
                                             <Badge variant="default" className="text-xs font-semibold">
-                                              {language === 'en' ? 'MANDATORY - Default Pass' : 'OBLIGATOIRE - Pass par Défaut'}
+                                              {language === 'en' ? 'PRIMARY PASS' : 'PASS PRINCIPAL'}
                                             </Badge>
                                           )}
-                                          {!isStandard && (
+                                          {!isPrimary && (
                                             <Badge variant="outline" className="text-xs">
-                                              {language === 'en' ? 'Custom Pass' : 'Pass Personnalisé'}
+                                              {language === 'en' ? 'Pass' : 'Pass'}
                                             </Badge>
                                           )}
                                           <div className="flex flex-col">
                                             <span className="text-sm font-semibold text-foreground">
-                                              {isStandard ? 'Standard Pass' : pass.name || (language === 'en' ? 'New Pass' : 'Nouveau Pass')}
+                                              {pass.name || (language === 'en' ? 'New Pass' : 'Nouveau Pass')}
                                             </span>
                                             {pass.price !== undefined && pass.price !== null && (
                                               <span className="text-lg font-bold text-primary">
-                                                {typeof pass.price === 'number' ? pass.price.toFixed(2) : parseFloat(pass.price).toFixed(2)} TND
+                                                {typeof pass.price === 'number' ? pass.price.toFixed(2) : parseFloat(String(pass.price)).toFixed(2)} TND
                                               </span>
                                             )}
                                           </div>
                                         </div>
-                                        {!isStandard && (
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => {
-                                              const updatedPasses = editingEvent.passes?.filter((_, i) => i !== originalIndex) || [];
-                                              setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
-                                            }}
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => {
+                                            const updatedPasses = editingEvent.passes?.filter((_, i) => i !== originalIndex) || [];
+                                            setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
+                                          }}
                                             className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                                             title={language === 'en' ? 'Remove this pass' : 'Supprimer ce pass'}
                                           >
                                             <X className="w-4 h-4" />
                                           </Button>
-                                        )}
                                       </div>
                                       
                                       {/* Pass Details - Always Visible */}
                                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {/* Pass Name - Disabled for Standard */}
+                                        {/* Pass Name */}
                                         <div>
                                           <Label htmlFor={`pass-name-${originalIndex}`} className="flex items-center gap-2">
                                             {language === 'en' ? 'Pass Name' : 'Nom du Pass'} *
-                                            {isStandard && (
-                                              <Badge variant="secondary" className="text-xs">
-                                                {language === 'en' ? 'Fixed' : 'Fixe'}
-                                              </Badge>
-                                            )}
                                           </Label>
                                           <Input
                                             id={`pass-name-${originalIndex}`}
@@ -7187,22 +8288,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                               updatedPasses[originalIndex] = { ...pass, name: newName };
                                               setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
                                             }}
-                                            disabled={isStandard}
-                                            placeholder={language === 'en' ? 'e.g., VIP, Early Bird' : 'ex: VIP, Early Bird'}
-                                            className={`${isStandard ? 'bg-muted cursor-not-allowed' : ''} ${passValidationErrors[originalIndex]?.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+                                            placeholder={language === 'en' ? 'e.g., VIP, Early Bird, Standard' : 'ex: VIP, Early Bird, Standard'}
+                                            className={passValidationErrors[originalIndex]?.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
                                             required
                                           />
                                           {passValidationErrors[originalIndex]?.name && (
                                             <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
                                               <XCircle className="w-3 h-3" />
                                               {passValidationErrors[originalIndex].name}
-                                            </p>
-                                          )}
-                                          {!passValidationErrors[originalIndex]?.name && isStandard && (
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                              {language === 'en' 
-                                                ? 'Standard pass name cannot be changed' 
-                                                : 'Le nom du pass Standard ne peut pas être modifié'}
                                             </p>
                                           )}
                                         </div>
@@ -7215,7 +8308,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                           <Input
                                             id={`pass-price-${originalIndex}`}
                                             type="number"
-                                            min="0"
+                                            min="1"
                                             step="0.01"
                                             value={pass.price !== undefined && pass.price !== null ? pass.price : ''}
                                             onChange={(e) => {
@@ -7231,7 +8324,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                               const numValue = parseFloat(value);
                                               
                                               // Clear error for this field when user types valid value
-                                              if (passValidationErrors[originalIndex]?.price && !isNaN(numValue) && numValue >= 0) {
+                                              if (passValidationErrors[originalIndex]?.price && !isNaN(numValue) && numValue > 0) {
                                                 const newErrors = { ...passValidationErrors };
                                                 delete newErrors[originalIndex]?.price;
                                                 if (Object.keys(newErrors[originalIndex] || {}).length === 0) {
@@ -7240,7 +8333,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                                 setPassValidationErrors(newErrors);
                                               }
                                               
-                                              if (isNaN(numValue) || numValue < 0) {
+                                              if (isNaN(numValue) || numValue <= 0) {
                                                 return;
                                               }
                                               
@@ -7260,15 +8353,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                           )}
                                           {!passValidationErrors[originalIndex]?.price && (
                                             <p className="text-xs text-muted-foreground mt-1">
-                                              {language === 'en' ? 'Must be ≥ 0' : 'Doit être ≥ 0'}
+                                              {language === 'en' ? 'Must be > 0 TND' : 'Doit être > 0 TND'}
                                             </p>
                                           )}
                                         </div>
                                         
-                                        {/* Description - Always Editable */}
+                                        {/* Description - Optional */}
                                         <div className="md:col-span-1">
                                           <Label htmlFor={`pass-description-${originalIndex}`}>
-                                            {language === 'en' ? 'Description' : 'Description'} *
+                                            {language === 'en' ? 'Description' : 'Description'}
                                           </Label>
                                           <Textarea
                                             id={`pass-description-${originalIndex}`}
@@ -7289,10 +8382,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                               setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
                                             }}
                                             placeholder={language === 'en' 
-                                              ? 'What does this pass include?' 
-                                              : 'Que comprend ce pass ?'}
+                                              ? 'What does this pass include? (optional)' 
+                                              : 'Que comprend ce pass ? (optionnel)'}
                                             rows={3}
-                                            required
                                             className={passValidationErrors[originalIndex]?.description ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
                                           />
                                           {passValidationErrors[originalIndex]?.description && (
@@ -7304,14 +8396,38 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                         </div>
                                       </div>
                                       
-                                      {/* Info Message for Standard */}
-                                      {isStandard && (
-                                        <div className="mt-4 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                                      {/* Primary Pass Checkbox */}
+                                      <div className="mt-4 flex items-center space-x-2">
+                                        <input
+                                          type="checkbox"
+                                          id={`pass-primary-${originalIndex}`}
+                                          checked={pass.is_primary || false}
+                                          onChange={(e) => {
+                                            const isPrimary = e.target.checked;
+                                            // If setting this pass as primary, unset all others
+                                            const updatedPasses = (editingEvent.passes || []).map((p, i) => ({
+                                              ...p,
+                                              is_primary: i === originalIndex ? isPrimary : false
+                                            }));
+                                            setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
+                                          }}
+                                          className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                        />
+                                        <Label htmlFor={`pass-primary-${originalIndex}`} className="text-sm font-medium cursor-pointer">
+                                          {language === 'en' 
+                                            ? 'Mark as primary pass (selected by default on frontend)' 
+                                            : 'Marquer comme pass principal (sélectionné par défaut sur le frontend)'}
+                                        </Label>
+                                      </div>
+                                      
+                                      {/* Info Message for Primary */}
+                                      {isPrimary && (
+                                        <div className="mt-2 p-3 bg-primary/10 border border-primary/20 rounded-lg">
                                           <p className="text-xs text-foreground flex items-center gap-2">
                                             <Info className="w-4 h-4 text-primary" />
                                             {language === 'en' 
-                                              ? 'The Standard pass is mandatory. You can only edit its price and description.' 
-                                              : 'Le pass Standard est obligatoire. Vous ne pouvez modifier que son prix et sa description.'}
+                                              ? 'This is the primary pass. It will be selected by default on the event page.' 
+                                              : 'Ceci est le pass principal. Il sera sélectionné par défaut sur la page de l\'événement.'}
                                           </p>
                                         </div>
                                       )}
@@ -7612,16 +8728,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             <MapPin className="w-4 h-4 animate-pulse" />
                             <span>{event.venue}, {event.city}</span>
                           </div>
-                          {event.standard_price && (
+                          {event.passes && event.passes.length > 0 && (
                             <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-500">
                               <DollarSign className="w-4 h-4 animate-pulse" />
-                              <span>Standard: {event.standard_price} TND</span>
-                            </div>
-                          )}
-                          {event.vip_price && (
-                            <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-600">
-                              <DollarSign className="w-4 h-4 animate-pulse" />
-                              <span>VIP: {event.vip_price} TND</span>
+                              <span>
+                                {event.passes.length} {language === 'en' ? 'pass(es)' : 'pass(es)'} available
+                              </span>
                             </div>
                           )}
                         </div>
@@ -7636,7 +8748,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 .from('event_passes')
                                 .select('*')
                                 .eq('event_id', event.id)
-                                .order('is_default', { ascending: false })
+                                .order('is_primary', { ascending: false })
                                 .order('created_at', { ascending: true });
                               
                               console.log('📦 Raw passes data from DB:', passesData);
@@ -7654,40 +8766,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   name: p.name || '',
                                   price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
                                   description: p.description || '',
-                                  is_default: p.is_default || false
+                                  is_primary: p.is_primary || false
                                 };
                                 console.log('🔄 Mapped pass:', mapped);
                                 return mapped;
                               });
                               
                               console.log('✅ All mapped passes:', mappedPasses);
-                              
-                              // Ensure Standard pass always exists
-                              const hasStandard = mappedPasses.some((p: any) => p.is_default || p.name === 'Standard');
-                              let finalPasses = mappedPasses;
-                              
-                              if (!hasStandard) {
-                                console.log('⚠️ No Standard pass found, adding default');
-                                finalPasses = [{
-                                  name: 'Standard',
-                                  price: 0,
-                                  description: language === 'en' 
-                                    ? 'General entry access. Basic benefits included.' 
-                                    : 'Accès général. Avantages de base inclus.',
-                                  is_default: true
-                                }, ...mappedPasses];
-                              } else if (mappedPasses.length === 0) {
-                                console.log('⚠️ No passes found, adding default Standard');
-                                finalPasses = [{
-                                  name: 'Standard',
-                                  price: 0,
-                                  description: language === 'en' 
-                                    ? 'General entry access. Basic benefits included.' 
-                                    : 'Accès général. Avantages de base inclus.',
-                                  is_default: true
-                                }];
-                              }
-                              
+                              const finalPasses = mappedPasses;
                               console.log('🎯 Final passes to display:', finalPasses);
                               
                               // Create event with all current pass values from database
@@ -8028,20 +9114,43 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               <TabsContent value="ambassadors" className="space-y-6">
                 <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
                   <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">Ambassadors Management</h2>
-                  <Dialog open={isAmbassadorDialogOpen} onOpenChange={setIsAmbassadorDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button 
-                        onClick={() => {
-                          setEditingAmbassador({} as Ambassador);
-                            setAmbassadorErrors({});
-                          setIsAmbassadorDialogOpen(true);
-                        }}
-                        className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
-                      >
-                        <Plus className="w-4 h-4 mr-2 animate-pulse" />
-                        {t.add}
-                      </Button>
-                    </DialogTrigger>
+                  <div className="flex items-center gap-3 animate-in slide-in-from-right-4 duration-1000 delay-300">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={exportApprovedAmbassadorsToExcel}
+                      className="transform hover:scale-105 transition-all duration-300"
+                      style={{
+                        background: '#1F1F1F',
+                        borderColor: '#2A2A2A',
+                        color: '#FFFFFF'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#E21836';
+                        e.currentTarget.style.borderColor = '#E21836';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#1F1F1F';
+                        e.currentTarget.style.borderColor = '#2A2A2A';
+                      }}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      {language === 'en' ? 'Export to Excel' : 'Exporter vers Excel'}
+                    </Button>
+                    <Dialog open={isAmbassadorDialogOpen} onOpenChange={setIsAmbassadorDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button 
+                          onClick={() => {
+                            setEditingAmbassador({} as Ambassador);
+                              setAmbassadorErrors({});
+                            setIsAmbassadorDialogOpen(true);
+                          }}
+                          className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
+                        >
+                          <Plus className="w-4 h-4 mr-2 animate-pulse" />
+                          {t.add}
+                        </Button>
+                      </DialogTrigger>
                     <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
                       <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
                         <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
@@ -8188,6 +9297,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </div>
                           </div>
                         )}
+                        <div>
+                          <Label htmlFor="ambassadorSocialLink">{language === 'en' ? 'Instagram Link' : 'Lien Instagram'}</Label>
+                          <Input
+                            id="ambassadorSocialLink"
+                            type="url"
+                            value={editingAmbassador?.social_link || ''}
+                            onChange={(e) => {
+                              setEditingAmbassador(prev => ({ ...prev, social_link: e.target.value }));
+                              if (ambassadorErrors.social_link) {
+                                setAmbassadorErrors(prev => ({ ...prev, social_link: undefined }));
+                              }
+                            }}
+                            placeholder="https://www.instagram.com/username"
+                            className="transition-all duration-300 focus:scale-105"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {language === 'en' 
+                              ? 'Must start with https://www.instagram.com/ or https://instagram.com/' 
+                              : 'Doit commencer par https://www.instagram.com/ ou https://instagram.com/'}
+                          </p>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <Label htmlFor="ambassadorCommission">{t.ambassadorCommission}</Label>
@@ -8360,10 +9490,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 id="newAmbassadorSocial"
                                 type="url"
                                 value={newAmbassadorForm.social_link}
-                                onChange={(e) => setNewAmbassadorForm(prev => ({ ...prev, social_link: e.target.value }))}
+                                onChange={(e) => {
+                                  setNewAmbassadorForm(prev => ({ ...prev, social_link: e.target.value }));
+                                  if (ambassadorErrors.social_link) {
+                                    setAmbassadorErrors(prev => ({ ...prev, social_link: undefined }));
+                                  }
+                                }}
                                 placeholder="https://www.instagram.com/username"
-                                className="transition-all duration-300 focus:scale-105"
+                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.social_link ? 'border-destructive' : ''}`}
                               />
+                              {ambassadorErrors.social_link && (
+                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.social_link}</p>
+                              )}
                               <p className="text-xs text-muted-foreground mt-1">
                                 {language === 'en' 
                                   ? 'Must start with https://www.instagram.com/ or https://instagram.com/' 
@@ -8399,6 +9537,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               </div>
                             </div>
                           )}
+                          <div>
+                            <Label htmlFor="newAmbassadorMotivation">{language === 'en' ? 'Motivation' : 'Motivation'}</Label>
+                            <Textarea
+                              id="newAmbassadorMotivation"
+                              value={newAmbassadorForm.motivation}
+                              onChange={(e) => setNewAmbassadorForm(prev => ({ ...prev, motivation: e.target.value }))}
+                              placeholder={language === 'en' 
+                                ? 'Why do you want to become an ambassador? (optional)'
+                                : 'Pourquoi voulez-vous devenir ambassadeur ? (optionnel)'}
+                              rows={4}
+                              className="transition-all duration-300 focus:scale-105"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {language === 'en' ? 'Optional field' : 'Champ optionnel'}
+                            </p>
+                          </div>
                           <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                             <p className="text-sm text-blue-900 dark:text-blue-100">
                               {language === 'en' 
@@ -8421,7 +9575,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 email: '',
                                 city: '',
                                 ville: '',
-                                social_link: ''
+                                social_link: '',
+                                motivation: ''
                               });
                               setAmbassadorErrors({});
                             }}
@@ -8458,9 +9613,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       </div>
                     </DialogContent>
                   </Dialog>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {ambassadors.filter(amb => amb.status === 'approved').map((ambassador, index) => (
+                  {ambassadors.filter(amb => amb.status === 'approved' || amb.status === 'suspended').map((ambassador, index) => (
                     <Card 
                       key={ambassador.id}
                       className={`transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg ${
@@ -8474,17 +9630,51 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           <h3 className="text-lg font-semibold animate-in slide-in-from-left-4 duration-500 delay-200">
                             {ambassador.full_name}
                           </h3>
-                          {ambassador.commission_rate >= 15 && (
-                            <Badge 
-                              className="animate-pulse"
-                              style={{
-                                background: 'rgba(226, 24, 54, 0.15)',
-                                color: '#E21836'
-                              }}
-                            >
-                              Top Performer
-                            </Badge>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {ambassador.status === 'suspended' && (
+                              <Badge 
+                                variant="destructive"
+                                className="text-xs"
+                              >
+                                <Pause className="w-3 h-3 mr-1" />
+                                {language === 'en' ? 'Paused' : 'En Pause'}
+                              </Badge>
+                            )}
+                            {ambassador.commission_rate >= 15 && (
+                              <Badge 
+                                className="animate-pulse"
+                                style={{
+                                  background: 'rgba(226, 24, 54, 0.15)',
+                                  color: '#E21836'
+                                }}
+                              >
+                                Top Performer
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-border/30">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {language === 'en' ? 'Status:' : 'Statut:'}
+                            </span>
+                            <span className={`text-xs font-medium ${ambassador.status === 'approved' ? 'text-green-500' : 'text-red-500'}`}>
+                              {ambassador.status === 'approved' 
+                                ? (language === 'en' ? 'Active' : 'Actif')
+                                : (language === 'en' ? 'Paused' : 'En Pause')}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {language === 'en' ? 'Active' : 'Actif'}
+                            </span>
+                            <Switch
+                              checked={ambassador.status === 'approved'}
+                              onCheckedChange={() => handleToggleAmbassadorStatus(ambassador)}
+                              disabled={processingId === ambassador.id}
+                              className="data-[state=checked]:bg-[#E21836]"
+                            />
+                          </div>
                         </div>
                         <div className="space-y-2 text-sm text-muted-foreground">
                           <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-300">
@@ -8511,11 +9701,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             size="sm" 
                             variant="outline" 
                             onClick={async () => {
-                              // Fetch age from corresponding application
+                              // Fetch age and social_link from corresponding application
                               let ambassadorAge: number | undefined;
+                              let ambassadorSocialLink: string | undefined;
                               const { data: appData } = await supabase
                                 .from('ambassador_applications')
-                                .select('age')
+                                .select('age, social_link')
                                 .eq('phone_number', ambassador.phone)
                                 .eq('status', 'approved')
                                 .order('created_at', { ascending: false })
@@ -8524,9 +9715,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               
                               if (appData) {
                                 ambassadorAge = appData.age;
+                                ambassadorSocialLink = appData.social_link || undefined;
                               }
                               
-                              setEditingAmbassador({ ...ambassador, age: ambassadorAge });
+                              setEditingAmbassador({ ...ambassador, age: ambassadorAge, social_link: ambassadorSocialLink || ambassador.social_link });
                               setAmbassadorErrors({});
                               setIsAmbassadorDialogOpen(true);
                             }}
@@ -8561,6 +9753,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
                   <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">Ambassador Applications</h2>
                   <div className="flex items-center gap-3 animate-in slide-in-from-right-4 duration-1000 delay-300">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={exportAmbassadorsToExcel}
+                      className="transform hover:scale-105 transition-all duration-300"
+                      style={{
+                        background: '#1F1F1F',
+                        borderColor: '#2A2A2A',
+                        color: '#FFFFFF'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#E21836';
+                        e.currentTarget.style.borderColor = '#E21836';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#1F1F1F';
+                        e.currentTarget.style.borderColor = '#2A2A2A';
+                      }}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      {language === 'en' ? 'Export to Excel' : 'Exporter vers Excel'}
+                    </Button>
                     <Badge 
                       className="animate-pulse"
                       style={{
@@ -8570,19 +9784,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     >
                       {filteredApplications.length} Applications
                     </Badge>
-                    {getAmbassadorsWithoutApplications().length > 0 && (
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={handleCreateApplicationsForAmbassadors}
-                        className="text-xs bg-green-600 hover:bg-green-700"
-                      >
-                        <Plus className="w-3 h-3 mr-1" />
-                        {language === 'en' 
-                          ? `Create ${getAmbassadorsWithoutApplications().length} Missing Application(s)`
-                          : `Créer ${getAmbassadorsWithoutApplications().length} Candidature(s) Manquante(s)`}
-                      </Button>
-                    )}
+                    {/* "Create Missing Application" button removed - applications are now created automatically when ambassadors are added */}
                     {applications.filter(app => app.status === 'approved' && !ambassadors.some(amb => 
                       amb.phone === app.phone_number || (app.email && amb.email && amb.email === app.email)
                     )).length > 0 && (
@@ -8699,21 +9901,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </div>
 
                 <div className="rounded-md border border-border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead className="font-semibold">Name</TableHead>
-                        <TableHead className="font-semibold">Age</TableHead>
-                        <TableHead className="font-semibold">Phone</TableHead>
-                        <TableHead className="font-semibold">Email</TableHead>
-                        <TableHead className="font-semibold">City</TableHead>
-                        <TableHead className="font-semibold">{language === 'en' ? 'Ville' : 'Quartier'}</TableHead>
-                        <TableHead className="font-semibold">Status</TableHead>
-                        <TableHead className="font-semibold">Applied</TableHead>
-                        <TableHead className="font-semibold">Details</TableHead>
-                        <TableHead className="font-semibold text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                  <div className="overflow-x-hidden">
+                    <Table className="[&>div]:overflow-x-hidden">
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Name</TableHead>
+                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Age</TableHead>
+                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Phone</TableHead>
+                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Email</TableHead>
+                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">City</TableHead>
+                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">{language === 'en' ? 'Ville' : 'Quartier'}</TableHead>
+                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Status</TableHead>
+                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Applied</TableHead>
+                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Details</TableHead>
+                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
                     <TableBody>
                       {filteredApplications.map((application, index) => (
                         <TableRow 
@@ -8724,15 +9927,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               : 'opacity-0'
                           }`}
                         >
-                          <TableCell className="font-medium">{application.full_name}</TableCell>
-                          <TableCell>{application.age}</TableCell>
-                          <TableCell>
+                          <TableCell className="font-medium text-xs px-2 py-2">{application.full_name}</TableCell>
+                          <TableCell className="text-xs px-2 py-2">{application.age}</TableCell>
+                          <TableCell className="text-xs px-2 py-2">
                             <div className="flex items-center space-x-1">
                               <Phone className="w-3 h-3 text-muted-foreground" />
                               <span>{application.phone_number}</span>
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-xs px-2 py-2">
                             {application.email ? (
                               <div className="flex items-center space-x-1 group cursor-pointer" 
                                    onClick={() => {
@@ -8744,7 +9947,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                    }}
                                    title="Click to copy email">
                                 <Mail className="w-3 h-3 text-primary group-hover:text-primary/80 transition-colors" />
-                                <span className="text-xs break-all max-w-[150px] truncate text-primary group-hover:text-primary/80 transition-colors">
+                                <span className="text-xs break-all max-w-[100px] truncate text-primary group-hover:text-primary/80 transition-colors">
                                   {application.email}
                                 </span>
                               </div>
@@ -8752,17 +9955,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               <span className="text-muted-foreground text-xs">-</span>
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-xs px-2 py-2">
                             <div className="flex items-center space-x-1">
                               <MapPin className="w-3 h-3 text-muted-foreground" />
                               <span>{application.city}</span>
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-xs px-2 py-2">
                             {(() => {
                               // Show ville if available
                               if (application.ville) {
-                                return <span className="text-sm">{application.ville}</span>;
+                                return <span className="text-xs">{application.ville}</span>;
                               }
                               // If no ville but city is Sousse, try to get it from corresponding ambassador
                               if (application.city === 'Sousse') {
@@ -8772,13 +9975,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   (application.email && amb.email === application.email)
                                 );
                                 if (matchingAmbassador?.ville) {
-                                  return <span className="text-sm text-muted-foreground italic">{matchingAmbassador.ville}*</span>;
+                                  return <span className="text-xs text-muted-foreground italic">{matchingAmbassador.ville}*</span>;
                                 }
                               }
                               return <span className="text-muted-foreground text-xs">-</span>;
                             })()}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-xs px-2 py-2">
                             <div className="flex items-center gap-2">
                               {getStatusBadge(application.status)}
                               {application.status === 'approved' && (
@@ -8792,36 +9995,31 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     : (language === 'en' ? 'Email status unknown' : 'Statut de l\'email inconnu')
                                 }>
                                   {emailStatus[application.id] === 'sent' ? (
-                                    <CheckCircle className="w-4 h-4 text-green-500" />
+                                    <CheckCircle className="w-3 h-3 text-green-500" />
                                   ) : emailStatus[application.id] === 'failed' ? (
-                                    <XCircle className="w-4 h-4 text-red-500" />
+                                    <XCircle className="w-3 h-3 text-red-500" />
                                   ) : emailStatus[application.id] === 'pending' ? (
-                                    <div className="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+                                    <div className="w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
                                   ) : emailFailedApplications.has(application.id) ? (
-                                    <XCircle className="w-4 h-4 text-red-500" />
+                                    <XCircle className="w-3 h-3 text-red-500" />
                                   ) : (
-                                    <Mail className="w-4 h-4 text-muted-foreground" />
+                                    <Mail className="w-3 h-3 text-muted-foreground" />
                                   )}
                                 </div>
                               )}
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-xs px-2 py-2">
                             <div className="flex items-center space-x-1">
                               <CalendarIcon className="w-3 h-3 text-muted-foreground" />
                               <span className="text-xs">{new Date(application.created_at).toLocaleDateString()}</span>
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-xs px-2 py-2">
                             <div className="flex flex-col gap-1">
-                              {application.manually_added && (
-                                <Badge variant="outline" className="text-xs w-fit">
-                                  {language === 'en' ? '👤 Manual' : '👤 Manuel'}
-                                </Badge>
-                              )}
                               {application.motivation && (
                                 <div className="group relative">
-                                  <FileText className="w-4 h-4 text-primary cursor-help" />
+                                  <FileText className="w-3 h-3 text-primary cursor-help" />
                                   <div className="absolute left-0 top-6 z-50 hidden group-hover:block w-64 p-3 bg-card border border-border rounded-lg shadow-lg text-xs">
                                     <p className="font-medium mb-1">Motivation:</p>
                                     <p className="text-muted-foreground">{application.motivation}</p>
@@ -8835,8 +10033,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
+                          <TableCell className="text-right text-xs px-2 py-2">
+                            <div className="flex items-center justify-end gap-1">
                               {application.status === 'pending' && (
                                 <>
                                   <Button 
@@ -8844,22 +10042,25 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     disabled={processingId === application.id}
                                     size="sm"
                                     style={{
-                                      background: '#E21836',
-                                      color: '#FFFFFF'
+                                      background: '#22C55E',
+                                      color: '#FFFFFF',
+                                      fontSize: '0.7rem',
+                                      padding: '0.25rem 0.5rem',
+                                      height: 'auto'
                                     }}
                                     className="transform hover:scale-105 transition-all duration-300"
-                                    onMouseEnter={(e) => e.currentTarget.style.background = '#FF3B5C'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = '#E21836'}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#16A34A'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = '#22C55E'}
                                   >
                                     {processingId === application.id ? (
                                       <>
-                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
-                                        {t.processing}
+                                        <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
+                                        <span className="text-xs">{t.processing}</span>
                                       </>
                                     ) : (
                                       <>
-                                        <CheckCircle className="w-3 h-3 mr-1" />
-                                        {t.approve}
+                                        <CheckCircle className="w-2.5 h-2.5 mr-1" />
+                                        <span className="text-xs">{t.approve}</span>
                                       </>
                                     )}
                                   </Button>
@@ -8868,17 +10069,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     disabled={processingId === application.id}
                                     variant="destructive"
                                     size="sm"
+                                    style={{
+                                      fontSize: '0.7rem',
+                                      padding: '0.25rem 0.5rem',
+                                      height: 'auto'
+                                    }}
                                     className="transform hover:scale-105 transition-all duration-300"
                                   >
                                     {processingId === application.id ? (
                                       <>
-                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
-                                        {t.processing}
+                                        <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
+                                        <span className="text-xs">{t.processing}</span>
                                       </>
                                     ) : (
                                       <>
-                                        <XCircle className="w-3 h-3 mr-1" />
-                                        {t.reject}
+                                        <XCircle className="w-2.5 h-2.5 mr-1" />
+                                        <span className="text-xs">{t.reject}</span>
                                       </>
                                     )}
                                   </Button>
@@ -8890,13 +10096,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     onClick={() => resendEmail(application)}
                                     disabled={processingId === application.id}
                                     size="sm"
-                                    className={`transform hover:scale-105 transition-all duration-300 ${
-                                      emailStatus[application.id] === 'failed' 
-                                        ? 'bg-red-600 hover:bg-red-700' 
-                                        : emailStatus[application.id] === 'sent'
-                                        ? 'bg-green-600 hover:bg-green-700'
-                                        : 'bg-blue-600 hover:bg-blue-700'
-                                    }`}
+                                    style={{
+                                      background: '#3B82F6',
+                                      color: '#FFFFFF',
+                                      fontSize: '0.7rem',
+                                      padding: '0.25rem 0.5rem',
+                                      height: 'auto'
+                                    }}
+                                    className="transform hover:scale-105 transition-all duration-300"
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#2563EB'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = '#3B82F6'}
                                     title={
                                       emailStatus[application.id] === 'failed'
                                         ? (language === 'en' ? 'Email failed - Click to resend' : 'Échec de l\'email - Cliquez pour renvoyer')
@@ -8907,23 +10116,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   >
                                     {processingId === application.id ? (
                                       <>
-                                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
-                                        {language === 'en' ? 'Sending...' : 'Envoi...'}
+                                        <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
+                                        <span className="text-xs">{language === 'en' ? 'Sending...' : 'Envoi...'}</span>
                                       </>
                                     ) : emailStatus[application.id] === 'failed' ? (
                                       <>
-                                        <AlertCircle className="w-3 h-3 mr-1" />
-                                        {language === 'en' ? 'Resend Email' : 'Renvoyer Email'}
+                                        <AlertCircle className="w-2.5 h-2.5 mr-1" />
+                                        <span className="text-xs">{language === 'en' ? 'Resend' : 'Renvoyer'}</span>
                                       </>
                                     ) : emailStatus[application.id] === 'sent' ? (
                                       <>
-                                        <Mail className="w-3 h-3 mr-1" />
-                                        {language === 'en' ? 'Resend Email' : 'Renvoyer Email'}
+                                        <Mail className="w-2.5 h-2.5 mr-1" />
+                                        <span className="text-xs">{language === 'en' ? 'Resend' : 'Renvoyer'}</span>
                                       </>
                                     ) : (
                                       <>
-                                        <Mail className="w-3 h-3 mr-1" />
-                                        {language === 'en' ? 'Resend Email' : 'Renvoyer Email'}
+                                        <Mail className="w-2.5 h-2.5 mr-1" />
+                                        <span className="text-xs">{language === 'en' ? 'Resend' : 'Renvoyer'}</span>
                                       </>
                                     )}
                                   </Button>
@@ -8931,11 +10140,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     onClick={() => copyCredentials(application)}
                                     size="sm"
                                     variant="outline"
-                                    className="transform hover:scale-105 transition-all duration-300"
+                                    style={{
+                                      fontSize: '0.7rem',
+                                      padding: '0.25rem 0.4rem',
+                                      height: 'auto',
+                                      minWidth: 'auto'
+                                    }}
+                                    className="transform hover:scale-105 transition-all duration-300 p-1"
                                     title={language === 'en' ? 'Copy credentials to clipboard' : 'Copier les identifiants dans le presse-papiers'}
                                   >
-                                    <Copy className="w-3 h-3 mr-1" />
-                                    {language === 'en' ? 'Copy' : 'Copier'}
+                                    <Copy className="w-3 h-3" />
                                   </Button>
                                 </div>
                               )}
@@ -8964,7 +10178,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </TableRow>
                       )}
                     </TableBody>
-                  </Table>
+                    </Table>
+                  </div>
                 </div>
               </TabsContent>
 
@@ -9613,7 +10828,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           event_id: event.id,
                           event_name: event.name,
                           ticket_type: index % 3 === 0 ? 'VIP' : index % 3 === 1 ? 'Standard' : 'Premium',
-                          price: event.standard_price || 50 + (index * 10),
+                          price: (event.passes && event.passes.length > 0 && event.passes[0]?.price) ? event.passes[0].price : 50 + (index * 10),
                           quantity: 100,
                           available_quantity: 100 - (Math.floor(Math.random() * 80) + 10),
                           description: `${index % 3 === 0 ? 'VIP' : index % 3 === 1 ? 'Standard' : 'Premium'} ticket for ${event.name}`,
@@ -9699,16 +10914,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             <p className="text-lg">{selectedEvent.venue}, {selectedEvent.city}</p>
                           </div>
                         </div>
-                        <div className="space-y-3">
-                          <div>
-                            <Label className="text-sm font-medium text-muted-foreground">Standard Price</Label>
-                            <p className="text-lg font-semibold text-green-500">{selectedEvent.standard_price || 0} TND</p>
+                        {selectedEvent.passes && selectedEvent.passes.length > 0 && (
+                          <div className="space-y-3">
+                            <Label className="text-sm font-medium text-muted-foreground">Passes</Label>
+                            <div className="space-y-2">
+                              {selectedEvent.passes.map((pass, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-2 bg-muted rounded">
+                                  <span className="text-sm font-medium">{pass.name}</span>
+                                  <span className="text-lg font-semibold text-primary">{pass.price} TND</span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <div>
-                            <Label className="text-sm font-medium text-muted-foreground">VIP Price</Label>
-                            <p className="text-lg font-semibold text-blue-500">{selectedEvent.vip_price || 0} TND</p>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     </div>
                   ) : null;
@@ -10149,7 +11367,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                               .from('event_passes')
                                               .select('*')
                                               .eq('event_id', event.id)
-                                              .order('is_default', { ascending: false })
+                                              .order('is_primary', { ascending: false })
                                               .order('created_at', { ascending: true });
                                             
                                             // Handle 404 errors gracefully (table might not exist yet)
@@ -10157,29 +11375,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                               console.error(`Error fetching passes for event ${event.id}:`, passesError);
                                             }
                                             
-                                            eventWithPasses = { ...event, passes: passesData || [] };
+                                            const mappedPasses = (passesData || []).map((p: any) => ({
+                                              id: p.id,
+                                              name: p.name || '',
+                                              price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+                                              description: p.description || '',
+                                              is_primary: p.is_primary || false
+                                            }));
                                             
-                                            // Ensure Standard pass always exists
-                                            const hasStandard = (passesData || []).some((p: any) => p.is_default || p.name === 'Standard');
-                                            if (!hasStandard) {
-                                              eventWithPasses.passes = [{
-                                                name: 'Standard',
-                                                price: 0,
-                                                description: language === 'en' 
-                                                  ? 'General entry access. Basic benefits included.' 
-                                                  : 'Accès général. Avantages de base inclus.',
-                                                is_default: true
-                                              }, ...(passesData || [])];
-                                            } else if (!passesData || passesData.length === 0) {
-                                              eventWithPasses.passes = [{
-                                                name: 'Standard',
-                                                price: 0,
-                                                description: language === 'en' 
-                                                  ? 'General entry access. Basic benefits included.' 
-                                                  : 'Accès général. Avantages de base inclus.',
-                                                is_default: true
-                                              }];
-                                            }
+                                            eventWithPasses = { ...event, passes: mappedPasses };
                                           }
                                           setPassValidationErrors({});
                                           setEditingEvent(eventWithPasses);
@@ -10674,361 +11878,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {/* Ambassador Sales System Tab */}
               <TabsContent value="ambassador-sales" className="space-y-6">
                 <Tabs value={salesSystemTab} onValueChange={setSalesSystemTab} className="w-full">
-                  <TabsList className="grid w-full grid-cols-6">
-                    <TabsTrigger value="cod-orders">{language === 'en' ? 'COD Orders' : 'Commandes COD'}</TabsTrigger>
-                    <TabsTrigger value="manual-orders">{language === 'en' ? 'Manual Orders' : 'Commandes Manuelles'}</TabsTrigger>
-                    <TabsTrigger value="all-orders">{language === 'en' ? 'All Orders' : 'Toutes les Commandes'}</TabsTrigger>
-                    <TabsTrigger value="round-robin">{language === 'en' ? 'Round Robin' : 'Tourniquet'}</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="cod-ambassador-orders">{language === 'en' ? 'COD Ambassador Orders' : 'Commandes COD Ambassadeur'}</TabsTrigger>
                     <TabsTrigger value="order-logs">{language === 'en' ? 'Order Logs' : 'Journaux'}</TabsTrigger>
                     <TabsTrigger value="performance">{language === 'en' ? 'Performance' : 'Performance'}</TabsTrigger>
                   </TabsList>
 
-                  {/* COD Orders */}
-                  <TabsContent value="cod-orders" className="mt-6">
+
+                  {/* COD Ambassador Orders */}
+                  <TabsContent value="cod-ambassador-orders" className="mt-6">
                     <Card>
                       <CardHeader>
                         <div className="flex items-center justify-between">
-                          <CardTitle>{language === 'en' ? 'COD Orders' : 'Commandes Paiement à la Livraison'}</CardTitle>
-                          <div className="flex gap-2">
-                            <Button 
-                              onClick={handleBulkAssignPendingOrders} 
-                              variant="default" 
-                              size="sm"
-                              className="bg-primary"
-                            >
-                              <Users className="w-4 h-4 mr-2" />
-                              {language === 'en' ? 'Assign All Pending' : 'Assigner Tous les En Attente'}
-                            </Button>
-                            <Button onClick={fetchAmbassadorSalesData} variant="outline" size="sm">
-                              <RefreshCw className="w-4 h-4 mr-2" />
-                              {language === 'en' ? 'Refresh' : 'Actualiser'}
-                            </Button>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        {/* Filters */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-                          <Select
-                            value={codOrderFilters.status}
-                            onValueChange={(value) => {
-                              setCodOrderFilters({ ...codOrderFilters, status: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Status' : 'Statut'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Statuses' : 'Tous les Statuts'}</SelectItem>
-                              <SelectItem value="PENDING_AMBASSADOR">{language === 'en' ? 'Pending Ambassador' : 'En Attente d\'Ambassadeur'}</SelectItem>
-                              <SelectItem value="ASSIGNED">{language === 'en' ? 'Assigned' : 'Assigné'}</SelectItem>
-                              <SelectItem value="ACCEPTED">{language === 'en' ? 'Accepted' : 'Accepté'}</SelectItem>
-                              <SelectItem value="COMPLETED">{language === 'en' ? 'Completed' : 'Terminé'}</SelectItem>
-                              <SelectItem value="CANCELLED">{language === 'en' ? 'Cancelled' : 'Annulé'}</SelectItem>
-                              <SelectItem value="CANCELLED_BY_AMBASSADOR">{language === 'en' ? 'Cancelled by Ambassador' : 'Annulé par l\'Ambassadeur'}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={codOrderFilters.city}
-                            onValueChange={(value) => {
-                              setCodOrderFilters({ ...codOrderFilters, city: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'City' : 'Ville'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Cities' : 'Toutes les Villes'}</SelectItem>
-                              {CITIES.map(city => (
-                                <SelectItem key={city} value={city}>{city}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={codOrderFilters.ville}
-                            onValueChange={(value) => {
-                              setCodOrderFilters({ ...codOrderFilters, ville: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Ville/Quarter' : 'Ville/Quartier'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Quarters' : 'Tous les Quartiers'}</SelectItem>
-                              {SOUSSE_VILLES.map(ville => (
-                                <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={codOrderFilters.passType}
-                            onValueChange={(value) => {
-                              setCodOrderFilters({ ...codOrderFilters, passType: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Pass Type' : 'Type de Pass'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Types' : 'Tous les Types'}</SelectItem>
-                              <SelectItem value="standard">{language === 'en' ? 'Standard' : 'Standard'}</SelectItem>
-                              <SelectItem value="vip">{language === 'en' ? 'VIP' : 'VIP'}</SelectItem>
-                              <SelectItem value="mixed">{language === 'en' ? 'Mixed' : 'Mixte'}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={codOrderFilters.ambassador}
-                            onValueChange={(value) => {
-                              setCodOrderFilters({ ...codOrderFilters, ambassador: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Ambassador' : 'Ambassadeur'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Ambassadors' : 'Tous les Ambassadeurs'}</SelectItem>
-                              {[...new Set(codOrders.map(o => o.ambassador_name).filter(Boolean))].sort().map((name: string) => (
-                                <SelectItem key={name} value={name}>{name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" className="w-full">
-                                <CalendarIcon className="w-4 h-4 mr-2" />
-                                {language === 'en' ? 'Date Range' : 'Plage de Dates'}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <div className="p-4 space-y-4">
-                                <div>
-                                  <Label>{language === 'en' ? 'From' : 'De'}</Label>
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                        {codOrderFilters.dateFrom ? format(codOrderFilters.dateFrom, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0">
-                                      <Calendar
-                                        mode="single"
-                                        selected={codOrderFilters.dateFrom || undefined}
-                                        onSelect={(date) => {
-                                          setCodOrderFilters({ ...codOrderFilters, dateFrom: date || null });
-                                        }}
-                                        initialFocus
-                                      />
-                                    </PopoverContent>
-                                  </Popover>
-                                </div>
-                                <div>
-                                  <Label>{language === 'en' ? 'To' : 'À'}</Label>
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                        {codOrderFilters.dateTo ? format(codOrderFilters.dateTo, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0">
-                                      <Calendar
-                                        mode="single"
-                                        selected={codOrderFilters.dateTo || undefined}
-                                        onSelect={(date) => {
-                                          setCodOrderFilters({ ...codOrderFilters, dateTo: date || null });
-                                        }}
-                                        initialFocus
-                                      />
-                                    </PopoverContent>
-                                  </Popover>
-                                </div>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setCodOrderFilters({ ...codOrderFilters, dateFrom: null, dateTo: null });
-                                  }}
-                                  className="w-full"
-                                >
-                                  {language === 'en' ? 'Clear Dates' : 'Effacer les Dates'}
-                                </Button>
-                              </div>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-
-                        <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{language === 'en' ? 'Customer' : 'Client'}</TableHead>
-                            <TableHead>{language === 'en' ? 'City/Ville' : 'Ville/Quartier'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Total' : 'Total'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Ambassador' : 'Ambassadeur'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                          <TableBody>
-                            {(() => {
-                              // Apply filters to COD orders
-                              let filteredOrders = [...codOrders];
-                              
-                              if (codOrderFilters.status !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => {
-                                  const statusUpper = order.status?.toUpperCase() || '';
-                                  if (codOrderFilters.status === 'CANCELLED') {
-                                    return statusUpper.includes('CANCELLED') || statusUpper.includes('CANCEL');
-                                  }
-                                  return statusUpper === codOrderFilters.status.toUpperCase();
-                                });
-                              }
-                              
-                              if (codOrderFilters.city !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.city === codOrderFilters.city);
-                              }
-                              
-                              if (codOrderFilters.ville !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.ville === codOrderFilters.ville);
-                              }
-                              
-                              if (codOrderFilters.passType !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.pass_type === codOrderFilters.passType);
-                              }
-                              
-                              if (codOrderFilters.ambassador !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.ambassador_name === codOrderFilters.ambassador);
-                              }
-                              
-                              if (codOrderFilters.dateFrom) {
-                                filteredOrders = filteredOrders.filter(order => {
-                                  const orderDate = new Date(order.created_at);
-                                  return orderDate >= codOrderFilters.dateFrom!;
-                                });
-                              }
-                              
-                              if (codOrderFilters.dateTo) {
-                                const dateTo = new Date(codOrderFilters.dateTo);
-                                dateTo.setHours(23, 59, 59, 999);
-                                filteredOrders = filteredOrders.filter(order => {
-                                  const orderDate = new Date(order.created_at);
-                                  return orderDate <= dateTo;
-                                });
-                              }
-                              
-                              return filteredOrders.length === 0 ? (
-                                <TableRow>
-                                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                                    {language === 'en' ? 'No COD orders found' : 'Aucune commande COD trouvée'}
-                                  </TableCell>
-                                </TableRow>
-                              ) : (
-                                filteredOrders.map((order) => {
-                                return (
-                                <TableRow key={order.id}>
-                                  <TableCell>{order.user_name || order.customer_name || 'N/A'}</TableCell>
-                                  <TableCell>{order.city}{order.ville ? ` - ${order.ville}` : ''}</TableCell>
-                                  <TableCell>
-                                    {(() => {
-                                      // If pass_type is 'mixed', try to parse notes to show breakdown
-                                      if (order.pass_type === 'mixed' && order.notes) {
-                                        try {
-                                          const notesData = typeof order.notes === 'string' 
-                                            ? JSON.parse(order.notes) 
-                                            : order.notes;
-                                          if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                                            const passBreakdown = notesData.all_passes
-                                              .map((p: any) => `${p.quantity}x ${p.passType?.toUpperCase() || 'STANDARD'}`)
-                                              .join(', ');
-                                            return (
-                                              <div className="space-y-1">
-                                                <Badge variant="outline">MIXED</Badge>
-                                                <p className="text-xs text-muted-foreground">{passBreakdown}</p>
-                                              </div>
-                                            );
-                                          }
-                                        } catch (e) {
-                                          // Fall through to default
-                                        }
-                                      }
-                                      // Default display
-                                      return <Badge variant={order.pass_type === 'vip' ? 'default' : 'secondary'}>
-                                        {order.pass_type?.toUpperCase() || 'STANDARD'}
-                                      </Badge>;
-                                    })()}
-                                  </TableCell>
-                                  <TableCell>{order.quantity}</TableCell>
-                                  <TableCell>{order.total_price.toFixed(2)} TND</TableCell>
-                                  <TableCell>
-                                    <OrderStatusIndicator status={order.status} />
-                                  </TableCell>
-                                  <TableCell>
-                                    {order.ambassador_id 
-                                      ? (order.ambassador_name || 'Assigned') 
-                                      : (language === 'en' ? 'Pending' : 'En Attente')}
-                                  </TableCell>
-                                  <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
-                                  <TableCell>
-                                    <Button size="sm" variant="outline" onClick={async () => {
-                                      setSelectedOrder(order);
-                                      setIsOrderDetailsOpen(true);
-                                      
-                                      // Fetch ambassador information if order has ambassador_id
-                                      if (order.ambassador_id) {
-                                        try {
-                                          const { data: ambassadorData, error } = await supabase
-                                            .from('ambassadors')
-                                            .select('id, full_name, phone, email, city, ville, status, commission_rate')
-                                            .eq('id', order.ambassador_id)
-                                            .single();
-                                          
-                                          if (!error && ambassadorData) {
-                                            setSelectedOrderAmbassador(ambassadorData);
-                                          } else {
-                                            setSelectedOrderAmbassador(null);
-                                          }
-                                        } catch (error) {
-                                          console.error('Error fetching ambassador:', error);
-                                          setSelectedOrderAmbassador(null);
-                                        }
-                                      } else {
-                                        setSelectedOrderAmbassador(null);
-                                      }
-
-                                      // Fetch email delivery logs if order is completed COD
-                                      if ((order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED') && order.payment_method === 'cod') {
-                                        try {
-                                          const response = await apiFetch(API_ROUTES.EMAIL_DELIVERY_LOGS(order.id));
-                                          if (response.ok) {
-                                            const data = await response.json();
-                                            setEmailDeliveryLogs(data.logs || []);
-                                          }
-                                        } catch (error) {
-                                          console.error('Error fetching email logs:', error);
-                                        }
-                                      }
-                                    }}>
-                                      <Eye className="w-4 h-4" />
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })
-                              );
-                            })()}
-                          </TableBody>
-                        </Table>
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  {/* Manual Orders */}
-                  <TabsContent value="manual-orders" className="mt-6">
-                    <Card>
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <CardTitle>{language === 'en' ? 'Manual Orders' : 'Commandes Manuelles'}</CardTitle>
+                          <CardTitle>{language === 'en' ? 'COD Ambassador Orders' : 'Commandes COD Ambassadeur'}</CardTitle>
                           <Button onClick={fetchAmbassadorSalesData} variant="outline" size="sm">
                             <RefreshCw className="w-4 h-4 mr-2" />
                             {language === 'en' ? 'Refresh' : 'Actualiser'}
@@ -11036,693 +11898,148 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </div>
                       </CardHeader>
                       <CardContent>
-                        {/* Filters */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-                          <Select
-                            value={manualOrderFilters.status}
-                            onValueChange={(value) => {
-                              setManualOrderFilters({ ...manualOrderFilters, status: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Status' : 'Statut'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Statuses' : 'Tous les Statuts'}</SelectItem>
-                              <SelectItem value="PENDING_AMBASSADOR">{language === 'en' ? 'Pending Ambassador' : 'En Attente d\'Ambassadeur'}</SelectItem>
-                              <SelectItem value="ASSIGNED">{language === 'en' ? 'Assigned' : 'Assigné'}</SelectItem>
-                              <SelectItem value="ACCEPTED">{language === 'en' ? 'Accepted' : 'Accepté'}</SelectItem>
-                              <SelectItem value="COMPLETED">{language === 'en' ? 'Completed' : 'Terminé'}</SelectItem>
-                              <SelectItem value="CANCELLED">{language === 'en' ? 'Cancelled' : 'Annulé'}</SelectItem>
-                              <SelectItem value="CANCELLED_BY_AMBASSADOR">{language === 'en' ? 'Cancelled by Ambassador' : 'Annulé par l\'Ambassadeur'}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={manualOrderFilters.city}
-                            onValueChange={(value) => {
-                              setManualOrderFilters({ ...manualOrderFilters, city: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'City' : 'Ville'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Cities' : 'Toutes les Villes'}</SelectItem>
-                              {CITIES.map(city => (
-                                <SelectItem key={city} value={city}>{city}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={manualOrderFilters.ville}
-                            onValueChange={(value) => {
-                              setManualOrderFilters({ ...manualOrderFilters, ville: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Ville/Quarter' : 'Ville/Quartier'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Quarters' : 'Tous les Quartiers'}</SelectItem>
-                              {SOUSSE_VILLES.map(ville => (
-                                <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={manualOrderFilters.passType}
-                            onValueChange={(value) => {
-                              setManualOrderFilters({ ...manualOrderFilters, passType: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Pass Type' : 'Type de Pass'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Types' : 'Tous les Types'}</SelectItem>
-                              <SelectItem value="standard">{language === 'en' ? 'Standard' : 'Standard'}</SelectItem>
-                              <SelectItem value="vip">{language === 'en' ? 'VIP' : 'VIP'}</SelectItem>
-                              <SelectItem value="mixed">{language === 'en' ? 'Mixed' : 'Mixte'}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={manualOrderFilters.ambassador}
-                            onValueChange={(value) => {
-                              setManualOrderFilters({ ...manualOrderFilters, ambassador: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Ambassador' : 'Ambassadeur'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Ambassadors' : 'Tous les Ambassadeurs'}</SelectItem>
-                              {[...new Set(manualOrders.map(o => o.ambassador_name).filter(Boolean))].sort().map((name: string) => (
-                                <SelectItem key={name} value={name}>{name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" className="w-full">
-                                <CalendarIcon className="w-4 h-4 mr-2" />
-                                {language === 'en' ? 'Date Range' : 'Plage de Dates'}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <div className="p-4 space-y-4">
-                                <div>
-                                  <Label>{language === 'en' ? 'From' : 'De'}</Label>
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                        {manualOrderFilters.dateFrom ? format(manualOrderFilters.dateFrom, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0">
-                                      <Calendar
-                                        mode="single"
-                                        selected={manualOrderFilters.dateFrom || undefined}
-                                        onSelect={(date) => {
-                                          setManualOrderFilters({ ...manualOrderFilters, dateFrom: date || null });
-                                        }}
-                                        initialFocus
-                                      />
-                                    </PopoverContent>
-                                  </Popover>
-                                </div>
-                                <div>
-                                  <Label>{language === 'en' ? 'To' : 'À'}</Label>
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                        {manualOrderFilters.dateTo ? format(manualOrderFilters.dateTo, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0">
-                                      <Calendar
-                                        mode="single"
-                                        selected={manualOrderFilters.dateTo || undefined}
-                                        onSelect={(date) => {
-                                          setManualOrderFilters({ ...manualOrderFilters, dateTo: date || null });
-                                        }}
-                                        initialFocus
-                                      />
-                                    </PopoverContent>
-                                  </Popover>
-                                </div>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setManualOrderFilters({ ...manualOrderFilters, dateFrom: null, dateTo: null });
-                                  }}
-                                  className="w-full"
-                                >
-                                  {language === 'en' ? 'Clear Dates' : 'Effacer les Dates'}
-                                </Button>
-                              </div>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              {/* Hide Order ID for manual orders */}
-                              <TableHead className="hidden">{language === 'en' ? 'Order ID' : 'ID Commande'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Source' : 'Source'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Customer' : 'Client'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Ambassador' : 'Ambassadeur'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Total' : 'Total'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {(() => {
-                              // Apply filters to manual orders
-                              let filteredOrders = [...manualOrders];
-                              
-                              if (manualOrderFilters.status !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => {
-                                  const statusUpper = order.status?.toUpperCase() || '';
-                                  if (manualOrderFilters.status === 'CANCELLED') {
-                                    return statusUpper.includes('CANCELLED') || statusUpper.includes('CANCEL');
-                                  }
-                                  return statusUpper === manualOrderFilters.status.toUpperCase();
-                                });
-                              }
-                              
-                              if (manualOrderFilters.city !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.city === manualOrderFilters.city);
-                              }
-                              
-                              if (manualOrderFilters.ville !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.ville === manualOrderFilters.ville);
-                              }
-                              
-                              if (manualOrderFilters.passType !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.pass_type === manualOrderFilters.passType);
-                              }
-                              
-                              if (manualOrderFilters.ambassador !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.ambassador_name === manualOrderFilters.ambassador);
-                              }
-                              
-                              if (manualOrderFilters.dateFrom) {
-                                filteredOrders = filteredOrders.filter(order => {
-                                  const orderDate = new Date(order.created_at);
-                                  return orderDate >= manualOrderFilters.dateFrom!;
-                                });
-                              }
-                              
-                              if (manualOrderFilters.dateTo) {
-                                const dateTo = new Date(manualOrderFilters.dateTo);
-                                dateTo.setHours(23, 59, 59, 999);
-                                filteredOrders = filteredOrders.filter(order => {
-                                  const orderDate = new Date(order.created_at);
-                                  return orderDate <= dateTo;
-                                });
-                              }
-                              
-                              return filteredOrders.length === 0 ? (
+                        {loadingOrders ? (
+                          <div className="text-center py-8">
+                            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                            <p className="text-muted-foreground">{language === 'en' ? 'Loading orders...' : 'Chargement des commandes...'}</p>
+                          </div>
+                        ) : (
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>{language === 'en' ? 'Event' : 'Événement'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Pass' : 'Pass'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Client Name' : 'Nom du Client'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Client Phone' : 'Téléphone Client'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Client Email' : 'Email Client'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Ambassador' : 'Ambassadeur'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Created At' : 'Créé Le'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {codAmbassadorOrders.length === 0 ? (
                                 <TableRow>
                                   <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
-                                    {language === 'en' ? 'No manual orders found' : 'Aucune commande manuelle trouvée'}
+                                    {language === 'en' ? 'No COD ambassador orders found' : 'Aucune commande COD ambassadeur trouvée'}
                                   </TableCell>
                                 </TableRow>
                               ) : (
-                                filteredOrders.map((order) => (
-                                <TableRow key={order.id}>
-                                  {/* Hide Order ID for manual orders */}
-                                  <TableCell className="hidden font-mono text-xs">{order.id.substring(0, 8)}...</TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline" className="text-xs">
-                                      {order.source === 'ambassador_manual' 
-                                        ? (language === 'en' ? 'Manual' : 'Manuel')
-                                        : order.source || 'N/A'}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell>{order.user_name || order.customer_name || 'N/A'}</TableCell>
-                                  <TableCell>
-                                    {order.ambassador_id 
-                                      ? (order.ambassador_name || 'Assigned') 
-                                      : 'N/A'}
-                                  </TableCell>
-                                  <TableCell>
-                                    {(() => {
-                                      // If pass_type is 'mixed', try to parse notes to show breakdown
-                                      if (order.pass_type === 'mixed' && order.notes) {
-                                        try {
-                                          const notesData = typeof order.notes === 'string' 
-                                            ? JSON.parse(order.notes) 
-                                            : order.notes;
-                                          if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                                            const passBreakdown = notesData.all_passes
-                                              .map((p: any) => `${p.quantity}x ${p.passType?.toUpperCase() || 'STANDARD'}`)
-                                              .join(', ');
-                                            return (
-                                              <div className="space-y-1">
-                                                <Badge variant="outline">MIXED</Badge>
-                                                <p className="text-xs text-muted-foreground">{passBreakdown}</p>
-                                              </div>
-                                            );
+                                codAmbassadorOrders
+                                  .filter(order => order.status === 'PENDING_ADMIN_APPROVAL' || order.status === 'APPROVED' || order.status === 'REJECTED')
+                                  .map((order) => (
+                                    <TableRow key={order.id}>
+                                      <TableCell>
+                                        {order.event ? (
+                                          <div>
+                                            <p className="font-medium">{order.event.name}</p>
+                                            {order.event.date && (
+                                              <p className="text-xs text-muted-foreground">
+                                                {new Date(order.event.date).toLocaleDateString()}
+                                              </p>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <span className="text-muted-foreground">N/A</span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell>
+                                        {order.pass ? (
+                                          <div>
+                                            <p className="font-medium">{order.pass.name}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                              {typeof order.pass.price === 'number' ? order.pass.price : parseFloat(order.pass.price) || 0} TND
+                                            </p>
+                                          </div>
+                                        ) : (
+                                          <Badge variant="outline">{order.pass_type || 'N/A'}</Badge>
+                                        )}
+                                      </TableCell>
+                                      <TableCell>{order.quantity}</TableCell>
+                                      <TableCell>{order.user_name || 'N/A'}</TableCell>
+                                      <TableCell>{order.user_phone || 'N/A'}</TableCell>
+                                      <TableCell>{order.user_email || 'N/A'}</TableCell>
+                                      <TableCell>
+                                        {order.ambassador_name || (order.ambassador_id ? 'Unknown' : 'N/A')}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Badge variant={
+                                          order.status === 'APPROVED' ? 'default' :
+                                          order.status === 'REJECTED' ? 'destructive' :
+                                          order.status === 'PENDING_ADMIN_APPROVAL' ? 'secondary' : 'outline'
+                                        }>
+                                          {order.status === 'PENDING_ADMIN_APPROVAL' 
+                                            ? (language === 'en' ? 'Pending Approval' : 'En Attente')
+                                            : order.status === 'APPROVED'
+                                            ? (language === 'en' ? 'Approved' : 'Approuvé')
+                                            : order.status === 'REJECTED'
+                                            ? (language === 'en' ? 'Rejected' : 'Rejeté')
+                                            : order.status
                                           }
-                                        } catch (e) {
-                                          // Fall through to default
-                                        }
-                                      }
-                                      // Default display
-                                      return <Badge variant={order.pass_type === 'vip' ? 'default' : 'secondary'}>
-                                        {order.pass_type?.toUpperCase() || 'STANDARD'}
-                                      </Badge>;
-                                    })()}
-                                  </TableCell>
-                                  <TableCell>{order.quantity}</TableCell>
-                                  <TableCell>{order.total_price.toFixed(2)} TND</TableCell>
-                                  <TableCell>
-                                    <OrderStatusIndicator status={order.status} />
-                                  </TableCell>
-                                  <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
-                                  <TableCell>
-                                    <Button size="sm" variant="outline" onClick={async () => {
-                                      setSelectedOrder(order);
-                                      setIsOrderDetailsOpen(true);
-                                      
-                                      // Fetch ambassador information if order has ambassador_id
-                                      if (order.ambassador_id) {
-                                        try {
-                                          const { data: ambassadorData, error } = await supabase
-                                            .from('ambassadors')
-                                            .select('id, full_name, phone, email, city, ville, status, commission_rate')
-                                            .eq('id', order.ambassador_id)
-                                            .single();
-                                          
-                                          if (!error && ambassadorData) {
-                                            setSelectedOrderAmbassador(ambassadorData);
-                                          } else {
-                                            setSelectedOrderAmbassador(null);
-                                          }
-                                        } catch (error) {
-                                          console.error('Error fetching ambassador:', error);
-                                          setSelectedOrderAmbassador(null);
-                                        }
-                                      } else {
-                                        setSelectedOrderAmbassador(null);
-                                      }
-                                    }}>
-                                      <Eye className="w-4 h-4" />
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))
-                              );
-                            })()}
-                          </TableBody>
-                        </Table>
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  {/* All Ambassador Orders */}
-                  <TabsContent value="all-orders" className="mt-6">
-                    <Card>
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <CardTitle>{language === 'en' ? 'All Ambassador Orders' : 'Toutes les Commandes Ambassadeurs'}</CardTitle>
-                          <Button onClick={fetchAmbassadorSalesData} variant="outline" size="sm">
-                            <RefreshCw className="w-4 h-4 mr-2" />
-                            {language === 'en' ? 'Refresh' : 'Actualiser'}
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        {/* Filters */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-6">
-                          <Select
-                            value={allOrderFilters.status}
-                            onValueChange={(value) => {
-                              setAllOrderFilters({ ...allOrderFilters, status: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Status' : 'Statut'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Statuses' : 'Tous les Statuts'}</SelectItem>
-                              <SelectItem value="PENDING_AMBASSADOR">{language === 'en' ? 'Pending Ambassador' : 'En Attente d\'Ambassadeur'}</SelectItem>
-                              <SelectItem value="ASSIGNED">{language === 'en' ? 'Assigned' : 'Assigné'}</SelectItem>
-                              <SelectItem value="ACCEPTED">{language === 'en' ? 'Accepted' : 'Accepté'}</SelectItem>
-                              <SelectItem value="COMPLETED">{language === 'en' ? 'Completed' : 'Terminé'}</SelectItem>
-                              <SelectItem value="CANCELLED">{language === 'en' ? 'Cancelled' : 'Annulé'}</SelectItem>
-                              <SelectItem value="CANCELLED_BY_AMBASSADOR">{language === 'en' ? 'Cancelled by Ambassador' : 'Annulé par l\'Ambassadeur'}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={allOrderFilters.source}
-                            onValueChange={(value) => {
-                              setAllOrderFilters({ ...allOrderFilters, source: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Source' : 'Source'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Sources' : 'Toutes les Sources'}</SelectItem>
-                              <SelectItem value="platform_cod">{language === 'en' ? 'Platform COD' : 'Plateforme COD'}</SelectItem>
-                              <SelectItem value="ambassador_manual">{language === 'en' ? 'Ambassador Manual' : 'Manuel Ambassadeur'}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={allOrderFilters.city}
-                            onValueChange={(value) => {
-                              setAllOrderFilters({ ...allOrderFilters, city: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'City' : 'Ville'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Cities' : 'Toutes les Villes'}</SelectItem>
-                              {CITIES.map(city => (
-                                <SelectItem key={city} value={city}>{city}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={allOrderFilters.ville}
-                            onValueChange={(value) => {
-                              setAllOrderFilters({ ...allOrderFilters, ville: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Ville/Quarter' : 'Ville/Quartier'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Quarters' : 'Tous les Quartiers'}</SelectItem>
-                              {SOUSSE_VILLES.map(ville => (
-                                <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={allOrderFilters.passType}
-                            onValueChange={(value) => {
-                              setAllOrderFilters({ ...allOrderFilters, passType: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Pass Type' : 'Type de Pass'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Types' : 'Tous les Types'}</SelectItem>
-                              <SelectItem value="standard">{language === 'en' ? 'Standard' : 'Standard'}</SelectItem>
-                              <SelectItem value="vip">{language === 'en' ? 'VIP' : 'VIP'}</SelectItem>
-                              <SelectItem value="mixed">{language === 'en' ? 'Mixed' : 'Mixte'}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={allOrderFilters.ambassador}
-                            onValueChange={(value) => {
-                              setAllOrderFilters({ ...allOrderFilters, ambassador: value });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={language === 'en' ? 'Ambassador' : 'Ambassadeur'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">{language === 'en' ? 'All Ambassadors' : 'Tous les Ambassadeurs'}</SelectItem>
-                              {[...new Set(allAmbassadorOrders.map(o => o.ambassador_name).filter(Boolean))].sort().map((name: string) => (
-                                <SelectItem key={name} value={name}>{name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" className="w-full">
-                                <CalendarIcon className="w-4 h-4 mr-2" />
-                                {language === 'en' ? 'Date Range' : 'Plage de Dates'}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <div className="p-4 space-y-4">
-                                <div>
-                                  <Label>{language === 'en' ? 'From' : 'De'}</Label>
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                        {allOrderFilters.dateFrom ? format(allOrderFilters.dateFrom, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0">
-                                      <Calendar
-                                        mode="single"
-                                        selected={allOrderFilters.dateFrom || undefined}
-                                        onSelect={(date) => {
-                                          setAllOrderFilters({ ...allOrderFilters, dateFrom: date || null });
-                                        }}
-                                        initialFocus
-                                      />
-                                    </PopoverContent>
-                                  </Popover>
-                                </div>
-                                <div>
-                                  <Label>{language === 'en' ? 'To' : 'À'}</Label>
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                        {allOrderFilters.dateTo ? format(allOrderFilters.dateTo, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0">
-                                      <Calendar
-                                        mode="single"
-                                        selected={allOrderFilters.dateTo || undefined}
-                                        onSelect={(date) => {
-                                          setAllOrderFilters({ ...allOrderFilters, dateTo: date || null });
-                                        }}
-                                        initialFocus
-                                      />
-                                    </PopoverContent>
-                                  </Popover>
-                                </div>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setAllOrderFilters({ ...allOrderFilters, dateFrom: null, dateTo: null });
-                                  }}
-                                  className="w-full"
-                                >
-                                  {language === 'en' ? 'Clear Dates' : 'Effacer les Dates'}
-                                </Button>
-                              </div>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>{language === 'en' ? 'Source' : 'Source'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Customer' : 'Client'}</TableHead>
-                              <TableHead>{language === 'en' ? 'City/Ville' : 'Ville/Quartier'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Total' : 'Total'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {(() => {
-                              // Apply filters to all ambassador orders
-                              let filteredOrders = [...allAmbassadorOrders];
-                              
-                              if (allOrderFilters.status !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => {
-                                  const statusUpper = order.status?.toUpperCase() || '';
-                                  if (allOrderFilters.status === 'CANCELLED') {
-                                    return statusUpper.includes('CANCELLED') || statusUpper.includes('CANCEL');
-                                  }
-                                  return statusUpper === allOrderFilters.status.toUpperCase();
-                                });
-                              }
-                              
-                              if (allOrderFilters.source !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.source === allOrderFilters.source);
-                              }
-                              
-                              if (allOrderFilters.city !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.city === allOrderFilters.city);
-                              }
-                              
-                              if (allOrderFilters.ville !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.ville === allOrderFilters.ville);
-                              }
-                              
-                              if (allOrderFilters.passType !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.pass_type === allOrderFilters.passType);
-                              }
-                              
-                              if (allOrderFilters.ambassador !== 'all') {
-                                filteredOrders = filteredOrders.filter(order => order.ambassador_name === allOrderFilters.ambassador);
-                              }
-                              
-                              if (allOrderFilters.dateFrom) {
-                                filteredOrders = filteredOrders.filter(order => {
-                                  const orderDate = new Date(order.created_at);
-                                  return orderDate >= allOrderFilters.dateFrom!;
-                                });
-                              }
-                              
-                              if (allOrderFilters.dateTo) {
-                                const dateTo = new Date(allOrderFilters.dateTo);
-                                dateTo.setHours(23, 59, 59, 999);
-                                filteredOrders = filteredOrders.filter(order => {
-                                  const orderDate = new Date(order.created_at);
-                                  return orderDate <= dateTo;
-                                });
-                              }
-                              
-                              return filteredOrders.length === 0 ? (
-                                <TableRow>
-                                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                                    {language === 'en' ? 'No orders found' : 'Aucune commande trouvée'}
-                                  </TableCell>
-                                </TableRow>
-                              ) : (
-                                filteredOrders.map((order) => {
-                                // Use the consistent status indicator
-
-                                return (
-                                <TableRow key={order.id}>
-                                  <TableCell><Badge variant="outline">{order.source}</Badge></TableCell>
-                                  <TableCell>{order.user_name || order.customer_name || 'N/A'}</TableCell>
-                                  <TableCell>{order.city}{order.ville ? ` - ${order.ville}` : ''}</TableCell>
-                                  <TableCell>
-                                    {(() => {
-                                      // If pass_type is 'mixed', try to parse notes to show breakdown
-                                      if (order.pass_type === 'mixed' && order.notes) {
-                                        try {
-                                          const notesData = typeof order.notes === 'string' 
-                                            ? JSON.parse(order.notes) 
-                                            : order.notes;
-                                          if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                                            const passBreakdown = notesData.all_passes
-                                              .map((p: any) => `${p.quantity}x ${p.passType?.toUpperCase() || 'STANDARD'}`)
-                                              .join(', ');
-                                            return (
-                                              <div className="space-y-1">
-                                                <Badge variant="outline">MIXED</Badge>
-                                                <p className="text-xs text-muted-foreground">{passBreakdown}</p>
-                                              </div>
-                                            );
-                                          }
-                                        } catch (e) {
-                                          // Fall through to default
-                                        }
-                                      }
-                                      // Default display
-                                      return <Badge variant={order.pass_type === 'vip' ? 'default' : 'secondary'}>
-                                        {order.pass_type?.toUpperCase() || 'STANDARD'}
-                                      </Badge>;
-                                    })()}
-                                  </TableCell>
-                                  <TableCell>{order.quantity}</TableCell>
-                                  <TableCell>{order.total_price.toFixed(2)} TND</TableCell>
-                                  <TableCell>
-                                    <OrderStatusIndicator status={order.status} />
-                                  </TableCell>
-                                  <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
-                                  <TableCell>
-                                    <Button size="sm" variant="outline" onClick={async () => {
-                                      setSelectedOrder(order);
-                                      setIsOrderDetailsOpen(true);
-                                      
-                                      // Fetch ambassador information if order has ambassador_id
-                                      if (order.ambassador_id) {
-                                        try {
-                                          const { data: ambassadorData, error } = await supabase
-                                            .from('ambassadors')
-                                            .select('id, full_name, phone, email, city, ville, status, commission_rate')
-                                            .eq('id', order.ambassador_id)
-                                            .single();
-                                          
-                                          if (!error && ambassadorData) {
-                                            setSelectedOrderAmbassador(ambassadorData);
-                                          } else {
-                                            setSelectedOrderAmbassador(null);
-                                          }
-                                        } catch (error) {
-                                          console.error('Error fetching ambassador:', error);
-                                          setSelectedOrderAmbassador(null);
-                                        }
-                                      } else {
-                                        setSelectedOrderAmbassador(null);
-                                      }
-                                    }}>
-                                      <Eye className="w-4 h-4" />
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })
-                              );
-                            })()}
-                          </TableBody>
-                        </Table>
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  {/* Round Robin Manager */}
-                  <TabsContent value="round-robin" className="mt-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>{language === 'en' ? 'Round Robin Manager' : 'Gestionnaire de Tourniquet'}</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>{language === 'en' ? 'Ville' : 'Quartier'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Active Ambassadors' : 'Ambassadeurs Actifs'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Last Assigned' : 'Dernier Assigné'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Next Ambassador' : 'Prochain Ambassadeur'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Mode' : 'Mode'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {roundRobinData.length === 0 ? (
-                              <TableRow>
-                                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                                  {language === 'en' ? 'No round robin data found' : 'Aucune donnée de tourniquet trouvée'}
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              roundRobinData.map((item) => (
-                                <TableRow key={item.ville}>
-                                  <TableCell>{item.ville}</TableCell>
-                                  <TableCell>{item.active_ambassadors || 0}</TableCell>
-                                  <TableCell>{item.last_assigned || 'None'}</TableCell>
-                                  <TableCell>{item.next_ambassador || 'N/A'}</TableCell>
-                                  <TableCell><Badge variant={item.rotation_mode === 'automatic' ? 'default' : 'secondary'}>{item.rotation_mode}</Badge></TableCell>
-                                  <TableCell>
-                                    <Button size="sm" variant="outline">
-                                      {language === 'en' ? 'Reset' : 'Réinitialiser'}
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell>
+                                        {new Date(order.created_at).toLocaleDateString()}
+                                        <br />
+                                        <span className="text-xs text-muted-foreground">
+                                          {new Date(order.created_at).toLocaleTimeString()}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell>
+                                        <div className="flex gap-2">
+                                          {order.status === 'PENDING_ADMIN_APPROVAL' && (
+                                            <>
+                                              <Button
+                                                size="sm"
+                                                variant="default"
+                                                className="bg-green-600 hover:bg-green-700"
+                                                onClick={() => handleApproveCodAmbassadorOrder(order.id)}
+                                              >
+                                                <CheckCircle className="w-4 h-4 mr-1" />
+                                                {language === 'en' ? 'Approve' : 'Approuver'}
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant="destructive"
+                                                onClick={() => {
+                                                  setRejectingOrderId(order.id);
+                                                  setIsRejectDialogOpen(true);
+                                                }}
+                                              >
+                                                <XCircle className="w-4 h-4 mr-1" />
+                                                {language === 'en' ? 'Reject' : 'Rejeter'}
+                                              </Button>
+                                            </>
+                                          )}
+                                          {order.status === 'APPROVED' && (
+                                            <Badge variant="outline" className="border-green-500/30 text-green-300">
+                                              {language === 'en' ? 'Locked' : 'Verrouillé'}
+                                            </Badge>
+                                          )}
+                                          {order.status === 'REJECTED' && (
+                                            <TooltipProvider>
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <Info className="w-4 h-4 text-muted-foreground cursor-help" />
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                  <p className="max-w-xs">
+                                                    {language === 'en' ? 'Reason' : 'Raison'}: {order.rejection_reason || 'N/A'}
+                                                  </p>
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            </TooltipProvider>
+                                          )}
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))
+                              )}
+                            </TableBody>
+                          </Table>
+                        )}
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -13148,27 +13465,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 className={cn(
                                   "w-3 h-3 rounded-full cursor-help",
                                   selectedOrder.status === 'COMPLETED' ? 'bg-green-500' :
+                                  selectedOrder.status === 'APPROVED' ? 'bg-green-500' :
+                                  selectedOrder.status === 'REJECTED' ? 'bg-red-500' :
+                                  selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'bg-yellow-500' :
                                   selectedOrder.status?.includes('CANCELLED') ? 'bg-red-500' :
-                                  selectedOrder.status === 'PENDING_AMBASSADOR' ? 'bg-yellow-500' :
-                                  selectedOrder.status === 'ASSIGNED' ? 'bg-blue-500' :
                                   selectedOrder.status === 'ACCEPTED' ? 'bg-cyan-500' :
                                   'bg-gray-500'
                                 )}
                               />
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>
-                                {selectedOrder.status === 'PENDING_AMBASSADOR' && selectedOrder.ambassador_id
-                                  ? (language === 'en' ? 'Assigned - Awaiting Acceptance' : 'Assigné - En Attente d\'Acceptation')
-                                  : selectedOrder.status}
-                              </p>
+                              <p>{selectedOrder.status}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-                        <Badge variant={selectedOrder.status === 'COMPLETED' ? 'default' : selectedOrder.status?.includes('CANCELLED') ? 'destructive' : 'secondary'}>
-                          {selectedOrder.status === 'PENDING_AMBASSADOR' && selectedOrder.ambassador_id
-                            ? (language === 'en' ? 'Assigned - Awaiting Acceptance' : 'Assigné - En Attente d\'Acceptation')
-                            : selectedOrder.status}
+                        <Badge variant={
+                          selectedOrder.status === 'COMPLETED' ? 'default' :
+                          selectedOrder.status === 'APPROVED' ? 'default' :
+                          selectedOrder.status === 'REJECTED' ? 'destructive' :
+                          selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'secondary' :
+                          selectedOrder.status?.includes('CANCELLED') ? 'destructive' : 'secondary'
+                        }>
+                          {selectedOrder.status}
                         </Badge>
                       </div>
                     </div>
@@ -13178,9 +13496,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         {language === 'en' ? 'Order Type' : 'Type de Commande'}
                       </Label>
                       <Badge variant="outline" className="font-normal">
-                        {selectedOrder.source === 'platform_cod' ? (language === 'en' ? 'Platform COD' : 'Plateforme COD') :
-                         selectedOrder.source === 'platform_online' ? (language === 'en' ? 'Platform Online' : 'Plateforme En Ligne') :
-                         selectedOrder.source === 'ambassador_manual' ? (language === 'en' ? 'Ambassador Manual' : 'Manuel Ambassadeur') :
+                        {selectedOrder.source === 'platform_online' ? (language === 'en' ? 'Platform Online' : 'Plateforme En Ligne') :
+                         selectedOrder.source === 'ambassador_manual' ? (language === 'en' ? 'Ambassador Manual (COD)' : 'Manuel Ambassadeur (COD)') :
                          selectedOrder.source}
                       </Badge>
                     </div>
@@ -13417,6 +13734,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     <div>
                       <Label className="text-muted-foreground">{language === 'en' ? 'Accepted At' : 'Accepté Le'}</Label>
                       <p>{new Date(selectedOrder.accepted_at).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {selectedOrder.approved_at && (
+                    <div>
+                      <Label className="text-muted-foreground">{language === 'en' ? 'Approved At' : 'Approuvé Le'}</Label>
+                      <p>{new Date(selectedOrder.approved_at).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {selectedOrder.rejected_at && (
+                    <div>
+                      <Label className="text-muted-foreground">{language === 'en' ? 'Rejected At' : 'Rejeté Le'}</Label>
+                      <p>{new Date(selectedOrder.rejected_at).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {selectedOrder.rejection_reason && (
+                    <div className="col-span-2">
+                      <Label className="text-muted-foreground">{language === 'en' ? 'Rejection Reason' : 'Raison du Rejet'}</Label>
+                      <p className="text-sm text-destructive">{selectedOrder.rejection_reason}</p>
                     </div>
                   )}
                   {selectedOrder.completed_at && (
@@ -13666,7 +14001,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
 
               {/* Admin Actions */}
-              {selectedOrder.source === 'platform_cod' && (
+              {selectedOrder.source === 'ambassador_manual' && selectedOrder.payment_method === 'cod' && (
                 <Card className="bg-primary/5 border-primary/20">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -13676,19 +14011,55 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-wrap gap-2">
-                      {selectedOrder.status === 'PENDING_AMBASSADOR' && selectedOrder.ville && (
+                      {/* COD Order Actions */}
+                      {selectedOrder.payment_method === 'cod' && selectedOrder.status === 'PENDING_ADMIN_APPROVAL' && (
+                        <>
+                          <Button
+                            onClick={() => handleApproveOrderAsAdmin(selectedOrder.id)}
+                            variant="default"
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-2" />
+                            {language === 'en' ? 'Approve Order' : 'Approuver la Commande'}
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              // For COD ambassador orders, open dialog (reason required)
+                              if (selectedOrder.source === 'ambassador_manual' && selectedOrder.payment_method === 'cod') {
+                                setRejectingOrderId(selectedOrder.id);
+                                setIsRejectDialogOpen(true);
+                              } else {
+                                // For other orders, use prompt (optional reason)
+                                const reason = prompt(language === 'en' ? 'Enter rejection reason (optional):' : 'Entrez la raison du rejet (optionnel):');
+                                if (reason !== null) {
+                                  handleRejectOrderAsAdmin(selectedOrder.id, reason || undefined);
+                                }
+                              }
+                            }}
+                            variant="destructive"
+                            size="sm"
+                          >
+                            <XCircle className="w-4 h-4 mr-2" />
+                            {language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}
+                          </Button>
+                        </>
+                      )}
+                      {/* Approved COD orders can be completed */}
+                      {selectedOrder.payment_method === 'cod' && selectedOrder.status === 'APPROVED' && (
                         <Button
-                          onClick={() => handleAssignOrder(selectedOrder.id, selectedOrder.ville)}
+                          onClick={() => handleCompleteOrderAsAdmin(selectedOrder.id)}
                           variant="default"
                           size="sm"
                         >
-                          <Users className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Assign Order' : 'Assigner la Commande'}
+                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                          {language === 'en' ? 'Complete Order' : 'Terminer la Commande'}
                         </Button>
                       )}
-                      {selectedOrder.status === 'ASSIGNED' && (
+                      {/* Legacy status support (for backward compatibility) */}
+                      {selectedOrder.status === 'PENDING' && selectedOrder.payment_method !== 'cod' && (
                         <Button
-                          onClick={() => handleAcceptOrderAsAdmin(selectedOrder.id)}
+                          onClick={() => handleApproveOrderAsAdmin(selectedOrder.id)}
                           variant="default"
                           size="sm"
                         >
@@ -13696,7 +14067,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           {language === 'en' ? 'Accept Order' : 'Accepter la Commande'}
                         </Button>
                       )}
-                      {selectedOrder.status === 'ACCEPTED' && (
+                      {selectedOrder.status === 'ACCEPTED' && selectedOrder.payment_method !== 'cod' && (
                         <Button
                           onClick={() => handleCompleteOrderAsAdmin(selectedOrder.id)}
                           variant="default"
@@ -13712,6 +14083,120 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Order Dialog */}
+      <Dialog open={isRejectDialogOpen} onOpenChange={(open) => {
+        setIsRejectDialogOpen(open);
+        if (!open) {
+          setRejectingOrderId(null);
+          setRejectionReason('');
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>{language === 'en' ? 'Rejection Reason' : 'Raison du Rejet'} *</Label>
+              <Textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder={language === 'en' ? 'Enter rejection reason...' : 'Entrez la raison du rejet...'}
+                rows={4}
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsRejectDialogOpen(false);
+                  setRejectingOrderId(null);
+                  setRejectionReason('');
+                }}
+              >
+                {language === 'en' ? 'Cancel' : 'Annuler'}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (rejectingOrderId && rejectionReason.trim()) {
+                    handleRejectCodAmbassadorOrder(rejectingOrderId, rejectionReason.trim());
+                  } else {
+                    toast({
+                      title: language === 'en' ? 'Error' : 'Erreur',
+                      description: language === 'en' ? 'Rejection reason is required' : 'La raison du rejet est requise',
+                      variant: 'destructive'
+                    });
+                  }
+                }}
+                disabled={!rejectionReason.trim()}
+              >
+                <XCircle className="w-4 h-4 mr-2" />
+                {language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Order Dialog */}
+      <Dialog open={isRejectDialogOpen} onOpenChange={(open) => {
+        setIsRejectDialogOpen(open);
+        if (!open) {
+          setRejectingOrderId(null);
+          setRejectionReason('');
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>{language === 'en' ? 'Rejection Reason' : 'Raison du Rejet'} *</Label>
+              <Textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder={language === 'en' ? 'Enter rejection reason...' : 'Entrez la raison du rejet...'}
+                rows={4}
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsRejectDialogOpen(false);
+                  setRejectingOrderId(null);
+                  setRejectionReason('');
+                }}
+              >
+                {language === 'en' ? 'Cancel' : 'Annuler'}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (rejectingOrderId && rejectionReason.trim()) {
+                    handleRejectCodAmbassadorOrder(rejectingOrderId, rejectionReason.trim());
+                  } else {
+                    toast({
+                      title: language === 'en' ? 'Error' : 'Erreur',
+                      description: language === 'en' ? 'Rejection reason is required' : 'La raison du rejet est requise',
+                      variant: 'destructive'
+                    });
+                  }
+                }}
+                disabled={!rejectionReason.trim()}
+              >
+                <XCircle className="w-4 h-4 mr-2" />
+                {language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -28,9 +28,9 @@ export function ExpandableText({
   }
 
   return (
-    <div className={className}>
+    <div>
       <p 
-        className={`transition-all duration-500 ease-in-out ${
+        className={`${className} transition-all duration-500 ease-in-out ${
           isExpanded ? 'opacity-100' : 'opacity-90'
         }`}
         style={{

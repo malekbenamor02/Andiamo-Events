@@ -7,7 +7,6 @@ import placeholder from "/placeholder.svg";
 import { supabase } from "@/integrations/supabase/client";
 import CounterSection from "@/components/home/CounterSection";
 import FeaturedEventsSection from "@/components/home/FeaturedEventsSection";
-import TeamSection from "@/components/home/TeamSection";
 import SponsorsSection from "@/components/home/SponsorsSection";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 
@@ -47,10 +46,9 @@ const Index = ({ language }: IndexProps) => {
   const heroRef = useRef<HTMLDivElement>(null);
   const counterRef = useRef<HTMLDivElement>(null);
   const eventsRef = useRef<HTMLDivElement>(null);
-  const teamRef = useRef<HTMLDivElement>(null);
   const sponsorsRef = useRef<HTMLDivElement>(null);
 
-  const targetCounts = { events: 20, members: 40, followers: 25000};
+  const targetCounts = { events: 20, members: 40, followers: 45000};
 
   // Scroll to top when page loads/refreshes
   useEffect(() => {
@@ -91,7 +89,6 @@ const Index = ({ language }: IndexProps) => {
       { ref: heroRef, id: 'hero' },
       { ref: counterRef, id: 'counter' },
       { ref: eventsRef, id: 'events' },
-      { ref: teamRef, id: 'team' },
       { ref: sponsorsRef, id: 'sponsors' }
     ];
 
@@ -199,18 +196,6 @@ const Index = ({ language }: IndexProps) => {
         }`}
       >
       <FeaturedEventsSection language={language} />
-      </div>
-      
-      {/* Team Section with Scroll Animation */}
-      <div 
-        ref={teamRef}
-        className={`transform transition-all duration-1000 ease-out ${
-          animatedSections.has('team') 
-            ? 'opacity-100 translate-y-0 scale-100' 
-            : 'opacity-0 translate-y-8 scale-95'
-        }`}
-      >
-      <TeamSection language={language} />
       </div>
 
       {/* Sponsors Section with Scroll Animation */}

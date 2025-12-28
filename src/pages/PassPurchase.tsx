@@ -10,13 +10,20 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Link } from 'react-router-dom';
-import { Calendar, MapPin, Users, CreditCard, ShoppingCart, ArrowLeft, CheckCircle, XCircle, Wallet } from 'lucide-react';
+import { Calendar, MapPin, Users, CreditCard, ArrowLeft, CheckCircle, XCircle, Wallet, Phone, Instagram } from 'lucide-react';
+import { ExpandableText } from '@/components/ui/expandable-text';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import { CITIES, SOUSSE_VILLES } from '@/lib/constants';
-import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
-import { sanitizeUrl } from '@/lib/url-validator';
+
+interface EventPass {
+  id: string;
+  name: string;
+  price: number;
+  description?: string;
+  is_primary: boolean;
+}
 
 interface Event {
   id: string;
@@ -26,8 +33,7 @@ interface Event {
   venue: string;
   city: string;
   poster_url?: string;
-  standard_price?: number;
-  vip_price?: number;
+  passes?: EventPass[];
   capacity?: number;
   age_restriction?: number;
   dress_code?: string;
@@ -35,7 +41,8 @@ interface Event {
 }
 
 interface SelectedPass {
-  passType: 'standard' | 'vip';
+  passId: string;
+  passName: string;
   quantity: number;
   price: number;
 }
@@ -52,7 +59,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedPasses, setSelectedPasses] = useState<Record<string, number>>({});
+  const [selectedPasses, setSelectedPasses] = useState<Record<string, number>>({}); // passId -> quantity
   const [customerInfo, setCustomerInfo] = useState({
     fullName: '',
     email: '',
@@ -60,11 +67,38 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     city: '',
     ville: ''
   });
-  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod' | ''>('');
+  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod' | ''>('online');
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [processing, setProcessing] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showAmbassadors, setShowAmbassadors] = useState(false);
+  const [ambassadors, setAmbassadors] = useState<any[]>([]);
+  const [loadingAmbassadors, setLoadingAmbassadors] = useState(false);
+  const [filterCity, setFilterCity] = useState<string>('');
+  const [filterVille, setFilterVille] = useState<string>('');
+
+  // Fetch ambassadors when COD is selected
+  useEffect(() => {
+    if (paymentMethod === 'cod') {
+      if (!showAmbassadors) {
+        fetchAmbassadors();
+        setShowAmbassadors(true);
+      }
+    } else {
+      if (showAmbassadors) {
+        setShowAmbassadors(false);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentMethod]);
+
+  // Reset ville filter when city filter changes
+  useEffect(() => {
+    if (!filterCity) {
+      setFilterVille('');
+    }
+  }, [filterCity]);
 
   const t = {
     en: {
@@ -94,7 +128,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       processing: "Processing...",
       success: "Order submitted successfully!",
       successMessageOnline: "Your order has been submitted. Redirecting to payment...",
-      successMessageCOD: "Your order has been submitted. An ambassador will contact you soon.",
+      successMessageCOD: "Contact an ambassador below to place your order",
+      contactAmbassador: "Contact Ambassador",
+      selectAmbassador: "Select an Ambassador",
+      ambassadorInstructions: "Choose an ambassador from your area and contact them directly via phone or Instagram to place your COD order.",
       error: "Error",
       required: "This field is required",
       fixFormErrors: "Please fix the errors in the form",
@@ -141,7 +178,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       processing: "Traitement...",
       success: "Commande soumise avec succès!",
       successMessageOnline: "Votre commande a été soumise. Redirection vers le paiement...",
-      successMessageCOD: "Votre commande a été soumise. Un ambassadeur vous contactera bientôt.",
+      successMessageCOD: "Contactez un ambassadeur ci-dessous pour passer votre commande",
+      contactAmbassador: "Contacter l'Ambassadeur",
+      selectAmbassador: "Sélectionner un Ambassadeur",
+      ambassadorInstructions: "Choisissez un ambassadeur de votre région et contactez-le directement par téléphone ou Instagram pour passer votre commande COD.",
       error: "Erreur",
       required: "Ce champ est requis",
       fixFormErrors: "Veuillez corriger les erreurs dans le formulaire",
@@ -171,14 +211,45 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
   const fetchEvent = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: eventData, error: eventError } = await supabase
         .from('events')
         .select('*')
         .eq('id', eventId)
         .single();
 
-      if (error) throw error;
-      setEvent(data);
+      if (eventError) throw eventError;
+
+      // Fetch passes for this event
+      const { data: passesData, error: passesError } = await supabase
+        .from('event_passes')
+        .select('*')
+        .eq('event_id', eventId)
+        .order('is_primary', { ascending: false })
+        .order('price', { ascending: true })
+        .order('created_at', { ascending: true });
+
+      if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
+        console.error('Error fetching passes:', passesError);
+      }
+
+      const passes = (passesData || []).map((p: any) => ({
+        id: p.id,
+        name: p.name || '',
+        price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
+        description: p.description || '',
+        is_primary: p.is_primary || false
+      }));
+
+      setEvent({
+        ...eventData,
+        passes: passes
+      });
+
+      // Set primary pass as default selection
+      if (passes.length > 0) {
+        const primaryPass = passes.find(p => p.is_primary) || passes[0];
+        setSelectedPasses({ [primaryPass.id]: 1 });
+      }
     } catch (error) {
       console.error('Error fetching event:', error);
       toast({
@@ -192,28 +263,35 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   };
 
   // Update pass quantity (0-10)
-  const updatePassQuantity = (passType: 'standard' | 'vip', quantity: number) => {
+  const updatePassQuantity = (passId: string, quantity: number) => {
     const clampedQuantity = Math.max(0, Math.min(10, quantity));
+    const newPasses = { ...selectedPasses };
+    
     if (clampedQuantity === 0) {
-      const newPasses = { ...selectedPasses };
-      delete newPasses[passType];
-      setSelectedPasses(newPasses);
+      delete newPasses[passId];
     } else {
-      setSelectedPasses(prev => ({
-        ...prev,
-        [passType]: clampedQuantity
-      }));
+      newPasses[passId] = clampedQuantity;
+    }
+    
+    setSelectedPasses(newPasses);
+    
+    // Clear pass validation error when a pass is selected
+    if (clampedQuantity > 0 && validationErrors.passes) {
+      const newErrors = { ...validationErrors };
+      delete newErrors.passes;
+      setValidationErrors(newErrors);
     }
   };
 
   // Calculate total price
   const calculateTotal = (): number => {
+    if (!event?.passes) return 0;
+    
     let total = 0;
-    Object.entries(selectedPasses).forEach(([passType, quantity]) => {
-      if (passType === 'standard' && event?.standard_price) {
-        total += event.standard_price * quantity;
-      } else if (passType === 'vip' && event?.vip_price) {
-        total += event.vip_price * quantity;
+    Object.entries(selectedPasses).forEach(([passId, quantity]) => {
+      const pass = event.passes?.find(p => p.id === passId);
+      if (pass && quantity > 0) {
+        total += pass.price * quantity;
       }
     });
     return total;
@@ -221,20 +299,18 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
   // Get selected passes as array
   const getSelectedPassesArray = (): SelectedPass[] => {
+    if (!event?.passes) return [];
+    
     const passes: SelectedPass[] = [];
-    Object.entries(selectedPasses).forEach(([passType, quantity]) => {
+    Object.entries(selectedPasses).forEach(([passId, quantity]) => {
       if (quantity > 0) {
-        if (passType === 'standard' && event?.standard_price) {
+        const pass = event.passes?.find(p => p.id === passId);
+        if (pass) {
           passes.push({
-            passType: 'standard',
+            passId: pass.id,
+            passName: pass.name,
             quantity,
-            price: event.standard_price
-          });
-        } else if (passType === 'vip' && event?.vip_price) {
-          passes.push({
-            passType: 'vip',
-            quantity,
-            price: event.vip_price
+            price: pass.price
           });
         }
       }
@@ -242,41 +318,44 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     return passes;
   };
 
-  // Validation
+  // Validation (only for online payments)
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
 
-    // Check at least one pass selected
-    if (Object.keys(selectedPasses).length === 0 || 
-        Object.values(selectedPasses).every(qty => qty === 0)) {
+    // Check at least one pass selected with quantity > 0
+    const hasSelectedPass = Object.values(selectedPasses).some(qty => qty > 0);
+    if (!hasSelectedPass) {
       errors.passes = t[language].selectAtLeastOnePass;
     }
 
-    // Validate full name
-    if (!customerInfo.fullName.trim() || customerInfo.fullName.trim().length < 2) {
-      errors.fullName = t[language].invalidName;
-    }
+    // Only validate customer info for online payments
+    if (paymentMethod === 'online') {
+      // Validate full name
+      if (!customerInfo.fullName.trim() || customerInfo.fullName.trim().length < 2) {
+        errors.fullName = t[language].invalidName;
+      }
 
-    // Validate email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!customerInfo.email.trim() || !emailRegex.test(customerInfo.email)) {
-      errors.email = t[language].invalidEmail;
-    }
+      // Validate email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!customerInfo.email.trim() || !emailRegex.test(customerInfo.email)) {
+        errors.email = t[language].invalidEmail;
+      }
 
-    // Validate phone
-    const phoneRegex = /^[2594][0-9]{7}$/;
-    if (!customerInfo.phone.trim() || !phoneRegex.test(customerInfo.phone)) {
-      errors.phone = t[language].invalidPhone;
-    }
+      // Validate phone
+      const phoneRegex = /^[2594][0-9]{7}$/;
+      if (!customerInfo.phone.trim() || !phoneRegex.test(customerInfo.phone)) {
+        errors.phone = t[language].invalidPhone;
+      }
 
-    // Validate city
-    if (!customerInfo.city.trim()) {
-      errors.city = t[language].required;
-    }
+      // Validate city
+      if (!customerInfo.city.trim()) {
+        errors.city = t[language].required;
+      }
 
-    // Validate ville if city is Sousse
-    if (customerInfo.city === 'Sousse' && !customerInfo.ville.trim()) {
-      errors.ville = t[language].villeRequired;
+      // Validate terms acceptance
+      if (!termsAccepted) {
+        errors.termsAccepted = t[language].termsRequired;
+      }
     }
 
     // Validate payment method
@@ -284,23 +363,18 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       errors.paymentMethod = t[language].selectPaymentMethod;
     }
 
-    // Check COD availability
-    if (paymentMethod === 'cod' && customerInfo.city !== 'Sousse') {
-      errors.paymentMethod = t[language].codNotAvailable;
-    }
-
-    // Validate terms acceptance
-    if (!termsAccepted) {
-      errors.termsAccepted = t[language].termsRequired;
-    }
-
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  // Handle form submission
+  // Handle form submission (only for online payments)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Only process online payments through form submission
+    if (paymentMethod !== 'online') {
+      return;
+    }
 
     if (!validateForm()) {
       toast({
@@ -313,17 +387,32 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
     setProcessing(true);
 
-    try {
-      const selectedPassesArray = getSelectedPassesArray();
-      const totalPrice = calculateTotal();
+    // Double check that at least one pass is selected
+    const selectedPassesArray = getSelectedPassesArray();
+    if (!selectedPassesArray || selectedPassesArray.length === 0 || !selectedPassesArray.some(p => p.quantity > 0)) {
+      toast({
+        title: t[language].error,
+        description: t[language].selectAtLeastOnePass,
+        variant: "destructive",
+      });
+      setProcessing(false);
+      return;
+    }
 
-      if (paymentMethod === 'online') {
-        // Online Payment - Create order and redirect to payment gateway
-        await createOnlineOrder(selectedPassesArray, totalPrice);
-      } else if (paymentMethod === 'cod') {
-        // COD Payment - Create order and assign ambassador
-        await createCODOrder(selectedPassesArray, totalPrice);
-      }
+    const totalPrice = calculateTotal();
+    if (totalPrice <= 0) {
+      toast({
+        title: t[language].error,
+        description: language === 'en' ? 'Please select at least one pass' : 'Veuillez sélectionner au moins un pass',
+        variant: "destructive",
+      });
+      setProcessing(false);
+      return;
+    }
+
+    try {
+      // Online Payment - Create order and redirect to payment gateway
+      await createOnlineOrder(selectedPassesArray, totalPrice);
     } catch (error: any) {
       console.error('Order submission error:', error);
       const errorMessage = error.message || error.error?.message || (language === 'en' ? 'Failed to submit order' : 'Échec de la soumission de la commande');
@@ -341,8 +430,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     // Calculate total quantity across all pass types
     const totalQuantity = passes.reduce((sum, pass) => sum + pass.quantity, 0);
     
-    // Determine primary pass type (first selected pass type, or 'mixed' if multiple types)
-    const primaryPassType = passes.length === 1 ? passes[0].passType : 'mixed';
+    // Determine primary pass name (first selected pass name, or 'mixed' if multiple types)
+    const primaryPassName = passes.length === 1 ? passes[0].passName : 'mixed';
 
     // Create ONE order with all pass types stored in notes
     const orderData: any = {
@@ -353,11 +442,11 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       city: customerInfo.city.trim(),
       ville: customerInfo.ville.trim() || null,
       event_id: eventId || null,
-      pass_type: primaryPassType, // Primary pass type (or 'mixed' if multiple)
+      pass_type: primaryPassName, // Primary pass name (or 'mixed' if multiple)
       quantity: totalQuantity, // Total quantity of all passes
       total_price: totalPrice, // Total price of all passes combined
       payment_method: 'online',
-      status: 'PENDING_AMBASSADOR' // Order status (separate from payment status)
+      status: 'PENDING' // Order status (separate from payment status)
     };
 
     // Note: payment_status will be set to PENDING_PAYMENT by default (via migration or database default)
@@ -367,7 +456,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     // Add notes if column exists (optional field)
     try {
       orderData.notes = JSON.stringify({
-        all_passes: passes, // Store all pass types with their quantities and prices
+        all_passes: passes.map(p => ({
+          passId: p.passId,
+          passName: p.passName,
+          quantity: p.quantity,
+          price: p.price
+        })), // Store all pass types with their quantities and prices
         total_order_price: totalPrice,
         pass_count: passes.length, // Number of different pass types
         payment_gateway: 'pending'
@@ -401,91 +495,54 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     // window.location.href = `/payment-gateway?orderId=${order.id}`;
   };
 
-  // Create COD order
-  const createCODOrder = async (passes: SelectedPass[], totalPrice: number) => {
-    if (customerInfo.city !== 'Sousse' || !customerInfo.ville.trim()) {
-      throw new Error(t[language].codNotAvailable);
-    }
-
-    // Calculate total quantity across all pass types
-    const totalQuantity = passes.reduce((sum, pass) => sum + pass.quantity, 0);
-    
-    // Determine primary pass type (first selected pass type, or 'mixed' if multiple types)
-    const primaryPassType = passes.length === 1 ? passes[0].passType : 'mixed';
-
-    // Create ONE order with all pass types stored in notes
-    const orderData: any = {
-      source: 'platform_cod',
-      user_name: customerInfo.fullName.trim(),
-      user_phone: customerInfo.phone.trim(),
-      user_email: customerInfo.email.trim() || null,
-      city: customerInfo.city.trim(),
-      ville: customerInfo.ville.trim() || null,
-      event_id: eventId || null,
-      pass_type: primaryPassType, // Primary pass type (or 'mixed' if multiple)
-      quantity: totalQuantity, // Total quantity of all passes
-      total_price: totalPrice, // Total price of all passes combined
-      payment_method: 'cod',
-      status: 'PENDING_AMBASSADOR'
-    };
-
-    // Add notes if column exists (optional field)
+  // Fetch ambassadors for COD
+  const fetchAmbassadors = async () => {
+    setLoadingAmbassadors(true);
     try {
-      orderData.notes = JSON.stringify({
-        all_passes: passes, // Store all pass types with their quantities and prices
-        total_order_price: totalPrice,
-        pass_count: passes.length // Number of different pass types
-      });
-    } catch (e) {
-      // If notes column doesn't exist, continue without it
-      console.warn('Could not add notes to order:', e);
-    }
+      // Try to fetch social_link from ambassador_applications if available
+      const { data: ambassadorsData, error } = await supabase
+        .from('ambassadors')
+        .select('id, full_name, phone, ville, city')
+        .eq('status', 'approved')
+        .eq('city', 'Sousse')
+        .order('full_name');
 
-    console.log('Creating COD order with data:', orderData);
-
-    const { data: order, error } = await supabase.from('orders').insert(orderData).select().single();
-
-    if (error) {
-      console.error('Error creating order:', error);
-      throw new Error(error.message || 'Failed to create order');
-    }
-
-    // Assign order via round-robin
-    try {
-      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
-      const apiUrl = buildFullApiUrl(API_ROUTES.ASSIGN_ORDER, apiBase);
-      
-      if (!apiUrl) {
-        throw new Error('Invalid API URL configuration');
+      if (error) {
+        console.error('Error fetching ambassadors:', error);
+        throw new Error(error.message || 'Failed to fetch ambassadors');
       }
-      
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          order_id: order.id,
-          ville: customerInfo.ville.trim()
-        })
-      });
 
-      if (!response.ok) {
-        console.error('Error assigning order:', await response.text());
+      // Try to enrich with social links from applications
+      if (ambassadorsData) {
+        const enrichedAmbassadors = await Promise.all(
+          ambassadorsData.map(async (amb) => {
+            // Try to find matching application by phone
+            const { data: application } = await supabase
+              .from('ambassador_applications')
+              .select('social_link')
+              .eq('phone_number', amb.phone)
+              .maybeSingle();
+            
+            return {
+              ...amb,
+              social_link: application?.social_link || null
+            };
+          })
+        );
+        setAmbassadors(enrichedAmbassadors);
+      } else {
+        setAmbassadors([]);
       }
-    } catch (error) {
-      console.error('Error assigning order:', error);
-      // Order is still created, just not assigned yet
+    } catch (error: any) {
+      console.error('Error fetching ambassadors:', error);
+      toast({
+        title: t[language].error,
+        description: error.message || (language === 'en' ? 'Failed to load ambassadors' : 'Échec du chargement des ambassadeurs'),
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingAmbassadors(false);
     }
-
-    toast({
-      title: t[language].success,
-      description: t[language].successMessageCOD,
-      variant: "default",
-    });
-
-    setSubmitted(true);
-    setProcessing(false);
   };
 
   if (loading) {
@@ -515,6 +572,299 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             </Button>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // Ambassador Listing Screen (COD)
+  if (showAmbassadors) {
+    return (
+      <div className="min-h-screen pt-16" style={{ backgroundColor: '#1A1A1A' }}>
+        {/* Subtle gradient navigation area */}
+        <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-black/40 to-transparent pointer-events-none" />
+        
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Header */}
+          <div className="flex items-center mb-8">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setShowAmbassadors(false);
+                setPaymentMethod('');
+              }}
+              className="text-gray-400 hover:text-primary hover:bg-transparent transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              {language === 'en' ? 'Back to Purchase' : 'Retour à l\'Achat'}
+            </Button>
+            <h1 className="text-3xl font-heading font-bold ml-4" style={{ color: '#E21836' }}>
+              {t[language].selectAmbassador}
+            </h1>
+          </div>
+
+          {/* Instructions */}
+          <div 
+            className="mb-6 rounded-lg p-6 border"
+            style={{ 
+              backgroundColor: '#1F1F1F',
+              borderColor: '#2A2A2A'
+            }}
+          >
+            <p className="text-gray-400 text-center text-sm">
+              {t[language].ambassadorInstructions}
+            </p>
+          </div>
+
+          {/* Filters */}
+          {ambassadors.length > 0 && (
+            <div 
+              className="mb-6 rounded-lg p-4 border flex flex-wrap gap-4 items-end"
+              style={{ 
+                backgroundColor: '#1F1F1F',
+                borderColor: '#2A2A2A'
+              }}
+            >
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-sm mb-2" style={{ color: '#B0B0B0' }}>
+                  {language === 'en' ? 'Filter by City' : 'Filtrer par Ville'}
+                </label>
+                <Select value={filterCity} onValueChange={setFilterCity}>
+                  <SelectTrigger 
+                    className="w-full focus:ring-[#E21836] focus:ring-2"
+                    style={{ 
+                      backgroundColor: '#252525',
+                      borderColor: filterCity ? '#E21836' : '#2A2A2A',
+                      color: filterCity ? '#E21836' : '#B0B0B0'
+                    }}
+                  >
+                    <SelectValue placeholder={language === 'en' ? 'All Cities' : 'Toutes les Villes'} />
+                  </SelectTrigger>
+                  <SelectContent style={{ backgroundColor: '#1F1F1F', borderColor: '#2A2A2A' }}>
+                    {[...new Set(ambassadors.map(a => a.city).filter(Boolean))].sort().map((city) => (
+                      <SelectItem 
+                        key={city} 
+                        value={city}
+                        className="focus:bg-[#E21836]/20 focus:text-[#E21836] data-[highlighted]:bg-[#E21836]/20 data-[highlighted]:text-[#E21836]"
+                        style={{ color: '#B0B0B0' }}
+                      >
+                        {city}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-sm mb-2" style={{ color: '#B0B0B0' }}>
+                  {language === 'en' ? 'Filter by Ville' : 'Filtrer par Quartier'}
+                </label>
+                <Select 
+                  value={filterVille} 
+                  onValueChange={setFilterVille}
+                  disabled={!filterCity}
+                >
+                  <SelectTrigger 
+                    className="w-full focus:ring-[#E21836] focus:ring-2"
+                    style={{ 
+                      backgroundColor: '#252525',
+                      borderColor: filterVille ? '#E21836' : '#2A2A2A',
+                      color: filterVille ? '#E21836' : '#B0B0B0',
+                      opacity: !filterCity ? 0.5 : 1
+                    }}
+                  >
+                    <SelectValue placeholder={language === 'en' ? 'All Villes' : 'Tous les Quartiers'} />
+                  </SelectTrigger>
+                  <SelectContent style={{ backgroundColor: '#1F1F1F', borderColor: '#2A2A2A' }}>
+                    {filterCity && [...new Set(ambassadors.filter(a => a.city === filterCity).map(a => a.ville).filter(Boolean))].sort().map((ville) => (
+                      <SelectItem 
+                        key={ville} 
+                        value={ville}
+                        className="focus:bg-[#E21836]/20 focus:text-[#E21836] data-[highlighted]:bg-[#E21836]/20 data-[highlighted]:text-[#E21836]"
+                        style={{ color: '#B0B0B0' }}
+                      >
+                        {ville}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {(filterCity || filterVille) && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setFilterCity('');
+                    setFilterVille('');
+                  }}
+                  className="text-sm transition-colors"
+                  style={{ 
+                    color: '#B0B0B0',
+                    backgroundColor: 'transparent',
+                    borderColor: '#2A2A2A'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#E21836';
+                    e.currentTarget.style.borderColor = '#E21836';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '#B0B0B0';
+                    e.currentTarget.style.borderColor = '#2A2A2A';
+                  }}
+                >
+                  {language === 'en' ? 'Clear Filters' : 'Effacer les Filtres'}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Ambassadors List */}
+          {loadingAmbassadors ? (
+            <div className="flex justify-center items-center py-12">
+              <div className="text-gray-400">
+                {language === 'en' ? 'Loading ambassadors...' : 'Chargement des ambassadeurs...'}
+              </div>
+            </div>
+          ) : ambassadors.length === 0 ? (
+            <div 
+              className="rounded-lg p-8 text-center border"
+              style={{ 
+                backgroundColor: '#1F1F1F',
+                borderColor: '#2A2A2A'
+              }}
+            >
+              <Users className="w-16 h-16 mx-auto mb-4" style={{ color: '#4A4A4A' }} />
+              <p className="text-gray-400">
+                {language === 'en' 
+                  ? 'No ambassadors available in your area at the moment.'
+                  : 'Aucun ambassadeur disponible dans votre région pour le moment.'}
+              </p>
+            </div>
+          ) : (() => {
+            // Filter ambassadors based on selected filters
+            const filteredAmbassadors = ambassadors.filter((ambassador) => {
+              const matchesCity = !filterCity || ambassador.city === filterCity;
+              const matchesVille = !filterVille || ambassador.ville === filterVille;
+              return matchesCity && matchesVille;
+            });
+
+            return filteredAmbassadors.length === 0 ? (
+              <div 
+                className="rounded-lg p-8 text-center border"
+                style={{ 
+                  backgroundColor: '#1F1F1F',
+                  borderColor: '#2A2A2A'
+                }}
+              >
+                <Users className="w-16 h-16 mx-auto mb-4" style={{ color: '#4A4A4A' }} />
+                <p className="text-gray-400">
+                  {language === 'en' 
+                    ? 'No ambassadors found with the selected filters.'
+                    : 'Aucun ambassadeur trouvé avec les filtres sélectionnés.'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredAmbassadors.map((ambassador) => (
+                <div
+                  key={ambassador.id}
+                  className="rounded-lg p-6 border transition-all duration-300"
+                  style={{ 
+                    backgroundColor: '#1F1F1F',
+                    borderColor: '#2A2A2A'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#3A3A3A';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#2A2A2A';
+                  }}
+                >
+                  <div className="space-y-3">
+                    {/* Name - Red accent */}
+                    <div>
+                      <h3 className="text-xl font-bold" style={{ color: '#E21836' }}>
+                        {ambassador.full_name}
+                      </h3>
+                    </div>
+
+                    {/* Location Information - Soft light-gray */}
+                    <div className="space-y-2">
+                      {/* City */}
+                      {ambassador.city && (
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4" style={{ color: '#6B6B6B' }} />
+                          <span className="text-sm" style={{ color: '#B0B0B0' }}>
+                            {ambassador.city}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Ville */}
+                      {ambassador.ville && (
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4" style={{ color: '#6B6B6B' }} />
+                          <span className="text-sm" style={{ color: '#B0B0B0' }}>
+                            {ambassador.ville}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Contact Information */}
+                    <div className="space-y-2 pt-3 border-t" style={{ borderColor: '#2A2A2A' }}>
+                      {/* Phone - Red accent */}
+                      <div className="flex items-center gap-2">
+                        <Phone 
+                          className="w-4 h-4 transition-colors" 
+                          style={{ color: '#6B6B6B' }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#E21836'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#6B6B6B'}
+                        />
+                        <a 
+                          href={`tel:+216${ambassador.phone}`}
+                          className="text-sm transition-colors"
+                          style={{ color: '#E21836' }}
+                          onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                          onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+                        >
+                          +216 {ambassador.phone}
+                        </a>
+                      </div>
+
+                      {/* Instagram/Social Link */}
+                      {ambassador.social_link && (
+                        <div className="flex items-center gap-2">
+                          <Instagram 
+                            className="w-4 h-4 transition-colors" 
+                            style={{ color: '#6B6B6B' }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = '#E21836'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = '#6B6B6B'}
+                          />
+                          <a 
+                            href={ambassador.social_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm transition-colors"
+                            style={{ color: '#B0B0B0' }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = '#E21836';
+                              e.currentTarget.style.textDecoration = 'underline';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = '#B0B0B0';
+                              e.currentTarget.style.textDecoration = 'none';
+                            }}
+                          >
+                            {ambassador.social_link.replace('https://www.instagram.com/', '').replace('https://instagram.com/', '').replace('/', '')}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            );
+          })()}
+        </div>
       </div>
     );
   }
@@ -559,8 +909,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   }
 
   const totalPrice = calculateTotal();
-  const hasSelectedPasses = Object.keys(selectedPasses).length > 0 && 
-                            Object.values(selectedPasses).some(qty => qty > 0);
+  const hasSelectedPasses = Object.values(selectedPasses).some(qty => qty > 0);
 
   return (
     <div className="min-h-screen bg-gradient-dark pt-16">
@@ -570,7 +919,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           <Button
             variant="ghost"
             onClick={() => navigate('/events')}
-            className="text-white hover:text-primary"
+            className="text-white hover:text-primary hover:bg-transparent"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             {t[language].backToEvents}
@@ -596,9 +945,19 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       className="w-full h-48 object-cover rounded-lg"
                     />
                   )}
-                  <div>
-                    <h3 className="text-xl font-bold text-primary mb-2">{event.name}</h3>
-                    <p className="text-muted-foreground text-sm mb-4">{event.description}</p>
+                  <div className="mb-4">
+                    <h3 className="text-xl font-bold text-primary mb-3">{event.name}</h3>
+                    {event.description && (
+                      <div className="mb-4">
+                        <ExpandableText
+                          text={event.description}
+                          maxLength={150}
+                          className="text-foreground text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words"
+                          showMoreText={language === 'en' ? 'Show more' : 'Voir plus'}
+                          showLessText={language === 'en' ? 'Show less' : 'Voir moins'}
+                        />
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center">
@@ -622,181 +981,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
             {/* Main Form */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Pass Selection */}
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle className="text-gradient-neon">{t[language].passSelection}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Standard Pass */}
-                    {event.standard_price && (
-                      <div className="border rounded-lg p-4 space-y-4">
-                        <div>
-                          <h3 className="text-lg font-semibold">{t[language].standardPass}</h3>
-                          <p className="text-2xl font-bold text-primary">{event.standard_price} TND</p>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label>{t[language].quantity}</Label>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => updatePassQuantity('standard', (selectedPasses.standard || 0) - 1)}
-                            >
-                              -
-                            </Button>
-                            <span className="w-12 text-center font-semibold">
-                              {selectedPasses.standard || 0}
-                            </span>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => updatePassQuantity('standard', (selectedPasses.standard || 0) + 1)}
-                            >
-                              +
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* VIP Pass */}
-                    {event.vip_price && event.vip_price > 0 && (
-                      <div className="border rounded-lg p-4 space-y-4">
-                        <div>
-                          <h3 className="text-lg font-semibold">{t[language].vipPass}</h3>
-                          <p className="text-2xl font-bold text-primary">{event.vip_price} TND</p>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Label>{t[language].quantity}</Label>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => updatePassQuantity('vip', (selectedPasses.vip || 0) - 1)}
-                            >
-                              -
-                            </Button>
-                            <span className="w-12 text-center font-semibold">
-                              {selectedPasses.vip || 0}
-                            </span>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => updatePassQuantity('vip', (selectedPasses.vip || 0) + 1)}
-                            >
-                              +
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {validationErrors.passes && (
-                    <p className="text-red-500 text-sm mt-2">{validationErrors.passes}</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Customer Information */}
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle className="text-gradient-neon">{t[language].customerInfo}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="fullName">{t[language].fullName} *</Label>
-                      <Input
-                        id="fullName"
-                        value={customerInfo.fullName}
-                        onChange={(e) => setCustomerInfo({ ...customerInfo, fullName: e.target.value })}
-                        className={validationErrors.fullName ? 'border-red-500' : ''}
-                        required
-                      />
-                      {validationErrors.fullName && (
-                        <p className="text-red-500 text-xs mt-1">{validationErrors.fullName}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="phone">{t[language].phone} *</Label>
-                      <Input
-                        id="phone"
-                        type="tel"
-                        value={customerInfo.phone}
-                        onChange={(e) => setCustomerInfo({ ...customerInfo, phone: e.target.value.replace(/\D/g, '') })}
-                        maxLength={8}
-                        className={validationErrors.phone ? 'border-red-500' : ''}
-                        required
-                      />
-                      {validationErrors.phone && (
-                        <p className="text-red-500 text-xs mt-1">{validationErrors.phone}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="email">{t[language].email} *</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={customerInfo.email}
-                        onChange={(e) => setCustomerInfo({ ...customerInfo, email: e.target.value })}
-                        className={validationErrors.email ? 'border-red-500' : ''}
-                        required
-                      />
-                      {validationErrors.email && (
-                        <p className="text-red-500 text-xs mt-1">{validationErrors.email}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="city">{t[language].city} *</Label>
-                      <Select
-                        value={customerInfo.city}
-                        onValueChange={(value) => setCustomerInfo({ ...customerInfo, city: value, ville: '' })}
-                      >
-                        <SelectTrigger className={validationErrors.city ? 'border-red-500' : ''}>
-                          <SelectValue placeholder={language === 'en' ? "Select city" : "Sélectionner une ville"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CITIES.map(city => (
-                            <SelectItem key={city} value={city}>{city}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {validationErrors.city && (
-                        <p className="text-red-500 text-xs mt-1">{validationErrors.city}</p>
-                      )}
-                    </div>
-                    {customerInfo.city === 'Sousse' && (
-                      <div className="md:col-span-2">
-                        <Label htmlFor="ville">{t[language].ville} *</Label>
-                        <Select
-                          value={customerInfo.ville}
-                          onValueChange={(value) => setCustomerInfo({ ...customerInfo, ville: value })}
-                        >
-                          <SelectTrigger className={validationErrors.ville ? 'border-red-500' : ''}>
-                            <SelectValue placeholder={language === 'en' ? "Select ville" : "Sélectionner un quartier"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {SOUSSE_VILLES.map(ville => (
-                              <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {validationErrors.ville && (
-                          <p className="text-red-500 text-xs mt-1">{validationErrors.ville}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Payment Method */}
+              {/* Payment Method - Show First */}
               <Card className="glass">
                 <CardHeader>
                   <CardTitle className="text-gradient-neon">{t[language].payment}</CardTitle>
@@ -821,29 +1006,22 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                           </p>
                         </div>
                       </div>
-                      <div className={`flex items-start space-x-3 p-4 border rounded-lg ${
-                        customerInfo.city !== 'Sousse' ? 'opacity-50' : ''
-                      }`}>
+                      <div className="flex items-start space-x-3 p-4 border rounded-lg">
                         <RadioGroupItem 
                           value="cod" 
                           id="cod" 
                           className="mt-1"
-                          disabled={customerInfo.city !== 'Sousse'}
                         />
                         <div className="flex-1">
                           <Label htmlFor="cod" className="flex items-center cursor-pointer">
                             <Wallet className="w-5 h-5 mr-2" />
                             <span className="font-semibold">{t[language].codPayment}</span>
-                            {customerInfo.city === 'Sousse' && (
-                              <Badge variant="secondary" className="ml-2">{t[language].codAvailable}</Badge>
-                            )}
+                            <Badge variant="secondary" className="ml-2">{t[language].codAvailable}</Badge>
                           </Label>
                           <p className="text-sm text-muted-foreground mt-1">
-                            {customerInfo.city === 'Sousse'
-                              ? (language === 'en' 
-                                  ? 'Pay when you receive your passes'
-                                  : 'Payez à la réception de vos passes')
-                              : t[language].codNotAvailable}
+                            {language === 'en' 
+                              ? 'Contact an ambassador directly to place your order'
+                              : 'Contactez un ambassadeur directement pour passer votre commande'}
                           </p>
                         </div>
                       </div>
@@ -855,8 +1033,176 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                 </CardContent>
               </Card>
 
-              {/* Order Summary */}
-              {hasSelectedPasses && (
+              {/* Pass Selection - Only for Online Payments */}
+              {paymentMethod === 'online' && (
+              <Card className="glass">
+                <CardHeader>
+                  <CardTitle className="text-gradient-neon">{t[language].passSelection}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {event.passes && event.passes.length > 0 ? (
+                    <div className={`${event.passes.length === 1 ? 'flex justify-center' : 'grid grid-cols-1 md:grid-cols-2'} gap-4`}>
+                      {event.passes.map((pass) => {
+                        const quantity = selectedPasses[pass.id] || 0;
+                        return (
+                          <div 
+                            key={pass.id}
+                            className={`border rounded-lg p-4 space-y-4 ${
+                              event.passes.length === 1 ? 'w-full max-w-md' : ''
+                            }`}
+                          >
+                            <div>
+                              <h3 className="text-lg font-semibold mb-1">{pass.name}</h3>
+                              <p className="text-2xl font-bold text-primary">{pass.price} TND</p>
+                              {pass.description && (
+                                <p className="text-sm text-muted-foreground mt-1">{pass.description}</p>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Label>{t[language].quantity}</Label>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => updatePassQuantity(pass.id, quantity - 1)}
+                                  className="hover:bg-muted hover:text-foreground hover:border-border"
+                                >
+                                  -
+                                </Button>
+                                <span className="w-12 text-center font-semibold">
+                                  {quantity}
+                                </span>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => updatePassQuantity(pass.id, quantity + 1)}
+                                  className="hover:bg-muted hover:text-foreground hover:border-border"
+                                >
+                                  +
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      {language === 'en' ? 'No passes available for this event' : 'Aucun pass disponible pour cet événement'}
+                    </div>
+                  )}
+                  {validationErrors.passes && (
+                    <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                      <p className="text-red-500 text-sm font-medium">{validationErrors.passes}</p>
+                    </div>
+                  )}
+                  {!hasSelectedPasses && event.passes && event.passes.length > 0 && !validationErrors.passes && (
+                    <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                      <p className="text-amber-500 text-sm">
+                        {language === 'en' ? 'Please select at least one pass to continue' : 'Veuillez sélectionner au moins un pass pour continuer'}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              )}
+
+              {/* Customer Information - Only for Online Payments */}
+              {paymentMethod === 'online' && (
+                <Card className="glass">
+                  <CardHeader>
+                    <CardTitle className="text-gradient-neon">{t[language].customerInfo}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="fullName">{t[language].fullName} *</Label>
+                        <Input
+                          id="fullName"
+                          value={customerInfo.fullName}
+                          onChange={(e) => setCustomerInfo({ ...customerInfo, fullName: e.target.value })}
+                          className={validationErrors.fullName ? 'border-red-500' : ''}
+                          required
+                        />
+                        {validationErrors.fullName && (
+                          <p className="text-red-500 text-xs mt-1">{validationErrors.fullName}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="phone">{t[language].phone} *</Label>
+                        <Input
+                          id="phone"
+                          type="tel"
+                          value={customerInfo.phone}
+                          onChange={(e) => setCustomerInfo({ ...customerInfo, phone: e.target.value.replace(/\D/g, '') })}
+                          maxLength={8}
+                          className={validationErrors.phone ? 'border-red-500' : ''}
+                          required
+                        />
+                        {validationErrors.phone && (
+                          <p className="text-red-500 text-xs mt-1">{validationErrors.phone}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="email">{t[language].email} *</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          value={customerInfo.email}
+                          onChange={(e) => setCustomerInfo({ ...customerInfo, email: e.target.value })}
+                          className={validationErrors.email ? 'border-red-500' : ''}
+                          required
+                        />
+                        {validationErrors.email && (
+                          <p className="text-red-500 text-xs mt-1">{validationErrors.email}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="city">{t[language].city} *</Label>
+                        <Select
+                          value={customerInfo.city}
+                          onValueChange={(value) => setCustomerInfo({ ...customerInfo, city: value, ville: '' })}
+                        >
+                          <SelectTrigger className={validationErrors.city ? 'border-red-500' : ''}>
+                            <SelectValue placeholder={language === 'en' ? "Select city" : "Sélectionner une ville"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CITIES.map(city => (
+                              <SelectItem key={city} value={city}>{city}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {validationErrors.city && (
+                          <p className="text-red-500 text-xs mt-1">{validationErrors.city}</p>
+                        )}
+                      </div>
+                      {customerInfo.city === 'Sousse' && (
+                        <div className="md:col-span-2">
+                          <Label htmlFor="ville">{t[language].ville}</Label>
+                          <Select
+                            value={customerInfo.ville}
+                            onValueChange={(value) => setCustomerInfo({ ...customerInfo, ville: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={language === 'en' ? "Select ville (optional)" : "Sélectionner un quartier (optionnel)"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SOUSSE_VILLES.map(ville => (
+                                <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Order Summary - Only for Online Payments */}
+              {paymentMethod === 'online' && hasSelectedPasses && (
                 <Card className="glass border-2 border-primary/30">
                   <CardHeader>
                     <CardTitle className="text-gradient-neon">{t[language].summary}</CardTitle>
@@ -866,7 +1212,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       {getSelectedPassesArray().map((pass, index) => (
                         <div key={index} className="flex justify-between">
                           <span>
-                            {pass.passType === 'standard' ? t[language].standardPass : t[language].vipPass} 
+                            {pass.passName} 
                             {' x '}{pass.quantity}
                           </span>
                           <span className="font-semibold">{pass.price * pass.quantity} TND</span>
@@ -906,10 +1252,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       )}
                     </div>
                     
+                    {/* Submit Button */}
                     <Button
                       type="submit"
-                      disabled={processing}
-                      className="w-full btn-gradient"
+                      disabled={processing || !hasSelectedPasses}
+                      className="w-full btn-gradient disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={!hasSelectedPasses ? (language === 'en' ? 'Please select at least one pass' : 'Veuillez sélectionner au moins un pass') : ''}
                     >
                       {processing ? (
                         <>
@@ -918,17 +1266,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                         </>
                       ) : (
                         <>
-                          {paymentMethod === 'online' ? (
-                            <>
-                              <CreditCard className="w-4 h-4 mr-2" />
-                              {t[language].proceedToPayment}
-                            </>
-                          ) : (
-                            <>
-                              <ShoppingCart className="w-4 h-4 mr-2" />
-                              {t[language].submitOrder}
-                            </>
-                          )}
+                          <CreditCard className="w-4 h-4 mr-2" />
+                          {t[language].proceedToPayment}
                         </>
                       )}
                     </Button>

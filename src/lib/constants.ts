@@ -29,3 +29,9 @@ export const SOUSSE_VILLES = [
 export type City = typeof CITIES[number];
 export type SousseVille = typeof SOUSSE_VILLES[number];
 
+// Primary slogan
+export const PRIMARY_SLOGAN = {
+  en: "We create memories",
+  fr: "Nous créons des souvenirs"
+} as const;
+

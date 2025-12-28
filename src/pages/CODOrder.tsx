@@ -12,8 +12,6 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import { CITIES, SOUSSE_VILLES } from '@/lib/constants';
-import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
-import { sanitizeUrl } from '@/lib/url-validator';
 
 interface CODOrderProps {
   language: 'en' | 'fr';
@@ -162,45 +160,13 @@ const CODOrder = ({ language }: CODOrderProps) => {
           quantity: formData.quantity,
           total_price: totalPrice,
           payment_method: 'cod', // Use payment_method instead of payment_type
-          status: 'PENDING_AMBASSADOR' // Database uses uppercase status
+          status: 'PENDING_ADMIN_APPROVAL' // COD orders always start as PENDING_ADMIN_APPROVAL
         })
         .select()
         .single();
 
       if (orderError) throw orderError;
 
-      // Assign order using round robin
-      if (formData.ville || formData.city === 'Sousse') {
-        const ville = formData.ville || formData.city;
-        try {
-          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
-          const apiUrl = buildFullApiUrl(API_ROUTES.ASSIGN_ORDER, apiBase);
-          
-          if (!apiUrl) {
-            throw new Error('Invalid API URL configuration');
-          }
-          
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              order_id: order.id,
-              ville: ville
-            })
-          });
-
-          const result = await response.json();
-          if (!result.success) {
-            console.error('Failed to assign order:', result.error);
-            // Order is still created, just not assigned yet
-          }
-        } catch (error) {
-          console.error('Error assigning order:', error);
-          // Order is still created, just not assigned yet
-        }
-      }
 
       toast({
         title: t.success,

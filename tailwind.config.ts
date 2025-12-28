@@ -81,6 +81,16 @@ export default {
 				josefin: ['AndiamoFont', 'sans-serif'],
 				saira: ['AndiamoFont', 'sans-serif'],
 			},
+			fontWeight: {
+				thin: '200',
+				light: '300',
+				normal: '300',
+				medium: '400',
+				semibold: '500',
+				bold: '600',
+				extrabold: '700',
+				black: '800',
+			},
 			borderRadius: {
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',

@@ -13,7 +13,7 @@ interface EventPass {
   name: string;
   price: number;
   description: string;
-  is_default: boolean;
+  is_primary: boolean;
 }
 
 interface Event {
@@ -27,9 +27,7 @@ interface Event {
   instagram_link?: string; // Changed from whatsapp_link to instagram_link
   whatsapp_link?: string; // Keep for backward compatibility with database
   featured: boolean;
-  standard_price?: number;
-  vip_price?: number;
-  passes?: EventPass[]; // Array of passes for this event
+  passes?: EventPass[]; // Array of passes for this event - REQUIRED for purchasing
   event_type?: 'upcoming' | 'gallery';
   gallery_images?: string[];
   gallery_videos?: string[];
@@ -181,7 +179,8 @@ const Events = ({ language }: EventsProps) => {
             .from('event_passes')
             .select('*')
             .eq('event_id', e.id)
-            .order('is_default', { ascending: false })
+            .order('is_primary', { ascending: false })
+            .order('price', { ascending: true })
             .order('created_at', { ascending: true });
 
           // Handle 404 errors gracefully (table might not exist yet)
@@ -189,17 +188,19 @@ const Events = ({ language }: EventsProps) => {
             console.error(`Error fetching passes for event ${e.id}:`, passesError);
           }
 
-          // Extract standard_price and vip_price from passes for backward compatibility
-          const passes = passesData || [];
-          const standardPass = passes.find((p: any) => p.is_default || p.name === 'Standard');
-          const vipPass = passes.find((p: any) => p.name === 'VIP' || p.name === 'Vip');
+          // Map passes to EventPass format
+          const passes = (passesData || []).map((p: any) => ({
+            id: p.id,
+            name: p.name || '',
+            price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
+            description: p.description || '',
+            is_primary: p.is_primary || false
+          }));
           
           return {
             ...e,
             instagram_link: e.whatsapp_link, // Map database field to UI field
-            passes: passes,
-            standard_price: standardPass?.price || e.standard_price || 0,
-            vip_price: vipPass?.price || e.vip_price || 0
+            passes: passes
           };
         })
       );
@@ -590,7 +591,7 @@ const Events = ({ language }: EventsProps) => {
                 return (
                 <Card 
                   key={event.id} 
-                  className={`upcoming-event-card glass hover-lift overflow-hidden cursor-pointer w-full max-w-md transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
+                  className={`upcoming-event-card glass group overflow-hidden cursor-pointer w-full max-w-md transition-all duration-300 ease-out hover:shadow-2xl hover:shadow-primary/20 ${
                     scrollAnimatedEvents.has(event.id) 
                       ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
                       : 'opacity-0 translate-y-8'
@@ -601,31 +602,43 @@ const Events = ({ language }: EventsProps) => {
                     navigate(`/event/${eventUrl}`);
                   }}
                 >
-                  <div className="relative">
-                    <img
-                      src={event.poster_url || "/api/placeholder/400/300"}
-                      alt={event.name}
-                      className="w-full h-48 object-cover transform transition-transform duration-500 hover:scale-110"
-                    />
-                    {event.featured && (
-                      <Badge className="absolute top-4 left-4 bg-gradient-primary animate-in slide-in-from-top-4 duration-500">
-                        {content[language].featured}
-                      </Badge>
-                    )}
-                    <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center">
-                      <div className="opacity-0 hover:opacity-100 transition-opacity text-white text-center animate-in zoom-in-95 duration-300">
-                        <p className="text-sm font-semibold">{content[language].viewDetails}</p>
+                  <div className="relative overflow-hidden">
+                    {/* Image Layer - No transforms that affect layout */}
+                    <div className="relative w-full h-48">
+                      <img
+                        src={event.poster_url || "/api/placeholder/400/300"}
+                        alt={event.name}
+                        className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-90"
+                      />
+                      
+                      {/* Overlay Layer - Smooth fade in, not too strong */}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-opacity duration-300 pointer-events-none"></div>
+                      
+                      {/* View Details Button - Independent overlay layer */}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform translate-y-2 group-hover:translate-y-0">
+                          <div className="bg-primary/95 backdrop-blur-sm rounded-lg px-4 py-2 border border-primary/50 shadow-lg">
+                            <p className="text-sm font-semibold text-white">{content[language].viewDetails}</p>
+                          </div>
+                        </div>
                       </div>
+                      
+                      {/* Featured Badge - Always visible */}
+                      {event.featured && (
+                        <Badge className="absolute top-4 left-4 bg-gradient-primary animate-in slide-in-from-top-4 duration-500 z-20">
+                          {content[language].featured}
+                        </Badge>
+                      )}
                     </div>
                   </div>
-                  <CardHeader className="p-4">
-                    <h3 className="text-xl font-bold text-primary line-clamp-2 animate-in slide-in-from-left-4 duration-500 delay-200">{event.name}</h3>
-                    <div className="space-y-2 text-sm text-muted-foreground">
-                      <div className="flex items-center animate-in slide-in-from-left-4 duration-500 delay-300">
+                  <CardHeader className="p-4 relative z-0">
+                    <h3 className="text-xl font-bold text-primary group-hover:text-primary transition-colors duration-300 line-clamp-2 animate-in slide-in-from-left-4 duration-500 delay-200">{event.name}</h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center text-muted-foreground group-hover:text-foreground transition-colors duration-300 animate-in slide-in-from-left-4 duration-500 delay-300">
                         <Calendar className="w-4 h-4 mr-2 animate-pulse" />
                         <span>{formatDate(event.date)}</span>
                       </div>
-                      <div className="flex items-center animate-in slide-in-from-left-4 duration-500 delay-400">
+                      <div className="flex items-center text-muted-foreground group-hover:text-foreground transition-colors duration-300 animate-in slide-in-from-left-4 duration-500 delay-400">
                         <MapPin className="w-4 h-4 mr-2 animate-pulse" />
                         <span>{event.venue}, {event.city}</span>
                       </div>
@@ -635,33 +648,13 @@ const Events = ({ language }: EventsProps) => {
                           {event.passes.map((pass, idx) => (
                             <span 
                               key={idx}
-                              className={`font-semibold ${
-                                pass.is_default || pass.name === 'Standard' 
-                                  ? 'text-green-500' 
-                                  : pass.name === 'VIP' || pass.name === 'Vip'
-                                  ? 'text-blue-500'
-                                  : 'text-primary'
-                              }`}
+                              className="font-semibold text-foreground"
                             >
                               {pass.name}: {pass.price} TND
                             </span>
                           ))}
                         </div>
-                      ) : (event.standard_price || (event.vip_price && Number(event.vip_price) > 0)) && (
-                        <div className="mb-2 animate-in slide-in-from-left-4 duration-500 delay-500">
-                          <div className="text-xs font-semibold text-primary/70 mb-1.5 uppercase tracking-wide">
-                            {language === 'en' ? 'Tickets' : 'Billets'}
-                          </div>
-                          <div className="flex items-center text-sm text-muted-foreground space-x-4 pl-2 border-l-2 border-primary/20">
-                            {event.standard_price && (
-                              <span className="text-green-500 font-semibold">Standard: {event.standard_price} TND</span>
-                            )}
-                            {event.vip_price && Number(event.vip_price) > 0 && (
-                              <span className="text-blue-500 font-semibold">VIP: {event.vip_price} TND</span>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                      ) : null}
                     </div>
                   </CardHeader>
                 </Card>
@@ -716,18 +709,21 @@ const Events = ({ language }: EventsProps) => {
                   >
                     {/* Premium Card with Glass Effect */}
                     <div className="relative h-[420px] md:h-[480px] bg-gradient-to-br from-card/40 via-card/30 to-card/20 backdrop-blur-xl border border-primary/20 rounded-2xl overflow-hidden group-hover:border-primary/40 transition-all duration-500">
-                      {/* Poster Image with Parallax Effect */}
+                      {/* Poster Image Layer */}
                       <div className="relative h-3/4 overflow-hidden">
+                        {/* Gradient overlay for text readability - always visible */}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-10"></div>
+                        
+                        {/* Image - only opacity changes, no scale transforms */}
                         <img
                           src={event.poster_url || "/api/placeholder/400/400"}
                           alt={event.name}
-                          className="w-full h-full object-cover transform transition-all duration-700 group-hover:scale-110 group-hover:brightness-110"
+                          className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-90"
                           loading="lazy"
                         />
                         
-                        {/* Neon Glow Overlay on Hover */}
-                        <div className="absolute inset-0 bg-gradient-to-br from-primary/0 via-accent/0 to-primary/0 group-hover:from-primary/20 group-hover:via-accent/10 group-hover:to-primary/20 transition-all duration-500 z-20"></div>
+                        {/* Hover Overlay - Smooth fade, not too strong */}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-opacity duration-300 z-[15] pointer-events-none"></div>
                         
                         {/* Media Count Badge */}
                         {mediaCount > 0 && (
@@ -744,41 +740,37 @@ const Events = ({ language }: EventsProps) => {
                           </Badge>
                         )}
                         
-                        {/* Hover Overlay with View Details */}
-                        <div className="absolute inset-0 flex items-center justify-center z-30 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                          <div className="bg-black/60 backdrop-blur-md rounded-full px-6 py-3 border border-primary/50 transform scale-95 group-hover:scale-100 transition-transform duration-300">
-                            <p className="text-sm font-semibold text-white">{content[language].viewDetails}</p>
+                        {/* View Details Button - Independent overlay layer */}
+                        <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform translate-y-2 group-hover:translate-y-0">
+                            <div className="bg-primary/95 backdrop-blur-sm rounded-lg px-6 py-3 border border-primary/50 shadow-lg">
+                              <p className="text-sm font-semibold text-white">{content[language].viewDetails}</p>
+                            </div>
                           </div>
                         </div>
                       </div>
                       
-                      {/* Card Content */}
+                      {/* Card Content - Always readable with explicit colors */}
                       <div className="absolute bottom-0 left-0 right-0 p-5 z-20 bg-gradient-to-t from-black/90 via-black/70 to-transparent">
-                        <h3 className="text-lg md:text-xl font-bold text-white mb-2 line-clamp-2 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent transition-all duration-300">
+                        <h3 className="text-lg md:text-xl font-bold text-white mb-2 line-clamp-2 transition-colors duration-300 group-hover:text-primary">
                           {event.name}
                         </h3>
                         
                         <div className="space-y-2">
-                          <div className="flex items-center text-sm text-white/80">
+                          <div className="flex items-center text-sm text-white/90 group-hover:text-white transition-colors duration-300">
                             <Calendar className="w-4 h-4 mr-2 text-primary" />
                             <span className="truncate">{formatDate(event.date)}</span>
                           </div>
                           
-                          <div className="flex items-center text-sm text-white/80">
+                          <div className="flex items-center text-sm text-white/90 group-hover:text-white transition-colors duration-300">
                             <MapPin className="w-4 h-4 mr-2 text-accent" />
                             <span className="truncate">{event.city}</span>
                           </div>
                         </div>
                       </div>
                       
-                      {/* Neon Border Glow on Hover */}
-                      <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
-                        <div className="absolute inset-0 rounded-2xl border-2 border-transparent bg-gradient-to-r from-primary/50 via-accent/50 to-primary/50 bg-clip-border blur-sm"></div>
-                        <div className="absolute inset-[2px] rounded-2xl bg-gradient-to-br from-card/40 via-card/30 to-card/20 backdrop-blur-xl"></div>
-                      </div>
-                      
-                      {/* Shadow Glow Effect */}
-                      <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10"></div>
+                      {/* Shadow Glow Effect - Subtle, no layout impact */}
+                      <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none -z-10"></div>
                     </div>
                   </div>
                 );
@@ -1062,7 +1054,7 @@ const Events = ({ language }: EventsProps) => {
                   {activeTab === 'details' ? (
                     <>
                       {/* Pricing Section - Show all passes */}
-                      {((selectedEvent.passes && selectedEvent.passes.length > 0) || selectedEvent.standard_price || selectedEvent.vip_price) && (
+                      {selectedEvent.passes && selectedEvent.passes.length > 0 && (
                         <div 
                           id="pricing-block"
                           data-content-block
@@ -1086,65 +1078,26 @@ const Events = ({ language }: EventsProps) => {
                               : 'grid-cols-1 md:grid-cols-2'
                           }`}>
                             {/* Display all passes from event_passes table */}
-                            {selectedEvent.passes && selectedEvent.passes.length > 0 ? (
-                              selectedEvent.passes.map((pass, idx) => {
-                                const isStandard = pass.is_default || pass.name === 'Standard';
-                                const isVip = pass.name === 'VIP' || pass.name === 'Vip';
-                                return (
-                                  <div 
-                                    key={idx}
-                                    className={`bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 transition-all duration-200 ${
-                                      isStandard 
-                                        ? 'hover:border-primary/40' 
-                                        : isVip
-                                        ? 'hover:border-pink-500/40'
-                                        : 'hover:border-cyan-500/40'
-                                    }`}
-                                  >
-                                    <h4 className={`font-semibold text-base md:text-lg mb-2 ${
-                                      isStandard 
-                                        ? 'text-primary' 
-                                        : isVip
-                                        ? 'text-pink-400'
-                                        : 'text-cyan-400'
-                                    }`}>
-                                      {pass.name}
-                                      {isStandard && ' (Default)'}
-                                    </h4>
-                                    <p className={`text-2xl md:text-3xl font-bold ${
-                                      isStandard 
-                                        ? 'text-gradient-to-r from-primary to-accent' 
-                                        : isVip
-                                        ? 'text-gradient-to-r from-accent to-primary'
-                                        : 'text-gradient-to-r from-accent to-primary'
-                                    }`}>
-                                      {pass.price} TND
+                            {selectedEvent.passes.map((pass, idx) => {
+                              return (
+                                <div 
+                                  key={idx}
+                                  className="bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 transition-all duration-200 hover:border-primary/40"
+                                >
+                                  <h4 className="font-semibold text-base md:text-lg mb-2 text-foreground">
+                                    {pass.name}
+                                  </h4>
+                                  <p className="text-2xl md:text-3xl font-bold text-gradient-to-r from-primary to-accent">
+                                    {pass.price} TND
+                                  </p>
+                                  {pass.description && (
+                                    <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
+                                      {pass.description}
                                     </p>
-                                    {pass.description && (
-                                      <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
-                                        {pass.description}
-                                      </p>
-                                    )}
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              /* Fallback to legacy standard_price/vip_price */
-                              <>
-                                {selectedEvent.standard_price && (
-                                  <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 hover:border-primary/40 transition-all duration-200">
-                                    <h4 className="font-semibold text-base md:text-lg mb-2 text-primary">{content[language].standard}</h4>
-                                    <p className="text-2xl md:text-3xl font-bold text-gradient-to-r from-primary to-accent">{selectedEvent.standard_price} TND</p>
-                                  </div>
-                                )}
-                                {selectedEvent.vip_price && (
-                                  <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 hover:border-pink-500/40 transition-all duration-200">
-                                    <h4 className="font-semibold text-base md:text-lg mb-2 text-pink-400">{content[language].vip}</h4>
-                                    <p className="text-2xl md:text-3xl font-bold text-gradient-to-r from-accent to-primary">{selectedEvent.vip_price} TND</p>
-                                  </div>
-                                )}
-                              </>
-                            )}
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -1160,7 +1113,7 @@ const Events = ({ language }: EventsProps) => {
                         }`}
                       >
                         <h3 className="text-lg md:text-xl font-bold text-gradient-to-r from-primary to-primary mb-4 flex items-center">
-                          <span className="w-2 h-2 bg-blue-400 rounded-full mr-3"></span>
+                          <span className="w-2 h-2 bg-primary rounded-full mr-3"></span>
                           {content[language].aboutEvent}
                         </h3>
                         <p className="text-muted-foreground text-sm md:text-base leading-relaxed">
@@ -1173,7 +1126,7 @@ const Events = ({ language }: EventsProps) => {
                         <div 
                           id="details-block"
                           data-content-block
-                          className={`bg-gradient-to-r from-green-500/5 to-blue-500/5 rounded-2xl p-4 md:p-6 border border-green-500/20 transition-all duration-700 ${
+                          className={`bg-gradient-to-r from-green-500/5 to-primary/5 rounded-2xl p-4 md:p-6 border border-green-500/20 transition-all duration-700 ${
                             contentBlocksAnimated.has('details-block')
                               ? 'opacity-100 translate-y-0'
                               : 'opacity-0 translate-y-8'

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, MapPin, ExternalLink, Camera } from 'lucide-react';
+import { Calendar, MapPin, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ExpandableText } from '@/components/ui/expandable-text';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Event {
@@ -96,13 +95,13 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                   <MapPin className="w-4 h-4 mr-1" />
                   {event.venue}, {event.city}
                 </div>
-                {(event.standard_price || (event.vip_price && Number(event.vip_price) > 0)) && (
+                {((event.standard_price && Number(event.standard_price) > 0) || (event.vip_price && Number(event.vip_price) > 0)) && (
                   <div className="mb-3">
                     <div className="text-xs font-semibold text-primary/70 mb-1.5 uppercase tracking-wide">
                       {language === 'en' ? 'Tickets' : 'Billets'}
                     </div>
                     <div className="flex flex-col text-sm text-muted-foreground pl-2 space-y-0.5 border-l-2 border-primary/20">
-                      {event.standard_price && (
+                      {event.standard_price && Number(event.standard_price) > 0 && (
                         <span>Standard: {event.standard_price} TND</span>
                       )}
                       {event.vip_price && Number(event.vip_price) > 0 && (
@@ -111,35 +110,14 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                     </div>
                   </div>
                 )}
-                <ExpandableText
-                  text={event.description}
-                  maxLength={100}
-                  className="text-muted-foreground mb-4"
-                  showMoreText={language === 'en' ? 'Show more' : 'Voir plus'}
-                  showLessText={language === 'en' ? 'Show less' : 'Voir moins'}
-                />
-                <div className="flex gap-2 items-stretch">
+                <div className="mt-4">
                   <Button
                     onClick={() => navigate(`/pass-purchase?eventId=${event.id}`)}
-                    className="btn-gradient flex-1 inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold text-white shadow-md shadow-primary/40 hover:shadow-lg hover:shadow-primary/50 hover:scale-[1.02] transition-all duration-300"
+                    className="btn-gradient w-full inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold text-white shadow-md shadow-primary/40 hover:shadow-lg hover:shadow-primary/50 hover:scale-[1.02] transition-all duration-300"
                   >
                     <ExternalLink className="w-4 h-4 mr-2" />
                     {language === 'en' ? 'Book Now' : 'Réserver'}
                   </Button>
-                  {(event.instagram_link || event.whatsapp_link) && (
-                    <a
-                      href={event.instagram_link || event.whatsapp_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold border border-pink-500/50 text-pink-500/80 hover:border-pink-500/70 hover:text-pink-500/90 hover:bg-pink-500/5 transition-all duration-300 gap-2"
-                    >
-                      <Camera className="w-4 h-4 flex-shrink-0" />
-                      <span className="flex flex-col items-start leading-tight">
-                        <span>{language === 'en' ? 'Join' : 'Rejoindre'}</span>
-                        {language === 'en' && <span className="leading-none">Event</span>}
-                      </span>
-                    </a>
-                  )}
                 </div>
               </div>
             </div>

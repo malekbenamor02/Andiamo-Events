@@ -42,13 +42,12 @@ interface Event {
   special_notes?: string;
   organizer_contact?: string;
   event_category?: string;
-  standard_price?: number;
-  vip_price?: number;
   passes?: Array<{
     id: string;
     name: string;
     price: number;
-    is_default?: boolean;
+    description?: string;
+    is_primary: boolean;
   }>;
 }
 
@@ -164,7 +163,8 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
             id,
             name,
             price,
-            is_default
+            description,
+            is_primary
           )
         `)
         .eq('event_type', 'upcoming')
@@ -193,7 +193,20 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
       }
 
       console.log('✅ Found event:', foundEvent.name);
-      setEvent(foundEvent);
+      
+      // Map passes (just for existence check, not displaying details)
+      const mappedPasses = (foundEvent.passes || []).map((p: any) => ({
+        id: p.id,
+        name: p.name || '',
+        price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
+        description: p.description || '',
+        is_primary: p.is_primary || false
+      }));
+      
+      setEvent({
+        ...foundEvent,
+        passes: mappedPasses
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (!errorMessage.includes('message channel closed') && 
@@ -385,7 +398,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
                     <ExpandableText
                       text={event.description}
                       maxLength={250}
-                      className="text-lg text-muted-foreground leading-relaxed"
+                      className="text-base md:text-lg text-foreground leading-relaxed whitespace-pre-wrap break-words"
                       showMoreText={t.showMore}
                       showLessText={t.showLess}
                     />
@@ -397,82 +410,28 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
         </section>
       )}
 
-      {/* Tickets Section */}
-      {(event.passes && event.passes.length > 0) || event.standard_price || (event.vip_price && Number(event.vip_price) > 0) ? (
+      {/* Book Tickets CTA Section */}
+      {event.passes && event.passes.length > 0 && event.event_status !== 'cancelled' ? (
         <section className="py-16 bg-gradient-dark">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-8 animate-fade-in-up">
-              <h2 className="text-3xl md:text-4xl font-bold text-gradient-neon mb-4 flex items-center justify-center gap-2">
-                <Ticket className="w-8 h-8" />
-                {t.tickets}
-              </h2>
+            <div className="text-center animate-fade-in-up">
+              <Button
+                onClick={() => navigate(`/pass-purchase?eventId=${event.id}`)}
+                className="btn-gradient transform transition-all duration-300 hover:scale-105 text-lg px-8 py-6"
+                size="lg"
+              >
+                <ExternalLink className="w-5 h-5 mr-2" />
+                {language === 'en' ? 'Book Now' : 'Réserver'}
+              </Button>
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              {event.passes && event.passes.length > 0 ? (
-                event.passes.map((pass, index) => (
-                  <Card
-                    key={pass.id}
-                    className="overflow-hidden border-primary/20 hover:border-primary/40 transition-all animate-fade-in-up p-6"
-                    style={{ animationDelay: `${0.1 + index * 0.1}s` }}
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className={`text-2xl font-bold ${
-                        pass.is_default || pass.name === 'Standard' 
-                          ? 'text-green-500' 
-                          : pass.name === 'VIP' || pass.name === 'Vip'
-                          ? 'text-blue-500'
-                          : 'text-primary'
-                      }`}>
-                        {pass.name}
-                      </h3>
-                      <Badge variant="outline" className="text-lg font-semibold">
-                        {pass.price} TND
-                      </Badge>
-                    </div>
-                    {pass.is_default && (
-                      <p className="text-sm text-muted-foreground">{language === 'en' ? 'Most Popular' : 'Le Plus Populaire'}</p>
-                    )}
-                  </Card>
-                ))
-              ) : (
-                <>
-                  {event.standard_price && (
-                    <Card className="overflow-hidden border-primary/20 hover:border-primary/40 transition-all animate-fade-in-up p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-2xl font-bold text-green-500">{t.standard}</h3>
-                        <Badge variant="outline" className="text-lg font-semibold">
-                          {event.standard_price} TND
-                        </Badge>
-                      </div>
-                    </Card>
-                  )}
-                  {event.vip_price && Number(event.vip_price) > 0 && (
-                    <Card className="overflow-hidden border-primary/20 hover:border-primary/40 transition-all animate-fade-in-up p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-2xl font-bold text-blue-500">{t.vip}</h3>
-                        <Badge variant="outline" className="text-lg font-semibold">
-                          {event.vip_price} TND
-                        </Badge>
-                      </div>
-                    </Card>
-                  )}
-                </>
-              )}
-            </div>
-
-            {event.event_status !== 'cancelled' && (
-              <div className="text-center animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
-                <Button
-                  onClick={() => navigate(`/pass-purchase?eventId=${event.id}`)}
-                  className="btn-gradient transform transition-all duration-300 hover:scale-105 text-lg px-8 py-6"
-                  size="lg"
-                >
-                  <ExternalLink className="w-5 h-5 mr-2" />
-                  {t.bookNow}
-                </Button>
-              </div>
-            )}
+          </div>
+        </section>
+      ) : event.passes && event.passes.length === 0 ? (
+        <section className="py-16 bg-gradient-dark">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <p className="text-muted-foreground text-lg">
+              {language === 'en' ? 'Tickets coming soon' : 'Billets bientôt disponibles'}
+            </p>
           </div>
         </section>
       ) : null}

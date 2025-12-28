@@ -42,11 +42,14 @@ interface Order {
   quantity: number;
   total_price: number;
   payment_method: 'cod' | 'online'; // Payment method: 'cod' or 'online'
-  status: 'PENDING_AMBASSADOR' | 'ASSIGNED' | 'AUTO_REASSIGNED' | 'ACCEPTED' | 'MANUAL_ACCEPTED' | 'MANUAL_COMPLETED' | 'CANCELLED_BY_AMBASSADOR' | 'CANCELLED_BY_ADMIN' | 'COMPLETED' | 'REFUNDED' | 'FRAUD_SUSPECT' | 'IGNORED' | 'ON_HOLD';
+  status: 'PENDING_ADMIN_APPROVAL' | 'APPROVED' | 'REJECTED' | 'COMPLETED' | 'PENDING' | 'ACCEPTED' | 'MANUAL_ACCEPTED' | 'MANUAL_COMPLETED' | 'CANCELLED_BY_AMBASSADOR' | 'CANCELLED_BY_ADMIN' | 'REFUNDED' | 'FRAUD_SUSPECT' | 'IGNORED' | 'ON_HOLD';
   cancellation_reason?: string;
+  rejection_reason?: string;
   notes?: string | any; // JSON string or parsed object containing pass breakdown
   assigned_at?: string;
   accepted_at?: string;
+  approved_at?: string;
+  rejected_at?: string;
   completed_at?: string;
   cancelled_at?: string;
   created_at: string;
@@ -79,6 +82,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   const [cancellationReason, setCancellationReason] = useState('');
   
   const [events, setEvents] = useState<any[]>([]);
+  const [eventPasses, setEventPasses] = useState<Record<string, any[]>>({}); // event_id -> passes[]
   const [manualOrderForm, setManualOrderForm] = useState({
     customer_name: '',
     phone: '',
@@ -86,9 +90,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     city: '',
     ville: '',
     event_id: '',
-    pass_type: 'standard',
-    quantity: 1,
-    total_price: 0
+    selectedPasses: [] as Array<{ passId: string; passName: string; quantity: number; price: number }>,
+    notes: ''
   });
 
   const [profileForm, setProfileForm] = useState({
@@ -266,15 +269,41 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   
   const fetchEvents = async () => {
     try {
+      // Get today's date at midnight to include all events starting today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Fetch all upcoming events - include both events with event_type='upcoming' and events without event_type (for backward compatibility)
       const { data, error } = await supabase
         .from('events')
-        .select('id, name, date, standard_price, vip_price')
-        .eq('event_type', 'upcoming')
-        .gte('date', new Date().toISOString())
+        .select('id, name, date, event_type')
+        .gte('date', today.toISOString())
         .order('date', { ascending: true });
 
       if (error) throw error;
-      setEvents(data || []);
+      
+      // Filter to only include events with event_type='upcoming' or event_type IS NULL (for backward compatibility)
+      const upcomingEvents = (data || []).filter(event => 
+        !event.event_type || event.event_type === 'upcoming'
+      );
+      
+      setEvents(upcomingEvents);
+
+      // Fetch passes for each event
+      const passesMap: Record<string, any[]> = {};
+      for (const event of upcomingEvents) {
+        const { data: passesData, error: passesError } = await supabase
+          .from('event_passes')
+          .select('*')
+          .eq('event_id', event.id)
+          .order('is_primary', { ascending: false })
+          .order('price', { ascending: true });
+
+        if (!passesError && passesData) {
+          passesMap[event.id] = passesData;
+        }
+      }
+      setEventPasses(passesMap);
     } catch (error) {
       console.error('Error fetching events:', error);
     }
@@ -283,23 +312,23 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   const fetchData = async (ambassadorId: string) => {
     setLoading(true);
     try {
-      // Fetch assigned orders (pending_ambassador, assigned, accepted, manual_accepted)
+      // Fetch assigned orders (PENDING, ACCEPTED, MANUAL_ACCEPTED for non-COD; APPROVED for COD)
       const { data: assignedData, error: assignedError } = await supabase
         .from('orders')
         .select('*')
         .eq('ambassador_id', ambassadorId)
-        .in('status', ['PENDING_AMBASSADOR', 'ASSIGNED', 'AUTO_REASSIGNED', 'ACCEPTED', 'MANUAL_ACCEPTED']) // Database uses uppercase
+        .in('status', ['PENDING', 'ACCEPTED', 'MANUAL_ACCEPTED', 'APPROVED']) // Include APPROVED for COD orders
         .order('created_at', { ascending: false });
 
       if (assignedError) throw assignedError;
       setAssignedOrders(assignedData || []);
 
-      // Fetch completed orders (both COMPLETED and MANUAL_COMPLETED)
+      // Fetch completed orders (COMPLETED status)
       const { data: completedData, error: completedError } = await supabase
         .from('orders')
         .select('*')
         .eq('ambassador_id', ambassadorId)
-        .in('status', ['COMPLETED', 'MANUAL_COMPLETED']) // Database uses uppercase
+        .in('status', ['COMPLETED', 'MANUAL_COMPLETED']) // Include MANUAL_COMPLETED for backward compatibility
         .order('completed_at', { ascending: false })
         .limit(50);
 
@@ -332,7 +361,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       const total = allOrders?.length || 0;
       
       // Use uppercase status values (database uses uppercase)
-      // Include both COMPLETED and MANUAL_COMPLETED orders
+      // Include COMPLETED orders (and MANUAL_COMPLETED for backward compatibility)
       const completed = allOrders?.filter((o: any) => 
         o.status === 'COMPLETED' || o.status === 'MANUAL_COMPLETED'
       ).length || 0;
@@ -340,9 +369,9 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         o.status === 'CANCELLED_BY_AMBASSADOR' || o.status === 'CANCELLED_BY_ADMIN'
       ).length || 0;
       
-      // Ignored orders: PENDING_AMBASSADOR or AUTO_REASSIGNED that haven't been accepted for more than 15 minutes
+      // Ignored orders: PENDING that haven't been accepted for more than 15 minutes
       const ignored = allOrders?.filter((o: any) => 
-        (o.status === 'PENDING_AMBASSADOR' || o.status === 'AUTO_REASSIGNED') && 
+        (o.status === 'PENDING') && 
         o.assigned_at &&
         new Date(o.assigned_at).getTime() < Date.now() - 15 * 60 * 1000 && // 15 minutes
         !o.accepted_at // Not yet accepted
@@ -350,7 +379,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       
       const manual = allOrders?.filter((o: any) => o.source === 'ambassador_manual').length || 0;
       
-      // Total revenue: Only count COMPLETED and MANUAL_COMPLETED orders (ambassador only earns on completed orders)
+      // Total revenue: Only count COMPLETED orders (and MANUAL_COMPLETED for backward compatibility)
       const completedOrders = allOrders?.filter((o: any) => 
         o.status === 'COMPLETED' || o.status === 'MANUAL_COMPLETED'
       ) || [];
@@ -393,6 +422,19 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       toast({
         title: t.salesDisabledTitle,
         description: t.salesDisabledMessage,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check if order is a manual order - ambassadors cannot approve their own manual orders
+    const order = assignedOrders.find(o => o.id === orderId);
+    if (order && (order.source === 'ambassador_manual' || order.status === 'PENDING_ADMIN_APPROVAL')) {
+      toast({
+        title: t.error,
+        description: language === 'en' 
+          ? 'Manual orders require admin approval. You cannot approve your own orders.'
+          : 'Les commandes manuelles nécessitent l\'approbation de l\'administrateur. Vous ne pouvez pas approuver vos propres commandes.',
         variant: "destructive"
       });
       return;
@@ -454,88 +496,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     }
 
     try {
-      // If this is a COD order (platform_cod) that hasn't been accepted yet, reassign it
-      const shouldReassign = selectedOrder.source === 'platform_cod' && 
-                             (selectedOrder.status === 'PENDING_AMBASSADOR' || selectedOrder.status === 'ASSIGNED' || selectedOrder.status === 'AUTO_REASSIGNED') &&
-                             selectedOrder.ville;
-
-      if (shouldReassign) {
-        // Log the cancellation first
-        await supabase.from('order_logs').insert({
-          order_id: selectedOrder.id,
-          action: 'cancelled',
-          performed_by: ambassador?.id,
-          performed_by_type: 'ambassador',
-          details: { reason: cancellationReason, will_reassign: true, previous_ambassador: ambassador?.id }
-        });
-
-        // Reset order to unassigned state (clear ambassador_id, reset status)
-        const { error: resetError } = await supabase
-          .from('orders')
-          .update({
-            ambassador_id: null,
-            status: 'PENDING_AMBASSADOR', // Reset to pending for reassignment
-            assigned_at: null, // Clear assignment timestamp
-            cancellation_reason: cancellationReason,
-            cancelled_at: new Date().toISOString()
-          })
-          .eq('id', selectedOrder.id);
-
-        if (resetError) throw resetError;
-
-        // Reassign to next ambassador via API
-        try {
-          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
-          const apiUrl = buildFullApiUrl(API_ROUTES.ASSIGN_ORDER, apiBase);
-          
-          if (!apiUrl) {
-            throw new Error('Invalid API URL configuration');
-          }
-          
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              order_id: selectedOrder.id,
-              ville: selectedOrder.ville
-            })
-          });
-
-          const result = await response.json();
-          
-          if (result.success) {
-            toast({
-              title: t.orderCancelled,
-              description: language === 'en' 
-                ? 'Order cancelled and reassigned to next ambassador' 
-                : 'Commande annulée et réassignée au prochain ambassadeur',
-              variant: "default"
-            });
-          } else {
-            // Order was reset but reassignment failed - it will be picked up by auto-reassign
-            toast({
-              title: t.orderCancelled,
-              description: language === 'en'
-                ? 'Order cancelled. Reassignment will happen automatically.'
-                : 'Commande annulée. La réassignation se fera automatiquement.',
-              variant: "default"
-            });
-          }
-        } catch (reassignError) {
-          console.error('Error reassigning order:', reassignError);
-          // Order was reset but reassignment failed - it will be picked up by auto-reassign
-          toast({
-            title: t.orderCancelled,
-            description: language === 'en'
-              ? 'Order cancelled. Reassignment will happen automatically.'
-              : 'Commande annulée. La réassignation se fera automatiquement.',
-            variant: "default"
-          });
-        }
-      } else {
-        // For accepted orders or manual orders, just cancel without reassignment
+      // Cancel order without reassignment
+      {
         const { error } = await supabase
           .from('orders')
           .update({
@@ -597,8 +559,21 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
       if (fetchError) throw fetchError;
 
-      // Determine the correct status based on order source
-      const newStatus = order.source === 'ambassador_manual' ? 'MANUAL_COMPLETED' : 'COMPLETED';
+      // COD orders (ambassador_manual) should be COMPLETED after approval
+      // Check if order is in APPROVED status (required for COD orders)
+      if (order.payment_method === 'cod' && order.status !== 'APPROVED') {
+        toast({
+          title: t.error,
+          description: language === 'en'
+            ? 'COD orders must be approved by admin before they can be completed.'
+            : 'Les commandes COD doivent être approuvées par l\'administrateur avant de pouvoir être terminées.',
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // All completed orders use COMPLETED status (unified status)
+      const newStatus = 'COMPLETED';
 
       const { error } = await supabase
         .from('orders')
@@ -779,7 +754,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     }
 
     try {
-      // Get selected event to calculate price
+      // Get selected event
       const selectedEvent = events.find(e => e.id === manualOrderForm.event_id);
       if (!selectedEvent) {
         toast({
@@ -788,6 +763,28 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
           variant: "destructive"
         });
         return;
+      }
+
+      // Validate that at least one pass is selected
+      if (!manualOrderForm.selectedPasses || manualOrderForm.selectedPasses.length === 0) {
+        toast({
+          title: t.error,
+          description: "Please select at least one pass.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Validate all passes have quantity > 0
+      for (const selectedPass of manualOrderForm.selectedPasses) {
+        if (selectedPass.quantity <= 0) {
+          toast({
+            title: t.error,
+            description: "Each pass must have a quantity greater than 0.",
+            variant: "destructive"
+          });
+          return;
+        }
       }
 
       // Trim and validate all required fields
@@ -804,15 +801,18 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         return;
       }
 
-      // Calculate price from event prices
-      const passPrice = manualOrderForm.pass_type === 'vip' 
-        ? (selectedEvent.vip_price || 50)
-        : (selectedEvent.standard_price || 30);
-      const totalPrice = passPrice * manualOrderForm.quantity;
+      // Calculate total quantity and total price
+      const totalQuantity = manualOrderForm.selectedPasses.reduce((sum, pass) => sum + pass.quantity, 0);
+      const totalPrice = manualOrderForm.selectedPasses.reduce((sum, pass) => sum + (pass.price * pass.quantity), 0);
+      
+      // Determine primary pass name (first selected pass name, or 'mixed' if multiple types)
+      const primaryPassName = manualOrderForm.selectedPasses.length === 1 
+        ? manualOrderForm.selectedPasses[0].passName 
+        : 'mixed';
 
       // Prepare insert data - match the actual database schema
       // Database uses: user_name, user_phone, user_email (NOT customer_name, phone, email)
-      // Status values are UPPERCASE: 'ACCEPTED' not 'accepted'
+      // Status values are UPPERCASE: 'PENDING_ADMIN_APPROVAL'
       // Database uses payment_method (NOT payment_type)
       const insertData: any = {
         source: 'ambassador_manual',
@@ -823,12 +823,22 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         ville: manualOrderForm.ville ? String(manualOrderForm.ville).trim() : null,
         event_id: manualOrderForm.event_id || null,
         ambassador_id: ambassador.id,
-        pass_type: String(manualOrderForm.pass_type || 'standard'),
-        quantity: Number(manualOrderForm.quantity || 1),
-        total_price: Number(totalPrice || 0),
+        pass_type: primaryPassName, // Primary pass name (or 'mixed' if multiple)
+        quantity: totalQuantity, // Total quantity across all passes
+        total_price: totalPrice, // Total price of all passes combined
         payment_method: 'cod', // Database uses payment_method (NOT NULL)
-        status: 'MANUAL_ACCEPTED', // Manual orders must use MANUAL_ACCEPTED status
-        accepted_at: new Date().toISOString()
+        status: 'PENDING_ADMIN_APPROVAL', // Manual orders require admin approval
+        notes: JSON.stringify({
+          all_passes: manualOrderForm.selectedPasses.map(p => ({
+            passId: p.passId,
+            passName: p.passName,
+            quantity: p.quantity,
+            price: p.price
+          })), // Store all pass types with their quantities and prices
+          total_order_price: totalPrice,
+          pass_count: manualOrderForm.selectedPasses.length, // Number of different pass types
+          ambassador_notes: manualOrderForm.notes?.trim() || null
+        })
       };
 
       // Final validation - ensure user_name is not empty (database column name)
@@ -893,9 +903,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         city: '',
         ville: '',
         event_id: '',
-        pass_type: 'standard',
-        quantity: 1,
-        total_price: 0
+        selectedPasses: [],
+        notes: ''
       });
       fetchData(ambassador?.id || '');
     } catch (error: any) {
@@ -1006,7 +1015,28 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         </Badge>
       );
     }
-    if (normalizedStatus === 'PENDING_AMBASSADOR' || normalizedStatus === 'AUTO_REASSIGNED' || normalizedStatus === 'ASSIGNED') {
+    if (normalizedStatus === 'APPROVED') {
+      return (
+        <Badge className="bg-green-500/20 text-green-300 border border-green-500/30 shadow-lg shadow-green-500/20">
+          {language === 'en' ? 'Approved' : 'Approuvé'}
+        </Badge>
+      );
+    }
+    if (normalizedStatus === 'REJECTED') {
+      return (
+        <Badge className="bg-red-500/20 text-red-300 border border-red-500/30 shadow-lg shadow-red-500/20">
+          {language === 'en' ? 'Rejected' : 'Rejeté'}
+        </Badge>
+      );
+    }
+    if (normalizedStatus === 'PENDING_ADMIN_APPROVAL') {
+      return (
+        <Badge className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 shadow-lg shadow-yellow-500/20">
+          {language === 'en' ? 'Pending Admin Approval' : 'En Attente d\'Approbation Admin'}
+        </Badge>
+      );
+    }
+    if (normalizedStatus === 'PENDING') {
       return (
         <Badge className="bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-lg shadow-cyan-500/20">
           {t.pending}
@@ -1133,7 +1163,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                 value="assigned"
                 className="whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary/20 data-[state=active]:to-secondary/20 data-[state=active]:text-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/30 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-md"
               >
-                {t.assignedOrders}
+                {language === 'en' ? 'My Orders' : 'Mes Commandes'}
               </TabsTrigger>
               <TabsTrigger 
                 value="manual"
@@ -1162,15 +1192,22 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
             </TabsList>
           </div>
 
-          {/* Assigned Orders Tab */}
+          {/* My Orders Tab (shows APPROVED COD orders and ACCEPTED/MANUAL_ACCEPTED non-COD orders) */}
           <TabsContent value="assigned" className="mt-6">
             <Card className="border-border/50 shadow-lg shadow-primary/5">
               <CardHeader>
-                <CardTitle className="text-xl sm:text-2xl font-heading">{t.assignedOrders}</CardTitle>
+                <CardTitle className="text-xl sm:text-2xl font-heading">{language === 'en' ? 'My Orders' : 'Mes Commandes'}</CardTitle>
+                <p className="text-sm text-muted-foreground mt-2">
+                  {language === 'en' 
+                    ? 'Shows approved COD orders ready to complete, and accepted non-COD orders'
+                    : 'Affiche les commandes COD approuvées prêtes à être complétées, et les commandes non-COD acceptées'}
+                </p>
               </CardHeader>
               <CardContent>
                 {assignedOrders.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">{t.noAssignedOrders}</p>
+                  <p className="text-center text-muted-foreground py-8">
+                    {language === 'en' ? 'No active orders' : 'Aucune commande active'}
+                  </p>
                 ) : (
                   <>
                     {/* Desktop Table View */}
@@ -1224,7 +1261,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                               <TableCell>{getStatusBadge(order.status)}</TableCell>
                               <TableCell>
                                 <div className="flex gap-2">
-                                  {(order.status === 'PENDING_AMBASSADOR' || order.status === 'ASSIGNED' || order.status === 'AUTO_REASSIGNED') && (
+                                  {(order.status === 'PENDING' && order.source !== 'ambassador_manual') && (
                                     <Button
                                       size="sm"
                                       onClick={() => handleAcceptOrder(order.id)}
@@ -1234,9 +1271,22 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                                       {t.accept}
                                     </Button>
                                   )}
+                                  {(order.status === 'PENDING_ADMIN_APPROVAL' || order.status === 'REJECTED') && (
+                                    <Badge variant="outline" className={
+                                      order.status === 'REJECTED' 
+                                        ? "border-red-500/30 text-red-300"
+                                        : "border-yellow-500/30 text-yellow-300"
+                                    }>
+                                      {order.status === 'REJECTED' 
+                                        ? (language === 'en' ? 'Rejected' : 'Rejeté')
+                                        : (language === 'en' ? 'Awaiting Admin Approval' : 'En Attente d\'Approbation')
+                                      }
+                                    </Badge>
+                                  )}
                                   {order.status !== 'CANCELLED_BY_AMBASSADOR' && 
                                    order.status !== 'CANCELLED_BY_ADMIN' && 
-                                   order.status !== 'COMPLETED' && (
+                                   order.status !== 'COMPLETED' && 
+                                   order.status !== 'PENDING_ADMIN_APPROVAL' && (
                                     <Button
                                       size="sm"
                                       variant="destructive"
@@ -1250,7 +1300,9 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                                       {t.cancel}
                                     </Button>
                                   )}
-                                  {(order.status === 'ACCEPTED' || order.status === 'MANUAL_ACCEPTED') && (
+                                  {/* Only allow completion for APPROVED COD orders or ACCEPTED/MANUAL_ACCEPTED non-COD orders */}
+                                  {((order.payment_method === 'cod' && order.status === 'APPROVED') ||
+                                    (order.payment_method !== 'cod' && (order.status === 'ACCEPTED' || order.status === 'MANUAL_ACCEPTED'))) && (
                                     <Button
                                       size="sm"
                                       onClick={() => handleCompleteOrder(order.id)}
@@ -1333,7 +1385,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                             </div>
                             <div className="pt-2 border-t border-border/30">
                               <div className="flex flex-wrap gap-2">
-                                {(order.status === 'PENDING_AMBASSADOR' || order.status === 'ASSIGNED' || order.status === 'AUTO_REASSIGNED') && (
+                                {(order.status === 'PENDING' && order.source !== 'ambassador_manual') && (
                                   <Button
                                     size="sm"
                                     onClick={() => handleAcceptOrder(order.id)}
@@ -1342,6 +1394,18 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                                     <CheckCircle className="w-4 h-4 mr-1" />
                                     {t.accept}
                                   </Button>
+                                )}
+                                {(order.status === 'PENDING_ADMIN_APPROVAL' || order.status === 'REJECTED') && (
+                                  <Badge variant="outline" className={
+                                    order.status === 'REJECTED' 
+                                      ? "border-red-500/30 text-red-300 text-xs"
+                                      : "border-yellow-500/30 text-yellow-300 text-xs"
+                                  }>
+                                    {order.status === 'REJECTED' 
+                                      ? (language === 'en' ? 'Rejected' : 'Rejeté')
+                                      : (language === 'en' ? 'Awaiting Approval' : 'En Attente')
+                                    }
+                                  </Badge>
                                 )}
                                 {order.status !== 'CANCELLED_BY_AMBASSADOR' && 
                                  order.status !== 'CANCELLED_BY_ADMIN' && 
@@ -1359,7 +1423,9 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                                     {t.cancel}
                                   </Button>
                                 )}
-                                {(order.status === 'ACCEPTED' || order.status === 'MANUAL_ACCEPTED') && (
+                                {/* Only allow completion for APPROVED COD orders or ACCEPTED/MANUAL_ACCEPTED non-COD orders */}
+                                {((order.payment_method === 'cod' && order.status === 'APPROVED') ||
+                                  (order.payment_method !== 'cod' && (order.status === 'ACCEPTED' || order.status === 'MANUAL_ACCEPTED'))) && (
                                   <Button
                                     size="sm"
                                     onClick={() => handleCompleteOrder(order.id)}
@@ -1431,7 +1497,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                       onValueChange={(value) => {
                         setManualOrderForm({ 
                           ...manualOrderForm, 
-                          event_id: value
+                          event_id: value,
+                          pass_id: '' // Reset pass selection when event changes
                         });
                       }}
                     >
@@ -1489,31 +1556,151 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                       </div>
                     )}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                      <Label>{t.passType}</Label>
-                      <Select
-                        value={manualOrderForm.pass_type}
-                        onValueChange={(value) => setManualOrderForm({ ...manualOrderForm, pass_type: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="standard">{t.standard}</SelectItem>
-                          <SelectItem value="vip">{t.vip}</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  {manualOrderForm.event_id && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label>{language === 'en' ? 'Select Passes' : 'Sélectionner les Passes'} *</Label>
+                        <Select
+                          value=""
+                          onValueChange={(value) => {
+                            if (value && value !== '') {
+                              const availablePasses = eventPasses[manualOrderForm.event_id] || [];
+                              const selectedPass = availablePasses.find((p: any) => p.id === value);
+                              if (selectedPass && !manualOrderForm.selectedPasses.find(p => p.passId === value)) {
+                                const passPrice = typeof selectedPass.price === 'number' ? selectedPass.price : parseFloat(selectedPass.price) || 0;
+                                setManualOrderForm({
+                                  ...manualOrderForm,
+                                  selectedPasses: [
+                                    ...manualOrderForm.selectedPasses,
+                                    {
+                                      passId: selectedPass.id,
+                                      passName: selectedPass.name,
+                                      quantity: 1,
+                                      price: passPrice
+                                    }
+                                  ]
+                                });
+                              }
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="w-auto">
+                            <SelectValue placeholder={language === 'en' ? "Add a pass" : "Ajouter un pass"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {eventPasses[manualOrderForm.event_id]?.length === 0 ? (
+                              <SelectItem value="no-passes" disabled>
+                                {language === 'en' ? 'No passes available' : 'Aucun pass disponible'}
+                              </SelectItem>
+                            ) : (
+                              eventPasses[manualOrderForm.event_id]?.filter((pass: any) => 
+                                !manualOrderForm.selectedPasses.find(p => p.passId === pass.id)
+                              ).map((pass: any) => (
+                                <SelectItem key={pass.id} value={pass.id}>
+                                  {pass.name} - {typeof pass.price === 'number' ? pass.price : parseFloat(pass.price) || 0} TND
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      {manualOrderForm.selectedPasses.length > 0 && (
+                        <div className="space-y-2">
+                          {manualOrderForm.selectedPasses.map((selectedPass, index) => (
+                            <div 
+                              key={selectedPass.passId} 
+                              className="flex items-center gap-3 p-4 rounded-lg border transition-all duration-200"
+                              style={{
+                                background: '#1F1F1F',
+                                borderColor: '#2A2A2A'
+                              }}
+                            >
+                              <div className="flex-1">
+                                <p className="font-medium text-sm" style={{ color: '#FFFFFF' }}>{selectedPass.passName}</p>
+                                <p className="text-xs mt-1" style={{ color: '#B0B0B0' }}>{selectedPass.price.toFixed(2)} TND each</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Label className="text-xs" style={{ color: '#B0B0B0' }}>{language === 'en' ? 'Qty:' : 'Qté:'}</Label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  max="10"
+                                  value={selectedPass.quantity}
+                                  onChange={(e) => {
+                                    const newQuantity = Math.max(1, parseInt(e.target.value) || 1);
+                                    const updatedPasses = [...manualOrderForm.selectedPasses];
+                                    updatedPasses[index] = { ...selectedPass, quantity: newQuantity };
+                                    setManualOrderForm({ ...manualOrderForm, selectedPasses: updatedPasses });
+                                  }}
+                                  className="w-16 h-8 text-sm"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    const updatedPasses = manualOrderForm.selectedPasses.filter((_, i) => i !== index);
+                                    setManualOrderForm({ ...manualOrderForm, selectedPasses: updatedPasses });
+                                  }}
+                                  className="h-8 w-8 p-0"
+                                  style={{
+                                    color: '#EF4444'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'transparent';
+                                  }}
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-semibold text-sm" style={{ color: '#E21836' }}>{(selectedPass.price * selectedPass.quantity).toFixed(2)} TND</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {manualOrderForm.selectedPasses.length === 0 && (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                          {language === 'en' ? 'No passes selected. Use the dropdown above to add passes.' : 'Aucun pass sélectionné. Utilisez le menu déroulant ci-dessus pour ajouter des passes.'}
+                        </p>
+                      )}
+                      
+                      {manualOrderForm.selectedPasses.length > 0 && (
+                        <div 
+                          className="p-4 rounded-lg border"
+                          style={{
+                            background: '#1F1F1F',
+                            borderColor: '#2A2A2A'
+                          }}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm" style={{ color: '#B0B0B0' }}>{t.totalPrice}:</span>
+                            <span className="text-xl font-bold" style={{ color: '#E21836' }}>
+                              {manualOrderForm.selectedPasses.reduce((sum, pass) => sum + (pass.price * pass.quantity), 0).toFixed(2)} TND
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center mt-2 text-xs" style={{ color: '#B0B0B0' }}>
+                            <span>{language === 'en' ? 'Total Quantity:' : 'Quantité Totale:'}</span>
+                            <span style={{ color: '#FFFFFF' }}>{manualOrderForm.selectedPasses.reduce((sum, pass) => sum + pass.quantity, 0)}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <Label>{t.quantity}</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={manualOrderForm.quantity}
-                        onChange={(e) => setManualOrderForm({ ...manualOrderForm, quantity: parseInt(e.target.value) || 1 })}
-                      />
-                    </div>
+                  )}
+                  <div>
+                    <Label>{language === 'en' ? 'Notes (Optional)' : 'Notes (Optionnel)'}</Label>
+                    <Textarea
+                      value={manualOrderForm.notes}
+                      onChange={(e) => setManualOrderForm({ ...manualOrderForm, notes: e.target.value })}
+                      placeholder={language === 'en' ? 'Add any additional notes...' : 'Ajoutez des notes supplémentaires...'}
+                      rows={3}
+                    />
                   </div>
                   <Button 
                     onClick={handleCreateManualOrder} 

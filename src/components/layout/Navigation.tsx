@@ -168,7 +168,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
         <>
           {/* Backdrop */}
           <div
-            className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] animate-fade-in"
+            className="md:hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[80] animate-fade-in"
             onClick={() => setIsMenuOpen(false)}
             onTouchEnd={(e) => {
               e.preventDefault();
@@ -202,7 +202,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
             }}
           >
             <div 
-              className="backdrop-blur-xl border-b border-border/50 bg-background"
+              className="backdrop-blur-xl border-b border-border/50 bg-card"
             >
               <div className="p-6 space-y-1">
                 {navigation.map((item, index) => (

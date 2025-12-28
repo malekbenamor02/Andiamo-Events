@@ -1,0 +1,657 @@
+AMBASSADOR ORDERS LOGIC - FULL EXTRACTION
+==========================================
+
+This document contains all the logic related to ambassador order management extracted from the codebase.
+
+================================================================================
+1. CREATING COD (CASH ON DELIVERY) ORDERS
+================================================================================
+
+Location: src/pages/PassPurchase.tsx - createCODOrder function
+
+Logic:
+- Validates that city is 'Sousse' and ville is provided
+- Calculates total quantity across all pass types
+- Determines primary pass name (first selected pass name, or 'mixed' if multiple)
+- Creates order data structure:
+  * source: 'platform_cod'
+  * user_name, user_phone, user_email from customerInfo
+  * city and ville from customerInfo
+  * event_id from current event
+  * pass_type: primary pass name or 'mixed'
+  * quantity: total quantity
+  * total_price: calculated total
+  * payment_method: 'cod'
+  * status: 'PENDING_AMBASSADOR'
+  * notes: JSON stringified object containing all passes details
+- Inserts order into 'orders' table
+- Assigns order to ambassador via round-robin (using API call to /api/assign-order)
+- Shows success toast message
+
+Code Location Example:
+```typescript
+const createCODOrder = async (passes: SelectedPass[], totalPrice: number) => {
+  if (customerInfo.city !== 'Sousse' || !customerInfo.ville.trim()) {
+    throw new Error(t[language].codNotAvailable);
+  }
+
+  const totalQuantity = passes.reduce((sum, pass) => sum + pass.quantity, 0);
+  const primaryPassName = passes.length === 1 ? passes[0].passName : 'mixed';
+
+  const orderData: any = {
+    source: 'platform_cod',
+    user_name: customerInfo.fullName.trim(),
+    user_phone: customerInfo.phone.trim(),
+    user_email: customerInfo.email.trim() || null,
+    city: customerInfo.city.trim(),
+    ville: customerInfo.ville.trim() || null,
+    event_id: eventId || null,
+    pass_type: primaryPassName,
+    quantity: totalQuantity,
+    total_price: totalPrice,
+    payment_method: 'cod',
+    status: 'PENDING_AMBASSADOR'
+  };
+
+  orderData.notes = JSON.stringify({
+    all_passes: passes.map(p => ({
+      passId: p.passId,
+      passName: p.passName,
+      quantity: p.quantity,
+      price: p.price
+    })),
+    total_order_price: totalPrice,
+    pass_count: passes.length
+  });
+
+  const { data: order, error } = await supabase
+    .from('orders')
+    .insert(orderData)
+    .select()
+    .single();
+
+  // Assign order via round-robin
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      order_id: order.id,
+      ville: customerInfo.ville.trim()
+    })
+  });
+};
+```
+
+
+================================================================================
+2. ASSIGNING ORDERS TO AMBASSADORS (ROUND-ROBIN)
+================================================================================
+
+Location: 
+- API Endpoint: /api/assign-order
+- Database Function: assign_order_to_ambassador (in Supabase migrations)
+- Frontend: src/pages/admin/Dashboard.tsx - handleAssignOrder function
+
+Round-Robin Logic:
+1. Get last assigned ambassador for the ville from round_robin_tracker table
+2. Get all available ambassadors for the ville:
+   - Filter by ville
+   - Status must be 'approved'
+   - Not suspended
+3. If no ambassadors available, return NULL
+4. Find next ambassador:
+   - If first assignment (no last_assigned_id): use first ambassador
+   - Otherwise: find index of last assigned, get next one
+   - If last in list: wrap around to first
+5. Update round_robin_tracker with new last_assigned_ambassador_id
+6. Update order:
+   - Set ambassador_id
+   - Set status to 'ASSIGNED'
+   - Set assigned_at timestamp
+7. Log the assignment in order_logs table
+
+Database Function Logic (from migrations):
+```sql
+CREATE OR REPLACE FUNCTION public.assign_order_to_ambassador(
+  p_order_id UUID,
+  p_ville TEXT
+)
+RETURNS UUID AS $$
+DECLARE
+  v_ambassador_id UUID;
+  v_last_assigned_id UUID;
+  v_available_ambassadors UUID[];
+  v_next_index INTEGER;
+BEGIN
+  -- Get last assigned ambassador for this ville
+  SELECT last_assigned_ambassador_id INTO v_last_assigned_id
+  FROM public.round_robin_tracker WHERE ville = p_ville;
+
+  -- Get all available ambassadors
+  SELECT ARRAY_AGG(id ORDER BY created_at)
+  INTO v_available_ambassadors
+  FROM public.ambassadors
+  WHERE ville = p_ville
+    AND status = 'approved';
+
+  -- Find next ambassador (round-robin logic)
+  IF v_last_assigned_id IS NULL THEN
+    v_ambassador_id := v_available_ambassadors[1];
+  ELSE
+    v_next_index := array_position(v_available_ambassadors, v_last_assigned_id);
+    IF v_next_index IS NULL OR v_next_index >= array_length(v_available_ambassadors, 1) THEN
+      v_ambassador_id := v_available_ambassadors[1];
+    ELSE
+      v_ambassador_id := v_available_ambassadors[v_next_index + 1];
+    END IF;
+  END IF;
+
+  -- Update tracker
+  UPDATE round_robin_tracker
+  SET last_assigned_ambassador_id = v_ambassador_id,
+      last_assigned_at = NOW()
+  WHERE ville = p_ville;
+
+  -- Assign order
+  UPDATE orders
+  SET ambassador_id = v_ambassador_id,
+      status = 'ASSIGNED',
+      assigned_at = NOW()
+  WHERE id = p_order_id;
+
+  RETURN v_ambassador_id;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+Frontend Assignment Call:
+```typescript
+const handleAssignOrder = async (orderId: string, ville: string) => {
+  const response = await fetch('/api/assign-order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order_id: orderId, ville })
+  });
+  const data = await response.json();
+  // Handle success/error
+};
+```
+
+
+================================================================================
+3. FETCHING AMBASSADOR SALES DATA
+================================================================================
+
+Location: src/pages/admin/Dashboard.tsx - fetchAmbassadorSalesData function
+
+This function fetches and enriches all ambassador-related order data:
+
+Steps:
+1. Fetch all approved ambassadors to create name mapping
+2. Fetch COD orders (source = 'platform_cod')
+3. Fetch manual orders (source = 'ambassador_manual')
+4. Fetch all ambassador orders (both COD and manual)
+5. Enrich all orders with ambassador names using the mapping
+6. Fetch order logs (last 100 entries)
+7. Fetch round robin tracker data
+8. Build round robin data with:
+   - Active ambassador counts per ville
+   - Last assigned ambassador name
+   - Next ambassador (using get_next_ambassador_for_ville function)
+   - Rotation mode
+   - Last assigned timestamps
+
+Code Structure:
+```typescript
+const fetchAmbassadorSalesData = async () => {
+  // 1. Fetch ambassadors
+  const { data: allAmbassadorsData } = await supabase
+    .from('ambassadors')
+    .select('id, full_name, ville, status, city')
+    .eq('status', 'approved');
+
+  // Create name mapping
+  const ambassadorNameMap = new Map();
+  allAmbassadorsData.forEach(amb => {
+    ambassadorNameMap.set(amb.id, amb.full_name);
+  });
+
+  // 2. Fetch COD orders
+  const { data: codData } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('source', 'platform_cod')
+    .order('created_at', { ascending: false });
+
+  // 3. Fetch manual orders
+  const { data: manualData } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('source', 'ambassador_manual')
+    .order('created_at', { ascending: false });
+
+  // 4. Fetch all ambassador orders
+  const { data: allData } = await supabase
+    .from('orders')
+    .select('*')
+    .in('source', ['platform_cod', 'ambassador_manual'])
+    .order('created_at', { ascending: false });
+
+  // 5. Enrich orders with ambassador names
+  const enrichedCodOrders = codData.map(order => ({
+    ...order,
+    ambassador_name: order.ambassador_id 
+      ? (ambassadorNameMap.get(order.ambassador_id) || 'Unknown') 
+      : null
+  }));
+
+  // 6. Fetch order logs
+  const { data: logsData } = await supabase
+    .from('order_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  // 7. Fetch round robin tracker
+  const { data: trackerData } = await supabase
+    .from('round_robin_tracker')
+    .select('*');
+
+  // 8. Build round robin data per ville
+  const allAmbassadors = allAmbassadorsData.filter(amb => amb.city === 'Sousse');
+  const uniqueVilles = [...new Set(allAmbassadors.map(a => a.ville).filter(Boolean))];
+
+  const roundRobinData = await Promise.all(
+    uniqueVilles.map(async (villeName) => {
+      // Count active ambassadors
+      const activeCount = allAmbassadors.filter(
+        a => a.ville === villeName && a.status === 'approved'
+      ).length;
+
+      // Get tracker data
+      const tracker = trackerData.find(t => t.ville === villeName);
+
+      // Get last assigned name
+      let lastAssigned = 'None';
+      if (tracker?.last_assigned_ambassador_id) {
+        const lastAmb = allAmbassadors.find(
+          a => a.id === tracker.last_assigned_ambassador_id
+        );
+        lastAssigned = lastAmb?.full_name || 'Unknown';
+      }
+
+      // Get next ambassador using RPC function
+      const { data: nextAmb } = await supabase.rpc(
+        'get_next_ambassador_for_ville',
+        { p_ville: villeName }
+      );
+
+      return {
+        ville: villeName,
+        active_ambassadors: activeCount,
+        last_assigned: lastAssigned,
+        next_ambassador: nextAmb[0]?.ambassador_name || 'N/A',
+        rotation_mode: tracker?.rotation_mode || 'automatic',
+        last_assigned_ambassador_id: tracker?.last_assigned_ambassador_id,
+        last_assigned_at: tracker?.last_assigned_at
+      };
+    })
+  );
+
+  return {
+    codOrders: enrichedCodOrders,
+    manualOrders: enrichedManualOrders,
+    allAmbassadorOrders: enrichedAllOrders,
+    roundRobinData,
+    orderLogs: logsData
+  };
+};
+```
+
+
+================================================================================
+4. ORDER MANAGEMENT FUNCTIONS (ADMIN)
+================================================================================
+
+Location: src/pages/admin/Dashboard.tsx
+
+4.1. Accept Order as Admin
+---------------------------
+Function: handleAcceptOrderAsAdmin
+
+Logic:
+- Updates order status to 'ACCEPTED'
+- Sets accepted_at timestamp
+- Updates updated_at timestamp
+- Logs the acceptance action in order_logs table
+- performed_by_type: 'admin'
+
+Code:
+```typescript
+const handleAcceptOrderAsAdmin = async (orderId: string) => {
+  const { error } = await supabase
+    .from('orders')
+    .update({
+      status: 'ACCEPTED',
+      accepted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', orderId);
+
+  // Log the acceptance
+  await supabase
+    .from('order_logs')
+    .insert({
+      order_id: orderId,
+      action: 'accepted',
+      performed_by: null,
+      performed_by_type: 'admin',
+      details: { admin_action: true }
+    });
+};
+```
+
+4.2. Complete Order as Admin
+-----------------------------
+Function: handleCompleteOrderAsAdmin
+
+Logic:
+- Updates order status to 'COMPLETED'
+- Sets completed_at timestamp
+- Updates updated_at timestamp
+- Logs the completion action in order_logs table
+- performed_by_type: 'admin'
+
+Code:
+```typescript
+const handleCompleteOrderAsAdmin = async (orderId: string) => {
+  const { error } = await supabase
+    .from('orders')
+    .update({
+      status: 'COMPLETED',
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', orderId);
+
+  // Log the completion
+  await supabase
+    .from('order_logs')
+    .insert({
+      order_id: orderId,
+      action: 'completed',
+      performed_by: null,
+      performed_by_type: 'admin',
+      details: { admin_action: true }
+    });
+};
+```
+
+4.3. Cancel Order as Admin
+---------------------------
+Function: handleCancelOrderAsAdmin (implied, similar pattern)
+
+Logic:
+- Updates order status to 'CANCELLED'
+- Sets cancellation_reason (optional)
+- Sets cancelled_at timestamp
+- Updates updated_at timestamp
+- Logs the cancellation action in order_logs table
+
+4.4. Reassign Order
+-------------------
+Function: handleReassignOrder (implied, similar pattern)
+
+Logic:
+- Resets order to unassigned state:
+  * Set ambassador_id to null
+  * Reset status to 'PENDING_AMBASSADOR'
+  * Clear assigned_at timestamp
+- Logs the reassignment action
+- Optionally reassigns to new ambassador
+
+
+================================================================================
+5. BULK OPERATIONS
+================================================================================
+
+5.1. Bulk Assign Pending Orders
+--------------------------------
+Location: src/pages/admin/Dashboard.tsx - handleBulkAssignPendingOrders
+
+Logic:
+1. Fetch all orders with:
+   - status = 'PENDING_AMBASSADOR'
+   - source = 'platform_cod'
+   - ville is not null
+2. Loop through each order
+3. Call assign order API for each order
+4. Count successful assignments
+5. Show summary toast with count
+
+Code:
+```typescript
+const handleBulkAssignPendingOrders = async () => {
+  // Get all pending orders with ville
+  const { data: pendingOrders } = await supabase
+    .from('orders')
+    .select('id, ville')
+    .eq('status', 'PENDING_AMBASSADOR')
+    .eq('source', 'platform_cod')
+    .not('ville', 'is', null);
+
+  let assignedCount = 0;
+  for (const order of pendingOrders) {
+    try {
+      const response = await fetch('/api/assign-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: order.id,
+          ville: order.ville
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        assignedCount++;
+      }
+    } catch (err) {
+      console.error(`Error assigning order ${order.id}:`, err);
+    }
+  }
+
+  // Show summary
+  toast({
+    description: `Assigned ${assignedCount} out of ${pendingOrders.length} orders`
+  });
+};
+```
+
+
+================================================================================
+6. ORDER STATUS FLOW
+================================================================================
+
+Ambassador Orders Status Flow:
+
+1. PENDING_AMBASSADOR
+   - Initial state for COD orders
+   - Order created, waiting for assignment
+   - No ambassador_id set
+
+2. ASSIGNED
+   - Order assigned to ambassador via round-robin
+   - ambassador_id is set
+   - assigned_at timestamp is set
+   - Ambassador can now see the order
+
+3. ACCEPTED
+   - Ambassador accepted the order (or admin accepted)
+   - accepted_at timestamp is set
+   - Order is being processed
+
+4. COMPLETED
+   - Order fulfilled, passes delivered
+   - completed_at timestamp is set
+   - Final state for successful orders
+
+5. CANCELLED
+   - Order cancelled (by admin or system)
+   - cancellation_reason may be set
+   - cancelled_at timestamp is set
+   - Final state for cancelled orders
+
+Status Values (from database schema):
+- 'PENDING_AMBASSADOR'
+- 'ASSIGNED'
+- 'ACCEPTED'
+- 'COMPLETED'
+- 'CANCELLED'
+- 'REFUNDED'
+- 'FRAUD_FLAGGED'
+
+
+================================================================================
+7. DATA STRUCTURES
+================================================================================
+
+7.1. Order Data Structure
+-------------------------
+```typescript
+interface Order {
+  id: string;
+  source: 'platform_cod' | 'platform_online' | 'ambassador_manual';
+  user_name: string;
+  user_phone: string;
+  user_email?: string;
+  city: string;
+  ville?: string; // Required if city = 'Sousse'
+  ambassador_id?: string;
+  event_id?: string;
+  pass_type: string; // e.g., 'standard', 'vip', 'mixed'
+  quantity: number;
+  total_price: number;
+  payment_method: 'cod' | 'online';
+  status: string; // See status flow above
+  cancellation_reason?: string;
+  notes?: string; // JSON stringified pass details
+  assigned_at?: string;
+  accepted_at?: string;
+  completed_at?: string;
+  cancelled_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+```
+
+7.2. Round Robin Tracker
+-------------------------
+```typescript
+interface RoundRobinTracker {
+  id: string;
+  ville: string;
+  last_assigned_ambassador_id?: string;
+  last_assigned_at?: string;
+  rotation_mode: 'automatic' | 'manual';
+  created_at: string;
+  updated_at: string;
+}
+```
+
+7.3. Order Log Entry
+---------------------
+```typescript
+interface OrderLog {
+  id: string;
+  order_id: string;
+  action: 'assigned' | 'accepted' | 'completed' | 'cancelled' | 'reassigned';
+  performed_by?: string; // ambassador_id or null for admin
+  performed_by_type: 'admin' | 'ambassador' | 'system';
+  details?: any; // JSON object with additional context
+  created_at: string;
+}
+```
+
+7.4. Selected Pass (for order creation)
+----------------------------------------
+```typescript
+interface SelectedPass {
+  passId: string;
+  passName: string;
+  quantity: number;
+  price: number;
+}
+```
+
+
+================================================================================
+8. API ENDPOINTS
+================================================================================
+
+8.1. Assign Order
+-----------------
+POST /api/assign-order
+Body: {
+  order_id: string,
+  ville: string
+}
+Response: {
+  success: boolean,
+  ambassador?: {
+    id: string,
+    full_name: string
+  },
+  error?: string
+}
+
+8.2. Get Next Ambassador for Ville
+-----------------------------------
+RPC: get_next_ambassador_for_ville
+Parameters: { p_ville: string }
+Returns: {
+  ambassador_id: string,
+  ambassador_name: string,
+  ambassador_phone: string,
+  is_last_assigned: boolean
+}
+
+
+================================================================================
+9. DATABASE FUNCTIONS (Supabase)
+================================================================================
+
+9.1. assign_order_to_ambassador
+--------------------------------
+- Assigns order to next ambassador using round-robin
+- Updates round_robin_tracker
+- Updates order status and timestamps
+- Logs assignment
+- Returns ambassador_id
+
+9.2. get_next_ambassador_for_ville
+-----------------------------------
+- Gets next ambassador in rotation for a ville
+- Returns ambassador details
+- Used for preview/display purposes
+
+
+================================================================================
+10. KEY BUSINESS RULES
+================================================================================
+
+1. COD orders are only available in Sousse city
+2. Orders must have a ville if city is Sousse
+3. Only approved ambassadors can be assigned orders
+4. Round-robin ensures fair distribution of orders
+5. Orders start as PENDING_AMBASSADOR before assignment
+6. Only one order status change at a time
+7. All status changes are logged in order_logs
+8. Admin can override any status change
+9. Orders can be reassigned if needed
+10. Round-robin wraps around when reaching end of ambassador list
+
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+

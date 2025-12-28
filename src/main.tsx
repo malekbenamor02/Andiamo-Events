@@ -87,6 +87,15 @@ const setupErrorHandlers = async () => {
       return;
     }
 
+    // Suppress WebSocket connection errors (dev-only, HMR related)
+    if (errorMessage.includes("WebSocket") ||
+        errorMessage.includes("websocket") ||
+        errorMessage.includes("Failed to connect")) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     // Log real errors (sanitized)
     const sanitizedError = event.error ? sanitizeObject(event.error) : new Error(sanitizeString(errorMessage));
     logger.error('JavaScript Error', sanitizedError, {
@@ -132,6 +141,18 @@ const setupErrorHandlers = async () => {
          errorMessage.includes("googleads") ||
          errorMessage.includes("ERR_BLOCKED_BY_CLIENT") ||
          errorMessage.includes("ERR_CONNECTION_CLOSED"))) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    // Suppress WebSocket connection errors (dev-only, HMR related)
+    if (typeof errorMessage === 'string' &&
+        (errorMessage.includes("WebSocket") ||
+         errorMessage.includes("websocket") ||
+         errorMessage.includes("Failed to connect") ||
+         errorString.includes("WebSocket") ||
+         errorString.includes("websocket"))) {
       event.preventDefault();
       event.stopPropagation();
       return;

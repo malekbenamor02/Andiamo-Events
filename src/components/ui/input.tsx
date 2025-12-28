@@ -12,8 +12,8 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           className
         )}
         style={{
-          background: '#000000',
-          borderColor: '#424242',
+          background: '#252525',
+          borderColor: '#2A2A2A',
           color: '#FFFFFF',
           ...(props.style || {})
         }}
@@ -23,7 +23,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           if (props.onFocus) props.onFocus(e);
         }}
         onBlur={(e) => {
-          e.currentTarget.style.borderColor = '#424242';
+          e.currentTarget.style.borderColor = '#2A2A2A';
           e.currentTarget.style.boxShadow = '';
           if (props.onBlur) props.onBlur(e);
         }}

@@ -495,7 +495,6 @@ const composeConfirmationEmail = (
         </div>
         <div class="footer">
           <p>© 2024 Andiamo Events. All rights reserved.</p>
-          <p>Tunisia's Premier Nightlife Experience</p>
         </div>
       </div>
     </body>

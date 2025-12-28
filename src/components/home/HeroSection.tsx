@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Play } from "lucide-react";
+import { Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -20,6 +20,14 @@ interface HeroSlide {
   src: string;
   alt?: string;
   poster?: string;
+}
+
+interface Event {
+  id: string;
+  name: string;
+  date: string;
+  event_type?: 'upcoming' | 'gallery';
+  event_status?: 'active' | 'cancelled' | 'completed';
 }
 
 // Video slide component with lazy loading
@@ -118,6 +126,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
   const [heroContent, setHeroContent] = useState<any>({});
   const [isPageInteractive, setIsPageInteractive] = useState(false);
   const [loadedMedia, setLoadedMedia] = useState<Set<number>>(new Set());
+  const [nextEvent, setNextEvent] = useState<Event | null>(null);
   const navigate = useNavigate();
   const transitionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -154,42 +163,94 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
     setIsPageInteractive(true);
   }, []);
 
+  // Fetch next upcoming event for CTA button
+  useEffect(() => {
+    const fetchNextEvent = async () => {
+      try {
+        const now = new Date().toISOString();
+        console.log('🔍 Fetching upcoming events, current time:', now);
+        
+        // Get all events and filter in JavaScript for more flexibility
+        const { data, error } = await supabase
+          .from('events')
+          .select('id, name, date, event_type, event_status')
+          .order('date', { ascending: true });
+
+        if (error) {
+          console.error('❌ Error fetching events:', error);
+          return;
+        }
+
+        console.log('📋 All events fetched:', data?.length || 0, data);
+
+        if (data && data.length > 0) {
+          // Filter for future events (date >= now) and not cancelled
+          const futureEvents = data.filter(event => {
+            const eventDate = new Date(event.date);
+            const isFuture = eventDate >= new Date(now);
+            const notCancelled = event.event_status !== 'cancelled' && (!event.event_status || event.event_status !== 'cancelled');
+            return isFuture && notCancelled;
+          });
+
+          console.log('🔮 Future events found:', futureEvents.length, futureEvents);
+
+          if (futureEvents.length > 0) {
+            // Prefer event_type = 'upcoming', otherwise take the first one
+            const upcomingEvent = futureEvents.find(e => e.event_type === 'upcoming') || futureEvents[0];
+            
+            console.log('✅ Setting next event:', upcomingEvent);
+            setNextEvent(upcomingEvent);
+          } else {
+            console.log('⚠️ No valid future events found');
+            setNextEvent(null);
+          }
+        } else {
+          console.log('⚠️ No events in database');
+          setNextEvent(null);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching next event:', error);
+        setNextEvent(null);
+      }
+    };
+
+    fetchNextEvent();
+  }, []);
+
   const defaultContent = {
     en: {
       title: "Live the Night with Andiamo",
-      subtitle: "Tunisia's Premier Nightlife Experience",
+      subtitle: "",
       description: "Join thousands of party-goers across Tunisia for unforgettable nights filled with energy, music, and memories that last forever.",
       cta: "Join the Movement",
-      watchVideo: "Watch Highlights"
+      watchVideo: "Watch Highlights",
+      joinNextEvent: "Join Next Event"
     },
     fr: {
       title: "Vivez la Nuit avec Andiamo",
-      subtitle: "L'Expérience Nocturne Premium de Tunisie",
+      subtitle: "",
       description: "Rejoignez des milliers de fêtards à travers la Tunisie pour des nuits inoubliables remplies d'énergie, de musique et de souvenirs qui durent pour toujours.",
       cta: "Rejoignez le Mouvement",
-      watchVideo: "Voir les Highlights"
+      watchVideo: "Voir les Highlights",
+      joinNextEvent: "Rejoindre le Prochain Événement"
     }
   };
 
   // Typewriter texts for the first part of the title
   const typewriterTexts = {
     en: [
-      "Live the Night",
-      "Dance the Night Away",
-      "Experience the Ultimate Party",
-      "Join the Nightlife Revolution",
-      "Where Music Meets Magic",
+      "We create memories",
+      "International event coming soon...",
+      "Here in Tunis",
     ],
     fr: [
-      "Vivez la Nuit",
-      "Dansez toute la Nuit",
-      "Vivez la Fête Ultime",
-      "Rejoignez la Révolution Nocturne",
-      "Où la Musique Rencontre la Magie",
+      "Nous créons des souvenirs",
+      "Événement international à venir...",
+      "Ici à Tunis",
     ],
   };
 
-  const staticSuffix = language === 'en' ? "with Andiamo" : "avec Andiamo";
+  const staticSuffix = language === 'en' ? "" : "";
 
   // Use Supabase content if available, otherwise fall back to default
   const content = heroContent[language] || defaultContent[language];
@@ -313,7 +374,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
               <div 
                 className="absolute inset-0" 
                 style={{
-                  background: 'linear-gradient(rgba(0,0,0,0.75), rgba(0,0,0,0.85))'
+                  background: 'linear-gradient(rgba(0,0,0,0.65), rgba(0,0,0,0.75))'
                 }}
               />
             </div>
@@ -334,7 +395,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
       {/* Content */}
       <div className="relative z-20 text-center max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="animate-fade-in-up">
-          <h1 className="text-3xl sm:text-4xl md:text-7xl font-heading font-bold mb-6 min-h-[1.2em]">
+          <h1 className="text-3xl sm:text-4xl md:text-7xl font-heading font-semibold mb-6 min-h-[1.2em]">
             <span className="block text-gradient-neon animate-pulse-glow">
               <TypewriterText 
                 texts={typewriterTexts[language]}
@@ -344,14 +405,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
                 className="inline"
               />
             </span>
-            <span className="block text-white mt-2 animate-pulse-glow">
-              {staticSuffix}
-            </span>
           </h1>
-          
-          <p className="text-base sm:text-lg md:text-2xl text-muted-foreground font-medium mb-4 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
-            {content?.subtitle || defaultContent[language].subtitle}
-          </p>
           
           {/* Description text removed for testing */}
           {/* <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto animate-fade-in-up" style={{ animationDelay: "0.4s" }}>
@@ -362,11 +416,12 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
             <Button
               variant="default"
               size="lg"
-              className="text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 hover:scale-110 active:scale-95 transition-all duration-300 relative overflow-hidden group"
+              className="text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 hover:scale-110 active:scale-95 transition-all duration-300 relative overflow-hidden group font-normal"
               style={{
                 backgroundColor: '#E21836',
                 color: '#FFFFFF',
                 boxShadow: '0 0 30px rgba(226, 24, 54, 0.6)',
+                fontWeight: 400
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = '#FF3B5C';
@@ -376,11 +431,20 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
                 e.currentTarget.style.backgroundColor = '#E21836';
                 e.currentTarget.style.boxShadow = '0 0 30px rgba(226, 24, 54, 0.6)';
               }}
-              onClick={() => navigate('/events')}
+              onClick={() => {
+                if (nextEvent) {
+                  navigate(`/pass-purchase?eventId=${nextEvent.id}`);
+                } else {
+                  navigate('/events');
+                }
+              }}
             >
               <span className="relative z-10 flex items-center">
-                <Play className="w-5 h-5 mr-2 transition-transform duration-300 group-hover:scale-110" />
-                {content?.watchVideo || defaultContent[language].watchVideo}
+                <Calendar className="w-5 h-5 mr-2 transition-transform duration-300 group-hover:scale-110" />
+                {nextEvent 
+                  ? (language === 'en' ? 'Book Pass' : 'Réserver un Pass')
+                  : (content?.watchVideo || defaultContent[language].watchVideo)
+                }
               </span>
             </Button>
           </div>

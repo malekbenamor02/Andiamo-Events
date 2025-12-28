@@ -57,6 +57,7 @@
     "dompurify": "^3.2.6",
     "dotenv": "^16.3.1",
     "embla-carousel-react": "^8.3.0",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-rate-limit": "^8.0.1",
     "input-otp": "^1.2.4",
