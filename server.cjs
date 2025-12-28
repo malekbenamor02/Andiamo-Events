@@ -126,15 +126,80 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Rate limiting: 10 requests per 15 minutes per IP
-const limiter = rateLimit({
+// Helper function to create rate limiters (disabled in local development)
+const createRateLimiter = (config) => {
+  // Disable rate limiting in local development (not production or Vercel)
+  const isLocalDev = process.env.NODE_ENV !== 'production' && 
+                     !process.env.VERCEL && 
+                     !process.env.VERCEL_URL;
+  
+  if (isLocalDev) {
+    // Return a pass-through middleware that does nothing in development
+    return (req, res, next) => next();
+  }
+  
+  // Apply rate limiting in production
+  return rateLimit(config);
+};
+
+// Rate limiters with different tiers (disabled in local development)
+const authLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  max: 5, // 5 attempts per 15 minutes
+  message: { error: 'Too many login attempts, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const applicationLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // 3 applications per hour
+  message: { error: 'Too many applications submitted, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const recaptchaLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 verifications per 15 minutes
+  message: { error: 'Too many verification requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const emailLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 emails per 15 minutes
   message: { error: 'Too many requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/api/send-email', limiter);
+
+const ogImageLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // 100 requests per 15 minutes (allows social media crawlers)
+  message: { error: 'Too many requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const verifyAdminLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // 30 requests per 15 minutes (called frequently for session checks)
+  message: { error: 'Too many verification requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const adminLogoutLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 logout requests per 15 minutes
+  message: { error: 'Too many requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/api/send-email', emailLimiter);
 
 app.post('/api/send-email', requireAdminAuth, async (req, res) => {
   try {
@@ -310,7 +375,7 @@ app.get('/api/track-email', async (req, res) => {
 });
 
 // Admin login endpoint
-app.post('/api/admin-login', async (req, res) => {
+app.post('/api/admin-login', authLimiter, async (req, res) => {
   try {
     // Log for debugging - include all request info
     console.log('=== ADMIN LOGIN REQUEST ===');
@@ -528,8 +593,7 @@ app.post('/api/admin-login', async (req, res) => {
 });
 
 // Verify reCAPTCHA endpoint
-// reCAPTCHA verification endpoint
-app.post('/api/verify-recaptcha', async (req, res) => {
+app.post('/api/verify-recaptcha', recaptchaLimiter, async (req, res) => {
   try {
     const { recaptchaToken } = req.body;
 
@@ -639,7 +703,7 @@ app.post('/api/update-sales-settings', requireAdminAuth, async (req, res) => {
 });
 
 // Admin logout endpoint
-app.post('/api/admin-logout', (req, res) => {
+app.post('/api/admin-logout', adminLogoutLimiter, (req, res) => {
   res.clearCookie('adminToken');
   res.json({ success: true });
 });
@@ -649,7 +713,7 @@ app.post('/api/admin-logout', (req, res) => {
 // The JWT expiration is fixed at 1 hour from login and cannot be changed
 // Refreshing the page, navigating, or closing/reopening the browser does NOT restart the timer
 // The session countdown continues from the original login time
-app.get('/api/verify-admin', requireAdminAuth, async (req, res) => {
+app.get('/api/verify-admin', verifyAdminLimiter, requireAdminAuth, async (req, res) => {
   if (!supabase) {
     return res.status(500).json({ valid: false, error: 'Supabase not configured' });
   }
@@ -1531,7 +1595,7 @@ app.get('/api/next-ambassador/:ville', async (req, res) => {
 });
 
 // Update ambassador password endpoint
-app.post('/api/ambassador-update-password', async (req, res) => {
+app.post('/api/ambassador-update-password', authLimiter, async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -1572,6 +1636,279 @@ app.post('/api/ambassador-update-password', async (req, res) => {
     });
   } catch (error) {
     console.error('Error in ambassador password update:', error);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
+  }
+});
+
+// Ambassador login endpoint
+app.post('/api/ambassador-login', authLimiter, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { phone, password, recaptchaToken } = req.body;
+
+    if (!phone || !password) {
+      return res.status(400).json({ error: 'Phone number and password are required' });
+    }
+
+    // Verify reCAPTCHA if provided
+    if (recaptchaToken && recaptchaToken !== 'localhost-bypass-token') {
+      const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+      if (RECAPTCHA_SECRET_KEY) {
+        try {
+          const verifyResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
+          });
+          const verifyData = await verifyResponse.json();
+          if (!verifyData.success) {
+            return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+          }
+        } catch (recaptchaError) {
+          console.error('reCAPTCHA verification error:', recaptchaError);
+          return res.status(500).json({ error: 'reCAPTCHA verification service unavailable' });
+        }
+      }
+    }
+
+    // Fetch ambassador by phone number
+    const { data: ambassador, error } = await supabase
+      .from('ambassadors')
+      .select('*')
+      .eq('phone', phone)
+      .single();
+
+    if (error || !ambassador) {
+      return res.status(401).json({ error: 'Invalid phone number or password' });
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, ambassador.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Invalid phone number or password' });
+    }
+
+    // Check application status
+    if (ambassador.status === 'pending') {
+      return res.status(403).json({ error: 'Your application is under review' });
+    }
+
+    if (ambassador.status === 'rejected') {
+      return res.status(403).json({ error: 'Your application was not approved' });
+    }
+
+    // Success - return ambassador data (frontend will handle session storage)
+    res.status(200).json({ 
+      success: true, 
+      ambassador: {
+        id: ambassador.id,
+        full_name: ambassador.full_name,
+        phone: ambassador.phone,
+        email: ambassador.email,
+        status: ambassador.status
+      }
+    });
+  } catch (error) {
+    console.error('Error in ambassador login:', error);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
+  }
+});
+
+// Ambassador application endpoint
+app.post('/api/ambassador-application', applicationLimiter, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { fullName, age, phoneNumber, email, city, ville, socialLink, motivation } = req.body;
+
+    // Validate required fields
+    if (!fullName || !age || !phoneNumber || !city) {
+      return res.status(400).json({ error: 'Full name, age, phone number, and city are required' });
+    }
+
+    // Validate phone number format
+    const phoneRegex = /^[2594][0-9]{7}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+      return res.status(400).json({ error: 'Phone number must be 8 digits starting with 2, 5, 9, or 4' });
+    }
+
+    // Validate Instagram link if provided
+    if (socialLink && !socialLink.trim().startsWith('https://www.instagram.com/') && !socialLink.trim().startsWith('https://instagram.com/')) {
+      return res.status(400).json({ error: 'Instagram link must start with https://www.instagram.com/ or https://instagram.com/' });
+    }
+
+    // Sanitize inputs (basic sanitization - DOMPurify would need to be server-side)
+    const sanitizedFullName = fullName.trim();
+    const sanitizedEmail = email ? email.trim() : null;
+    const sanitizedCity = city.trim();
+    const sanitizedSocialLink = socialLink ? socialLink.trim() : null;
+    const sanitizedMotivation = motivation ? motivation.trim() : null;
+
+    // Check for duplicate phone number in active ambassadors
+    const { data: existingAmbByPhone } = await supabase
+      .from('ambassadors')
+      .select('id')
+      .eq('phone', phoneNumber)
+      .maybeSingle();
+
+    if (existingAmbByPhone) {
+      return res.status(400).json({ error: 'This phone number is already registered as an approved ambassador' });
+    }
+
+    // Check for duplicate email in active ambassadors (if email provided)
+    if (sanitizedEmail) {
+      const { data: existingAmbByEmail } = await supabase
+        .from('ambassadors')
+        .select('id')
+        .eq('email', sanitizedEmail)
+        .maybeSingle();
+
+      if (existingAmbByEmail) {
+        return res.status(400).json({ error: 'This email is already registered as an approved ambassador' });
+      }
+    }
+
+    // Check for duplicate phone number in applications
+    const { data: existingAppByPhone } = await supabase
+      .from('ambassador_applications')
+      .select('id, status')
+      .eq('phone_number', phoneNumber)
+      .in('status', ['pending', 'approved'])
+      .maybeSingle();
+
+    if (existingAppByPhone) {
+      if (existingAppByPhone.status === 'approved') {
+        const { data: activeAmbassador } = await supabase
+          .from('ambassadors')
+          .select('id')
+          .eq('phone', phoneNumber)
+          .maybeSingle();
+
+        if (activeAmbassador) {
+          return res.status(400).json({ error: 'An application with this phone number has already been approved and an active ambassador account exists' });
+        }
+      } else {
+        return res.status(400).json({ error: 'You have already submitted an application. Please wait for review.' });
+      }
+    }
+
+    // Check for duplicate email in applications (if email provided)
+    if (sanitizedEmail) {
+      const { data: existingAppByEmail } = await supabase
+        .from('ambassador_applications')
+        .select('id, status')
+        .eq('email', sanitizedEmail)
+        .in('status', ['pending', 'approved'])
+        .maybeSingle();
+
+      if (existingAppByEmail) {
+        if (existingAppByEmail.status === 'approved') {
+          const { data: activeAmbassador } = await supabase
+            .from('ambassadors')
+            .select('id')
+            .eq('email', sanitizedEmail)
+            .maybeSingle();
+
+          if (activeAmbassador) {
+            return res.status(400).json({ error: 'An application with this email has already been approved and an active ambassador account exists' });
+          }
+        } else {
+          return res.status(400).json({ error: 'An application with this email already exists and is pending review. Please wait for the review to complete.' });
+        }
+      }
+    }
+
+    // Check for rejected/removed applications and verify reapply delay (30 days)
+    const REAPPLY_DELAY_DAYS = 30;
+    const now = new Date();
+    const delayDate = new Date(now.getTime() - (REAPPLY_DELAY_DAYS * 24 * 60 * 60 * 1000));
+
+    const { data: rejectedAppByPhone } = await supabase
+      .from('ambassador_applications')
+      .select('id, status, reapply_delay_date')
+      .eq('phone_number', phoneNumber)
+      .in('status', ['rejected', 'removed'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (rejectedAppByPhone) {
+      const canReapply = !rejectedAppByPhone.reapply_delay_date || new Date(rejectedAppByPhone.reapply_delay_date) <= now;
+      if (!canReapply) {
+        const delayUntil = new Date(rejectedAppByPhone.reapply_delay_date);
+        const daysRemaining = Math.ceil((delayUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        return res.status(400).json({ 
+          error: `You can reapply in ${daysRemaining} day(s). Please wait until ${delayUntil.toLocaleDateString()}.` 
+        });
+      }
+    }
+
+    // Check by email if provided
+    if (sanitizedEmail) {
+      const { data: rejectedAppByEmail } = await supabase
+        .from('ambassador_applications')
+        .select('id, status, reapply_delay_date')
+        .eq('email', sanitizedEmail)
+        .in('status', ['rejected', 'removed'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (rejectedAppByEmail) {
+        const canReapply = !rejectedAppByEmail.reapply_delay_date || new Date(rejectedAppByEmail.reapply_delay_date) <= now;
+        if (!canReapply) {
+          const delayUntil = new Date(rejectedAppByEmail.reapply_delay_date);
+          const daysRemaining = Math.ceil((delayUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          return res.status(400).json({ 
+            error: `You can reapply in ${daysRemaining} day(s). Please wait until ${delayUntil.toLocaleDateString()}.` 
+          });
+        }
+      }
+    }
+
+    // Insert new application
+    const { data: application, error: insertError } = await supabase
+      .from('ambassador_applications')
+      .insert({
+        full_name: sanitizedFullName,
+        age: parseInt(age),
+        phone_number: phoneNumber,
+        email: sanitizedEmail,
+        city: sanitizedCity,
+        ville: city === 'Sousse' ? (ville ? ville.trim() : null) : null,
+        social_link: sanitizedSocialLink,
+        motivation: sanitizedMotivation || null,
+        status: 'pending'
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      if (insertError.code === '23505' || insertError.message?.includes('unique constraint') || insertError.message?.includes('duplicate key')) {
+        return res.status(400).json({ error: 'An application with this phone number or email already exists. Please contact support if you believe this is an error.' });
+      }
+      console.error('Error inserting application:', insertError);
+      return res.status(500).json({ error: 'Failed to submit application', details: insertError.message });
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Application submitted successfully',
+      applicationId: application.id
+    });
+  } catch (error) {
+    console.error('Error in ambassador application:', error);
     res.status(500).json({ 
       error: 'Internal server error', 
       details: error.message 
@@ -2615,7 +2952,7 @@ app.post('/api/test-email', requireAdminAuth, async (req, res) => {
 
 
 // OG Image endpoint - serves OG image from Supabase Storage
-app.get('/api/og-image', async (req, res) => {
+app.get('/api/og-image', ogImageLimiter, async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });

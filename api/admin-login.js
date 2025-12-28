@@ -83,8 +83,13 @@ export default async (req, res) => {
     const jwt = await import('jsonwebtoken');
     const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
     
+    // Check if we're in production (Vercel or NODE_ENV=production)
+    const isProduction = process.env.NODE_ENV === 'production' || 
+                         process.env.VERCEL === '1' || 
+                         !!process.env.VERCEL_URL;
+    
     if (!jwtSecret || jwtSecret === 'fallback-secret-dev-only') {
-      if (process.env.NODE_ENV === 'production') {
+      if (isProduction) {
         return res.status(500).json({ 
           error: 'Server configuration error',
           details: 'JWT_SECRET is required in production'
@@ -103,7 +108,6 @@ export default async (req, res) => {
     );
     
     // Set cookie
-    const isProduction = process.env.NODE_ENV === 'production';
     const cookieParts = [
       `adminToken=${token}`,
       'HttpOnly',

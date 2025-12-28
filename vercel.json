@@ -17,6 +17,12 @@
     },
     "api/admin-update-application.js": {
       "maxDuration": 30
+    },
+    "api/ambassador-login.js": {
+      "maxDuration": 30
+    },
+    "api/ambassador-application.js": {
+      "maxDuration": 30
     }
   }
 }

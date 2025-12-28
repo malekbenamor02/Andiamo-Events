@@ -4,11 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { Eye, EyeOff, User, Lock, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import bcrypt from 'bcryptjs';
 import { API_ROUTES } from '@/lib/api-routes';
+import { safeApiCall } from '@/lib/api-client';
 
 interface AuthProps {
   language: 'en' | 'fr';
@@ -208,90 +207,59 @@ const Auth = ({ language }: AuthProps) => {
     }
 
     try {
-      // Verify reCAPTCHA on server
-      const verifyResponse = await fetch(API_ROUTES.VERIFY_RECAPTCHA, {
+      // Call ambassador login API endpoint
+      const data = await safeApiCall(API_ROUTES.AMBASSADOR_LOGIN, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ recaptchaToken })
+        body: JSON.stringify({
+          phone: loginData.phone,
+          password: loginData.password,
+          recaptchaToken
+        })
       });
 
-      if (!verifyResponse.ok) {
-        const errorData = await verifyResponse.json().catch(() => ({}));
+      if (data.success && data.ambassador) {
+        // Success - redirect to dashboard
         toast({
-          title: language === 'en' ? "Verification Failed" : "Échec de la vérification",
-          description: language === 'en' 
-            ? 'reCAPTCHA verification failed. Please try again.' 
-            : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.',
-          variant: "destructive",
+          title: t.login.success,
+          description: language === 'en' ? "Redirecting to dashboard..." : "Redirection vers le tableau de bord...",
         });
-        setIsLoading(false);
-        return;
+
+        // Store ambassador session
+        localStorage.setItem('ambassadorSession', JSON.stringify({ 
+          user: data.ambassador, 
+          loggedInAt: new Date().toISOString() 
+        }));
+
+        // Redirect to dashboard
+        navigate('/ambassador/dashboard');
+      } else {
+        throw new Error('Login failed');
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || (language === 'en' ? "An error occurred" : "Une erreur s'est produite");
+      
+      // Handle specific error messages from API
+      let title = t.login.error;
+      let description = errorMessage;
+      
+      if (errorMessage.includes('Invalid phone number or password')) {
+        description = language === 'en' ? "Invalid phone number or password" : "Numéro de téléphone ou mot de passe invalide";
+      } else if (errorMessage.includes('under review')) {
+        title = t.login.pending;
+        description = language === 'en' ? "Your application is under review" : "Votre candidature est en cours d'examen";
+      } else if (errorMessage.includes('not approved') || errorMessage.includes('rejected')) {
+        title = t.login.rejected;
+        description = language === 'en' ? "Your application was not approved" : "Votre candidature n'a pas été approuvée";
+      } else if (errorMessage.includes('Too many')) {
+        description = errorMessage;
       }
 
-      // Fetch ambassador by phone number
-      const { data: ambassadors, error } = await supabase
-        .from('ambassadors')
-        .select('*')
-        .eq('phone', loginData.phone)
-        .single();
-
-      if (error || !ambassadors) {
-        toast({
-          title: t.login.error,
-          description: language === 'en' ? "Invalid phone number or password" : "Numéro de téléphone ou mot de passe invalide",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Verify password
-      const isPasswordValid = await bcrypt.compare(loginData.password, ambassadors.password);
-      if (!isPasswordValid) {
-        toast({
-          title: t.login.error,
-          description: language === 'en' ? "Invalid phone number or password" : "Numéro de téléphone ou mot de passe invalide",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Check application status
-      if (ambassadors.status === 'pending') {
-        toast({
-          title: t.login.pending,
-          description: language === 'en' ? "Your application is under review" : "Votre candidature est en cours d'examen",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (ambassadors.status === 'rejected') {
-        toast({
-          title: t.login.rejected,
-          description: language === 'en' ? "Your application was not approved" : "Votre candidature n'a pas été approuvée",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Success - redirect to dashboard
       toast({
-        title: t.login.success,
-        description: language === 'en' ? "Redirecting to dashboard..." : "Redirection vers le tableau de bord...",
-      });
-
-      // Store ambassador session
-      localStorage.setItem('ambassadorSession', JSON.stringify({ user: ambassadors, loggedInAt: new Date().toISOString() }));
-
-      // Redirect to dashboard
-      navigate('/ambassador/dashboard');
-
-    } catch (error) {
-      toast({
-        title: t.login.error,
-        description: language === 'en' ? "An error occurred" : "Une erreur s'est produite",
+        title,
+        description,
         variant: "destructive",
       });
     } finally {

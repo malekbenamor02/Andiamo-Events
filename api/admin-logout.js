@@ -21,7 +21,10 @@ export default async (req, res) => {
   try {
     // Clear the adminToken cookie with the same settings as login
     // This ensures the cookie is properly removed
-    const isProduction = process.env.NODE_ENV === 'production';
+    // Check if we're in production (Vercel or NODE_ENV=production)
+    const isProduction = process.env.NODE_ENV === 'production' || 
+                         process.env.VERCEL === '1' || 
+                         !!process.env.VERCEL_URL;
     const cookieParts = [
       'adminToken=',
       'HttpOnly',

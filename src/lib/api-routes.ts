@@ -32,12 +32,10 @@ export const API_ROUTES = {
   SEND_SMS: '/api/send-sms',
   BULK_PHONES: '/api/bulk-phones',
   
-  // Orders & Assignments
-  ASSIGN_ORDER: '/api/assign-order',
-  AUTO_REASSIGN: '/api/auto-reassign',
-  NEXT_AMBASSADOR: (ville: string) => `/api/next-ambassador/${ville}`,
   
   // Ambassador
+  AMBASSADOR_LOGIN: '/api/ambassador-login',
+  AMBASSADOR_APPLICATION: '/api/ambassador-application',
   AMBASSADOR_UPDATE_PASSWORD: '/api/ambassador-update-password',
   
   // Tickets & QR Codes
