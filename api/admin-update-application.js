@@ -83,12 +83,6 @@ export default async (req, res) => {
       process.env.SUPABASE_ANON_KEY
     );
     
-    console.log('Attempting to update application:', { 
-      applicationId, 
-      status, 
-      reapply_delay_date,
-      adminId: authResult.admin.id 
-    });
     
     // Prepare update data
     const updateData = {
@@ -112,7 +106,6 @@ export default async (req, res) => {
     
     // If error is about missing updated_at column, try without it
     if (result.error && result.error.message?.includes('updated_at')) {
-      console.log('updated_at column not found, updating without it');
       result = await supabase
         .from('ambassador_applications')
         .update(updateData)

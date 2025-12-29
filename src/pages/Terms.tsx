@@ -99,7 +99,7 @@ const Terms = ({ language }: TermsProps) => {
         },
         {
           title: "Contact Us",
-          content: "If you have any questions about these Terms of Service, please contact us at contact@andiamoevents.com"
+          content: "If you have any questions about these Terms of Service, please contact us at support@andiamoevents.com"
         }
       ]
     },
@@ -153,7 +153,7 @@ const Terms = ({ language }: TermsProps) => {
         },
         {
           title: "Nous contacter",
-          content: "Si vous avez des questions concernant ces Conditions d'Utilisation, veuillez nous contacter à contact@andiamoevents.com"
+          content: "Si vous avez des questions concernant ces Conditions d'Utilisation, veuillez nous contacter à support@andiamoevents.com"
         }
       ]
     }

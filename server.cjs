@@ -15,7 +15,6 @@ try {
   require('dotenv').config();
 } catch (e) {
   // dotenv might not be available, but that's OK on Vercel
-  console.log('dotenv not available (this is OK on Vercel)');
 }
 
 // Debug: Log environment variables
@@ -38,7 +37,6 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
   // Also create service role client if available (for storage operations)
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
     supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-    console.log('Supabase service role client initialized for storage operations');
   } else {
     console.warn('SUPABASE_SERVICE_ROLE_KEY not set - storage operations may fail. Using anon key instead.');
   }
@@ -377,26 +375,6 @@ app.get('/api/track-email', async (req, res) => {
 // Admin login endpoint
 app.post('/api/admin-login', authLimiter, async (req, res) => {
   try {
-    // Log for debugging - include all request info
-    console.log('=== ADMIN LOGIN REQUEST ===');
-    console.log('Request body:', { 
-      email: req.body?.email, 
-      hasPassword: !!req.body?.password,
-      hasRecaptcha: !!req.body?.recaptchaToken
-    });
-    console.log('Request headers:', {
-      'content-type': req.headers['content-type'],
-      origin: req.headers.origin,
-      referer: req.headers.referer
-    });
-    console.log('Environment check:', {
-      hasSupabase: !!supabase,
-      hasSupabaseUrl: !!process.env.SUPABASE_URL,
-      hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
-      hasJwtSecret: !!process.env.JWT_SECRET,
-      nodeEnv: process.env.NODE_ENV,
-      vercel: process.env.VERCEL === '1'
-    });
     
     if (!supabase) {
       console.error('❌ Supabase not configured');
@@ -411,7 +389,6 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     const { email, password, recaptchaToken } = req.body;
     
     if (!email || !password) {
-      console.log('Missing email or password');
       return res.status(400).json({ error: 'Email and password required' });
     }
 
@@ -422,20 +399,16 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     
     if (shouldBypassRecaptcha) {
       if (!RECAPTCHA_SECRET_KEY) {
-        console.log('⚠️  reCAPTCHA bypassed - RECAPTCHA_SECRET_KEY not set');
       } else {
-        console.log('⚠️  reCAPTCHA bypassed for localhost development');
       }
       // Continue with login without reCAPTCHA verification
     } else {
       // Verify reCAPTCHA for production
       if (!recaptchaToken) {
-        console.log('reCAPTCHA token missing');
         return res.status(400).json({ error: 'reCAPTCHA verification required' });
       }
       
       try {
-        console.log('Verifying reCAPTCHA token...');
         const verifyResponse = await fetch(`https://www.google.com/recaptcha/api/siteverify`, {
           method: 'POST',
           headers: {
@@ -445,7 +418,6 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
         });
 
         const verifyData = await verifyResponse.json();
-        console.log('reCAPTCHA verification response:', { success: verifyData.success, errors: verifyData['error-codes'] });
         
         if (!verifyData.success) {
           console.error('reCAPTCHA verification failed:', verifyData);
@@ -454,7 +426,6 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
             details: verifyData['error-codes']?.join(', ') || 'Please complete the reCAPTCHA verification and try again.'
           });
         }
-        console.log('reCAPTCHA verification successful');
       } catch (recaptchaError) {
         console.error('reCAPTCHA verification error:', recaptchaError);
         return res.status(500).json({ 
@@ -465,10 +436,6 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     }
     
     // Fetch admin by email
-    console.log('Fetching admin from Supabase for email:', email);
-    console.log('Supabase initialized:', !!supabase);
-    console.log('Supabase URL set:', !!process.env.SUPABASE_URL);
-    console.log('Supabase key set:', !!process.env.SUPABASE_ANON_KEY);
     
     const { data: admin, error } = await supabase
       .from('admins')
@@ -489,11 +456,9 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     }
     
     if (!admin) {
-      console.log('Admin not found for email:', email);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    console.log('Admin found:', { id: admin.id, email: admin.email, hasPassword: !!admin.password });
     
     if (!admin.password) {
       console.error('Admin has no password field');
@@ -503,10 +468,7 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     // Compare password
     let isMatch;
     try {
-      console.log('Comparing password...');
-      console.log('Password hash length:', admin.password?.length);
       isMatch = await bcrypt.compare(password, admin.password);
-      console.log('Password match result:', isMatch);
     } catch (bcryptError) {
       console.error('Bcrypt comparison error:', bcryptError);
       console.error('Bcrypt error stack:', bcryptError.stack);
@@ -514,13 +476,10 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     }
     
     if (!isMatch) {
-      console.log('Password does not match for email:', email);
       // Don't reveal too much info, but log for debugging
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    console.log('✅ Password verified successfully for email:', email);
-    console.log('🔵 Generating JWT token...');
     
     // Generate JWT (1 hour fixed session - expiration encoded in token)
     // The session countdown starts from login and continues regardless of user activity
@@ -565,8 +524,6 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
       cookieOptions.domain = process.env.COOKIE_DOMAIN;
     }
     
-    console.log('🔵 Setting adminToken cookie...');
-    console.log('🔵 Cookie options:', {
       httpOnly: cookieOptions.httpOnly,
       secure: cookieOptions.secure,
       sameSite: cookieOptions.sameSite,
@@ -576,10 +533,7 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     });
     
     res.cookie('adminToken', token, cookieOptions);
-    console.log('✅ Cookie set successfully');
-    console.log('✅ Sending success response');
     res.json({ success: true });
-    console.log('✅ Login completed successfully for email:', email);
   } catch (error) {
     console.error('❌ Admin login error:', error);
     console.error('❌ Error type:', error?.constructor?.name);
@@ -603,7 +557,6 @@ app.post('/api/verify-recaptcha', recaptchaLimiter, async (req, res) => {
 
     // Bypass reCAPTCHA verification for localhost development
     if (recaptchaToken === 'localhost-bypass-token') {
-      console.log('⚠️  reCAPTCHA bypassed for localhost development');
       return res.status(200).json({ 
         success: true,
         message: 'reCAPTCHA bypassed for localhost'
@@ -790,7 +743,6 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
 
     // Update application status (using anon key - RLS policies should allow this)
     // If RLS blocks it, we'll get a clear error message
-    console.log('Attempting to update application:', { applicationId, status, reapply_delay_date, adminId: req.admin.id });
     
     // Prepare update data
     const updatePayload = {
@@ -822,7 +774,6 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
     
     // If error is about missing updated_at column, try without it
     if (updateError && updateError.message?.includes('updated_at')) {
-      console.log('updated_at column not found, updating without it');
       const retryResult = await supabase
         .from('ambassador_applications')
         .update(updatePayload)
@@ -833,7 +784,6 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
       updateError = retryResult.error;
     }
     
-    console.log('Update result:', { 
       updateData, 
       updateError: updateError ? {
         message: updateError.message,
@@ -1303,7 +1253,6 @@ app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
       const req = https.get(options, (res) => {
         let data = '';
         
-        console.log('Balance check - HTTP Status:', res.statusCode);
         
         res.on('data', (chunk) => {
           data += chunk;
@@ -1889,71 +1838,21 @@ app.post('/api/ambassador-application', applicationLimiter, async (req, res) => 
     const isSousse = normalizedCity === 'Sousse';
     const isTunis = normalizedCity === 'Tunis';
     
-    console.log('\n========================================');
-    console.log('🔍 [VILLE HANDLING] Starting ville processing...');
-    console.log('  - sanitizedCity:', sanitizedCity);
-    console.log('  - isSousse:', isSousse);
-    console.log('  - isTunis:', isTunis);
-    console.log('  - ville from request:', ville);
-    console.log('========================================\n');
-    
     // Handle ville for Sousse
-    console.log('\n========================================');
-    console.log('🔍 [DEBUG] Checking isSousse condition...');
-    console.log('  - isSousse value:', isSousse);
-    console.log('  - normalizedCity value:', normalizedCity);
-    console.log('  - normalizedCity type:', typeof normalizedCity);
-    console.log('  - normalizedCity length:', normalizedCity.length);
-    console.log('  - normalizedCity === "Sousse":', normalizedCity === 'Sousse');
-    console.log('  - normalizedCity char codes:', normalizedCity.split('').map(c => c.charCodeAt(0)));
-    console.log('  - ville value:', ville);
-    console.log('  - ville type:', typeof ville);
-    console.log('========================================\n');
-    
     if (isSousse) {
-      console.log('\n========================================');
-      console.log('✅ [SOUSSE] Processing Sousse ville...');
-      console.log('========================================');
       if (!ville || (typeof ville === 'string' && ville.trim() === '')) {
-        console.error('❌ [SOUSSE] Ville is missing!');
         return res.status(400).json({ error: 'Ville (neighborhood) is required for Sousse' });
       }
       villeValue = typeof ville === 'string' ? ville.trim() : ville;
-      console.log('✅ [SOUSSE] villeValue set to:', villeValue);
-      console.log('✅ [SOUSSE] villeValue type:', typeof villeValue);
-      console.log('========================================\n');
-    } else {
-      console.log('\n========================================');
-      console.log('⚠️ [SOUSSE] isSousse is FALSE - skipping Sousse ville processing');
-      console.log('========================================\n');
     }
     
     // Handle ville for Tunis
     if (isTunis) {
-      console.log('\n========================================');
-      console.log('✅ [TUNIS] Processing Tunis ville...');
-      console.log('========================================');
       if (!ville || ville.trim() === '') {
-        console.error('❌ [TUNIS] Ville is missing!');
         return res.status(400).json({ error: 'Ville (neighborhood) is required for Tunis' });
       }
       villeValue = ville.trim();
-      console.log('✅ [TUNIS] villeValue set to:', villeValue);
-      console.log('========================================\n');
     }
-    
-    console.log('\n========================================');
-    console.log('🔍 [VILLE HANDLING] Final villeValue:', villeValue);
-    console.log('========================================\n');
-    
-    // Insert new application
-    console.log('\n========================================');
-    console.log('🔍 [INSERT DATA] Prepared insert data:');
-    console.log('  - city:', sanitizedCity);
-    console.log('  - ville:', villeValue);
-    console.log('  - ville type:', typeof villeValue);
-    console.log('  - ville === null:', villeValue === null);
-    console.log('========================================\n');
     
     const { data: application, error: insertError } = await supabase
       .from('ambassador_applications')
@@ -2218,7 +2117,6 @@ app.post('/api/send-order-completion-email', async (req, res) => {
         // Email will still be sent, just won't be logged
       } else {
         emailLog = logData;
-        console.log('Email log created successfully:', emailLog.id);
       }
     } catch (logErr) {
       console.error('Error creating email log (exception):', logErr);
@@ -2257,14 +2155,12 @@ app.post('/api/send-order-completion-email', async (req, res) => {
             console.error('Error updating email log to sent:', updateError);
             console.error('Update error details:', JSON.stringify(updateError, null, 2));
           } else {
-            console.log('Email log updated to sent successfully');
           }
         } catch (updateError) {
           console.error('Error updating email log (exception):', updateError);
           // Don't fail the response if log update fails
         }
       } else {
-        console.log('No email log to update (log creation may have failed)');
       }
 
       res.status(200).json({ 
@@ -2560,8 +2456,6 @@ app.post('/api/generate-qr-code', async (req, res) => {
 // POST /api/generate-tickets-for-order - Generate tickets when order reaches PAID status
 app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) => {
   try {
-    console.log('🎫 ========== TICKET GENERATION STARTED ==========');
-    console.log('🎫 Ticket generation request received:', req.body);
     const { orderId } = req.body;
     
     if (!orderId) {
@@ -2582,11 +2476,9 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
     if (!supabaseService) {
       console.warn('⚠️ Service role key not set - using anon key (may fail due to RLS)');
     } else {
-      console.log('✅ Using service role client for all operations');
     }
 
     // Fetch order data using service role client
-    console.log(`📋 Fetching order data for: ${orderId}`);
     const { data: orderData, error: orderError } = await dbClient
       .from('orders')
       .select(`
@@ -2612,7 +2504,6 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
     }
 
     const order = orderData;
-    console.log(`📋 Order details: id=${order.id}, status=${order.status}, source=${order.source}, payment_method=${order.payment_method}`);
 
     // Check if order is in the correct status (COMPLETED for COD, PAID for online)
     // Also accept MANUAL_COMPLETED for manual orders
@@ -2620,7 +2511,6 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
       (order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED')) ||
       (order.source === 'platform_online' && order.status === 'PAID');
 
-    console.log(`📋 Order status check: status=${order.status}, source=${order.source}, isPaidStatus=${isPaidStatus}`);
 
     if (!isPaidStatus) {
       console.error(`❌ Order not in paid status: ${order.status} (source: ${order.source})`);
@@ -2633,7 +2523,6 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
     }
 
     // Check if tickets already exist
-    console.log(`🔍 Checking if tickets already exist for order ${orderId}`);
     const { data: existingTickets } = await dbClient
       .from('tickets')
       .select('id')
@@ -2649,7 +2538,6 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
     }
 
     // Fetch all passes for this order
-    console.log(`📋 Fetching order passes for order ${orderId}`);
     let orderPasses = null;
     const { data: passesData, error: passesError } = await dbClient
       .from('order_passes')
@@ -2665,22 +2553,18 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
     }
 
     orderPasses = passesData;
-    console.log(`📋 Found ${orderPasses?.length || 0} pass(es) in order_passes table for order ${orderId}`);
 
     // Fallback: If no passes in order_passes table, create them from order data
     if (!orderPasses || orderPasses.length === 0) {
-      console.log('⚠️ No passes in order_passes table, checking order for pass_type...');
       
       // Check if order has pass_type (old format)
       if (order.pass_type) {
-        console.log(`📋 Creating order_pass entry from order data: pass_type=${order.pass_type}, quantity=${order.quantity || 1}`);
         
         // Calculate price per pass
         const quantity = order.quantity || 1;
         const pricePerPass = order.total_price / quantity;
         
         // Create order_pass entry using service role client
-        console.log(`💾 Creating order_pass entry in database...`);
         const { data: newPass, error: createPassError } = await dbClient
           .from('order_passes')
           .insert({
@@ -2700,7 +2584,6 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
           });
         }
 
-        console.log('✅ Created order_pass entry:', newPass);
         orderPasses = [newPass];
       } else {
         console.error('❌ No passes found and order has no pass_type');
@@ -2712,14 +2595,12 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
       }
     }
 
-    console.log(`✅ Found ${orderPasses.length} pass(es) for order ${orderId}`);
 
     const { v4: uuidv4 } = require('uuid');
     const QRCode = require('qrcode');
 
     // Create tickets and generate QR codes
     const tickets = [];
-    console.log('🎫 Starting ticket generation...');
 
     for (const pass of orderPasses) {
       // Create one ticket per quantity
@@ -2735,7 +2616,6 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
 
         // Upload to Supabase Storage
         const fileName = `tickets/${orderId}/${secureToken}.png`;
-        console.log(`📤 Uploading QR code to storage: ${fileName}`);
         const { data: uploadData, error: uploadError } = await storageClient.storage
           .from('tickets')
           .upload(fileName, qrCodeBuffer, {
@@ -2748,17 +2628,14 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
           continue;
         }
 
-        console.log(`✅ QR code uploaded successfully: ${fileName}`);
 
         // Get public URL
         const { data: urlData } = storageClient.storage
           .from('tickets')
           .getPublicUrl(fileName);
         
-        console.log(`🔗 QR code URL: ${urlData?.publicUrl}`);
 
         // Create ticket entry using service role client
-        console.log(`💾 Creating ticket entry in database...`);
         const ticketInsertData = {
           order_id: orderId,
           order_pass_id: pass.id,
@@ -2768,7 +2645,6 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
           generated_at: new Date().toISOString()
         };
         
-        console.log('📝 Ticket data to insert:', JSON.stringify(ticketInsertData, null, 2));
         
         const { data: ticketData, error: ticketError } = await dbClient
           .from('tickets')
@@ -2786,8 +2662,6 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
         }
 
         if (ticketData) {
-          console.log(`✅ Ticket created successfully in database: ${ticketData.id}`);
-          console.log(`✅ Ticket details:`, JSON.stringify(ticketData, null, 2));
           tickets.push(ticketData);
         } else {
           console.error(`❌ Ticket insert returned no data`);
@@ -2800,11 +2674,9 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
       return res.status(500).json({ error: 'Failed to generate any tickets' });
     }
 
-    console.log(`✅ Successfully created ${tickets.length} ticket(s)`);
 
     // Send confirmation email with all QR codes
     if (order.user_email) {
-      console.log(`📧 Preparing to send email to: ${order.user_email}`);
       try {
         // Build email HTML with all ticket QR codes
         const ticketsHtml = tickets
@@ -2850,18 +2722,15 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
           </html>
         `;
 
-        console.log('📧 Sending email...');
         const emailResult = await transporter.sendMail({
           from: `Andiamo Events <${process.env.EMAIL_USER}>`,
           to: order.user_email,
           subject: '✅ Order Confirmation - Your Digital Tickets Are Ready!',
           html: emailHtml
         });
-        console.log('✅ Email sent successfully:', emailResult.messageId);
 
         // Update tickets to DELIVERED using service role client
         const ticketIds = tickets.map(t => t.id);
-        console.log(`📝 Updating ${ticketIds.length} ticket(s) to DELIVERED status`);
         const { error: updateError } = await dbClient
           .from('tickets')
           .update({
@@ -2874,11 +2743,9 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
         if (updateError) {
           console.error('❌ Error updating tickets to DELIVERED:', updateError);
         } else {
-          console.log('✅ Tickets updated to DELIVERED status');
         }
 
         // Log email delivery using service role client
-        console.log('📝 Logging email delivery...');
         const { error: logError } = await dbClient.from('email_delivery_logs').insert({
           order_id: orderId,
           email_type: 'ticket_delivery',
@@ -2914,9 +2781,6 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
       }
     }
 
-    console.log(`🎉 ========== TICKET GENERATION COMPLETED ==========`);
-    console.log(`🎉 Successfully created ${tickets.length} ticket(s) for order ${orderId}`);
-    console.log(`🎉 Ticket IDs:`, tickets.map(t => t.id));
     
     res.status(200).json({ 
       success: true, 
@@ -2948,7 +2812,7 @@ app.post('/api/test-email', requireAdminAuth, async (req, res) => {
     }
 
     const { to } = req.body;
-    const testEmailTo = to || 'contact@andiamoevents.com';
+    const testEmailTo = to || 'malekbenamor02@icloud.com';
 
     const testEmailHtml = `
       <!DOCTYPE html>
@@ -3115,9 +2979,6 @@ app.use('/api/*', (req, res) => {
 if (require.main === module) {
   const port = process.env.PORT || 8082;
   app.listen(port, () => {
-    console.log('API server running on port', port);
-    console.log('Available routes:');
-    console.log('  POST /api/send-email');
     console.log('  POST /api/admin-login');
     console.log('  POST /api/admin-logout');
     console.log('  GET  /api/verify-admin');

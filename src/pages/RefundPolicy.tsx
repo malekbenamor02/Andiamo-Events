@@ -67,7 +67,7 @@ const RefundPolicy = ({ language }: RefundPolicyProps) => {
         },
         {
           title: "COD Orders",
-          content: "Cash on Delivery (COD) orders can be canceled before an ambassador confirms the order. Once an ambassador has confirmed your COD order, cancellation is not guaranteed and may be subject to the ambassador's discretion. If you need to cancel a confirmed COD order, contact us immediately at contact@andiamoevents.com."
+          content: "Cash on Delivery (COD) orders can be canceled before an ambassador confirms the order. Once an ambassador has confirmed your COD order, cancellation is not guaranteed and may be subject to the ambassador's discretion. If you need to cancel a confirmed COD order, contact us immediately at support@andiamoevents.com."
         },
         {
           title: "Ambassador Cancellations",
@@ -79,7 +79,7 @@ const RefundPolicy = ({ language }: RefundPolicyProps) => {
         },
         {
           title: "Contact Us",
-          content: "For refund requests or questions about this policy, please contact us at contact@andiamoevents.com. Please include your order number and a detailed explanation of your request."
+          content: "For refund requests or questions about this policy, please contact us at support@andiamoevents.com. Please include your order number and a detailed explanation of your request."
         }
       ]
     },
@@ -101,7 +101,7 @@ const RefundPolicy = ({ language }: RefundPolicyProps) => {
         },
         {
           title: "Commandes COD",
-          content: "Les commandes en paiement à la livraison (COD) peuvent être annulées avant qu'un ambassadeur ne confirme la commande. Une fois qu'un ambassadeur a confirmé votre commande COD, l'annulation n'est pas garantie et peut être soumise à la discrétion de l'ambassadeur. Si vous devez annuler une commande COD confirmée, contactez-nous immédiatement à contact@andiamoevents.com."
+          content: "Les commandes en paiement à la livraison (COD) peuvent être annulées avant qu'un ambassadeur ne confirme la commande. Une fois qu'un ambassadeur a confirmé votre commande COD, l'annulation n'est pas garantie et peut être soumise à la discrétion de l'ambassadeur. Si vous devez annuler une commande COD confirmée, contactez-nous immédiatement à support@andiamoevents.com."
         },
         {
           title: "Annulations d'Ambassadeurs",
@@ -113,7 +113,7 @@ const RefundPolicy = ({ language }: RefundPolicyProps) => {
         },
         {
           title: "Nous contacter",
-          content: "Pour les demandes de remboursement ou les questions concernant cette politique, veuillez nous contacter à contact@andiamoevents.com. Veuillez inclure votre numéro de commande et une explication détaillée de votre demande."
+          content: "Pour les demandes de remboursement ou les questions concernant cette politique, veuillez nous contacter à support@andiamoevents.com. Veuillez inclure votre numéro de commande et une explication détaillée de votre demande."
         }
       ]
     }

@@ -202,12 +202,6 @@ const Application = ({ language }: ApplicationProps) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('🚀 [SUBMIT] Form submitted!', {
-      city: formData.city,
-      ville: formData.ville,
-      isSousse: formData.city === 'Sousse',
-      isTunis: formData.city === 'Tunis',
-    });
     setIsSubmitting(true);
     try {
       // Validate full name (letters only, no numbers or special characters)
@@ -331,23 +325,11 @@ const Application = ({ language }: ApplicationProps) => {
       let villeValue = null;
       if (isSousse && formData.ville && formData.ville.trim() !== '') {
         villeValue = DOMPurify.sanitize(formData.ville.trim());
-        console.log('🔍 [FRONTEND DEBUG] Sousse ville prepared:', {
-          formDataVille: formData.ville,
-          villeValue: villeValue,
-          isSousse: isSousse
-        });
       }
       if (isTunis && formData.ville && formData.ville.trim() !== '') {
         villeValue = DOMPurify.sanitize(formData.ville.trim());
-        console.log('🔍 [FRONTEND DEBUG] Tunis ville prepared:', {
-          formDataVille: formData.ville,
-          villeValue: villeValue,
-          isTunis: isTunis
-        });
       }
 
-
-      // CRITICAL DEBUG: Log what we're about to send
       const requestBody = {
         fullName: sanitizedFullName,
         age: formData.age,
@@ -358,21 +340,6 @@ const Application = ({ language }: ApplicationProps) => {
         socialLink: sanitizedSocialLink,
         motivation: sanitizedMotivation || null,
       };
-      
-      
-      console.log('🔍 [FRONTEND DEBUG] Request body being sent:', {
-        ...requestBody,
-        villeType: typeof requestBody.ville,
-        villeIsNull: requestBody.ville === null,
-        villeIsUndefined: requestBody.ville === undefined,
-        city: requestBody.city,
-        isTunis: isTunis,
-      });
-      
-      // CRITICAL: Log the actual JSON string being sent
-      const jsonString = JSON.stringify(requestBody);
-      console.log('🔍 [FRONTEND DEBUG] JSON string being sent:', jsonString);
-      console.log('🔍 [FRONTEND DEBUG] JSON parsed back:', JSON.parse(jsonString));
 
       // Submit application via API endpoint (includes all validation and checks)
       const data = await safeApiCall(API_ROUTES.AMBASSADOR_APPLICATION, {

@@ -2912,7 +2912,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       // If error is about missing phone column, try without it
       if (createError && createError.message?.includes('phone')) {
-        console.log('Phone column not found, creating admin without phone');
         const { data: retryAdmin, error: retryError } = await supabase
           .from('admins')
           .insert({
@@ -2979,7 +2978,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (createError) {
         // If error is about missing phone column, try without it
         if (createError.message?.includes('phone')) {
-          console.log('Phone column not found, creating admin without phone');
           const { data: retryAdmin, error: retryError } = await supabase
             .from('admins')
             .insert({
@@ -3290,7 +3288,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     const loadPassesForEditing = async () => {
       // Only run if dialog is open, we're editing (has id), and passes are missing or empty
       if (isEventDialogOpen && editingEvent?.id && (!editingEvent.passes || editingEvent.passes.length === 0)) {
-        console.log('🔄 useEffect: Loading passes for event:', editingEvent.id);
         
         const { data: passesData, error: passesError } = await supabase
           .from('event_passes')
@@ -3312,7 +3309,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           is_primary: p.is_primary || false
         }));
         
-        console.log('✅ useEffect: Setting passes:', mappedPasses);
         setEditingEvent(prev => prev ? { ...prev, passes: mappedPasses } : null);
       }
     };
@@ -5188,7 +5184,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
       } else {
         // No matching applications found - this is okay, might be a manually added ambassador
-        console.log('No matching applications found for ambassador:', ambassador.id);
       }
 
       // Update local state for ambassadors
@@ -8760,7 +8755,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             variant="outline" 
                             onClick={async () => {
                               // Always fetch fresh passes from database to get current values
-                              console.log('🔍 Fetching passes for event:', event.id);
                               const { data: passesData, error: passesError } = await supabase
                                 .from('event_passes')
                                 .select('*')
@@ -8768,8 +8762,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 .order('is_primary', { ascending: false })
                                 .order('created_at', { ascending: true });
                               
-                              console.log('📦 Raw passes data from DB:', passesData);
-                              console.log('❌ Passes error:', passesError);
                               
                               // Handle 404 errors gracefully (table might not exist yet)
                               if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
@@ -8785,13 +8777,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   description: p.description || '',
                                   is_primary: p.is_primary || false
                                 };
-                                console.log('🔄 Mapped pass:', mapped);
                                 return mapped;
                               });
                               
-                              console.log('✅ All mapped passes:', mappedPasses);
                               const finalPasses = mappedPasses;
-                              console.log('🎯 Final passes to display:', finalPasses);
                               
                               // Create event with all current pass values from database
                               // Create a new object without the passes property first, then add it explicitly
@@ -8802,10 +8791,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 instagram_link: event.instagram_link || event.whatsapp_link
                               };
                               
-                              console.log('📝 Event with passes BEFORE setState:', eventWithPasses);
-                              console.log('📝 Event passes array length:', eventWithPasses.passes?.length);
-                              console.log('📝 Event passes array:', eventWithPasses.passes);
-                              console.log('📝 Original event.passes:', event.passes);
                               
                               // Clear pending files and validation errors when opening edit dialog
                               setPendingGalleryImages([]);
@@ -8816,7 +8801,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               // This ensures the state is set before the dialog renders
                               setEditingEvent(eventWithPasses);
                               
-                              console.log('✅ setEditingEvent called with passes:', finalPasses);
                               
                               // Use setTimeout to ensure state update completes before dialog opens
                               // This prevents the dialog from rendering with stale/empty passes

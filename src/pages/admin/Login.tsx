@@ -72,7 +72,6 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                        window.location.hostname.startsWith('10.0.');
     
     if (isLocalhost) {
-      console.log('⚠️  reCAPTCHA bypassed for localhost development');
       return 'localhost-bypass-token';
     }
 
@@ -117,16 +116,8 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     setLoading(true);
     setError("");
 
-    console.log('🔵 [LOGIN] Starting login process...');
-    console.log('🔵 [LOGIN] Email:', email);
-    console.log('🔵 [LOGIN] Has password:', !!password);
-    console.log('🔵 [LOGIN] Current URL:', window.location.href);
-    console.log('🔵 [LOGIN] Hostname:', window.location.hostname);
-
     // Execute reCAPTCHA v3 (bypassed on localhost)
-    console.log('🔵 [LOGIN] Executing reCAPTCHA...');
     const recaptchaToken = await executeRecaptcha();
-    console.log('🔵 [LOGIN] reCAPTCHA token received:', !!recaptchaToken, recaptchaToken ? 'token-length: ' + recaptchaToken.length : 'no token');
     
     // Only require reCAPTCHA if not on localhost
     const isLocalhost = window.location.hostname === 'localhost' || 
@@ -134,10 +125,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                        window.location.hostname.startsWith('192.168.') ||
                        window.location.hostname.startsWith('10.0.');
     
-    console.log('🔵 [LOGIN] Is localhost:', isLocalhost);
-    
     if (!isLocalhost && !recaptchaToken) {
-      console.error('❌ [LOGIN] reCAPTCHA verification failed');
       setError(language === 'en' ? 'reCAPTCHA verification failed. Please try again.' : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.');
       toast({
         title: language === 'en' ? "Verification Failed" : "Échec de la vérification",
@@ -156,13 +144,6 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       };
       
       const loginEndpoint = API_ROUTES.ADMIN_LOGIN;
-      console.log('🔵 [LOGIN] Sending login request to', loginEndpoint);
-      console.log('🔵 [LOGIN] Request payload:', { 
-        email, 
-        hasPassword: !!password, 
-        passwordLength: password?.length,
-        hasRecaptcha: !!recaptchaToken 
-      });
       
       // Call the Vercel API route for admin login
       const response = await fetch(loginEndpoint, {
@@ -173,37 +154,23 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         credentials: 'include', // Important: This allows cookies to be set
         body: JSON.stringify(loginPayload)
       });
-      
-      console.log('🔵 [LOGIN] Response received');
-      console.log('🔵 [LOGIN] Response status:', response.status);
-      console.log('🔵 [LOGIN] Response ok:', response.ok);
-      console.log('🔵 [LOGIN] Response headers:', Object.fromEntries(response.headers.entries()));
 
       // Check if response is OK before trying to parse JSON
       if (!response.ok) {
-        console.error('❌ [LOGIN] Response not OK, status:', response.status);
-        console.error('❌ [LOGIN] Response status text:', response.statusText);
-        
         // Try to get error message from response
         let errorMessage = t[language].error;
         let errorData = null;
         try {
           const responseText = await response.text();
-          console.error('❌ [LOGIN] Response body (text):', responseText);
           try {
             errorData = JSON.parse(responseText);
-            console.error('❌ [LOGIN] Response body (parsed):', errorData);
             errorMessage = errorData.error || errorData.details || errorMessage;
           } catch (parseError) {
-            console.error('❌ [LOGIN] Failed to parse error response as JSON:', parseError);
             errorMessage = responseText || response.statusText || errorMessage;
           }
         } catch (e) {
-          console.error('❌ [LOGIN] Failed to read response body:', e);
           errorMessage = response.statusText || errorMessage;
         }
-        
-        console.error('❌ [LOGIN] Final error message:', errorMessage);
         
         // Log failed admin login attempt
         logger.warning('Admin login failed', {
@@ -226,11 +193,9 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       let data;
       try {
         const responseText = await response.text();
-        console.log('🔵 [LOGIN] Response body (text):', responseText);
         data = JSON.parse(responseText);
-        console.log('🔵 [LOGIN] Response body (parsed):', data);
       } catch (e) {
-        console.error('❌ [LOGIN] Failed to parse response as JSON:', e);
+        console.error('Failed to parse login response:', e);
         setError(t[language].error);
         toast({
           title: language === 'en' ? "Login Failed" : "Échec de connexion",
@@ -242,7 +207,6 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       }
 
       if (data.success) {
-        console.log('✅ [LOGIN] Login successful!');
         // Log successful admin login
         logger.success('Admin login successful', {
           category: 'authentication',
@@ -266,11 +230,8 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         });
 
         // Redirect to admin dashboard
-        console.log('🔵 [LOGIN] Navigating to /admin');
         navigate('/admin');
       } else {
-        console.error('❌ [LOGIN] Login failed - data.success is false');
-        console.error('❌ [LOGIN] Response data:', data);
         // Login failed
         setError(data.error || t[language].error);
         toast({
@@ -280,10 +241,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         });
       }
     } catch (error: any) {
-      console.error('❌ [LOGIN] Exception during login:', error);
-      console.error('❌ [LOGIN] Error type:', error?.constructor?.name);
-      console.error('❌ [LOGIN] Error message:', error?.message);
-      console.error('❌ [LOGIN] Error stack:', error?.stack);
+      console.error('Login error:', error);
       // More detailed error handling
       let errorMessage = t[language].error;
       if (error instanceof TypeError && error.message.includes('fetch')) {
@@ -414,7 +372,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                     required
                     autoComplete="email"
                     className="w-full pl-10 h-10 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
-                    placeholder="contact@andiamoevents.com"
+                    placeholder="admin@andiamoevents.com"
                   />
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <div className="absolute inset-0 rounded-md pointer-events-none opacity-0 group-hover:opacity-10 transition-opacity duration-300 bg-gradient-to-r from-primary/20 to-secondary/20" />

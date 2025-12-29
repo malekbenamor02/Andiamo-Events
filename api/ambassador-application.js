@@ -31,36 +31,7 @@ export default async (req, res) => {
       bodyData = JSON.parse(body);
     }
     
-    // ============================================
-    // CRITICAL DEBUG: Log raw body data
-    // ============================================
-    console.log('\n' + '='.repeat(80));
-    console.log('🔍 [DEBUG] RAW REQUEST DATA RECEIVED');
-    console.log('='.repeat(80));
-    console.log('Full bodyData:', JSON.stringify(bodyData, null, 2));
-    console.log('bodyData.ville:', bodyData.ville);
-    console.log('bodyData.ville type:', typeof bodyData.ville);
-    console.log('bodyData.city:', bodyData.city);
-    console.log('='.repeat(80) + '\n');
-    
     const { fullName, age, phoneNumber, email, city, ville, socialLink, motivation } = bodyData;
-
-    // ============================================
-    // CRITICAL DEBUG: Log exactly what we receive
-    // ============================================
-    console.log('\n' + '='.repeat(80));
-    console.log('🔍 [DEBUG] RECEIVED BODYDATA (DESTRUCTURED)');
-    console.log('='.repeat(80));
-    console.log('city:', city);
-    console.log('cityType:', typeof city);
-    console.log('ville:', ville);
-    console.log('villeType:', typeof ville);
-    console.log('villeIsNull:', ville === null);
-    console.log('villeIsUndefined:', ville === undefined);
-    console.log('villeIsEmptyString:', ville === '');
-    console.log('villeValue (String):', String(ville));
-    console.log('bodyDataKeys:', Object.keys(bodyData));
-    console.log('='.repeat(80) + '\n');
 
     // Validate required fields
     if (!fullName || !age || !phoneNumber || !city) {
@@ -98,50 +69,11 @@ export default async (req, res) => {
     const sanitizedEmail = email ? email.trim() : null;
     const sanitizedCity = city ? city.trim() : '';
     
-    // CRITICAL: Log city before and after sanitization
-    console.log('\n' + '='.repeat(80));
-    console.log('🔍 [SANITIZATION] CITY SANITIZATION');
-    console.log('='.repeat(80));
-    console.log('Original city:', city);
-    console.log('Original city type:', typeof city);
-    console.log('Sanitized city:', sanitizedCity);
-    console.log('Sanitized city type:', typeof sanitizedCity);
-    console.log('Sanitized city length:', sanitizedCity.length);
-    console.log('Sanitized city === "Tunis":', sanitizedCity === 'Tunis');
-    console.log('Sanitized city char codes:', sanitizedCity.split('').map(c => c.charCodeAt(0)));
-    console.log('='.repeat(80) + '\n');
-    
     // Handle ville - check if it exists and is not empty
     let sanitizedVille = null;
     if (ville !== undefined && ville !== null && String(ville).trim() !== '') {
       sanitizedVille = String(ville).trim();
     }
-    
-    // CRITICAL: Log ville before and after sanitization
-    console.log('\n' + '='.repeat(80));
-    console.log('🔍 [SANITIZATION] VILLE SANITIZATION');
-    console.log('='.repeat(80));
-    console.log('Original ville:', ville);
-    console.log('Original ville type:', typeof ville);
-    console.log('Sanitized ville:', sanitizedVille);
-    console.log('Sanitized ville type:', typeof sanitizedVille);
-    console.log('='.repeat(80) + '\n');
-    
-    // ============================================
-    // CRITICAL DEBUG: Log sanitization results
-    // ============================================
-    console.log('\n' + '='.repeat(80));
-    console.log('🔍 [DEBUG] AFTER SANITIZATION');
-    console.log('='.repeat(80));
-    console.log('sanitizedCity:', sanitizedCity);
-    console.log('sanitizedVille:', sanitizedVille);
-    console.log('originalVille:', ville);
-    console.log('villeIsNull:', sanitizedVille === null);
-    console.log('villeIsUndefined:', sanitizedVille === undefined);
-    console.log('villeIsEmptyString:', sanitizedVille === '');
-    console.log('cityIsSousse:', sanitizedCity === 'Sousse');
-    console.log('cityIsTunis:', sanitizedCity === 'Tunis');
-    console.log('='.repeat(80) + '\n');
     const sanitizedSocialLink = socialLink ? socialLink.trim() : null;
     const sanitizedMotivation = motivation ? motivation.trim() : null;
 

@@ -71,7 +71,7 @@ const PrivacyPolicy = ({ language }: PrivacyPolicyProps) => {
         },
         {
           title: "Your Rights",
-          content: "You have the right to: access your personal information, update or correct inaccurate information, delete your account and associated data, opt out of marketing communications, and request a copy of your data. To exercise these rights, contact us at contact@andiamoevents.com"
+          content: "You have the right to: access your personal information, update or correct inaccurate information, delete your account and associated data, opt out of marketing communications, and request a copy of your data. To exercise these rights, contact us at support@andiamoevents.com"
         },
         {
           title: "Cookies",
@@ -79,7 +79,7 @@ const PrivacyPolicy = ({ language }: PrivacyPolicyProps) => {
         },
         {
           title: "Contact Us",
-          content: "If you have any questions about this Privacy Policy or wish to exercise your rights, please contact us at contact@andiamoevents.com"
+          content: "If you have any questions about this Privacy Policy or wish to exercise your rights, please contact us at support@andiamoevents.com"
         }
       ]
     },
@@ -105,7 +105,7 @@ const PrivacyPolicy = ({ language }: PrivacyPolicyProps) => {
         },
         {
           title: "Vos droits",
-          content: "Vous avez le droit de : accéder à vos informations personnelles, mettre à jour ou corriger les informations inexactes, supprimer votre compte et les données associées, vous désabonner des communications marketing, et demander une copie de vos données. Pour exercer ces droits, contactez-nous à contact@andiamoevents.com"
+          content: "Vous avez le droit de : accéder à vos informations personnelles, mettre à jour ou corriger les informations inexactes, supprimer votre compte et les données associées, vous désabonner des communications marketing, et demander une copie de vos données. Pour exercer ces droits, contactez-nous à support@andiamoevents.com"
         },
         {
           title: "Cookies",
@@ -113,7 +113,7 @@ const PrivacyPolicy = ({ language }: PrivacyPolicyProps) => {
         },
         {
           title: "Nous contacter",
-          content: "Si vous avez des questions sur cette Politique de Confidentialité ou souhaitez exercer vos droits, veuillez nous contacter à contact@andiamoevents.com"
+          content: "Si vous avez des questions sur cette Politique de Confidentialité ou souhaitez exercer vos droits, veuillez nous contacter à support@andiamoevents.com"
         }
       ]
     }
