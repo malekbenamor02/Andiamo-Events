@@ -11,7 +11,7 @@ import { logFormSubmission, logger } from "@/lib/logger";
 import { Link } from "react-router-dom";
 import { API_ROUTES } from '@/lib/api-routes';
 import { safeApiCall } from '@/lib/api-client';
-import { User, Star, Users, Sparkles, Zap, Heart, Mail, Phone, MapPin, Instagram, FileText, Calendar, Award, Target, Gift, Crown, TrendingUp, XCircle } from "lucide-react";
+import { User, Users, Zap, Mail, Phone, MapPin, Instagram, FileText, Calendar, Award, Target, Gift, Crown, TrendingUp, XCircle } from "lucide-react";
 // @ts-ignore
 import DOMPurify from 'dompurify';
 import LoadingScreen from '@/components/ui/LoadingScreen';
@@ -462,26 +462,6 @@ const Application = ({ language }: ApplicationProps) => {
           backgroundImage: `radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)`,
           backgroundSize: '40px 40px',
         }} />
-        
-        <div className="absolute top-20 left-10 animate-pulse">
-          <Star className="w-6 h-6 text-yellow-300/20" />
-        </div>
-        <div className="absolute top-40 right-20 animate-pulse delay-1000">
-          <Star className="w-4 h-4 text-primary/20" />
-        </div>
-        <div className="absolute top-60 left-1/4 animate-pulse delay-2000">
-          <Star className="w-5 h-5 text-primary/20" />
-        </div>
-        <div className="absolute top-80 right-1/3 animate-pulse delay-1500">
-          <Star className="w-3 h-3 text-pink-300/20" />
-        </div>
-        
-        <div className="absolute top-32 left-1/3 animate-bounce delay-500">
-          <Sparkles className="w-4 h-4 text-primary/30" />
-        </div>
-        <div className="absolute top-48 right-1/4 animate-bounce delay-1000">
-          <Sparkles className="w-3 h-3 text-primary/20" />
-        </div>
       </div>
 
       <div 
@@ -489,28 +469,12 @@ const Application = ({ language }: ApplicationProps) => {
         className="w-full max-w-4xl mx-auto text-center py-16 px-4 md:px-0 transform transition-all duration-1000 ease-out relative z-10"
       >
         <div className="flex flex-col items-center gap-6">
-          <div className="relative">
-            <div className="absolute inset-0 bg-primary/20 rounded-full blur-2xl animate-pulse" />
-            <Sparkles className="w-16 h-16 text-primary animate-pulse relative z-10" />
-            <div className="absolute -top-2 -right-2 z-20">
-              <Star className="w-5 h-5 text-yellow-300 animate-spin" />
-            </div>
-            <div className="absolute -bottom-2 -left-2 z-20">
-              <Heart className="w-4 h-4 text-red-400 animate-pulse" />
-            </div>
-          </div>
-          <h1 className="text-5xl md:text-6xl font-heading font-bold mb-3 animate-pulse-glow" style={{ color: '#E21836' }}>
+          <h1 className="text-5xl md:text-6xl font-heading font-bold mb-3" style={{ color: '#FFFFFF' }}>
             {t.heroTitle}
           </h1>
           <p className="text-xl md:text-2xl max-w-3xl mx-auto leading-relaxed" style={{ color: '#B0B0B0' }}>
             {t.heroSubtitle}
           </p>
-          
-          <div className="flex gap-3 mt-6">
-            {[...Array(5)].map((_, i) => (
-              <Star key={i} className="w-6 h-6 text-yellow-300 animate-pulse" style={{ animationDelay: `${i * 200}ms` }} />
-            ))}
-          </div>
         </div>
       </div>
       
@@ -541,14 +505,6 @@ const Application = ({ language }: ApplicationProps) => {
               <CardContent className="p-8">
               {submitted ? (
                 <div className="text-center space-y-4">
-                  <div className="flex justify-center mb-4">
-                    <div className="relative">
-                      <Heart className="w-12 h-12 animate-pulse" style={{ color: '#E21836' }} />
-                      <div className="absolute -top-1 -right-1">
-                        <Star className="w-4 h-4 animate-spin" style={{ color: '#E21836' }} />
-                      </div>
-                    </div>
-                  </div>
                   <p className="font-semibold" style={{ color: '#E21836' }}>{t.success}</p>
                   <Button 
                     asChild 
