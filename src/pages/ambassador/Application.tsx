@@ -347,7 +347,7 @@ const Application = ({ language }: ApplicationProps) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: jsonString
+        body: JSON.stringify(requestBody)
       });
 
       if (data.success) {
