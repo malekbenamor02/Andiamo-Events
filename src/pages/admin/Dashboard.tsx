@@ -342,6 +342,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [isMotivationDialogOpen, setIsMotivationDialogOpen] = useState(false);
+  const [selectedMotivation, setSelectedMotivation] = useState<{application: AmbassadorApplication; motivation: string} | null>(null);
   const [orderLogs, setOrderLogs] = useState<any[]>([]);
   const [performanceReports, setPerformanceReports] = useState<any>(null);
   const [salesSystemTab, setSalesSystemTab] = useState('cod-ambassador-orders');
@@ -10023,15 +10025,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </div>
                           </TableCell>
                           <TableCell className="text-xs px-2 py-2">
-                            <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
                               {application.motivation && (
-                                <div className="group relative">
-                                  <FileText className="w-3 h-3 text-primary cursor-help" />
-                                  <div className="absolute left-0 top-6 z-50 hidden group-hover:block w-64 p-3 bg-card border border-border rounded-lg shadow-lg text-xs">
-                                    <p className="font-medium mb-1">Motivation:</p>
-                                    <p className="text-muted-foreground">{application.motivation}</p>
-                                  </div>
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedMotivation({ application, motivation: application.motivation });
+                                    setIsMotivationDialogOpen(true);
+                                  }}
+                                  className="inline-flex items-center justify-center p-0 m-0 border-0 bg-transparent hover:opacity-80 transition-opacity cursor-pointer"
+                                  title={language === 'en' ? 'Click to view motivation' : 'Cliquer pour voir la motivation'}
+                                >
+                                  <FileText className="w-3 h-3 text-primary" />
+                                </button>
                               )}
                               {application.social_link && (
                                 <div className="flex items-center">
@@ -10188,6 +10194,44 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </Table>
                   </div>
                 </div>
+
+                {/* Motivation Dialog */}
+                <Dialog open={isMotivationDialogOpen} onOpenChange={setIsMotivationDialogOpen}>
+                  <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>
+                        {language === 'en' ? 'Application Motivation' : 'Motivation de la Candidature'}
+                      </DialogTitle>
+                    </DialogHeader>
+                    {selectedMotivation && (
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-2">
+                            {language === 'en' ? 'Applicant:' : 'Candidat:'}
+                          </p>
+                          <p className="text-lg font-semibold">{selectedMotivation.application.full_name}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-2">
+                            {language === 'en' ? 'Motivation:' : 'Motivation:'}
+                          </p>
+                          <div className="p-4 bg-muted/50 rounded-lg border border-border max-h-[60vh] overflow-y-auto">
+                            <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                              {selectedMotivation.motivation}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex justify-end gap-2 mt-4">
+                      <DialogClose asChild>
+                        <Button variant="outline">
+                          {language === 'en' ? 'Close' : 'Fermer'}
+                        </Button>
+                      </DialogClose>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </TabsContent>
 
               {/* Sponsors Tab */}

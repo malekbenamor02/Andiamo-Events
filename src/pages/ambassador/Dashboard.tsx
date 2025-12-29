@@ -169,7 +169,10 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     online: "Online Payment",
     salesDisabled: "Sales are currently disabled",
     salesDisabledMessage: "Sales are not open yet. Please check back later.",
-    salesDisabledTitle: "Sales Temporarily Unavailable"
+    salesDisabledTitle: "Sales Temporarily Unavailable",
+    suspended: "Account Paused",
+    suspendedMessage: "Your ambassador account has been temporarily paused. Please contact support for more information.",
+    suspendedTitle: "Account Temporarily Paused"
   } : {
     title: "Tableau de Bord Ambassadeur",
     welcome: "Bienvenue",
@@ -235,7 +238,10 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     online: "Paiement en Ligne",
     salesDisabled: "Les ventes sont actuellement désactivées",
     salesDisabledMessage: "Les ventes ne sont pas encore ouvertes. Veuillez réessayer plus tard.",
-    salesDisabledTitle: "Ventes Temporairement Indisponibles"
+    salesDisabledTitle: "Ventes Temporairement Indisponibles",
+    suspended: "Compte en Pause",
+    suspendedMessage: "Votre compte d'ambassadeur a été temporairement mis en pause. Veuillez contacter le support pour plus d'informations.",
+    suspendedTitle: "Compte Temporairement en Pause"
   };
 
   useEffect(() => {
@@ -245,10 +251,44 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       return;
     }
     const { user } = JSON.parse(session);
-    setAmbassador(user);
+    
+    // Fetch latest ambassador status from database to check if they were paused
+    const loadAmbassadorData = async () => {
+      try {
+        const { data: latestAmbassador, error } = await supabase
+          .from('ambassadors')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        
+        if (!error && latestAmbassador) {
+          // Update ambassador state with latest data (including status)
+          setAmbassador(latestAmbassador);
+          
+          // Only fetch data and events if not suspended
+          if (latestAmbassador.status !== 'suspended') {
+            fetchData(user.id);
+            fetchEvents();
+          } else {
+            setLoading(false);
+          }
+        } else {
+          // If fetch fails, use cached user data
+          setAmbassador(user);
+          fetchData(user.id);
+          fetchEvents();
+        }
+      } catch (error) {
+        console.error('Error fetching latest ambassador status:', error);
+        // If fetch fails, use cached user data
+        setAmbassador(user);
+        fetchData(user.id);
+        fetchEvents();
+      }
+    };
+    
+    loadAmbassadorData();
     setProfileForm({ password: '', confirmPassword: '' });
-    fetchData(user.id);
-    fetchEvents();
     
     // Fetch sales settings
     const loadSalesSettings = async () => {
@@ -1075,6 +1115,58 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         size="fullscreen" 
         text={t.loading}
       />
+    );
+  }
+
+  // If ambassador is suspended, show only a message and logout button
+  if (ambassador.status === 'suspended') {
+    return (
+      <div className="pt-20 sm:pt-24 min-h-screen bg-background">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+          {/* Header Section */}
+          <div className="mb-6 sm:mb-8">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 sm:gap-0">
+              <div className="text-center sm:text-left">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-bold text-gradient-neon mb-2 sm:mb-3">
+                  {t.title}
+                </h1>
+                <p className="text-sm sm:text-base text-muted-foreground">
+                  {t.welcome}, <span className="font-semibold text-foreground">{ambassador.full_name}</span>!
+                </p>
+              </div>
+              <Button 
+                onClick={handleLogout} 
+                variant="outline"
+                className="w-full sm:w-auto border-primary/30 hover:border-primary hover:bg-primary/10 transition-all duration-300 hover:shadow-lg hover:shadow-primary/20"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                {t.logout}
+              </Button>
+            </div>
+          </div>
+
+          {/* Suspended Message */}
+          <Card className="border-destructive/20 shadow-lg">
+            <CardContent className="pt-6">
+              <div className="text-center space-y-6 py-8">
+                <div className="flex justify-center">
+                  <div className="w-20 h-20 rounded-full bg-destructive/10 flex items-center justify-center">
+                    <AlertCircle className="w-10 h-10 text-destructive" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
+                    {t.suspendedTitle}
+                  </h2>
+                  <p className="text-muted-foreground text-lg">
+                    {t.suspendedMessage}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     );
   }
 
