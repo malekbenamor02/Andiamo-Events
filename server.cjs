@@ -524,14 +524,6 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
       cookieOptions.domain = process.env.COOKIE_DOMAIN;
     }
     
-      httpOnly: cookieOptions.httpOnly,
-      secure: cookieOptions.secure,
-      sameSite: cookieOptions.sameSite,
-      path: cookieOptions.path,
-      maxAge: cookieOptions.maxAge,
-      domain: cookieOptions.domain || 'not set'
-    });
-    
     res.cookie('adminToken', token, cookieOptions);
     res.json({ success: true });
   } catch (error) {
@@ -783,17 +775,6 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
       updateData = retryResult.data;
       updateError = retryResult.error;
     }
-    
-      updateData, 
-      updateError: updateError ? {
-        message: updateError.message,
-        code: updateError.code,
-        details: updateError.details,
-        hint: updateError.hint
-      } : null, 
-      applicationId, 
-      status 
-    });
 
     if (updateError) {
       console.error('Error updating application:', updateError);

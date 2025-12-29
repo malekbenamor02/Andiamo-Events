@@ -72,7 +72,7 @@ const About = ({ language }: AboutProps) => {
       const timer = setTimeout(() => {
         setHasAnimated(true);
         // Animate sections one by one with staggered delays
-        const sections = ['hero', 'story', 'values', 'cities', 'cta'];
+        const sections = ['hero', 'story', 'cities', 'cta'];
         sections.forEach((section, index) => {
           setTimeout(() => {
             setAnimatedSections(prev => new Set([...prev, section]));
@@ -97,8 +97,8 @@ const About = ({ language }: AboutProps) => {
           text: "Specialized in alcohol-free events, Andiamo Events focuses primarily on young people and students seeking festive, safe, and well-supervised atmospheres."
         },
         wagxt: {
-          title: "Wagxt Events",
-          text: "Dedicated to large-scale events, Wagxt Events hosts national artists and promotes innovative concepts with high production standards."
+          title: "W9ayet Events",
+          text: "Dedicated to large-scale events, W9ayet Events hosts national artists and promotes innovative concepts with high production standards."
         }
       },
       btlVision: {
@@ -111,7 +111,15 @@ const About = ({ language }: AboutProps) => {
         subtitle: "Creating innovative and inspiring event experiences in Tunisia"
       },
       andiamoDescription: {
-        text: "Andiamo Events, a brand developed by Born To Lead (BTL), is today one of the most popular event labels among young people in Tunisia.\n\nThe brand stands out for its ability to combine modern event production with digital content creation, making Andiamo a key player in promoting cultural events nationwide."
+        label: "ANDIAMO EVENTS",
+        title: "A Youth-Driven Event Label",
+        paragraph1: "Andiamo Events, a brand developed by Born To Lead (BTL), is today one of the most popular event labels among young people in Tunisia.",
+        paragraph2: "The brand stands out for its ability to combine modern event production with digital content creation, making Andiamo a key player in promoting cultural events nationwide.",
+        highlights: [
+          "Youth Focused",
+          "Modern Production",
+          "Digital Driven"
+        ]
       },
       andiamoDetails: {
         international: {
@@ -129,36 +137,11 @@ const About = ({ language }: AboutProps) => {
       },
       story: {
         title: "About Born To Lead (BTL) and its brands",
-        text: "Born To Lead (BTL) is a Tunisian event agency founded and managed exclusively by passionate young people. Its goal is to revolutionize the event sector in Tunisia by organizing innovative events with strong cultural and economic impact. BTL stands out for its modern approach and commitment to youth, offering immersive experiences that foster creativity, inclusion, and the development of event digitalization. BTL oversees two major event brands: Andiamo Events, specialized in alcohol-free events, primarily targeting young people and students seeking festive and supervised atmospheres; and Wagxt Events, dedicated to large-scale events, hosting national artists and promoting innovative concepts. With an ambitious vision, BTL seeks to position Tunisia as an essential hub for international concerts, while adopting an eco-responsible and digitized approach."
+        text: "Born To Lead (BTL) is a Tunisian event agency founded and managed exclusively by passionate young people. Its goal is to revolutionize the event sector in Tunisia by organizing innovative events with strong cultural and economic impact. BTL stands out for its modern approach and commitment to youth, offering immersive experiences that foster creativity, inclusion, and the development of event digitalization. BTL oversees two major event brands: Andiamo Events, specialized in alcohol-free events, primarily targeting young people and students seeking festive and supervised atmospheres; and W9ayet Events, dedicated to large-scale events, hosting national artists and promoting innovative concepts. With an ambitious vision, BTL seeks to position Tunisia as an essential hub for international concerts, while adopting an eco-responsible and digitized approach."
       },
       mission: {
         title: "About Andiamo Events",
         text: "Andiamo Events, a brand developed by Born To Lead (BTL), is today one of the most popular event labels among young people in Tunisia. The brand stands out for its ability to combine modern event production and digital content creation, making Andiamo an influential player in promoting cultural events. International opening: Andiamo Events has initiated its first contacts with international artists such as Saint Levant, marking the beginning of an expansion strategy towards global collaborations. Mission: To offer young Tunisians innovative, inspiring events aligned with international standards, while ensuring a secure, professional, and responsible framework."
-      },
-      values: {
-        title: "Our Values",
-        items: [
-          {
-            icon: Zap,
-            title: "Energy",
-            description: "We bring electrifying energy to every event, ensuring unforgettable nights."
-          },
-          {
-            icon: Users,
-            title: "Unity", 
-            description: "We connect people from all walks of life through the universal language of music."
-          },
-          {
-            icon: Trophy,
-            title: "Innovation",
-            description: "We constantly push boundaries to deliver cutting-edge entertainment experiences."
-          },
-          {
-            icon: Heart,
-            title: "Celebration",
-            description: "We believe life's best moments deserve to be celebrated in style."
-          }
-        ]
       },
       cities: {
         title: "Where We Create Magic",
@@ -190,8 +173,8 @@ const About = ({ language }: AboutProps) => {
           text: "Spécialisée dans les événements sans alcool, Andiamo Events s'adresse principalement aux jeunes et aux étudiants en quête d'ambiances festives, sécurisées et encadrées."
         },
         wagxt: {
-          title: "Wagxt Events",
-          text: "Dédiée aux événements de grande envergure, Wagxt Events accueille des artistes nationaux et met en avant des concepts innovants avec des standards de production élevés."
+          title: "W9ayet Events",
+          text: "Dédiée aux événements de grande envergure, W9ayet Events accueille des artistes nationaux et met en avant des concepts innovants avec des standards de production élevés."
         }
       },
       btlVision: {
@@ -204,7 +187,15 @@ const About = ({ language }: AboutProps) => {
         subtitle: "Créer des expériences événementielles innovantes et inspirantes en Tunisie"
       },
       andiamoDescription: {
-        text: "Andiamo Events, marque développée par Born To Lead (BTL), est aujourd'hui l'un des labels événementiels les plus populaires auprès des jeunes en Tunisie.\n\nLa marque se distingue par sa capacité à combiner production événementielle moderne et création de contenu digital, faisant d'Andiamo un acteur influent dans la promotion d'événements culturels à l'échelle nationale."
+        label: "ANDIAMO EVENTS",
+        title: "Un Label Événementiel Porté par la Jeunesse",
+        paragraph1: "Andiamo Events, marque développée par Born To Lead (BTL), est aujourd'hui l'un des labels événementiels les plus populaires auprès des jeunes en Tunisie.",
+        paragraph2: "La marque se distingue par sa capacité à combiner production événementielle moderne et création de contenu digital, faisant d'Andiamo un acteur influent dans la promotion d'événements culturels à l'échelle nationale.",
+        highlights: [
+          "Orientation Jeunesse",
+          "Production Moderne",
+          "Approche Digitale"
+        ]
       },
       andiamoDetails: {
         international: {
@@ -222,36 +213,11 @@ const About = ({ language }: AboutProps) => {
       },
       story: {
         title: "Présentation de Born To Lead (BTL) et ses marques",
-        text: "Born To Lead (BTL) est une agence événementielle tunisienne fondée et dirigée exclusivement par des jeunes passionnés. Son objectif est de révolutionner le secteur événementiel en Tunisie en organisant des événements innovants à fort impact culturel et économique. BTL se distingue par son approche moderne et son engagement envers la jeunesse, en proposant des expériences immersives qui favorisent la créativité, l'inclusion et le développement de la digitalisation événementielle. BTL supervise deux grandes marques événementielles : Andiamo Events, spécialisée dans les événements sans alcool, s'adresse principalement aux jeunes et aux étudiants en quête d'ambiances festives et encadrées ; et Wagxt Events, dédiée aux événements de grande envergure, accueille des artistes nationaux et met en avant des concepts innovants. Avec une vision ambitieuse, BTL cherche à positionner la Tunisie comme un hub incontournable pour les concerts internationaux, tout en adoptant une démarche écoresponsable et digitalisée."
+        text: "Born To Lead (BTL) est une agence événementielle tunisienne fondée et dirigée exclusivement par des jeunes passionnés. Son objectif est de révolutionner le secteur événementiel en Tunisie en organisant des événements innovants à fort impact culturel et économique. BTL se distingue par son approche moderne et son engagement envers la jeunesse, en proposant des expériences immersives qui favorisent la créativité, l'inclusion et le développement de la digitalisation événementielle. BTL supervise deux grandes marques événementielles : Andiamo Events, spécialisée dans les événements sans alcool, s'adresse principalement aux jeunes et aux étudiants en quête d'ambiances festives et encadrées ; et W9ayet Events, dédiée aux événements de grande envergure, accueille des artistes nationaux et met en avant des concepts innovants. Avec une vision ambitieuse, BTL cherche à positionner la Tunisie comme un hub incontournable pour les concerts internationaux, tout en adoptant une démarche écoresponsable et digitalisée."
       },
       mission: {
         title: "Présentation de Andiamo Events",
         text: "Andiamo Events, marque développée par Born To Lead (BTL), est aujourd'hui l'un des labels événementiels les plus populaires auprès des jeunes en Tunisie. La marque se distingue par sa capacité à combiner production événementielle moderne et création de contenu digital, faisant d'Andiamo un acteur influent dans la promotion d'événements culturels. Andiamo Events a initié ses premiers contacts avec des artistes internationaux tels que Saint Levant, marquant le début d'une stratégie d'expansion vers des collaborations mondiales. Notre mission est d'offrir aux jeunes tunisiens des événements innovants, inspirants et alignés avec les standards internationaux, tout en garantissant un cadre sécurisé, professionnel et responsable."
-      },
-      values: {
-        title: "Nos Valeurs",
-        items: [
-          {
-            icon: Zap,
-            title: "Énergie",
-            description: "Nous apportons une énergie électrisante à chaque événement, garantissant des nuits inoubliables."
-          },
-          {
-            icon: Users,
-            title: "Unité",
-            description: "Nous connectons les gens de tous horizons à travers le langage universel de la musique."
-          },
-          {
-            icon: Trophy,
-            title: "Innovation",
-            description: "Nous repoussons constamment les limites pour offrir des expériences de divertissement de pointe."
-          },
-          {
-            icon: Heart,
-            title: "Célébration",
-            description: "Nous croyons que les meilleurs moments de la vie méritent d'être célébrés avec style."
-          }
-        ]
       },
       cities: {
         title: "Où Nous Créons la Magie",
@@ -334,9 +300,6 @@ const About = ({ language }: AboutProps) => {
           <div className="grid md:grid-cols-2 gap-6 md:gap-8">
             <Card className="group relative overflow-hidden border-2 border-transparent hover:border-primary/30 bg-card/50 backdrop-blur-sm transform transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-primary/10">
               <CardContent className="p-6 md:p-8">
-                <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary via-primary/80 to-primary/60 flex items-center justify-center transform group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shadow-lg shadow-primary/20">
-                  <Sparkles className="w-8 h-8 md:w-10 md:h-10 text-white" />
-                </div>
                 <h3 className="text-xl md:text-2xl font-heading font-bold mb-4 text-center text-primary">
                   {t.btlBrands.andiamo.title}
                 </h3>
@@ -347,9 +310,6 @@ const About = ({ language }: AboutProps) => {
             </Card>
             <Card className="group relative overflow-hidden border-2 border-transparent hover:border-primary/30 bg-card/50 backdrop-blur-sm transform transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-primary/10">
               <CardContent className="p-6 md:p-8">
-                <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary via-primary/80 to-primary/60 flex items-center justify-center transform group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shadow-lg shadow-primary/20">
-                  <Building2 className="w-8 h-8 md:w-10 md:h-10 text-white" />
-                </div>
                 <h3 className="text-xl md:text-2xl font-heading font-bold mb-4 text-center text-primary">
                   {t.btlBrands.wagxt.title}
                 </h3>
@@ -404,28 +364,91 @@ const About = ({ language }: AboutProps) => {
         </div>
       </section>
 
-      {/* 5️⃣ Andiamo Events Description - Text + Logo */}
-      <section className="py-16 md:py-24 relative">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-secondary/5 to-transparent" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-          <div className={`grid lg:grid-cols-2 gap-12 lg:gap-16 items-center transform transition-all duration-1000 ease-out ${
-            animatedSections.has('story') 
-              ? 'opacity-100 translate-y-0' 
-              : 'opacity-0 translate-y-12'
-          }`}>
-            <div className="space-y-6 order-2 lg:order-1">
-              <p className="text-base md:text-lg text-foreground/80 leading-relaxed whitespace-pre-line">
-                {t.andiamoDescription.text}
-              </p>
+      {/* 5️⃣ Andiamo Events Description - Premium Redesign */}
+      <section className="py-24 md:py-32 lg:py-40 relative overflow-hidden">
+        {/* Animated Background Elements */}
+        <div className="absolute inset-0">
+          <div className="absolute top-1/4 left-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '6s' }}></div>
+          <div className="absolute bottom-1/4 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s', animationDelay: '1s' }}></div>
+        </div>
+        
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+            {/* Left Section - Text Content */}
+            <div className={`order-2 lg:order-1 transform transition-all duration-700 ease-out ${
+              animatedSections.has('story') 
+                ? 'opacity-100 translate-x-0' 
+                : 'opacity-0 -translate-x-8'
+            }`}>
+              <Card className="border-border/50 bg-card/50 backdrop-blur-sm shadow-2xl hover:shadow-primary/10 transition-all duration-500 hover:border-primary/30">
+                <CardContent className="p-8 md:p-12 lg:p-16">
+                  {/* Label */}
+                  <div className="mb-4">
+                    <span className="inline-block text-xs md:text-sm font-semibold text-primary px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 uppercase tracking-wider">
+                      {t.andiamoDescription.label}
+                    </span>
+                  </div>
+                  
+                  {/* Title */}
+                  <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-8 text-foreground leading-tight">
+                    {t.andiamoDescription.title}
+                  </h2>
+                  
+                  {/* Paragraphs */}
+                  <div className="space-y-6 mb-10">
+                    <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
+                      {t.andiamoDescription.paragraph1}
+                    </p>
+                    <p className="text-base md:text-lg text-muted-foreground leading-relaxed">
+                      {t.andiamoDescription.paragraph2}
+                    </p>
+                  </div>
+                  
+                  {/* Micro-highlights */}
+                  <div className="flex flex-wrap gap-3 md:gap-4">
+                    {t.andiamoDescription.highlights.map((highlight, index) => (
+                      <div 
+                        key={index}
+                        className="group relative"
+                        style={{
+                          animationDelay: `${index * 100}ms`,
+                          transition: 'all 0.3s ease'
+                        }}
+                      >
+                        <div className="px-4 py-2 rounded-lg bg-muted/50 border border-border/50 text-sm md:text-base text-foreground/90 font-medium group-hover:bg-primary/10 group-hover:border-primary/30 group-hover:text-primary transition-all duration-300">
+                          {highlight}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-            <div className="relative order-1 lg:order-2">
-              <div className="relative group overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 to-secondary/5 h-96 flex items-center justify-center">
-                <div className="text-center p-8">
-                  <div className="text-6xl md:text-7xl font-bold text-primary mb-4">ANDIAMO</div>
-                  <div className="text-sm md:text-base text-muted-foreground">Events & Communication</div>
-                </div>
-                <div className="absolute -top-4 -right-4 w-12 h-12 bg-primary/20 rounded-full blur-xl animate-pulse"></div>
-                <div className="absolute -bottom-4 -left-4 w-8 h-8 bg-secondary/20 rounded-full blur-xl animate-pulse delay-1000"></div>
+            
+            {/* Right Section - Image Container */}
+            <div className={`order-1 lg:order-2 transform transition-all duration-700 ease-out ${
+              animatedSections.has('story') 
+                ? 'opacity-100 translate-x-0 scale-100' 
+                : 'opacity-0 translate-x-8 scale-95'
+            }`} style={{
+              transitionDelay: '150ms'
+            }}>
+              <div className="relative group flex items-center justify-center min-h-[400px]">
+                {/* Glow Effect */}
+                <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 via-primary/10 to-transparent rounded-3xl blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                
+                {/* Image without container */}
+                {aboutImages.length > 0 ? (
+                  <img 
+                    src={aboutImages[0].src} 
+                    alt={aboutImages[0].alt || "Andiamo Events"} 
+                    className="relative z-10 w-full h-auto object-contain max-w-xs md:max-w-sm rounded-2xl transform group-hover:scale-105 transition-transform duration-500"
+                  />
+                ) : (
+                  <div className="relative z-10 text-5xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent tracking-tight transform group-hover:scale-105 transition-transform duration-500">
+                    ANDIAMO
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -456,59 +479,6 @@ const About = ({ language }: AboutProps) => {
                 {t.andiamoDetails.mission.text}
               </p>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Values Section - Modern Redesign */}
-      <section className="py-16 md:py-24 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-secondary/5 via-primary/5 to-transparent"></div>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-          <div className={`text-center mb-12 md:mb-16 transform transition-all duration-1000 ease-out ${
-            animatedSections.has('values') 
-              ? 'opacity-100 translate-y-0' 
-              : 'opacity-0 translate-y-12'
-          }`}>
-            <span className="text-sm font-semibold text-primary mb-3 block">
-              {language === 'en' ? 'What We Stand For' : 'Ce Que Nous Représentons'}
-            </span>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-4 text-gradient-neon">
-              {t.values.title}
-            </h2>
-            <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto">
-              {language === 'en' 
-                ? 'The core principles that drive our success and shape every event we create'
-                : 'Les principes fondamentaux qui motivent notre succès et façonnent chaque événement que nous créons'}
-            </p>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
-            {t.values.items.map((value, index) => (
-              <Card 
-                key={index} 
-                className={`group relative overflow-hidden border-2 border-transparent hover:border-primary/30 bg-card/50 backdrop-blur-sm transform transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-primary/10 ${
-                  animatedSections.has('values') 
-                    ? 'opacity-100 translate-y-0' 
-                    : 'opacity-0 translate-y-12'
-                }`}
-                style={{ 
-                  transitionDelay: `${index * 100}ms`,
-                  animationDelay: `${index * 100}ms`
-                }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                <CardContent className="p-6 md:p-8 text-center relative z-10">
-                  <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-4 md:mb-6 rounded-full bg-gradient-to-br from-primary via-primary/80 to-primary/60 flex items-center justify-center transform group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shadow-lg shadow-primary/20">
-                    <value.icon className="w-8 h-8 md:w-10 md:h-10 text-white" />
-                  </div>
-                  <h3 className="text-lg md:text-xl font-heading font-bold mb-3 md:mb-4 text-primary group-hover:text-primary/90 transition-colors">
-                    {value.title}
-                  </h3>
-                  <p className="text-sm md:text-base text-foreground/80 leading-relaxed">
-                    {value.description}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
           </div>
         </div>
       </section>

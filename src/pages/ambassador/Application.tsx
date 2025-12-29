@@ -365,6 +365,12 @@ const Application = ({ language }: ApplicationProps) => {
         });
 
         setSubmitted(true);
+        
+        // Scroll to top to show success message after state update
+        setTimeout(() => {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 100);
+        
         toast({ 
           title: language === 'en' ? 'Success!' : 'Succès!', 
           description: language === 'en' 
