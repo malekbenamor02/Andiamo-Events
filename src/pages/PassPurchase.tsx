@@ -15,7 +15,7 @@ import { ExpandableText } from '@/components/ui/expandable-text';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
-import { CITIES, SOUSSE_VILLES } from '@/lib/constants';
+import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
 interface EventPass {
   id: string;
@@ -1178,7 +1178,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                           <p className="text-red-500 text-xs mt-1">{validationErrors.city}</p>
                         )}
                       </div>
-                      {customerInfo.city === 'Sousse' && (
+                      {(customerInfo.city === 'Sousse' || customerInfo.city === 'Tunis') && (
                         <div className="md:col-span-2">
                           <Label htmlFor="ville">{t[language].ville}</Label>
                           <Select
@@ -1189,7 +1189,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                               <SelectValue placeholder={language === 'en' ? "Select ville (optional)" : "Sélectionner un quartier (optionnel)"} />
                             </SelectTrigger>
                             <SelectContent>
-                              {SOUSSE_VILLES.map(ville => (
+                              {customerInfo.city === 'Sousse' && SOUSSE_VILLES.map(ville => (
+                                <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                              ))}
+                              {customerInfo.city === 'Tunis' && TUNIS_VILLES.map(ville => (
                                 <SelectItem key={ville} value={ville}>{ville}</SelectItem>
                               ))}
                             </SelectContent>

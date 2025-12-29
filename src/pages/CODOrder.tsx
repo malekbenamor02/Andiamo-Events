@@ -11,7 +11,7 @@ import { ArrowLeft, CheckCircle, XCircle, ShoppingCart } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
-import { CITIES, SOUSSE_VILLES } from '@/lib/constants';
+import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
 interface CODOrderProps {
   language: 'en' | 'fr';
@@ -115,7 +115,7 @@ const CODOrder = ({ language }: CODOrderProps) => {
       newErrors.city = t.required;
     }
 
-    if (formData.city === 'Sousse' && !formData.ville) {
+    if ((formData.city === 'Sousse' || formData.city === 'Tunis') && !formData.ville) {
       newErrors.ville = t.villeRequired;
     }
 
@@ -304,7 +304,7 @@ const CODOrder = ({ language }: CODOrderProps) => {
               </div>
 
               {/* Ville (only if city is Sousse) */}
-              {formData.city === 'Sousse' && (
+              {(formData.city === 'Sousse' || formData.city === 'Tunis') && (
                 <div>
                   <Label htmlFor="ville">{t.ville} *</Label>
                   <Select
@@ -315,7 +315,10 @@ const CODOrder = ({ language }: CODOrderProps) => {
                       <SelectValue placeholder="Select ville" />
                     </SelectTrigger>
                     <SelectContent>
-                      {SOUSSE_VILLES.map(ville => (
+                      {formData.city === 'Sousse' && SOUSSE_VILLES.map(ville => (
+                        <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                      ))}
+                      {formData.city === 'Tunis' && TUNIS_VILLES.map(ville => (
                         <SelectItem key={ville} value={ville}>{ville}</SelectItem>
                       ))}
                     </SelectContent>

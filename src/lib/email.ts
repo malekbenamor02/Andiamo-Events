@@ -366,7 +366,7 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           <!-- Support Section -->
           <div class="support-section">
             <p class="support-text">
-              Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>
+              Need assistance? Contact us at <a href="mailto:contact@andiamoevents.com" class="support-email">contact@andiamoevents.com</a>
             </p>
           </div>
           
@@ -401,7 +401,7 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
   }
 
   return {
-    from: 'Andiamo Events <support@andiamoevents.com>',
+    from: 'Andiamo Events <contact@andiamoevents.com>',
     to: ambassador.email,
     subject,
     html
@@ -686,7 +686,7 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           <!-- Support Section -->
           <div class="support-section">
             <p class="support-text">
-              Questions? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>
+              Questions? Contact us at <a href="mailto:contact@andiamoevents.com" class="support-email">contact@andiamoevents.com</a>
             </p>
           </div>
           
@@ -715,8 +715,8 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
   `;
 
   return {
-    from: 'Andiamo Events <support@andiamoevents.com>',
-    to: ambassador.email || 'support@andiamoevents.com',
+    from: 'Andiamo Events <contact@andiamoevents.com>',
+    to: ambassador.email || 'contact@andiamoevents.com',
     subject,
     html
   };
@@ -775,8 +775,8 @@ export const createPasswordResetEmail = (ambassador: AmbassadorData, resetToken:
   `;
 
   return {
-    from: 'Andiamo Events <support@andiamoevents.com>',
-    to: ambassador.email || 'support@andiamoevents.com',
+    from: 'Andiamo Events <contact@andiamoevents.com>',
+    to: ambassador.email || 'contact@andiamoevents.com',
     subject,
     html
   };
@@ -1176,7 +1176,7 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
           <!-- Support Section -->
           <div class="support-section">
             <p class="support-text">
-              Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>
+              Need assistance? Contact us at <a href="mailto:contact@andiamoevents.com" class="support-email">contact@andiamoevents.com</a>
             </p>
           </div>
           
@@ -1205,7 +1205,7 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
   `;
 
   return {
-    from: 'Andiamo Events <support@andiamoevents.com>',
+    from: 'Andiamo Events <contact@andiamoevents.com>',
     to: admin.email,
     subject,
     html
@@ -1660,7 +1660,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
   `;
 
   return {
-    from: 'Andiamo Events <support@andiamoevents.com>',
+    from: 'Andiamo Events <contact@andiamoevents.com>',
     to: '', // Will be set by the caller
     subject,
     html

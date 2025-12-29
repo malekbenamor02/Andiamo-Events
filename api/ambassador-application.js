@@ -31,7 +31,36 @@ export default async (req, res) => {
       bodyData = JSON.parse(body);
     }
     
+    // ============================================
+    // CRITICAL DEBUG: Log raw body data
+    // ============================================
+    console.log('\n' + '='.repeat(80));
+    console.log('🔍 [DEBUG] RAW REQUEST DATA RECEIVED');
+    console.log('='.repeat(80));
+    console.log('Full bodyData:', JSON.stringify(bodyData, null, 2));
+    console.log('bodyData.ville:', bodyData.ville);
+    console.log('bodyData.ville type:', typeof bodyData.ville);
+    console.log('bodyData.city:', bodyData.city);
+    console.log('='.repeat(80) + '\n');
+    
     const { fullName, age, phoneNumber, email, city, ville, socialLink, motivation } = bodyData;
+
+    // ============================================
+    // CRITICAL DEBUG: Log exactly what we receive
+    // ============================================
+    console.log('\n' + '='.repeat(80));
+    console.log('🔍 [DEBUG] RECEIVED BODYDATA (DESTRUCTURED)');
+    console.log('='.repeat(80));
+    console.log('city:', city);
+    console.log('cityType:', typeof city);
+    console.log('ville:', ville);
+    console.log('villeType:', typeof ville);
+    console.log('villeIsNull:', ville === null);
+    console.log('villeIsUndefined:', ville === undefined);
+    console.log('villeIsEmptyString:', ville === '');
+    console.log('villeValue (String):', String(ville));
+    console.log('bodyDataKeys:', Object.keys(bodyData));
+    console.log('='.repeat(80) + '\n');
 
     // Validate required fields
     if (!fullName || !age || !phoneNumber || !city) {
@@ -39,9 +68,9 @@ export default async (req, res) => {
     }
 
     // Validate phone number format
-    const phoneRegex = /^[2594][0-9]{7}$/;
+    const phoneRegex = /^[2459][0-9]{7}$/;
     if (!phoneRegex.test(phoneNumber)) {
-      return res.status(400).json({ error: 'Phone number must be 8 digits starting with 2, 5, 9, or 4' });
+      return res.status(400).json({ error: 'Phone number must be 8 digits starting with 2, 4, 5, or 9' });
     }
 
     // Validate Instagram link if provided
@@ -67,7 +96,52 @@ export default async (req, res) => {
     // Sanitize inputs
     const sanitizedFullName = fullName.trim();
     const sanitizedEmail = email ? email.trim() : null;
-    const sanitizedCity = city.trim();
+    const sanitizedCity = city ? city.trim() : '';
+    
+    // CRITICAL: Log city before and after sanitization
+    console.log('\n' + '='.repeat(80));
+    console.log('🔍 [SANITIZATION] CITY SANITIZATION');
+    console.log('='.repeat(80));
+    console.log('Original city:', city);
+    console.log('Original city type:', typeof city);
+    console.log('Sanitized city:', sanitizedCity);
+    console.log('Sanitized city type:', typeof sanitizedCity);
+    console.log('Sanitized city length:', sanitizedCity.length);
+    console.log('Sanitized city === "Tunis":', sanitizedCity === 'Tunis');
+    console.log('Sanitized city char codes:', sanitizedCity.split('').map(c => c.charCodeAt(0)));
+    console.log('='.repeat(80) + '\n');
+    
+    // Handle ville - check if it exists and is not empty
+    let sanitizedVille = null;
+    if (ville !== undefined && ville !== null && String(ville).trim() !== '') {
+      sanitizedVille = String(ville).trim();
+    }
+    
+    // CRITICAL: Log ville before and after sanitization
+    console.log('\n' + '='.repeat(80));
+    console.log('🔍 [SANITIZATION] VILLE SANITIZATION');
+    console.log('='.repeat(80));
+    console.log('Original ville:', ville);
+    console.log('Original ville type:', typeof ville);
+    console.log('Sanitized ville:', sanitizedVille);
+    console.log('Sanitized ville type:', typeof sanitizedVille);
+    console.log('='.repeat(80) + '\n');
+    
+    // ============================================
+    // CRITICAL DEBUG: Log sanitization results
+    // ============================================
+    console.log('\n' + '='.repeat(80));
+    console.log('🔍 [DEBUG] AFTER SANITIZATION');
+    console.log('='.repeat(80));
+    console.log('sanitizedCity:', sanitizedCity);
+    console.log('sanitizedVille:', sanitizedVille);
+    console.log('originalVille:', ville);
+    console.log('villeIsNull:', sanitizedVille === null);
+    console.log('villeIsUndefined:', sanitizedVille === undefined);
+    console.log('villeIsEmptyString:', sanitizedVille === '');
+    console.log('cityIsSousse:', sanitizedCity === 'Sousse');
+    console.log('cityIsTunis:', sanitizedCity === 'Tunis');
+    console.log('='.repeat(80) + '\n');
     const sanitizedSocialLink = socialLink ? socialLink.trim() : null;
     const sanitizedMotivation = motivation ? motivation.trim() : null;
 
@@ -194,19 +268,41 @@ export default async (req, res) => {
     }
 
     // Insert new application
+    // Validate and set ville value for Sousse and Tunis
+    let villeValue = null;
+    
+    // Handle ville for Sousse
+    if (sanitizedCity === 'Sousse') {
+      if (!sanitizedVille || sanitizedVille.trim() === '') {
+        return res.status(400).json({ error: 'Ville (neighborhood) is required for Sousse' });
+      }
+      villeValue = sanitizedVille.trim();
+    }
+    
+    // Handle ville for Tunis
+    if (sanitizedCity === 'Tunis') {
+      if (!sanitizedVille || sanitizedVille.trim() === '') {
+        return res.status(400).json({ error: 'Ville (neighborhood) is required for Tunis' });
+      }
+      villeValue = sanitizedVille.trim();
+    }
+
+    const insertData = {
+      full_name: sanitizedFullName,
+      age: parseInt(age),
+      phone_number: phoneNumber,
+      email: sanitizedEmail,
+      city: sanitizedCity,
+      ville: villeValue,
+      social_link: sanitizedSocialLink,
+      motivation: sanitizedMotivation || null,
+      status: 'pending'
+    };
+    
+
     const { data: application, error: insertError } = await supabase
       .from('ambassador_applications')
-      .insert({
-        full_name: sanitizedFullName,
-        age: parseInt(age),
-        phone_number: phoneNumber,
-        email: sanitizedEmail,
-        city: sanitizedCity,
-        ville: city === 'Sousse' ? (ville ? ville.trim() : null) : null,
-        social_link: sanitizedSocialLink,
-        motivation: sanitizedMotivation || null,
-        status: 'pending'
-      })
+      .insert(insertData)
       .select()
       .single();
 
@@ -217,7 +313,7 @@ export default async (req, res) => {
       console.error('Error inserting application:', insertError);
       return res.status(500).json({ error: 'Failed to submit application', details: insertError.message });
     }
-
+    
     return res.status(200).json({ 
       success: true, 
       message: 'Application submitted successfully',

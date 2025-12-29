@@ -145,11 +145,11 @@ export const handleApiResponse = async <T = any>(
 
     // Handle specific error cases
     if (response.status === 404) {
-      errorMessage = errorData?.message || 'The requested resource was not found. Please check the API endpoint.';
+      errorMessage = errorData?.error || errorData?.message || 'The requested resource was not found. Please check the API endpoint.';
     } else if (response.status === 500) {
-      errorMessage = errorData?.message || 'A server error occurred. Please try again later.';
+      errorMessage = errorData?.error || errorData?.message || 'A server error occurred. Please try again later.';
     } else if (response.status === 400) {
-      errorMessage = errorData?.message || errorData?.details || 'Invalid request. Please check your input.';
+      errorMessage = errorData?.error || errorData?.message || errorData?.details || 'Invalid request. Please check your input.';
     }
 
     // Create a user-friendly error object

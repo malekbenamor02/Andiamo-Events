@@ -38,7 +38,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { CITIES, SOUSSE_VILLES } from "@/lib/constants";
+import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { apiFetch, handleApiResponse } from "@/lib/api-client";
 import { API_ROUTES } from "@/lib/api-routes";
 
@@ -54,7 +54,7 @@ interface AmbassadorApplication {
   phone_number: string;
   email?: string; // Make email optional since it might not exist in database yet
   city: string;
-  ville?: string; // Ville (neighborhood) - only for Sousse
+  ville?: string; // Ville (neighborhood) - only for Sousse and Tunis
   social_link?: string;
   motivation?: string;
   status: string;
@@ -3472,7 +3472,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             full_name: application.full_name,
             email: application.email,
             city: application.city,
-            ville: application.city === 'Sousse' ? (application.ville?.trim() || null) : null,
+            ville: (application.city === 'Sousse' || application.city === 'Tunis') ? (application.ville?.trim() || null) : null,
             password: hashedPassword, // Store hashed password
             status: 'approved',
             commission_rate: 10,
@@ -3490,7 +3490,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             phone: application.phone_number,
             email: application.email,
             city: application.city,
-            ville: application.city === 'Sousse' ? (application.ville?.trim() || null) : null,
+            ville: (application.city === 'Sousse' || application.city === 'Tunis') ? (application.ville?.trim() || null) : null,
             password: hashedPassword, // Store hashed password
             status: 'approved',
             commission_rate: 10,
@@ -3667,7 +3667,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             ? { 
                 ...amb, 
                 status: 'approved', 
-                ville: application.city === 'Sousse' ? (application.ville?.trim() || null) : null,
+                ville: (application.city === 'Sousse' || application.city === 'Tunis') ? (application.ville?.trim() || null) : null,
                 updated_at: new Date().toISOString() 
               }
             : amb
@@ -4010,7 +4010,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         
         // Get ville from application or matching ambassador
         let ville = application.ville || '';
-        if (!ville && application.city === 'Sousse') {
+        if (!ville && (application.city === 'Sousse' || application.city === 'Tunis')) {
           const matchingAmbassador = ambassadors.find(amb => 
             amb.phone === application.phone_number || 
             (application.email && amb.email === application.email)
@@ -5241,7 +5241,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             phone: ambassador.phone,
             email: ambassador.email,
             city: ambassador.city,
-            ville: ambassador.ville || null,
+            ville: (ambassador.city === 'Sousse' || ambassador.city === 'Tunis') ? (ambassador.ville?.trim() || null) : null,
             status: ambassador.status,
             commission_rate: ambassador.commission_rate,
             updated_at: new Date().toISOString()
@@ -5280,14 +5280,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         if (error) throw error;
 
-        // Update age and social_link in corresponding application record(s) if provided
-        // This ensures age and social_link are synchronized between ambassador and application records
+        // Update age, social_link, and ville in corresponding application record(s) if provided
+        // This ensures age, social_link, and ville are synchronized between ambassador and application records
         const appUpdateData: any = {};
         if (ambassador.age !== undefined && ambassador.age !== null) {
           appUpdateData.age = ambassador.age;
         }
         if (ambassador.social_link !== undefined) {
           appUpdateData.social_link = ambassador.social_link.trim() || null;
+        }
+        if (ambassador.ville !== undefined && (ambassador.city === 'Sousse' || ambassador.city === 'Tunis')) {
+          appUpdateData.ville = ambassador.ville.trim() || null;
         }
 
         if (Object.keys(appUpdateData).length > 0) {
@@ -5379,6 +5382,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         errors.ville = language === 'en' ? "Ville (neighborhood) is required for Sousse" : "Le quartier est requis pour Sousse";
         hasErrors = true;
       }
+      if (newAmbassadorForm.city === 'Tunis' && (!newAmbassadorForm.ville || !TUNIS_VILLES.includes(newAmbassadorForm.ville as any))) {
+        errors.ville = language === 'en' ? "Ville (neighborhood) is required for Tunis" : "Le quartier est requis pour Tunis";
+        hasErrors = true;
+      }
+
 
       // Validate Instagram link format if provided
       if (newAmbassadorForm.social_link && newAmbassadorForm.social_link.trim() && 
@@ -5488,7 +5496,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           phone: cleanedPhone,
           email: newAmbassadorForm.email.trim().toLowerCase(),
           city: newAmbassadorForm.city.trim(),
-          ville: newAmbassadorForm.city === 'Sousse' ? newAmbassadorForm.ville.trim() : null,
+          ville: (newAmbassadorForm.city === 'Sousse' || newAmbassadorForm.city === 'Tunis') ? newAmbassadorForm.ville.trim() : null,
           password: hashedPassword,
           status: 'approved',
           commission_rate: 10,
@@ -5508,7 +5516,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         phone_number: cleanedPhone,
         email: newAmbassadorForm.email.trim().toLowerCase(),
         city: newAmbassadorForm.city.trim(),
-        ville: newAmbassadorForm.city === 'Sousse' ? newAmbassadorForm.ville.trim() : null,
+        ville: newAmbassadorForm.city === 'Tunis' ? newAmbassadorForm.ville.trim() : null,
         social_link: newAmbassadorForm.social_link?.trim() || null,
         motivation: newAmbassadorForm.motivation?.trim() || (language === 'en' ? 'Manually added by admin' : 'Ajouté manuellement par l\'administrateur'),
         status: 'approved'
@@ -9257,7 +9265,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 setEditingAmbassador(prev => ({ 
                                   ...prev, 
                                   city: value,
-                                  ville: value === 'Sousse' ? prev?.ville : ''
+                                  ville: (value === 'Sousse' || value === 'Tunis') ? prev?.ville : ''
                                 }));
                                 if (ambassadorErrors.city) {
                                   setAmbassadorErrors(prev => ({ ...prev, city: undefined }));
@@ -9278,7 +9286,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               )}
                           </div>
                         </div>
-                        {editingAmbassador?.city === 'Sousse' && (
+                        {(editingAmbassador?.city === 'Sousse' || editingAmbassador?.city === 'Tunis') && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                               <Label htmlFor="ambassadorVille">{language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'} <span className="text-destructive">*</span></Label>
@@ -9295,7 +9303,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {SOUSSE_VILLES.map((ville) => (
+                                  {editingAmbassador?.city === 'Sousse' && SOUSSE_VILLES.map((ville) => (
+                                    <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                                  ))}
+                                  {editingAmbassador?.city === 'Tunis' && TUNIS_VILLES.map((ville) => (
                                     <SelectItem key={ville} value={ville}>{ville}</SelectItem>
                                   ))}
                                 </SelectContent>
@@ -9473,7 +9484,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   setNewAmbassadorForm(prev => ({ 
                                     ...prev, 
                                     city: value,
-                                    ville: value === 'Sousse' ? prev.ville : ''
+                                    ville: (value === 'Sousse' || value === 'Tunis') ? prev.ville : ''
                                   }));
                                   if (ambassadorErrors.city) {
                                     setAmbassadorErrors(prev => ({ ...prev, city: undefined }));
@@ -9518,7 +9529,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               </p>
                             </div>
                           </div>
-                          {newAmbassadorForm.city === 'Sousse' && (
+                          {(newAmbassadorForm.city === 'Sousse' || newAmbassadorForm.city === 'Tunis') && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
                                 <Label htmlFor="newAmbassadorVille">{language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'} <span className="text-destructive">*</span></Label>
@@ -9535,7 +9546,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {SOUSSE_VILLES.map((ville) => (
+                                    {newAmbassadorForm.city === 'Sousse' && SOUSSE_VILLES.map((ville) => (
+                                      <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                                    ))}
+                                    {newAmbassadorForm.city === 'Tunis' && TUNIS_VILLES.map((ville) => (
                                       <SelectItem key={ville} value={ville}>{ville}</SelectItem>
                                     ))}
                                   </SelectContent>
@@ -9976,8 +9990,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               if (application.ville) {
                                 return <span className="text-xs">{application.ville}</span>;
                               }
-                              // If no ville but city is Sousse, try to get it from corresponding ambassador
-                              if (application.city === 'Sousse') {
+                              // If no ville but city is Sousse or Tunis, try to get it from corresponding ambassador
+                              if (application.city === 'Sousse' || application.city === 'Tunis') {
                                 // Try to find matching ambassador
                                 const matchingAmbassador = ambassadors.find(amb => 
                                   amb.phone === application.phone_number || 

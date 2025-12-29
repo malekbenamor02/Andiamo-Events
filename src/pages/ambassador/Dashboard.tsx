@@ -18,7 +18,7 @@ import {
   MapPin, Edit, Lock, Eye, EyeOff, Save, X
 } from 'lucide-react';
 import LoadingScreen from '@/components/ui/LoadingScreen';
-import { CITIES, SOUSSE_VILLES } from "@/lib/constants";
+import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { format } from "date-fns";
 import { fetchSalesSettings, subscribeToSalesSettings } from "@/lib/salesSettings";
 import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
@@ -784,7 +784,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     }
 
     // Validate ville if city is Sousse
-    if (manualOrderForm.city === 'Sousse' && !manualOrderForm.ville) {
+    if ((manualOrderForm.city === 'Sousse' || manualOrderForm.city === 'Tunis') && !manualOrderForm.ville) {
       toast({
         title: t.error,
         description: "Ville is required for Sousse.",
@@ -1629,7 +1629,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                         </SelectContent>
                       </Select>
                     </div>
-                    {manualOrderForm.city === 'Sousse' && (
+                    {(manualOrderForm.city === 'Sousse' || manualOrderForm.city === 'Tunis') && (
                       <div>
                         <Label>{t.ville} *</Label>
                         <Select
@@ -1640,7 +1640,10 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                             <SelectValue placeholder="Select ville" />
                           </SelectTrigger>
                           <SelectContent>
-                            {SOUSSE_VILLES.map(ville => (
+                            {manualOrderForm.city === 'Sousse' && SOUSSE_VILLES.map(ville => (
+                              <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                            ))}
+                            {manualOrderForm.city === 'Tunis' && TUNIS_VILLES.map(ville => (
                               <SelectItem key={ville} value={ville}>{ville}</SelectItem>
                             ))}
                           </SelectContent>

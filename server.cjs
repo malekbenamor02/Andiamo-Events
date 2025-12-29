@@ -1877,7 +1877,84 @@ app.post('/api/ambassador-application', applicationLimiter, async (req, res) => 
       }
     }
 
+    // ============================================
+    // Ville handling for Sousse and Tunis
+    // ============================================
+    // Initialize villeValue - will be set for Sousse or Tunis
+    let villeValue = null;
+    
+    // Check if city requires ville (Sousse or Tunis)
+    // Use trim() and case-insensitive comparison to be safe
+    const normalizedCity = sanitizedCity.trim();
+    const isSousse = normalizedCity === 'Sousse';
+    const isTunis = normalizedCity === 'Tunis';
+    
+    console.log('\n========================================');
+    console.log('🔍 [VILLE HANDLING] Starting ville processing...');
+    console.log('  - sanitizedCity:', sanitizedCity);
+    console.log('  - isSousse:', isSousse);
+    console.log('  - isTunis:', isTunis);
+    console.log('  - ville from request:', ville);
+    console.log('========================================\n');
+    
+    // Handle ville for Sousse
+    console.log('\n========================================');
+    console.log('🔍 [DEBUG] Checking isSousse condition...');
+    console.log('  - isSousse value:', isSousse);
+    console.log('  - normalizedCity value:', normalizedCity);
+    console.log('  - normalizedCity type:', typeof normalizedCity);
+    console.log('  - normalizedCity length:', normalizedCity.length);
+    console.log('  - normalizedCity === "Sousse":', normalizedCity === 'Sousse');
+    console.log('  - normalizedCity char codes:', normalizedCity.split('').map(c => c.charCodeAt(0)));
+    console.log('  - ville value:', ville);
+    console.log('  - ville type:', typeof ville);
+    console.log('========================================\n');
+    
+    if (isSousse) {
+      console.log('\n========================================');
+      console.log('✅ [SOUSSE] Processing Sousse ville...');
+      console.log('========================================');
+      if (!ville || (typeof ville === 'string' && ville.trim() === '')) {
+        console.error('❌ [SOUSSE] Ville is missing!');
+        return res.status(400).json({ error: 'Ville (neighborhood) is required for Sousse' });
+      }
+      villeValue = typeof ville === 'string' ? ville.trim() : ville;
+      console.log('✅ [SOUSSE] villeValue set to:', villeValue);
+      console.log('✅ [SOUSSE] villeValue type:', typeof villeValue);
+      console.log('========================================\n');
+    } else {
+      console.log('\n========================================');
+      console.log('⚠️ [SOUSSE] isSousse is FALSE - skipping Sousse ville processing');
+      console.log('========================================\n');
+    }
+    
+    // Handle ville for Tunis
+    if (isTunis) {
+      console.log('\n========================================');
+      console.log('✅ [TUNIS] Processing Tunis ville...');
+      console.log('========================================');
+      if (!ville || ville.trim() === '') {
+        console.error('❌ [TUNIS] Ville is missing!');
+        return res.status(400).json({ error: 'Ville (neighborhood) is required for Tunis' });
+      }
+      villeValue = ville.trim();
+      console.log('✅ [TUNIS] villeValue set to:', villeValue);
+      console.log('========================================\n');
+    }
+    
+    console.log('\n========================================');
+    console.log('🔍 [VILLE HANDLING] Final villeValue:', villeValue);
+    console.log('========================================\n');
+    
     // Insert new application
+    console.log('\n========================================');
+    console.log('🔍 [INSERT DATA] Prepared insert data:');
+    console.log('  - city:', sanitizedCity);
+    console.log('  - ville:', villeValue);
+    console.log('  - ville type:', typeof villeValue);
+    console.log('  - ville === null:', villeValue === null);
+    console.log('========================================\n');
+    
     const { data: application, error: insertError } = await supabase
       .from('ambassador_applications')
       .insert({
@@ -1886,7 +1963,7 @@ app.post('/api/ambassador-application', applicationLimiter, async (req, res) => 
         phone_number: phoneNumber,
         email: sanitizedEmail,
         city: sanitizedCity,
-        ville: city === 'Sousse' ? (ville ? ville.trim() : null) : null,
+        ville: villeValue, // Will be null for cities that don't require ville, or the ville value for Sousse/Tunis
         social_link: sanitizedSocialLink,
         motivation: sanitizedMotivation || null,
         status: 'pending'
@@ -2871,7 +2948,7 @@ app.post('/api/test-email', requireAdminAuth, async (req, res) => {
     }
 
     const { to } = req.body;
-    const testEmailTo = to || 'malekbenamor02@icloud.com';
+    const testEmailTo = to || 'contact@andiamoevents.com';
 
     const testEmailHtml = `
       <!DOCTYPE html>

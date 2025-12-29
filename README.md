@@ -59,7 +59,7 @@ npm install
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
    
    # Email SMTP Configuration
-   EMAIL_USER=support@andiamoevents.com
+   EMAIL_USER=contact@andiamoevents.com
    EMAIL_PASS=your_email_password_here
    EMAIL_HOST=mail.routing.net
    EMAIL_PORT=587
@@ -166,4 +166,4 @@ This project is licensed under the MIT License.
 
 ## 🆘 Support
 
-For support, email support@andiamoevents.com or create an issue in the repository.
+For support, email contact@andiamoevents.com or create an issue in the repository.

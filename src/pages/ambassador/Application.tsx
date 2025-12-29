@@ -15,7 +15,7 @@ import { User, Star, Users, Sparkles, Zap, Heart, Mail, Phone, MapPin, Instagram
 // @ts-ignore
 import DOMPurify from 'dompurify';
 import LoadingScreen from '@/components/ui/LoadingScreen';
-import { CITIES, SOUSSE_VILLES } from '@/lib/constants';
+import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
 interface ApplicationProps {
   language: 'en' | 'fr';
@@ -34,6 +34,8 @@ const Application = ({ language }: ApplicationProps) => {
   });
   
   const isSousse = formData.city === 'Sousse';
+  const isTunis = formData.city === 'Tunis';
+  const requiresVille = isSousse || isTunis;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
@@ -200,16 +202,65 @@ const Application = ({ language }: ApplicationProps) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('🚀 [SUBMIT] Form submitted!', {
+      city: formData.city,
+      ville: formData.ville,
+      isSousse: formData.city === 'Sousse',
+      isTunis: formData.city === 'Tunis',
+    });
     setIsSubmitting(true);
     try {
+      // Validate full name (letters only, no numbers or special characters)
+      const nameRegex = /^[a-zA-ZÀ-ÿ\s]+$/;
+      if (!nameRegex.test(formData.fullName.trim())) {
+        toast({
+          title: language === 'en' ? 'Invalid Full Name' : 'Nom Complet Invalide',
+          description: language === 'en' 
+            ? 'Full name must contain only letters (no numbers or special characters).' 
+            : 'Le nom complet doit contenir uniquement des lettres (pas de chiffres ni de caractères spéciaux).',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validate age (must be over 16, exactly 2 digits)
+      const ageNum = parseInt(formData.age);
+      const ageRegex = /^\d{2}$/;
+      if (!ageRegex.test(formData.age) || isNaN(ageNum) || ageNum <= 16) {
+        toast({
+          title: language === 'en' ? 'Invalid Age' : 'Âge Invalide',
+          description: language === 'en' 
+            ? 'Age must be over 16 and exactly 2 digits.' 
+            : 'L\'âge doit être supérieur à 16 et contenir exactement 2 chiffres.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validate email (must contain @ and be valid email format)
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!formData.email || !emailRegex.test(formData.email.trim())) {
+        toast({
+          title: language === 'en' ? 'Invalid E-Mail' : 'E-Mail Invalide',
+          description: language === 'en' 
+            ? 'Please enter a valid email address containing @.' 
+            : 'Veuillez entrer une adresse e-mail valide contenant @.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
       // Validate phone number format
-      const phoneRegex = /^[2594][0-9]{7}$/;
+      const phoneRegex = /^[2459][0-9]{7}$/;
       if (!phoneRegex.test(formData.phoneNumber)) {
         toast({
           title: language === 'en' ? 'Invalid Phone Number' : 'Numéro de Téléphone Invalide',
           description: language === 'en' 
-            ? 'Phone number must be 8 digits starting with 2, 5, 9, or 4.' 
-            : 'Le numéro de téléphone doit être 8 chiffres commençant par 2, 5, 9, ou 4.',
+            ? 'Phone number must be 8 digits starting with 2, 4, 5, or 9.' 
+            : 'Le numéro de téléphone doit être 8 chiffres commençant par 2, 4, 5, ou 9.',
           variant: 'destructive',
         });
         setIsSubmitting(false);
@@ -230,7 +281,7 @@ const Application = ({ language }: ApplicationProps) => {
       }
 
       // Validate ville is required for Sousse
-      if (formData.city === 'Sousse' && (!formData.ville || !SOUSSE_VILLES.includes(formData.ville as any))) {
+      if (isSousse && (!formData.ville || !SOUSSE_VILLES.includes(formData.ville as any))) {
         toast({
           title: language === 'en' ? 'Ville Required' : 'Quartier Requis',
           description: language === 'en' 
@@ -241,6 +292,20 @@ const Application = ({ language }: ApplicationProps) => {
         setIsSubmitting(false);
         return;
       }
+
+      // Validate ville is required for Tunis
+      if (isTunis && (!formData.ville || !TUNIS_VILLES.includes(formData.ville as any))) {
+        toast({
+          title: language === 'en' ? 'Ville Required' : 'Quartier Requis',
+          description: language === 'en' 
+            ? 'Please select a ville (neighborhood) for Tunis.' 
+            : 'Veuillez sélectionner un quartier pour Tunis.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
 
       // Validate Instagram link starts with Instagram URL
       if (formData.socialLink && !formData.socialLink.trim().startsWith('https://www.instagram.com/') && !formData.socialLink.trim().startsWith('https://instagram.com/')) {
@@ -262,34 +327,74 @@ const Application = ({ language }: ApplicationProps) => {
       const sanitizedSocialLink = DOMPurify.sanitize(formData.socialLink);
       const sanitizedMotivation = DOMPurify.sanitize(formData.motivation);
 
+      // Prepare ville value for Sousse and Tunis
+      let villeValue = null;
+      if (isSousse && formData.ville && formData.ville.trim() !== '') {
+        villeValue = DOMPurify.sanitize(formData.ville.trim());
+        console.log('🔍 [FRONTEND DEBUG] Sousse ville prepared:', {
+          formDataVille: formData.ville,
+          villeValue: villeValue,
+          isSousse: isSousse
+        });
+      }
+      if (isTunis && formData.ville && formData.ville.trim() !== '') {
+        villeValue = DOMPurify.sanitize(formData.ville.trim());
+        console.log('🔍 [FRONTEND DEBUG] Tunis ville prepared:', {
+          formDataVille: formData.ville,
+          villeValue: villeValue,
+          isTunis: isTunis
+        });
+      }
+
+
+      // CRITICAL DEBUG: Log what we're about to send
+      const requestBody = {
+        fullName: sanitizedFullName,
+        age: formData.age,
+        phoneNumber: formData.phoneNumber,
+        email: sanitizedEmail,
+        city: sanitizedCity,
+        ville: villeValue,
+        socialLink: sanitizedSocialLink,
+        motivation: sanitizedMotivation || null,
+      };
+      
+      
+      console.log('🔍 [FRONTEND DEBUG] Request body being sent:', {
+        ...requestBody,
+        villeType: typeof requestBody.ville,
+        villeIsNull: requestBody.ville === null,
+        villeIsUndefined: requestBody.ville === undefined,
+        city: requestBody.city,
+        isTunis: isTunis,
+      });
+      
+      // CRITICAL: Log the actual JSON string being sent
+      const jsonString = JSON.stringify(requestBody);
+      console.log('🔍 [FRONTEND DEBUG] JSON string being sent:', jsonString);
+      console.log('🔍 [FRONTEND DEBUG] JSON parsed back:', JSON.parse(jsonString));
+
       // Submit application via API endpoint (includes all validation and checks)
       const data = await safeApiCall(API_ROUTES.AMBASSADOR_APPLICATION, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          fullName: sanitizedFullName,
-          age: formData.age,
-          phoneNumber: formData.phoneNumber,
-          email: sanitizedEmail,
-          city: sanitizedCity,
-          ville: formData.city === 'Sousse' ? DOMPurify.sanitize(formData.ville) : null,
-          socialLink: sanitizedSocialLink,
-          motivation: sanitizedMotivation || null,
-        })
+        body: jsonString
       });
 
       if (data.success) {
+        
         logFormSubmission('Ambassador Application', true, {
           fullName: sanitizedFullName,
           phone: formData.phoneNumber,
           email: sanitizedEmail,
-          city: sanitizedCity
+          city: sanitizedCity,
+          ville: villeValue
         }, 'guest');
         logger.action('Ambassador application submitted', {
           category: 'form_submission',
-          details: { phoneNumber: formData.phoneNumber, city: sanitizedCity }
+          details: { phoneNumber: formData.phoneNumber, city: sanitizedCity, ville: villeValue }
         });
 
         setSubmitted(true);
@@ -541,7 +646,8 @@ const Application = ({ language }: ApplicationProps) => {
                       <Select 
                         value={formData.city} 
                         onValueChange={(value) => {
-                          setFormData({ ...formData, city: value, ville: value === 'Sousse' ? formData.ville : '' });
+                          // When switching cities, clear ville to force user to select a new one
+                          setFormData({ ...formData, city: value, ville: '' });
                         }}
                         required
                       >
@@ -581,7 +687,9 @@ const Application = ({ language }: ApplicationProps) => {
                         </Label>
                         <Select 
                           value={formData.ville} 
-                          onValueChange={(value) => setFormData({ ...formData, ville: value })}
+                          onValueChange={(value) => {
+                            setFormData({ ...formData, ville: value });
+                          }}
                           required
                         >
                           <SelectTrigger 
@@ -613,6 +721,49 @@ const Application = ({ language }: ApplicationProps) => {
                         </Select>
                       </div>
                     )}
+
+                    {isTunis && (
+                      <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor="ville" className="text-sm font-medium">
+                          {language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'} <span className="text-muted-foreground opacity-60">*</span>
+                        </Label>
+                        <Select 
+                          value={formData.ville} 
+                          onValueChange={(value) => {
+                            setFormData({ ...formData, ville: value });
+                          }}
+                          required
+                        >
+                          <SelectTrigger 
+                            className="h-12 w-full"
+                            style={{
+                              backgroundColor: '#252525',
+                              borderColor: '#2A2A2A',
+                              color: '#FFFFFF'
+                            }}
+                          >
+                            <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
+                          </SelectTrigger>
+                          <SelectContent 
+                            className="z-[9999]" 
+                            position="popper"
+                            style={{ backgroundColor: '#1F1F1F', borderColor: '#2A2A2A' }}
+                          >
+                            {TUNIS_VILLES.map((ville) => (
+                              <SelectItem 
+                                key={ville} 
+                                value={ville}
+                                className="focus:bg-[#E21836]/20 focus:text-[#E21836] data-[highlighted]:bg-[#E21836]/20 data-[highlighted]:text-[#E21836]"
+                                style={{ color: '#B0B0B0' }}
+                              >
+                                {ville}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
                     
                     <div className="space-y-2">
                       <Label htmlFor="phone" className="text-sm font-medium">

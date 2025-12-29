@@ -414,7 +414,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                     required
                     autoComplete="email"
                     className="w-full pl-10 h-10 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
-                    placeholder="admin@andiamoevents.com"
+                    placeholder="contact@andiamoevents.com"
                   />
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <div className="absolute inset-0 rounded-md pointer-events-none opacity-0 group-hover:opacity-10 transition-opacity duration-300 bg-gradient-to-r from-primary/20 to-secondary/20" />

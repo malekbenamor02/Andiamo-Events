@@ -11,23 +11,44 @@ export const CITIES = [
 
 // Villes (neighborhoods) for Sousse
 export const SOUSSE_VILLES = [
-  'Sahloul',
-  'Khezama',
-  'Hammam-Sousse',
-  'Jawhara',
-  'Msaken',
-  'Kalâa Kebira',
-  'Kalâa Seghira',
   'Akouda',
-  'Hergla',
+  'Beb Bhar',
   'Bouhsina',
+  'Cite Riadh',
+  'Cite Zouhour',
+  'Enfidha',
+  'Hammam-Sousse',
+  'Hergla',
+  'Jawhara',
+  'Kalaa Kebira',
+  'Kalaa Seghira',
+  'Khezama',
+  'Msaken',
+  'Sahloul',
   'Sidi Abdelhamid',
   'Sidi Bou Ali',
-  'Enfidha'
+  'Tafela'
+] as const;
+
+// Villes (neighborhoods) for Tunis
+export const TUNIS_VILLES = [
+  'Aouina',
+  'Ariana',
+  'Bardo',
+  'Carthage',
+  'Ennasser/Ghazela',
+  'Ezzahra/Boumhel',
+  'Gammarth',
+  'Jardin de Carthage',
+  'Megrine/Rades',
+  'Menzah 7/8/9',
+  'Mourouj',
+  'Soukra'
 ] as const;
 
 export type City = typeof CITIES[number];
 export type SousseVille = typeof SOUSSE_VILLES[number];
+export type TunisVille = typeof TUNIS_VILLES[number];
 
 // Primary slogan
 export const PRIMARY_SLOGAN = {
