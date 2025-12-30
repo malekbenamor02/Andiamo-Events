@@ -97,8 +97,8 @@ const About = ({ language }: AboutProps) => {
           text: "Specialized in alcohol-free events, Andiamo Events focuses primarily on young people and students seeking festive, safe, and well-supervised atmospheres."
         },
         wagxt: {
-          title: "W9ayet Events",
-          text: "Dedicated to large-scale events, W9ayet Events hosts national artists and promotes innovative concepts with high production standards."
+          title: "Wkayet Events",
+          text: "Dedicated to large-scale events, Wkayet Events hosts national artists and promotes innovative concepts with high production standards."
         }
       },
       btlVision: {
@@ -137,7 +137,7 @@ const About = ({ language }: AboutProps) => {
       },
       story: {
         title: "About Born To Lead (BTL) and its brands",
-        text: "Born To Lead (BTL) is a Tunisian event agency founded and managed exclusively by passionate young people. Its goal is to revolutionize the event sector in Tunisia by organizing innovative events with strong cultural and economic impact. BTL stands out for its modern approach and commitment to youth, offering immersive experiences that foster creativity, inclusion, and the development of event digitalization. BTL oversees two major event brands: Andiamo Events, specialized in alcohol-free events, primarily targeting young people and students seeking festive and supervised atmospheres; and W9ayet Events, dedicated to large-scale events, hosting national artists and promoting innovative concepts. With an ambitious vision, BTL seeks to position Tunisia as an essential hub for international concerts, while adopting an eco-responsible and digitized approach."
+        text: "Born To Lead (BTL) is a Tunisian event agency founded and managed exclusively by passionate young people. Its goal is to revolutionize the event sector in Tunisia by organizing innovative events with strong cultural and economic impact. BTL stands out for its modern approach and commitment to youth, offering immersive experiences that foster creativity, inclusion, and the development of event digitalization. BTL oversees two major event brands: Andiamo Events, specialized in alcohol-free events, primarily targeting young people and students seeking festive and supervised atmospheres; and Wkayet Events, dedicated to large-scale events, hosting national artists and promoting innovative concepts. With an ambitious vision, BTL seeks to position Tunisia as an essential hub for international concerts, while adopting an eco-responsible and digitized approach."
       },
       mission: {
         title: "About Andiamo Events",
@@ -173,8 +173,8 @@ const About = ({ language }: AboutProps) => {
           text: "Spécialisée dans les événements sans alcool, Andiamo Events s'adresse principalement aux jeunes et aux étudiants en quête d'ambiances festives, sécurisées et encadrées."
         },
         wagxt: {
-          title: "W9ayet Events",
-          text: "Dédiée aux événements de grande envergure, W9ayet Events accueille des artistes nationaux et met en avant des concepts innovants avec des standards de production élevés."
+          title: "Wkayet Events",
+          text: "Dédiée aux événements de grande envergure, Wkayet Events accueille des artistes nationaux et met en avant des concepts innovants avec des standards de production élevés."
         }
       },
       btlVision: {
@@ -213,7 +213,7 @@ const About = ({ language }: AboutProps) => {
       },
       story: {
         title: "Présentation de Born To Lead (BTL) et ses marques",
-        text: "Born To Lead (BTL) est une agence événementielle tunisienne fondée et dirigée exclusivement par des jeunes passionnés. Son objectif est de révolutionner le secteur événementiel en Tunisie en organisant des événements innovants à fort impact culturel et économique. BTL se distingue par son approche moderne et son engagement envers la jeunesse, en proposant des expériences immersives qui favorisent la créativité, l'inclusion et le développement de la digitalisation événementielle. BTL supervise deux grandes marques événementielles : Andiamo Events, spécialisée dans les événements sans alcool, s'adresse principalement aux jeunes et aux étudiants en quête d'ambiances festives et encadrées ; et W9ayet Events, dédiée aux événements de grande envergure, accueille des artistes nationaux et met en avant des concepts innovants. Avec une vision ambitieuse, BTL cherche à positionner la Tunisie comme un hub incontournable pour les concerts internationaux, tout en adoptant une démarche écoresponsable et digitalisée."
+        text: "Born To Lead (BTL) est une agence événementielle tunisienne fondée et dirigée exclusivement par des jeunes passionnés. Son objectif est de révolutionner le secteur événementiel en Tunisie en organisant des événements innovants à fort impact culturel et économique. BTL se distingue par son approche moderne et son engagement envers la jeunesse, en proposant des expériences immersives qui favorisent la créativité, l'inclusion et le développement de la digitalisation événementielle. BTL supervise deux grandes marques événementielles : Andiamo Events, spécialisée dans les événements sans alcool, s'adresse principalement aux jeunes et aux étudiants en quête d'ambiances festives et encadrées ; et Wkayet Events, dédiée aux événements de grande envergure, accueille des artistes nationaux et met en avant des concepts innovants. Avec une vision ambitieuse, BTL cherche à positionner la Tunisie comme un hub incontournable pour les concerts internationaux, tout en adoptant une démarche écoresponsable et digitalisée."
       },
       mission: {
         title: "Présentation de Andiamo Events",
@@ -509,25 +509,10 @@ const About = ({ language }: AboutProps) => {
             ? 'opacity-100 translate-y-0' 
             : 'opacity-0 translate-y-12'
         }`}>
-          <div className="inline-block mb-6">
-            <Sparkles className="w-8 h-8 text-white/80 mx-auto animate-pulse" />
-          </div>
-          <h2 className="text-3xl md:text-5xl lg:text-6xl font-heading font-bold mb-6 md:mb-8 text-white leading-tight">
-            {t.cta.title}
+          <h2 className="text-2xl md:text-3xl lg:text-4xl font-heading font-bold mb-6 md:mb-8 text-white leading-tight whitespace-nowrap">
+            {language === 'en' ? 'We Create Memories' : 'Nous Créons des Souvenirs'}
           </h2>
-          <p className="text-lg md:text-xl text-white/90 mb-10 md:mb-12 max-w-2xl mx-auto leading-relaxed">
-            {t.cta.subtitle}
-          </p>
-          <Button 
-            size="lg" 
-            className="bg-white text-primary hover:bg-white/90 text-base md:text-lg px-8 md:px-12 py-6 md:py-7 rounded-full font-medium transform hover:scale-105 hover:shadow-2xl transition-all duration-300 border-2 border-white/20"
-            onClick={() => navigate('/ambassador')}
-          >
-            <span className="flex items-center gap-2">
-              {t.cta.button}
-              <Sparkles className="w-5 h-5" />
-            </span>
-          </Button>
+          <div className="w-32 h-1 bg-gradient-to-r from-transparent via-white/50 to-transparent mx-auto rounded-full"></div>
         </div>
       </section>
     </div>

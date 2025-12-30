@@ -285,6 +285,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [applicationSearchTerm, setApplicationSearchTerm] = useState('');
   const [applicationDateFrom, setApplicationDateFrom] = useState<Date | undefined>(undefined);
   const [applicationDateTo, setApplicationDateTo] = useState<Date | undefined>(undefined);
+  const [applicationCityFilter, setApplicationCityFilter] = useState<string>('all');
+  const [applicationVilleFilter, setApplicationVilleFilter] = useState<string>('all');
   const [animatedSponsors, setAnimatedSponsors] = useState<Set<string>>(new Set());
   const [hasSponsorsAnimated, setHasSponsorsAnimated] = useState(false);
   const [animatedTeamMembers, setAnimatedTeamMembers] = useState<Set<string>>(new Set());
@@ -710,16 +712,39 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [activeTab, hasApplicationsAnimated, applications, applicationSearchTerm]);
 
-  // Filter applications based on search term and date range
+  // Filter applications based on search term, city, ville, and date range
   // Show all applications (pending, approved, rejected, removed) - full history
   const filteredApplications = applications.filter(application => {
     const searchLower = applicationSearchTerm.toLowerCase();
     const matchesSearch = (
       application.full_name.toLowerCase().includes(searchLower) ||
       (application.email && application.email.toLowerCase().includes(searchLower)) ||
-      application.phone_number.includes(searchLower) ||
-      application.city.toLowerCase().includes(searchLower)
+      application.phone_number.includes(searchLower)
     );
+
+    // City filter
+    if (applicationCityFilter !== 'all' && application.city !== applicationCityFilter) {
+      return false;
+    }
+
+    // Ville filter
+    if (applicationVilleFilter !== 'all') {
+      // Check if application has ville
+      let applicationVille = application.ville;
+      
+      // If no ville in application, try to get it from matching ambassador
+      if (!applicationVille && (application.city === 'Sousse' || application.city === 'Tunis')) {
+        const matchingAmbassador = ambassadors.find(amb => 
+          amb.phone === application.phone_number || 
+          (application.email && amb.email && application.email === amb.email)
+        );
+        applicationVille = matchingAmbassador?.ville;
+      }
+      
+      if (applicationVille !== applicationVilleFilter) {
+        return false;
+      }
+    }
 
     // Date range filtering
     if (applicationDateFrom || applicationDateTo) {
@@ -9834,32 +9859,119 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   <div className="relative">
                     <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                     <Input
-                      placeholder="Search by name, email, phone, or city..."
+                      placeholder="Search by name, email, or phone..."
                       value={applicationSearchTerm}
                       onChange={(e) => setApplicationSearchTerm(e.target.value)}
                       className="pl-10 transition-all duration-300 focus:scale-105"
                     />
                   </div>
                   
-                  {/* Date Range Filters */}
+                  {/* City and Ville Filters */}
                   <div className="flex flex-wrap gap-4 items-center">
                     <div className="flex items-center gap-2">
-                      <Label className="text-sm font-medium text-muted-foreground">From Date:</Label>
+                      <Label className="text-sm font-medium text-muted-foreground">{language === 'en' ? 'City:' : 'Ville:'}</Label>
+                      <Select
+                        value={applicationCityFilter}
+                        onValueChange={(value) => {
+                          setApplicationCityFilter(value);
+                          // Reset ville filter when city changes
+                          if (value !== 'all') {
+                            setApplicationVilleFilter('all');
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder={language === 'en' ? 'All Cities' : 'Toutes les Villes'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{language === 'en' ? 'All Cities' : 'Toutes les Villes'}</SelectItem>
+                          {CITIES.map(city => (
+                            <SelectItem key={city} value={city}>{city}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    {(applicationCityFilter === 'Sousse' || applicationCityFilter === 'Tunis' || applicationCityFilter === 'all') && (
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm font-medium text-muted-foreground">{language === 'en' ? 'Ville (Neighborhood):' : 'Quartier:'}</Label>
+                        <div className="relative">
+                          <Select
+                            value={applicationVilleFilter}
+                            onValueChange={setApplicationVilleFilter}
+                            disabled={applicationCityFilter !== 'Sousse' && applicationCityFilter !== 'Tunis' && applicationCityFilter !== 'all'}
+                          >
+                            <SelectTrigger className="w-[200px]">
+                              <SelectValue placeholder={language === 'en' ? 'All Villes' : 'Tous les Quartiers'} />
+                            </SelectTrigger>
+                            <SelectContent 
+                            position="popper"
+                            side="bottom"
+                            sideOffset={4}
+                            avoidCollisions={false}
+                            className="[&[data-side=top]]:!hidden"
+                          >
+                            <SelectItem value="all">{language === 'en' ? 'All Villes' : 'Tous les Quartiers'}</SelectItem>
+                            {applicationCityFilter === 'Sousse' && SOUSSE_VILLES.map((ville) => (
+                              <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                            ))}
+                            {applicationCityFilter === 'Tunis' && TUNIS_VILLES.map((ville) => (
+                              <SelectItem key={ville} value={ville}>{ville}</SelectItem>
+                            ))}
+                            {applicationCityFilter === 'all' && (
+                              <>
+                                {SOUSSE_VILLES.map((ville) => (
+                                  <SelectItem key={`sousse-${ville}`} value={ville}>{ville} (Sousse)</SelectItem>
+                                ))}
+                                {TUNIS_VILLES.map((ville) => (
+                                  <SelectItem key={`tunis-${ville}`} value={ville}>{ville} (Tunis)</SelectItem>
+                                ))}
+                              </>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {(applicationCityFilter !== 'all' || applicationVilleFilter !== 'all') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setApplicationCityFilter('all');
+                          setApplicationVilleFilter('all');
+                        }}
+                        className="text-xs"
+                      >
+                        <X className="w-3 h-3 mr-1" />
+                        {language === 'en' ? 'Clear Filters' : 'Effacer les Filtres'}
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {/* Date Range Filters */}
+                  <div className="flex flex-wrap gap-3 items-center">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium text-foreground/70 whitespace-nowrap">{language === 'en' ? 'From Date:' : 'Date de début:'}</Label>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
                             className={cn(
-                              "w-[200px] justify-start text-left font-normal border-border bg-card hover:bg-muted/50 transition-all duration-300",
-                              !applicationDateFrom && "text-muted-foreground"
+                              "w-[200px] justify-start text-left font-normal border-border/50 bg-background hover:bg-muted/30 hover:border-primary/30 transition-all duration-300 shadow-sm",
+                              !applicationDateFrom && "text-muted-foreground",
+                              applicationDateFrom && "border-primary/50 bg-primary/5"
                             )}
                           >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {applicationDateFrom ? (
-                              format(applicationDateFrom, "PPP")
-                            ) : (
-                              <span>Pick a date</span>
-                            )}
+                            <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+                            <span className="truncate">
+                              {applicationDateFrom ? (
+                                format(applicationDateFrom, "PPP")
+                              ) : (
+                                <span className="text-muted-foreground">{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>
+                              )}
+                            </span>
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
@@ -9874,23 +9986,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      <Label className="text-sm font-medium text-muted-foreground">To Date:</Label>
+                      <Label className="text-sm font-medium text-foreground/70 whitespace-nowrap">{language === 'en' ? 'To Date:' : 'Date de fin:'}</Label>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
                             className={cn(
-                              "w-[200px] justify-start text-left font-normal border-border bg-card hover:bg-muted/50 transition-all duration-300",
-                              !applicationDateTo && "text-muted-foreground"
+                              "w-[200px] justify-start text-left font-normal border-border/50 bg-background hover:bg-muted/30 hover:border-primary/30 transition-all duration-300 shadow-sm",
+                              !applicationDateTo && "text-muted-foreground",
+                              applicationDateTo && "border-primary/50 bg-primary/5",
+                              !applicationDateFrom && "opacity-50 cursor-not-allowed"
                             )}
                             disabled={!applicationDateFrom}
                           >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {applicationDateTo ? (
-                              format(applicationDateTo, "PPP")
-                            ) : (
-                              <span>Pick a date</span>
-                            )}
+                            <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+                            <span className="truncate">
+                              {applicationDateTo ? (
+                                format(applicationDateTo, "PPP")
+                              ) : (
+                                <span className="text-muted-foreground">{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>
+                              )}
+                            </span>
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
@@ -9907,16 +10023,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     
                     {(applicationDateFrom || applicationDateTo) && (
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         onClick={() => {
                           setApplicationDateFrom(undefined);
                           setApplicationDateTo(undefined);
                         }}
-                        className="text-muted-foreground hover:text-foreground transition-all duration-300"
+                        className="text-xs border-border/50 hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive transition-all duration-300 shadow-sm"
                       >
-                        <X className="w-4 h-4 mr-2" />
-                        Clear Dates
+                        <X className="w-3 h-3 mr-1.5" />
+                        {language === 'en' ? 'Clear Dates' : 'Effacer les Dates'}
                       </Button>
                     )}
                   </div>
