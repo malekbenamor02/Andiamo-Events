@@ -9,7 +9,6 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Link } from 'react-router-dom';
 import { Calendar, MapPin, Users, CreditCard, ArrowLeft, CheckCircle, XCircle, Wallet, Phone, Instagram } from 'lucide-react';
 import { ExpandableText } from '@/components/ui/expandable-text';
 import { useToast } from '@/hooks/use-toast';
@@ -1240,13 +1239,13 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                         />
                         <Label htmlFor="terms" className="text-sm leading-relaxed peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                           {t[language].acceptTerms}{' '}
-                          <Link to="/terms" className="text-primary hover:underline underline-offset-2">
+                          <span className="text-primary">
                             {t[language].termsLink}
-                          </Link>
+                          </span>
                           {' '}{language === 'en' ? 'and' : 'et'}{' '}
-                          <Link to="/refund-policy" className="text-primary hover:underline underline-offset-2">
+                          <span className="text-primary">
                             {t[language].refundLink}
-                          </Link>
+                          </span>
                           .
                         </Label>
                       </div>

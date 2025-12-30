@@ -81,9 +81,10 @@ const App = () => {
                 </ProtectedAdminRoute>
               } />
               <Route path="/contact" element={<Contact language={language} />} />
-              <Route path="/privacy-policy" element={<PrivacyPolicy language={language} />} />
-              <Route path="/terms" element={<Terms language={language} />} />
-              <Route path="/refund-policy" element={<RefundPolicy language={language} />} />
+              {/* Temporarily masked - pages preserved but not accessible */}
+              {/* <Route path="/privacy-policy" element={<PrivacyPolicy language={language} />} /> */}
+              {/* <Route path="/terms" element={<Terms language={language} />} /> */}
+              {/* <Route path="/refund-policy" element={<RefundPolicy language={language} />} /> */}
               <Route path="*" element={<NotFound />} />
               </Routes>
                 <Footer language={language} />

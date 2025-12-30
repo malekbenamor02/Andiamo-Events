@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -368,13 +368,13 @@ const CODOrder = ({ language }: CODOrderProps) => {
                 />
                 <Label htmlFor="terms" className="text-sm leading-relaxed peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                   {t.acceptTerms}{' '}
-                  <Link to="/terms" className="text-primary hover:underline underline-offset-2">
+                  <span className="text-primary">
                     {t.termsLink}
-                  </Link>
+                  </span>
                   {' '}{language === 'en' ? 'and' : 'et'}{' '}
-                  <Link to="/refund-policy" className="text-primary hover:underline underline-offset-2">
+                  <span className="text-primary">
                     {t.refundLink}
-                  </Link>
+                  </span>
                   .
                 </Label>
               </div>

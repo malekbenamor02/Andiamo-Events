@@ -345,8 +345,8 @@ const Footer = ({ language }: FooterProps) => {
               </div>
             </div>
             
-            {/* Legal Links */}
-            <div className="flex items-center gap-4 sm:gap-6 text-sm flex-wrap justify-center">
+            {/* Legal Links - Temporarily masked */}
+            {/* <div className="flex items-center gap-4 sm:gap-6 text-sm flex-wrap justify-center">
               <RouterLink 
                 to="/privacy-policy" 
                 className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
@@ -367,7 +367,7 @@ const Footer = ({ language }: FooterProps) => {
               >
                 {content[language].refund}
               </RouterLink>
-            </div>
+            </div> */}
           </div>
 
           {/* Desktop: Single line layout */}
@@ -398,8 +398,8 @@ const Footer = ({ language }: FooterProps) => {
               </a>
             </div>
             
-            {/* Legal Links */}
-            <div className="flex items-center gap-3 shrink-0">
+            {/* Legal Links - Temporarily masked */}
+            {/* <div className="flex items-center gap-3 shrink-0">
               <RouterLink 
                 to="/privacy-policy" 
                 className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
@@ -420,7 +420,7 @@ const Footer = ({ language }: FooterProps) => {
               >
                 {content[language].refund}
               </RouterLink>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>
