@@ -7476,13 +7476,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </div>
                       {/* Mini Sparkline */}
                       <div className="mt-4 h-8 flex items-end gap-1">
-                        {[3, 5, 4, 7, 6, 8, pendingApplications.length].map((h, i) => (
-                          <div 
-                            key={i}
-                            className="flex-1 bg-yellow-500/30 rounded-t transition-all duration-300 hover:bg-yellow-500/50"
-                            style={{ height: `${(h / 10) * 100}%` }}
-                          />
-                        ))}
+                        {(() => {
+                          const barValues = [3, 5, 4, 7, 6, 8, pendingApplications.length];
+                          const maxValue = Math.max(...barValues, 1); // Ensure at least 1 to avoid division by zero
+                          return barValues.map((h, i) => (
+                            <div 
+                              key={i}
+                              className="flex-1 bg-yellow-500/30 rounded-t transition-all duration-300 hover:bg-yellow-500/50"
+                              style={{ height: `${(h / maxValue) * 100}%` }}
+                            />
+                          ));
+                        })()}
                       </div>
                     </CardContent>
                   </Card>
