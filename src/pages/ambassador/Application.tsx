@@ -314,6 +314,19 @@ const Application = ({ language }: ApplicationProps) => {
         return;
       }
 
+      // Validate motivation is required
+      if (!formData.motivation || formData.motivation.trim() === '') {
+        toast({
+          title: language === 'en' ? 'Motivation Required' : 'Motivation Requise',
+          description: language === 'en' 
+            ? 'Please tell us why you want to be an ambassador.' 
+            : 'Veuillez nous dire pourquoi vous voulez être ambassadeur.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
       // Sanitize all inputs
       const sanitizedFullName = DOMPurify.sanitize(formData.fullName);
       const sanitizedEmail = DOMPurify.sanitize(formData.email);
@@ -338,7 +351,7 @@ const Application = ({ language }: ApplicationProps) => {
         city: sanitizedCity,
         ville: villeValue,
         socialLink: sanitizedSocialLink,
-        motivation: sanitizedMotivation || null,
+        motivation: sanitizedMotivation,
       };
 
       // Submit application via API endpoint (includes all validation and checks)
@@ -744,14 +757,15 @@ const Application = ({ language }: ApplicationProps) => {
                     
                     <div className="space-y-2 md:col-span-2">
                       <Label htmlFor="motivation" className="text-sm font-medium">
-                        {t.motivation}
+                        {t.motivation} <span className="text-muted-foreground opacity-60">*</span>
                       </Label>
                       <Textarea 
                         id="motivation" 
                         value={formData.motivation} 
-                        onChange={e => setFormData({ ...formData, motivation: e.target.value })} 
+                        onChange={e => setFormData({ ...formData, motivation: e.target.value })}
+                        required
                         className="min-h-[140px] resize-y"
-                        placeholder={language === 'en' ? 'Optional: Tell us why you want to be an ambassador' : 'Optionnel : Dites-nous pourquoi vous voulez être ambassadeur'}
+                        placeholder={language === 'en' ? 'Tell us why you want to be an ambassador' : 'Dites-nous pourquoi vous voulez être ambassadeur'}
                       />
                     </div>
                   </div>

@@ -38,6 +38,11 @@ export default async (req, res) => {
       return res.status(400).json({ error: 'Full name, age, phone number, and city are required' });
     }
 
+    // Validate motivation is required
+    if (!motivation || !motivation.trim()) {
+      return res.status(400).json({ error: 'Motivation is required' });
+    }
+
     // Validate phone number format
     const phoneRegex = /^[2459][0-9]{7}$/;
     if (!phoneRegex.test(phoneNumber)) {
@@ -75,7 +80,7 @@ export default async (req, res) => {
       sanitizedVille = String(ville).trim();
     }
     const sanitizedSocialLink = socialLink ? socialLink.trim() : null;
-    const sanitizedMotivation = motivation ? motivation.trim() : null;
+    const sanitizedMotivation = motivation.trim(); // Already validated as required above
 
     // Check for duplicate phone number in active ambassadors
     const { data: existingAmbByPhone } = await supabase
@@ -227,7 +232,7 @@ export default async (req, res) => {
       city: sanitizedCity,
       ville: villeValue,
       social_link: sanitizedSocialLink,
-      motivation: sanitizedMotivation || null,
+      motivation: sanitizedMotivation,
       status: 'pending'
     };
     
