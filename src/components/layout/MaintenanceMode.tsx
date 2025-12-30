@@ -14,6 +14,7 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
   const location = useLocation();
   const [isMaintenanceMode, setIsMaintenanceMode] = useState<boolean | null>(null);
   const [maintenanceMessage, setMaintenanceMessage] = useState<string>("");
+  const [allowAmbassadorApplication, setAllowAmbassadorApplication] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
   // Check if running on localhost
@@ -48,7 +49,7 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
         }
 
         if (data && data.content) {
-          const settings = data.content as { enabled?: boolean; message?: string };
+          const settings = data.content as { enabled?: boolean; message?: string; allowAmbassadorApplication?: boolean };
           setIsMaintenanceMode(settings.enabled === true);
           setMaintenanceMessage(
             settings.message || 
@@ -56,6 +57,7 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
               ? 'We are currently performing maintenance. Please check back soon.' 
               : 'Nous effectuons actuellement une maintenance. Veuillez réessayer bientôt.')
           );
+          setAllowAmbassadorApplication(settings.allowAmbassadorApplication === true);
         } else {
           setIsMaintenanceMode(false);
           setMaintenanceMessage(
@@ -63,6 +65,7 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
               ? 'We are currently performing maintenance. Please check back soon.' 
               : 'Nous effectuons actuellement une maintenance. Veuillez réessayer bientôt.'
           );
+          setAllowAmbassadorApplication(false);
         }
       } catch (error) {
         console.error('Error checking maintenance mode:', error);
@@ -108,7 +111,7 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
 
   // Check if current path should be excluded from maintenance mode
   // Admin and Ambassador dashboard routes are always accessible
-  const isExcluded = isExcludedFromMaintenance(location.pathname);
+  const isExcluded = isExcludedFromMaintenance(location.pathname, allowAmbassadorApplication);
 
   // Never show maintenance mode on localhost
   if (isMaintenanceMode && !isExcluded && !isLocalhost) {

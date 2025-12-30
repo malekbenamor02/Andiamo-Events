@@ -8,16 +8,22 @@
 /**
  * Checks if the given pathname should be excluded from maintenance mode
  * @param pathname - The current route pathname
- * @returns true if the route should be excluded from maintenance mode (admin/ambassador dashboard)
+ * @param allowAmbassadorApplication - Whether to allow ambassador application page during maintenance
+ * @returns true if the route should be excluded from maintenance mode
  */
-export const isExcludedFromMaintenance = (pathname: string): boolean => {
-  // Allow admin routes
+export const isExcludedFromMaintenance = (pathname: string, allowAmbassadorApplication: boolean = false): boolean => {
+  // Allow admin routes (always accessible)
   if (pathname.startsWith('/admin')) {
     return true;
   }
   
-  // Allow ambassador dashboard routes
+  // Allow ambassador dashboard routes (always accessible)
   if (pathname.startsWith('/ambassador/dashboard')) {
+    return true;
+  }
+  
+  // Allow ambassador application page if enabled in settings
+  if (allowAmbassadorApplication && pathname.startsWith('/ambassador')) {
     return true;
   }
   

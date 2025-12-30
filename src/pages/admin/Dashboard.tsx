@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
@@ -210,6 +211,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Maintenance mode state
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState("");
+  const [allowAmbassadorApplication, setAllowAmbassadorApplication] = useState(false);
   const [loadingMaintenanceSettings, setLoadingMaintenanceSettings] = useState(false);
 
   // Ambassador application settings state
@@ -496,6 +498,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       maintenanceSettingsDescription: "Control website maintenance mode. When enabled, users will see a maintenance message and cannot access the site. Admin access is always allowed.",
       maintenanceMessage: "Maintenance Message",
       maintenanceMessagePlaceholder: "Enter a custom maintenance message (optional)",
+      allowAmbassadorApplication: "Allow Ambassador Application Page",
+      allowAmbassadorApplicationDescription: "When enabled, the ambassador application page will remain accessible during maintenance mode.",
       ambassadorApplicationSettings: "Ambassador Application Settings",
       ambassadorApplicationSettingsDescription: "Control whether users can submit ambassador applications. When disabled, users will see a message that applications are closed.",
       ambassadorApplicationEnabled: "Applications are currently open",
@@ -591,6 +595,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       maintenanceSettingsDescription: "Contrôlez le mode maintenance du site web. Lorsqu'il est activé, les utilisateurs verront un message de maintenance et ne pourront pas accéder au site. L'accès administrateur est toujours autorisé.",
       maintenanceMessage: "Message de Maintenance",
       maintenanceMessagePlaceholder: "Entrez un message de maintenance personnalisé (optionnel)",
+      allowAmbassadorApplication: "Autoriser la Page de Candidature d'Ambassadeur",
+      allowAmbassadorApplicationDescription: "Lorsqu'elle est activée, la page de candidature d'ambassadeur restera accessible pendant le mode maintenance.",
       ambassadorApplicationSettings: "Paramètres de Candidature d'Ambassadeur",
       ambassadorApplicationSettingsDescription: "Contrôlez si les utilisateurs peuvent soumettre des candidatures d'ambassadeur. Lorsqu'elle est désactivée, les utilisateurs verront un message indiquant que les candidatures sont fermées.",
       ambassadorApplicationEnabled: "Les candidatures sont actuellement ouvertes",
@@ -901,13 +907,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       if (data && data.content) {
-        const settings = data.content as { enabled?: boolean; message?: string };
+        const settings = data.content as { enabled?: boolean; message?: string; allowAmbassadorApplication?: boolean };
         setMaintenanceEnabled(settings.enabled === true);
         setMaintenanceMessage(settings.message || "");
+        setAllowAmbassadorApplication(settings.allowAmbassadorApplication === true);
       } else {
         // Default to disabled if no setting exists
         setMaintenanceEnabled(false);
         setMaintenanceMessage("");
+        setAllowAmbassadorApplication(false);
       }
     } catch (error) {
       console.error('Error fetching maintenance settings:', error);
@@ -4395,14 +4403,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  const updateMaintenanceSettings = async (enabled: boolean, message?: string) => {
+  const updateMaintenanceSettings = async (enabled: boolean, message?: string, allowAmbassador?: boolean) => {
     setLoadingMaintenanceSettings(true);
     try {
       const { error } = await supabase
         .from('site_content')
         .upsert({
           key: 'maintenance_settings',
-          content: { enabled, message: message || "" },
+          content: { 
+            enabled, 
+            message: message !== undefined ? message : maintenanceMessage, 
+            allowAmbassadorApplication: allowAmbassador !== undefined ? allowAmbassador : allowAmbassadorApplication
+          },
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'key'
@@ -4419,6 +4431,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setMaintenanceEnabled(enabled);
       if (message !== undefined) {
         setMaintenanceMessage(message);
+      }
+      if (allowAmbassador !== undefined) {
+        setAllowAmbassadorApplication(allowAmbassador);
       }
       toast({
         title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
@@ -12740,11 +12755,40 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           value={maintenanceMessage}
                           onChange={(e) => setMaintenanceMessage(e.target.value)}
                           onBlur={() => {
-                            updateMaintenanceSettings(maintenanceEnabled, maintenanceMessage);
+                            updateMaintenanceSettings(maintenanceEnabled, maintenanceMessage, allowAmbassadorApplication);
                           }}
                           className="min-h-[80px] text-sm bg-background text-foreground"
                         />
                       </div>
+
+                      {/* Allow Ambassador Application Checkbox */}
+                      {maintenanceEnabled && (
+                        <div className="space-y-2 p-4 bg-muted/30 rounded-lg border border-border">
+                          <div className="flex items-start space-x-3">
+                            <Checkbox
+                              id="allow-ambassador-application"
+                              checked={allowAmbassadorApplication}
+                              onCheckedChange={(checked) => {
+                                const newValue = checked === true;
+                                setAllowAmbassadorApplication(newValue);
+                                updateMaintenanceSettings(maintenanceEnabled, maintenanceMessage, newValue);
+                              }}
+                              className="mt-1"
+                            />
+                            <div className="flex-1 space-y-1">
+                              <Label 
+                                htmlFor="allow-ambassador-application" 
+                                className="text-sm font-medium text-foreground cursor-pointer"
+                              >
+                                {t.allowAmbassadorApplication}
+                              </Label>
+                              <p className="text-xs text-foreground/60">
+                                {t.allowAmbassadorApplicationDescription}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                   </div>
