@@ -37,7 +37,19 @@ import { FaviconLoader } from "./components/FaviconLoader";
 import PhoneCapturePopup from "./components/PhoneCapturePopup";
 import { usePhoneCapture } from "./hooks/usePhoneCapture";
 
-const queryClient = new QueryClient();
+// Configure React Query with smart caching
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Stale-while-revalidate: show cached data immediately, fetch fresh in background
+      staleTime: 5 * 60 * 1000, // 5 minutes - data is fresh for 5 min
+      gcTime: 30 * 60 * 1000, // 30 minutes - keep unused data in cache for 30 min (formerly cacheTime)
+      refetchOnWindowFocus: false, // Don't refetch on window focus (reduce API calls)
+      refetchOnReconnect: true, // Refetch when internet reconnects
+      retry: 1, // Retry failed requests once
+    },
+  },
+});
 
 const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggleLanguage: () => void }) => {
   const location = useLocation();

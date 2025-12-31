@@ -42,6 +42,9 @@ import { cn } from "@/lib/utils";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { apiFetch, handleApiResponse } from "@/lib/api-client";
 import { API_ROUTES } from "@/lib/api-routes";
+import { useQueryClient } from "@tanstack/react-query";
+import { useInvalidateEvents } from "@/hooks/useEvents";
+import { useInvalidateSiteContent } from "@/hooks/useSiteContent";
 
 
 interface AdminDashboardProps {
@@ -140,6 +143,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // All hooks must be called before any conditional returns (Rules of Hooks)
   const isMobile = useIsMobile();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const invalidateEvents = useInvalidateEvents();
+  const invalidateSiteContent = useInvalidateSiteContent();
   const [applications, setApplications] = useState<AmbassadorApplication[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
 
@@ -5098,6 +5104,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setEditingEvent(null);
       setIsEventDialogOpen(false);
       
+      // Invalidate events cache so frontend shows updated data
+      invalidateEvents();
+      
       // Refresh all data to ensure consistency (but don't wait for it to close dialog)
       // The optimistic update above already shows the event immediately
       fetchAllData().catch(err => {
@@ -5777,6 +5786,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (verifyError && verifyError.code === 'PGRST116') {
         // Event was successfully deleted (not found)
+        // Invalidate events cache so frontend shows updated data
+        invalidateEvents();
+        
         toast({
           title: language === 'en' ? "Event deleted" : "Événement supprimé",
           description: language === 'en' ? "Event deleted successfully" : "Événement supprimé avec succès",

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, MapPin, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
+import { useFeaturedEvents, type Event } from '@/hooks/useEvents';
 
 interface Event {
   id: string;
@@ -27,24 +27,12 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
   const navigate = useNavigate();
   const [featuredEvents, setFeaturedEvents] = useState<Event[]>([]);
 
+  // Use cached featured events hook
+  const { data: featuredEventsData = [] } = useFeaturedEvents();
+  
   useEffect(() => {
-    const fetchUpcomingEvents = async () => {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .eq('event_type', 'upcoming')
-        .order('date', { ascending: true });
-      if (!error && data) {
-        // Map database whatsapp_link to instagram_link for UI
-        const mappedEvents = data.map((e: any) => ({
-          ...e,
-          instagram_link: e.whatsapp_link // Map database field to UI field
-        }));
-        setFeaturedEvents(mappedEvents);
-      }
-    };
-    fetchUpcomingEvents();
-  }, []);
+    setFeaturedEvents(featuredEventsData);
+  }, [featuredEventsData]);
 
   if (featuredEvents.length === 0) return null;
 

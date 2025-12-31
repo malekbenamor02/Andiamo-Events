@@ -4,41 +4,11 @@ import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, Use
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { generateSlug } from "@/lib/utils";
+import { useEvents, type Event } from "@/hooks/useEvents";
 
-interface EventPass {
-  id?: string;
-  name: string;
-  price: number;
-  description: string;
-  is_primary: boolean;
-}
-
-interface Event {
-  id: string;
-  name: string;
-  description: string;
-  date: string;
-  venue: string;
-  city: string;
-  poster_url: string;
-  instagram_link?: string; // Changed from whatsapp_link to instagram_link
-  whatsapp_link?: string; // Keep for backward compatibility with database
-  featured: boolean;
-  passes?: EventPass[]; // Array of passes for this event - REQUIRED for purchasing
-  event_type?: 'upcoming' | 'gallery';
-  gallery_images?: string[];
-  gallery_videos?: string[];
-  event_status?: 'active' | 'cancelled' | 'completed';
-  capacity?: number;
-  age_restriction?: number;
-  dress_code?: string;
-  special_notes?: string;
-  organizer_contact?: string;
-  event_category?: string;
-}
+// Event types are now imported from useEvents hook
 
 interface EventsProps {
   language: 'en' | 'fr';
@@ -46,8 +16,8 @@ interface EventsProps {
 
 const Events = ({ language }: EventsProps) => {
   const navigate = useNavigate();
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Use cached events hook
+  const { data: events = [], isLoading: loading, error: eventsError } = useEvents();
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -143,10 +113,6 @@ const Events = ({ language }: EventsProps) => {
     }
   };
 
-  useEffect(() => {
-    fetchEvents();
-  }, []);
-
   // Cleanup effect to restore scrollbar when component unmounts
   useEffect(() => {
     return () => {
@@ -154,75 +120,31 @@ const Events = ({ language }: EventsProps) => {
     };
   }, []);
 
-  const fetchEvents = async () => {
-    try {
-      setLoading(true);
-      console.log('🔍 Fetching events from Supabase...');
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .order('date', { ascending: true });
+  // Handle errors
+  useEffect(() => {
+    if (eventsError) {
+      console.error('❌ Error fetching events:', eventsError);
+    }
+  }, [eventsError]);
 
-      if (error) {
-        console.error('❌ Error fetching events:', error);
-        throw error;
-      }
-      
-      console.log('✅ Events fetched successfully:', data?.length || 0);
-      console.log('📋 All events:', data);
-      
-      // Map database whatsapp_link to instagram_link for UI and load passes
-      const mappedEvents = await Promise.all(
-        (data || []).map(async (e: any) => {
-          // Fetch passes for this event
-          const { data: passesData, error: passesError } = await supabase
-            .from('event_passes')
-            .select('*')
-            .eq('event_id', e.id)
-            .order('is_primary', { ascending: false })
-            .order('price', { ascending: true })
-            .order('created_at', { ascending: true });
-
-          // Handle 404 errors gracefully (table might not exist yet)
-          if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
-            console.error(`Error fetching passes for event ${e.id}:`, passesError);
-          }
-
-          // Map passes to EventPass format
-          const passes = (passesData || []).map((p: any) => ({
-            id: p.id,
-            name: p.name || '',
-            price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
-            description: p.description || '',
-            is_primary: p.is_primary || false
-          }));
-          
-          return {
-            ...e,
-            instagram_link: e.whatsapp_link, // Map database field to UI field
-            passes: passes
-          };
-        })
-      );
-      
-      // Check for gallery events specifically
-      const galleryEventsInData = mappedEvents.filter((e: any) => e.event_type === 'gallery');
-      console.log('🖼️ Gallery events in data:', galleryEventsInData.length);
-      console.log('🖼️ Gallery events details:', galleryEventsInData);
-      
-      setEvents(mappedEvents);
-    } catch (error) {
-      console.error('❌ Error fetching events:', error);
-    } finally {
-      setLoading(false);
+  // Scroll to top when events load
+  useEffect(() => {
+    if (!loading && events.length > 0) {
       setTimeout(() => {
         window.scrollTo(0, 0);
       }, 100);
-      setTimeout(() => {
-        window.scrollTo(0, 0);
-      }, 500);
     }
-  };
+  }, [loading, events.length]);
+  
+  // Check for gallery events specifically
+  const galleryEventsInData = useMemo(() => {
+    return events.filter((e: any) => e.event_type === 'gallery');
+  }, [events]);
+  
+  useEffect(() => {
+    console.log('🖼️ Gallery events in data:', galleryEventsInData.length);
+    console.log('🖼️ Gallery events details:', galleryEventsInData);
+  }, [galleryEventsInData]);
 
   const upcomingEvents = events.filter(event => {
     const eventDate = new Date(event.date);

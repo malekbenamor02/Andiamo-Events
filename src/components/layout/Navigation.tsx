@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Instagram, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { useNavigationContent } from "@/hooks/useSiteContent";
 
 interface NavigationProps {
   language: 'en' | 'fr';
@@ -30,30 +30,19 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
 
+  // Use cached site content hook
+  const { data: siteContent } = useNavigationContent();
+  
   useEffect(() => {
-    const fetchContent = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('site_content')
-          .select('*')
-          .in('key', ['navigation', 'contact_info']);
-
-        if (error) throw error;
-
-        data?.forEach(item => {
-          if (item.key === 'navigation') {
-            setNavigationContent(item.content as NavigationContent);
-          } else if (item.key === 'contact_info') {
-            setContactInfo(item.content as ContactInfo);
-          }
-        });
-      } catch (error) {
-        console.error('Error fetching navigation content:', error);
+    if (siteContent) {
+      if (siteContent.navigation) {
+        setNavigationContent(siteContent.navigation as NavigationContent);
       }
-    };
-
-    fetchContent();
-  }, []);
+      if (siteContent.contact_info) {
+        setContactInfo(siteContent.contact_info as ContactInfo);
+      }
+    }
+  }, [siteContent]);
 
   const defaultNavigation = {
     en: [

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { 
   Calendar, 
@@ -15,41 +15,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { generateSlug } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ExpandableText } from "@/components/ui/expandable-text";
+import { useEvents, useFeaturedEvents, type Event } from "@/hooks/useEvents";
 
-interface Event {
-  id: string;
-  name: string;
-  description: string;
-  date: string;
-  venue: string;
-  city: string;
-  poster_url: string;
-  instagram_link?: string;
-  whatsapp_link?: string;
-  featured: boolean;
-  event_type?: 'upcoming' | 'gallery';
-  gallery_images?: string[];
-  gallery_videos?: string[];
-  event_status?: 'active' | 'cancelled' | 'completed';
-  capacity?: number;
-  age_restriction?: number;
-  dress_code?: string;
-  special_notes?: string;
-  organizer_contact?: string;
-  event_category?: string;
-  passes?: Array<{
-    id: string;
-    name: string;
-    price: number;
-    description?: string;
-    is_primary: boolean;
-  }>;
-}
+// Event type is imported from useEvents hook
 
 interface UpcomingEventProps {
   language: 'en' | 'fr';
@@ -58,9 +30,34 @@ interface UpcomingEventProps {
 const UpcomingEvent = ({ language }: UpcomingEventProps) => {
   const { eventSlug } = useParams<{ eventSlug: string }>();
   const navigate = useNavigate();
-  const [event, setEvent] = useState<Event | null>(null);
-  const [relatedEvents, setRelatedEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  // Use cached events hooks
+  const { data: allEvents = [], isLoading: eventsLoading } = useEvents();
+  const { data: featuredEvents = [] } = useFeaturedEvents();
+  
+  // Find event by slug from cached data
+  const event = useMemo(() => {
+    if (!eventSlug || !allEvents.length) return null;
+    
+    const normalizedSlug = decodeURIComponent(eventSlug).toLowerCase().trim();
+    
+    return allEvents.find(e => {
+      const idMatch = normalizedSlug.startsWith('event-') && normalizedSlug === `event-${e.id}`;
+      const eventSlugFromName = generateSlug(e.name).toLowerCase();
+      const slugMatch = eventSlugFromName === normalizedSlug;
+      return idMatch || slugMatch;
+    }) || null;
+  }, [eventSlug, allEvents]);
+  
+  // Get related events (other upcoming events, excluding current)
+  const relatedEvents = useMemo(() => {
+    if (!event) return [];
+    return featuredEvents
+      .filter(e => e.id !== event.id && e.event_status !== 'cancelled')
+      .slice(0, 3);
+  }, [event, featuredEvents]);
+  
+  const loading = eventsLoading;
 
   const content = {
     en: {
@@ -121,132 +118,23 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
 
   const t = content[language];
 
+  // Handle empty slug case - redirect to events page
   useEffect(() => {
-    // Handle empty slug case - redirect to events page
     if (!eventSlug || eventSlug.trim() === '') {
       console.warn('⚠️ Empty eventSlug, redirecting to events page');
       navigate('/events');
       return;
     }
-    
-    fetchEvent();
-    fetchRelatedEvents();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventSlug, navigate]);
-
-  const fetchEvent = async () => {
-    try {
-      if (!eventSlug) {
-        setEvent(null);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      
-      // Decode the slug in case it's URL-encoded
-      let decodedSlug = eventSlug;
-      try {
-        decodedSlug = decodeURIComponent(eventSlug);
-      } catch (e) {
-        decodedSlug = eventSlug;
-      }
-      
-      // Normalize the slug (lowercase, trim)
-      const normalizedSlug = decodedSlug.toLowerCase().trim();
-      
-      const { data, error } = await supabase
-        .from('events')
-        .select(`
-          *,
-          passes:event_passes (
-            id,
-            name,
-            price,
-            description,
-            is_primary
-          )
-        `)
-        .eq('event_type', 'upcoming')
-        .order('date', { ascending: true });
-
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
-
-      // Find event by matching event ID format (event-{id})
-      const foundEvent = data?.find(e => {
-        const idMatch = normalizedSlug.startsWith('event-') && normalizedSlug === `event-${e.id}`;
-        
-        // Also support legacy slug format for backward compatibility
-        const eventSlugFromName = generateSlug(e.name);
-        const slugMatch = eventSlugFromName.toLowerCase() === normalizedSlug;
-        
-        return idMatch || slugMatch;
-      });
-      
-      if (!foundEvent) {
-        console.error('❌ Event not found for slug:', normalizedSlug);
-        setEvent(null);
-        return;
-      }
-
-      console.log('✅ Found event:', foundEvent.name);
-      
-      // Map passes (just for existence check, not displaying details)
-      const mappedPasses = (foundEvent.passes || []).map((p: any) => ({
-        id: p.id,
-        name: p.name || '',
-        price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
-        description: p.description || '',
-        is_primary: p.is_primary || false
-      }));
-      
-      setEvent({
-        ...foundEvent,
-        passes: mappedPasses
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (!errorMessage.includes('message channel closed') && 
-          !errorMessage.includes('asynchronous response')) {
-        console.error('Error fetching event:', error);
-      }
-      setEvent(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchRelatedEvents = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .eq('event_type', 'upcoming')
-        .neq('event_status', 'cancelled')
-        .neq('id', event?.id || '')
-        .order('date', { ascending: true })
-        .limit(3);
-
-      if (error) throw error;
-      setRelatedEvents(data || []);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      if (!errorMessage.includes('message channel closed') && 
-          !errorMessage.includes('asynchronous response')) {
-        console.error('Error fetching related events:', error);
-      }
-    }
-  };
-
+  
+  // Log when event is found
   useEffect(() => {
-    if (event?.id) {
-      fetchRelatedEvents();
+    if (event) {
+      console.log('✅ Found event:', event.name);
+    } else if (!loading && eventSlug) {
+      console.error('❌ Event not found for slug:', eventSlug);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event?.id]);
+  }, [event, loading, eventSlug]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
