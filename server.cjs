@@ -1873,6 +1873,87 @@ app.post('/api/ambassador-application', applicationLimiter, async (req, res) => 
   }
 });
 
+// Phone subscription endpoint for popup
+const phoneSubscribeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 requests per windowMs
+  message: 'Too many subscription attempts, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.post('/api/phone-subscribe', phoneSubscribeLimiter, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { phone_number, language } = req.body;
+
+    // Validate required fields
+    if (!phone_number) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+
+    // Validate phone number format: exactly 8 digits, numeric only, starts with 2, 4, 5, or 9
+    const phoneRegex = /^[2594][0-9]{7}$/;
+    if (!phoneRegex.test(phone_number)) {
+      return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+
+    // Check for duplicate phone number in phone_subscribers table
+    const { data: existingSubscriber, error: checkError } = await supabase
+      .from('phone_subscribers')
+      .select('id')
+      .eq('phone_number', phone_number)
+      .maybeSingle();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      // PGRST116 is "no rows returned" which is fine
+      console.error('Error checking for duplicate phone number:', checkError);
+      return res.status(500).json({ error: 'Failed to check phone number' });
+    }
+
+    if (existingSubscriber) {
+      return res.status(400).json({ error: 'Phone number already exists' });
+    }
+
+    // Insert new subscriber
+    const { data: subscriber, error: insertError } = await supabase
+      .from('phone_subscribers')
+      .insert({
+        phone_number: phone_number,
+        language: language || 'en'
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      // Check if it's a duplicate key error (race condition)
+      if (insertError.code === '23505' || insertError.message?.includes('unique constraint') || insertError.message?.includes('duplicate key')) {
+        return res.status(400).json({ error: 'Phone number already exists' });
+      }
+      console.error('Error inserting phone subscriber:', insertError);
+      return res.status(500).json({ error: 'Failed to subscribe', details: insertError.message });
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Phone number subscribed successfully',
+      subscriber: {
+        id: subscriber.id,
+        phone_number: subscriber.phone_number
+      }
+    });
+  } catch (error) {
+    console.error('Error in phone subscription:', error);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
+  }
+});
+
 // Send order completion email endpoint
 app.post('/api/send-order-completion-email', async (req, res) => {
   try {

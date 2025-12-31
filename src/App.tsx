@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import Navigation from "./components/layout/Navigation";
@@ -34,8 +34,74 @@ import UpcomingEvent from "./pages/UpcomingEvent";
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { FaviconLoader } from "./components/FaviconLoader";
+import PhoneCapturePopup from "./components/PhoneCapturePopup";
+import { usePhoneCapture } from "./hooks/usePhoneCapture";
 
 const queryClient = new QueryClient();
+
+const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggleLanguage: () => void }) => {
+  const location = useLocation();
+  const shouldShowPhonePopup = usePhoneCapture(location.pathname);
+  const [isPhonePopupOpen, setIsPhonePopupOpen] = useState(false);
+
+  // Sync hook state with popup state
+  useEffect(() => {
+    if (shouldShowPhonePopup) {
+      setIsPhonePopupOpen(true);
+    } else {
+      setIsPhonePopupOpen(false);
+    }
+  }, [shouldShowPhonePopup]);
+
+  return (
+    <>
+      <FaviconLoader />
+      <DisableInspect />
+      <ScrollToTop />
+      <MaintenanceMode language={language}>
+        <div className="min-h-screen bg-background">
+          <Navigation language={language} toggleLanguage={toggleLanguage} />
+          <Routes>
+            <Route path="/" element={<Index language={language} />} />
+            <Route path="/events" element={<Events language={language} />} />
+            <Route path="/gallery/:eventSlug" element={<GalleryEvent language={language} />} />
+            <Route path="/event/:eventSlug" element={<UpcomingEvent language={language} />} />
+            <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
+            <Route path="/cod-order" element={<CODOrder language={language} />} />
+    
+            <Route path="/about" element={<About language={language} />} />
+            <Route path="/ambassador" element={<AmbassadorApplication language={language} />} />
+            <Route path="/ambassador/auth" element={<Auth language={language} />} />
+
+            <Route path="/ambassador/dashboard" element={
+              <ProtectedAmbassadorRoute language={language}>
+                <AmbassadorDashboard language={language} />
+              </ProtectedAmbassadorRoute>
+            } />
+            <Route path="/admin/login" element={<AdminLogin language={language} />} />
+            <Route path="/admin" element={
+              <ProtectedAdminRoute language={language}>
+                <AdminDashboard language={language} />
+              </ProtectedAdminRoute>
+            } />
+            <Route path="/contact" element={<Contact language={language} />} />
+            {/* Temporarily masked - pages preserved but not accessible */}
+            {/* <Route path="/privacy-policy" element={<PrivacyPolicy language={language} />} /> */}
+            {/* <Route path="/terms" element={<Terms language={language} />} /> */}
+            {/* <Route path="/refund-policy" element={<RefundPolicy language={language} />} /> */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+          <Footer language={language} />
+        </div>
+      </MaintenanceMode>
+      <PhoneCapturePopup
+        language={language}
+        isOpen={isPhonePopupOpen && shouldShowPhonePopup}
+        onClose={() => setIsPhonePopupOpen(false)}
+      />
+    </>
+  );
+};
 
 const App = () => {
   const [language, setLanguage] = useState<'en' | 'fr'>('en');
@@ -51,45 +117,7 @@ const App = () => {
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <FaviconLoader />
-            <DisableInspect />
-            <ScrollToTop />
-            <MaintenanceMode language={language}>
-              <div className="min-h-screen bg-background">
-                <Navigation language={language} toggleLanguage={toggleLanguage} />
-                <Routes>
-              <Route path="/" element={<Index language={language} />} />
-              <Route path="/events" element={<Events language={language} />} />
-              <Route path="/gallery/:eventSlug" element={<GalleryEvent language={language} />} />
-              <Route path="/event/:eventSlug" element={<UpcomingEvent language={language} />} />
-              <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
-              <Route path="/cod-order" element={<CODOrder language={language} />} />
-      
-              <Route path="/about" element={<About language={language} />} />
-              <Route path="/ambassador" element={<AmbassadorApplication language={language} />} />
-              <Route path="/ambassador/auth" element={<Auth language={language} />} />
-
-              <Route path="/ambassador/dashboard" element={
-                <ProtectedAmbassadorRoute language={language}>
-                  <AmbassadorDashboard language={language} />
-                </ProtectedAmbassadorRoute>
-              } />
-              <Route path="/admin/login" element={<AdminLogin language={language} />} />
-              <Route path="/admin" element={
-                <ProtectedAdminRoute language={language}>
-                  <AdminDashboard language={language} />
-                </ProtectedAdminRoute>
-              } />
-              <Route path="/contact" element={<Contact language={language} />} />
-              {/* Temporarily masked - pages preserved but not accessible */}
-              {/* <Route path="/privacy-policy" element={<PrivacyPolicy language={language} />} /> */}
-              {/* <Route path="/terms" element={<Terms language={language} />} /> */}
-              {/* <Route path="/refund-policy" element={<RefundPolicy language={language} />} /> */}
-              <Route path="*" element={<NotFound />} />
-              </Routes>
-                <Footer language={language} />
-              </div>
-            </MaintenanceMode>
+            <AppContent language={language} toggleLanguage={toggleLanguage} />
           </BrowserRouter>
           <Analytics />
           <SpeedInsights />

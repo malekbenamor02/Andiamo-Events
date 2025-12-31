@@ -32,6 +32,8 @@ export const API_ROUTES = {
   SEND_SMS: '/api/send-sms',
   BULK_PHONES: '/api/bulk-phones',
   
+  // Phone Subscription
+  PHONE_SUBSCRIBE: '/api/phone-subscribe',
   
   // Ambassador
   AMBASSADOR_LOGIN: '/api/ambassador-login',
