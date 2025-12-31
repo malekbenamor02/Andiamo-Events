@@ -100,7 +100,23 @@ const PhoneCapturePopup: React.FC<PhoneCapturePopupProps> = ({
         }),
       });
 
-      const data = await response.json();
+      // Check if response is ok before parsing JSON
+      let data;
+      try {
+        const text = await response.text();
+        if (!text) {
+          setError(t.error);
+          setIsSubmitting(false);
+          return;
+        }
+        data = JSON.parse(text);
+      } catch (parseError) {
+        // If response is not JSON, it's likely a server error
+        console.error('Failed to parse response as JSON:', parseError);
+        setError('Server error. Please try again later.');
+        setIsSubmitting(false);
+        return;
+      }
 
       if (!response.ok) {
         if (data.error === 'Phone number already exists') {
@@ -133,7 +149,14 @@ const PhoneCapturePopup: React.FC<PhoneCapturePopupProps> = ({
       onClose();
     } catch (err) {
       console.error('Error submitting phone number:', err);
-      setError(t.error);
+      // Check if it's a network error
+      if (err instanceof TypeError && (err.message.includes('fetch') || err.message.includes('Failed to fetch'))) {
+        setError('Unable to connect to server. Please check your internet connection and try again.');
+      } else if (err instanceof Error) {
+        setError(err.message || t.error);
+      } else {
+        setError(t.error);
+      }
       setIsSubmitting(false);
     }
   };
