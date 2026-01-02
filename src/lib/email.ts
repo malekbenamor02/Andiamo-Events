@@ -344,7 +344,15 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
           
           <!-- Message -->
           <p class="message">
-            We are thrilled to inform you that your ambassador application has been approved. You are now part of an exclusive community that shapes Tunisia's nightlife landscape.
+            Thank you for filling out the form and for your interest in working with Andiamo.
+          </p>
+          
+          <p class="message">
+            We are pleased to inform you that you have been selected to collaborate with us.
+          </p>
+          
+          <p class="message">
+            You will soon be added to a private Instagram group where we will share further details and discuss the upcoming event.
           </p>
           
           <!-- Credentials Section -->
@@ -657,30 +665,15 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
           
           <!-- Message -->
           <p class="message">
-            Thank you for your interest in becoming an Andiamo ambassador and for the effort and time you invested in submitting your application.
+            Thank you for filling out the form and for your interest in our event.
           </p>
           
           <p class="message">
-            After careful consideration, we regret to inform you that we are unable to approve your ambassador application at this time. This decision is part of our selective and continuously evolving recruitment process, which considers our current operational needs, regional balance, and capacity requirements—rather than a reflection on your individual qualifications or potential.
+            Unfortunately, we are unable to accept your participation this time.
           </p>
           
           <p class="message">
-            We maintain a selective ambassador network to ensure we can provide the best support and resources to each member while maintaining the high standards that define the Andiamo Events experience.
-          </p>
-          
-          <!-- Section Divider -->
-          <div class="section-divider">
-            <p class="support-text" style="margin: 0;">
-              You are welcome to submit a new application after a 30-day period. This timeframe allows our ambassador network to evolve and gives us the opportunity to reassess our capacity and needs.
-            </p>
-          </div>
-          
-          <p class="message">
-            We encourage you to stay connected with Andiamo Events and continue experiencing our events as a valued member of our community.
-          </p>
-          
-          <p class="message">
-            Thank you again for your interest in joining the Andiamo ambassador program. We wish you all the best and hope to continue seeing you as part of our vibrant community.
+            Your details are registered in our database, and we may contact you to collaborate on a future event. We hope to see you soon.
           </p>
           
           <!-- Support Section -->
