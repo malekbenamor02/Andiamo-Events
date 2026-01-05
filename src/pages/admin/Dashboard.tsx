@@ -310,6 +310,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [applicationDateTo, setApplicationDateTo] = useState<Date | undefined>(undefined);
   const [applicationCityFilter, setApplicationCityFilter] = useState<string>('all');
   const [applicationVilleFilter, setApplicationVilleFilter] = useState<string>('all');
+  const [applicationStatusFilter, setApplicationStatusFilter] = useState<string>('pending');
   const [animatedSponsors, setAnimatedSponsors] = useState<Set<string>>(new Set());
   const [hasSponsorsAnimated, setHasSponsorsAnimated] = useState(false);
   const [animatedTeamMembers, setAnimatedTeamMembers] = useState<Set<string>>(new Set());
@@ -930,82 +931,126 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [activeTab, hasAmbassadorsAnimated, ambassadors]);
 
-  // Animation effect for applications
-  useEffect(() => {
-    if (activeTab === "applications" && !hasApplicationsAnimated) {
-      const timer = setTimeout(() => {
-        setHasApplicationsAnimated(true);
-        // Animate applications one by one
-        filteredApplications.forEach((application, index) => {
-          setTimeout(() => {
-            setAnimatedApplications(prev => new Set([...prev, application.id]));
-          }, index * 150); // 150ms delay between each application
-        });
-      }, 300);
-      return () => clearTimeout(timer);
+  // Create a map of ambassadors by phone/email for faster lookup
+  const ambassadorMap = useMemo(() => {
+    const map = new Map<string, { ville?: string }>();
+    ambassadors.forEach(amb => {
+      if (amb.phone) map.set(`phone:${amb.phone}`, { ville: amb.ville });
+      if (amb.email) map.set(`email:${amb.email}`, { ville: amb.ville });
+    });
+    return map;
+  }, [ambassadors]);
+
+  // Filter applications based on search term, city, ville, status, and date range
+  // Show all applications (pending, approved, rejected, removed) - full history
+  // Memoized for performance
+  const filteredApplications = useMemo(() => {
+    if (!applications.length) return [];
+
+    const searchLower = applicationSearchTerm.toLowerCase().trim();
+    const hasSearch = searchLower.length > 0;
+    
+    // Pre-compute date ranges if needed
+    let fromDate: Date | null = null;
+    let toDate: Date | null = null;
+    
+    if (applicationDateFrom) {
+      fromDate = new Date(applicationDateFrom);
+      fromDate.setHours(0, 0, 0, 0);
     }
     
-    // Reset animation when switching away from applications
-    if (activeTab !== "applications") {
-      setHasApplicationsAnimated(false);
-      setAnimatedApplications(new Set());
-    }
-  }, [activeTab, hasApplicationsAnimated, applications, applicationSearchTerm]);
-
-  // Filter applications based on search term, city, ville, and date range
-  // Show all applications (pending, approved, rejected, removed) - full history
-  const filteredApplications = applications.filter(application => {
-    const searchLower = applicationSearchTerm.toLowerCase();
-    const matchesSearch = (
-      application.full_name.toLowerCase().includes(searchLower) ||
-      (application.email && application.email.toLowerCase().includes(searchLower)) ||
-      application.phone_number.includes(searchLower)
-    );
-
-    // City filter
-    if (applicationCityFilter !== 'all' && application.city !== applicationCityFilter) {
-      return false;
+    if (applicationDateTo) {
+      toDate = new Date(applicationDateTo);
+      toDate.setHours(23, 59, 59, 999);
     }
 
-    // Ville filter
-    if (applicationVilleFilter !== 'all') {
-      // Check if application has ville
-      let applicationVille = application.ville;
-      
-      // If no ville in application, try to get it from matching ambassador
-      if (!applicationVille && (application.city === 'Sousse' || application.city === 'Tunis')) {
-        const matchingAmbassador = ambassadors.find(amb => 
-          amb.phone === application.phone_number || 
-          (application.email && amb.email && application.email === amb.email)
-        );
-        applicationVille = matchingAmbassador?.ville;
+    return applications.filter(application => {
+      // Status filter - normalize status comparison
+      if (applicationStatusFilter !== 'all') {
+        const appStatus = (application.status || '').toLowerCase().trim();
+        const filterStatus = applicationStatusFilter.toLowerCase().trim();
+        if (appStatus !== filterStatus) {
+          return false;
+        }
       }
-      
-      if (applicationVille !== applicationVilleFilter) {
+
+      // City filter
+      if (applicationCityFilter !== 'all' && application.city !== applicationCityFilter) {
         return false;
       }
-    }
 
-    // Date range filtering
-    if (applicationDateFrom || applicationDateTo) {
-      const applicationDate = new Date(application.created_at);
-      applicationDate.setHours(0, 0, 0, 0);
-      
-      if (applicationDateFrom) {
-        const fromDate = new Date(applicationDateFrom);
-        fromDate.setHours(0, 0, 0, 0);
-        if (applicationDate < fromDate) return false;
+      // Ville filter - optimized with map lookup
+      if (applicationVilleFilter !== 'all') {
+        let applicationVille = application.ville;
+        
+        // If no ville in application, try to get it from matching ambassador using map
+        if (!applicationVille && (application.city === 'Sousse' || application.city === 'Tunis')) {
+          const phoneKey = `phone:${application.phone_number}`;
+          const emailKey = application.email ? `email:${application.email}` : null;
+          
+          const phoneMatch = ambassadorMap.get(phoneKey);
+          const emailMatch = emailKey ? ambassadorMap.get(emailKey) : null;
+          
+          applicationVille = phoneMatch?.ville || emailMatch?.ville;
+        }
+        
+        if (applicationVille !== applicationVilleFilter) {
+          return false;
+        }
       }
-      
-      if (applicationDateTo) {
-        const toDate = new Date(applicationDateTo);
-        toDate.setHours(23, 59, 59, 999);
-        if (applicationDate > toDate) return false;
-      }
-    }
 
-    return matchesSearch;
-  });
+      // Date range filtering
+      if (fromDate || toDate) {
+        const applicationDate = new Date(application.created_at);
+        applicationDate.setHours(0, 0, 0, 0);
+        
+        if (fromDate && applicationDate < fromDate) return false;
+        if (toDate && applicationDate > toDate) return false;
+      }
+
+      // Search filter - only check if there's a search term
+      if (hasSearch) {
+        const matchesSearch = (
+          application.full_name.toLowerCase().includes(searchLower) ||
+          (application.email && application.email.toLowerCase().includes(searchLower)) ||
+          application.phone_number.includes(searchLower)
+        );
+        if (!matchesSearch) return false;
+      }
+
+      return true;
+    });
+  }, [
+    applications,
+    applicationStatusFilter,
+    applicationCityFilter,
+    applicationVilleFilter,
+    applicationSearchTerm,
+    applicationDateFrom,
+    applicationDateTo,
+    ambassadorMap
+  ]);
+
+  // Animation effect for applications
+  useEffect(() => {
+    // Reset animation when filters change
+    setHasApplicationsAnimated(false);
+    setAnimatedApplications(new Set());
+    
+    if (activeTab === "applications") {
+      const timer = setTimeout(() => {
+        setHasApplicationsAnimated(true);
+        // Animate applications one by one (limit to first 50 for performance)
+        const appsToAnimate = filteredApplications.slice(0, 50);
+        appsToAnimate.forEach((application, index) => {
+          setTimeout(() => {
+            setAnimatedApplications(prev => new Set([...prev, application.id]));
+          }, index * 50); // Reduced delay for faster animation
+        });
+      }, 100); // Reduced initial delay
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, filteredApplications.length, applicationStatusFilter, applicationCityFilter, applicationVilleFilter, applicationSearchTerm, filteredApplications]);
 
   // Animation effect for sponsors
   useEffect(() => {
@@ -10803,8 +10848,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     />
                   </div>
                   
-                  {/* City and Ville Filters */}
+                  {/* Status, City and Ville Filters */}
                   <div className="flex flex-wrap gap-4 items-center">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium text-muted-foreground">{language === 'en' ? 'Status:' : 'Statut:'}</Label>
+                      <Select
+                        value={applicationStatusFilter}
+                        onValueChange={setApplicationStatusFilter}
+                      >
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder={language === 'en' ? 'All Statuses' : 'Tous les Statuts'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{language === 'en' ? 'All Statuses' : 'Tous les Statuts'}</SelectItem>
+                          <SelectItem value="pending">{language === 'en' ? 'Pending' : 'En Attente'}</SelectItem>
+                          <SelectItem value="approved">{language === 'en' ? 'Approved' : 'Approuvé'}</SelectItem>
+                          <SelectItem value="rejected">{language === 'en' ? 'Rejected' : 'Rejeté'}</SelectItem>
+                          <SelectItem value="suspended">{language === 'en' ? 'Suspended' : 'Suspendu'}</SelectItem>
+                          <SelectItem value="removed">{language === 'en' ? 'Removed' : 'Retiré'}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
                     <div className="flex items-center gap-2">
                       <Label className="text-sm font-medium text-muted-foreground">{language === 'en' ? 'City:' : 'Ville:'}</Label>
                       <Select
@@ -10871,11 +10936,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       </div>
                     )}
                     
-                    {(applicationCityFilter !== 'all' || applicationVilleFilter !== 'all') && (
+                    {(applicationStatusFilter !== 'pending' || applicationCityFilter !== 'all' || applicationVilleFilter !== 'all') && (
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => {
+                          setApplicationStatusFilter('pending');
                           setApplicationCityFilter('all');
                           setApplicationVilleFilter('all');
                         }}
@@ -10998,8 +11064,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           key={application.id}
                           className={`transform transition-all duration-300 hover:bg-muted/30 ${
                             animatedApplications.has(application.id) 
-                              ? 'animate-in fade-in duration-500' 
-                              : 'opacity-0'
+                              ? 'animate-in fade-in duration-300' 
+                              : ''
                           }`}
                         >
                           <TableCell className="font-medium text-xs px-2 py-2">{application.full_name}</TableCell>
