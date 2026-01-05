@@ -146,43 +146,40 @@ export function PaymentOptionSelector({
         }}
       >
         {sortedOptions.map((option) => (
-          <Card
+          <label
             key={option.id}
-            className={`transition-all ${
+            htmlFor={option.id}
+            className={`block transition-all ${
               customerInfoComplete
                 ? `cursor-pointer ${
                     selectedMethod === option.option_type
-                      ? 'ring-2 ring-primary'
-                      : 'hover:bg-accent'
+                      ? 'ring-2 ring-primary rounded-lg'
+                      : 'hover:bg-accent rounded-lg'
                   }`
-                : 'opacity-50 cursor-not-allowed bg-muted/30'
+                : 'opacity-50 cursor-not-allowed bg-muted/30 rounded-lg'
             }`}
-            onClick={() => {
-              if (customerInfoComplete) {
-                handleOptionSelect(option.option_type);
-              }
-            }}
           >
-            <CardContent className="p-4">
-              <div className="flex items-start space-x-3">
-                <RadioGroupItem
-                  value={option.option_type}
-                  id={option.id}
-                  className="mt-1"
-                  disabled={!customerInfoComplete}
-                />
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2">
-                    {getOptionIcon(option.option_type)}
-                    <Label
-                      htmlFor={option.id}
-                      className={`font-semibold ${
-                        customerInfoComplete ? 'cursor-pointer' : 'text-muted-foreground cursor-not-allowed'
-                      }`}
-                    >
-                      {getOptionLabel(option)}
-                    </Label>
-                  </div>
+            <Card className="border-0 shadow-none">
+              <CardContent className="p-4">
+                <div className="flex items-start space-x-3">
+                  <RadioGroupItem
+                    value={option.option_type}
+                    id={option.id}
+                    className="mt-1"
+                    disabled={!customerInfoComplete}
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2">
+                      {getOptionIcon(option.option_type)}
+                      <Label
+                        htmlFor={option.id}
+                        className={`font-semibold ${
+                          customerInfoComplete ? 'cursor-pointer' : 'text-muted-foreground cursor-not-allowed'
+                        }`}
+                      >
+                        {getOptionLabel(option)}
+                      </Label>
+                    </div>
                   <p className={`text-sm mt-1 ${
                     customerInfoComplete ? 'text-muted-foreground' : 'text-muted-foreground/70'
                   }`}>
@@ -197,6 +194,7 @@ export function PaymentOptionSelector({
               </div>
             </CardContent>
           </Card>
+        </label>
         ))}
       </RadioGroup>
 
