@@ -129,6 +129,7 @@ export function PaymentOptionSelector({
   });
 
   const handleOptionSelect = (optionType: PaymentMethod) => {
+    // Always allow changing payment method if customer info is complete
     onSelect(optionType);
   };
 
@@ -138,6 +139,7 @@ export function PaymentOptionSelector({
       <RadioGroup
         value={selectedMethod || undefined}
         onValueChange={(value) => {
+          // Allow changing payment method anytime if customer info is complete
           if (customerInfoComplete) {
             handleOptionSelect(value as PaymentMethod);
           }
