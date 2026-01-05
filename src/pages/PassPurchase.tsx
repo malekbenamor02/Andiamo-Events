@@ -832,7 +832,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
               )}
 
               {/* STEP 5: Order Summary */}
+              {/* Show summary only after:
+                  - Passes are selected
+                  - Payment method is selected
+                  - If ambassador cash, ambassador must also be selected */}
               {hasSelectedPasses && paymentMethod && (
+                paymentMethod === PaymentMethod.AMBASSADOR_CASH 
+                  ? selectedAmbassadorId 
+                  : true
+              ) && (
                 <Card className="glass border-2 border-primary/30">
                   <CardHeader>
                     <CardTitle className="text-gradient-neon">{t[language].summary}</CardTitle>
