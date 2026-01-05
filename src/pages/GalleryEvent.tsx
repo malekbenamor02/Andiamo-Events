@@ -161,6 +161,14 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
       // Normalize the slug (lowercase, trim)
       const normalizedSlug = decodedSlug.toLowerCase().trim();
       
+      // Check if we're on localhost (for testing) or production
+      const isLocalhost = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.0.')
+      );
+      
       const { data, error } = await supabase
         .from('events')
         .select('*')
@@ -172,12 +180,17 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
         throw error;
       }
 
+      // Filter out test events if on production (not localhost)
+      const filteredData = isLocalhost 
+        ? data 
+        : (data || []).filter((event: any) => !event.is_test);
+
       // Debug: Log all events and their slugs
       console.log('🔍 Looking for event with slug:', normalizedSlug);
-      console.log('📋 Found gallery events:', data?.length || 0);
+      console.log('📋 Found gallery events:', filteredData?.length || 0);
       
-      if (data && data.length > 0) {
-        data.forEach((e: Event) => {
+      if (filteredData && filteredData.length > 0) {
+        filteredData.forEach((e: Event) => {
           const slug = generateSlug(e.name);
           const matches = slug === normalizedSlug;
           console.log(`  - "${e.name}" -> slug: "${slug}" (match: ${matches})`);
@@ -186,7 +199,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
 
       // Find event by matching event ID format (event-{id})
       // All gallery events now use event ID format
-      const foundEvent = data?.find(e => {
+      const foundEvent = filteredData?.find(e => {
         const idMatch = normalizedSlug.startsWith('event-') && normalizedSlug === `event-${e.id}`;
         
         // Also support legacy slug format for backward compatibility

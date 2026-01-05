@@ -31,6 +31,8 @@ export const API_ROUTES = {
   SMS_BALANCE: '/api/sms-balance',
   SEND_SMS: '/api/send-sms',
   BULK_PHONES: '/api/bulk-phones',
+  SEND_ORDER_CONFIRMATION_SMS: '/api/send-order-confirmation-sms',
+  SEND_AMBASSADOR_ORDER_SMS: '/api/send-ambassador-order-sms',
   
   // Phone Subscription
   PHONE_SUBSCRIBE: '/api/phone-subscribe',
@@ -53,6 +55,19 @@ export const API_ROUTES = {
   
   // reCAPTCHA
   VERIFY_RECAPTCHA: '/api/verify-recaptcha',
+  
+  // Payment Options
+  PAYMENT_OPTIONS: '/api/payment-options',
+  ADMIN_PAYMENT_OPTIONS: '/api/admin/payment-options',
+  UPDATE_PAYMENT_OPTION: (type: string) => `/api/admin/payment-options/${type}`,
+  
+  // Active Ambassadors
+  ACTIVE_AMBASSADORS: '/api/ambassadors/active',
+  
+  // Ambassador Sales
+  AMBASSADOR_SALES_OVERVIEW: '/api/admin/ambassador-sales/overview',
+  AMBASSADOR_SALES_ORDERS: '/api/admin/ambassador-sales/orders',
+  AMBASSADOR_SALES_LOGS: '/api/admin/ambassador-sales/logs',
   
   // Testing & Diagnostics
   TEST: '/api/test',

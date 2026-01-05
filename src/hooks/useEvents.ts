@@ -42,6 +42,14 @@ export const useEvents = () => {
     queryFn: async () => {
       console.log('🔍 Fetching events from Supabase...');
       
+      // Check if we're on localhost (for testing) or production
+      const isLocalhost = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.0.')
+      );
+      
       // Fetch events
       const { data, error } = await supabase
         .from('events')
@@ -53,11 +61,17 @@ export const useEvents = () => {
         throw error;
       }
 
-      console.log('✅ Events fetched successfully:', data?.length || 0);
+      // Filter out test events if on production (not localhost)
+      // On localhost, show all events including test events for full testing
+      const filteredData = isLocalhost 
+        ? data 
+        : (data || []).filter((event: any) => !event.is_test);
+
+      console.log('✅ Events fetched successfully:', filteredData?.length || 0, isLocalhost ? '(including test events)' : '(production - test events hidden)');
 
       // Fetch passes for all events
       const mappedEvents = await Promise.all(
-        (data || []).map(async (e: any) => {
+        (filteredData || []).map(async (e: any) => {
           // Fetch passes for this event
           const { data: passesData, error: passesError } = await supabase
             .from('event_passes')
@@ -104,6 +118,14 @@ export const useFeaturedEvents = () => {
   return useQuery<Event[]>({
     queryKey: ['events', 'featured'],
     queryFn: async () => {
+      // Check if we're on localhost (for testing) or production
+      const isLocalhost = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.0.')
+      );
+      
       const { data, error } = await supabase
         .from('events')
         .select('*')
@@ -115,8 +137,13 @@ export const useFeaturedEvents = () => {
         throw error;
       }
 
+      // Filter out test events if on production (not localhost)
+      const filteredData = isLocalhost 
+        ? data 
+        : (data || []).filter((event: any) => !event.is_test);
+
       // Map database whatsapp_link to instagram_link for UI
-      const mappedEvents = (data || []).map((e: any) => ({
+      const mappedEvents = (filteredData || []).map((e: any) => ({
         ...e,
         instagram_link: e.whatsapp_link
       }));
@@ -138,6 +165,14 @@ export const useEventBySlug = (eventSlug: string | undefined) => {
     queryFn: async () => {
       if (!eventSlug) return null;
 
+      // Check if we're on localhost (for testing) or production
+      const isLocalhost = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.0.')
+      );
+
       // Fetch all events and find by slug
       const { data, error } = await supabase
         .from('events')
@@ -148,8 +183,13 @@ export const useEventBySlug = (eventSlug: string | undefined) => {
         throw error;
       }
 
+      // Filter out test events if on production (not localhost)
+      const filteredData = isLocalhost 
+        ? data 
+        : (data || []).filter((event: any) => !event.is_test);
+
       // Find event by matching slug
-      const event = (data || []).find((e: any) => {
+      const event = (filteredData || []).find((e: any) => {
         const slug = e.name?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
         return slug === eventSlug;
       });

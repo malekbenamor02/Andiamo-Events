@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { Instagram, MessageCircle, Mail, MapPin, Music, Phone, Globe } from "lucide-react";
+import { Instagram, MessageCircle, Mail, MapPin, Music, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
@@ -325,22 +325,13 @@ const Footer = ({ language }: FooterProps) => {
               <span className="hidden sm:inline text-border/50">|</span>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Developed by</span>
-                <span className="font-semibold text-primary">Malek Ben Amor</span>
                 <a
                   href="https://malekbenamor.dev"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary hover:text-secondary transition-all duration-300"
+                  className="font-semibold text-primary hover:text-secondary transition-all duration-300 hover:underline"
                 >
-                  <Globe className="w-4 h-4 transition-transform duration-300 hover:scale-110" />
-                </a>
-                <a
-                  href="https://www.instagram.com/malek.bamor/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:text-secondary transition-all duration-300"
-                >
-                  <Instagram className="w-4 h-4 transition-transform duration-300 hover:scale-110 group-hover:rotate-12" />
+                  Malek Ben Amor
                 </a>
               </div>
             </div>
@@ -379,22 +370,13 @@ const Footer = ({ language }: FooterProps) => {
               </span>
               <span className="text-border/50">|</span>
               <span className="text-muted-foreground">Developed by</span>
-              <span className="font-semibold text-primary shrink-0">Malek Ben Amor</span>
               <a
                 href="https://malekbenamor.dev"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:text-secondary transition-all duration-300 shrink-0"
+                className="font-semibold text-primary hover:text-secondary transition-all duration-300 hover:underline shrink-0"
               >
-                <Globe className="w-3.5 h-3.5 transition-transform duration-300 hover:scale-110 shrink-0" />
-              </a>
-              <a
-                href="https://www.instagram.com/malek.bamor/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:text-secondary transition-all duration-300 shrink-0"
-              >
-                <Instagram className="w-3.5 h-3.5 transition-transform duration-300 hover:scale-110 group-hover:rotate-12 shrink-0" />
+                Malek Ben Amor
               </a>
             </div>
             

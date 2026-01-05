@@ -8,6 +8,7 @@ import { Eye, EyeOff, User, Lock, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { API_ROUTES } from '@/lib/api-routes';
 import { safeApiCall } from '@/lib/api-client';
+import { logger } from '@/lib/logger';
 
 interface AuthProps {
   language: 'en' | 'fr';
@@ -221,6 +222,26 @@ const Auth = ({ language }: AuthProps) => {
       });
 
       if (data.success && data.ambassador) {
+        // Log successful ambassador login
+        logger.success('Ambassador login successful', {
+          category: 'authentication',
+          userType: 'ambassador',
+          details: { 
+            name: data.ambassador.full_name,
+            phone: loginData.phone, 
+            ambassadorId: data.ambassador.id 
+          }
+        });
+        logger.action('Ambassador logged in', {
+          category: 'authentication',
+          userType: 'ambassador',
+          details: { 
+            name: data.ambassador.full_name,
+            phone: loginData.phone, 
+            ambassadorId: data.ambassador.id 
+          }
+        });
+
         // Success - redirect to dashboard
         toast({
           title: t.login.success,
@@ -240,6 +261,13 @@ const Auth = ({ language }: AuthProps) => {
       }
     } catch (error: any) {
       const errorMessage = error.message || (language === 'en' ? "An error occurred" : "Une erreur s'est produite");
+      
+      // Log failed ambassador login attempt
+      logger.warning('Ambassador login failed', {
+        category: 'authentication',
+        userType: 'ambassador',
+        details: { phone: loginData.phone, error: errorMessage }
+      });
       
       // Handle specific error messages from API
       let title = t.login.error;

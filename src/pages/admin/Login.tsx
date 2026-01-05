@@ -208,15 +208,23 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
 
       if (data.success) {
         // Log successful admin login
+        const adminName = data.admin?.name || 'Unknown';
+        const adminEmail = data.admin?.email || email;
         logger.success('Admin login successful', {
           category: 'authentication',
           userType: 'admin',
-          details: { email }
+          details: { 
+            name: adminName,
+            email: adminEmail 
+          }
         });
         logger.action('Admin logged in', {
           category: 'authentication',
           userType: 'admin',
-          details: { email }
+          details: { 
+            name: adminName,
+            email: adminEmail 
+          }
         });
 
         // No localStorage cleanup needed - session is managed by server token only

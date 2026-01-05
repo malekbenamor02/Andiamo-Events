@@ -124,7 +124,16 @@ export default async (req, res) => {
     res.setHeader('Set-Cookie', cookieParts.join('; '));
     res.setHeader('Content-Type', 'application/json');
     
-    return res.status(200).json({ success: true });
+    // Return admin info for logging purposes
+    return res.status(200).json({ 
+      success: true,
+      admin: {
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        role: admin.role
+      }
+    });
     
   } catch (error) {
     console.error('Admin login error:', error);

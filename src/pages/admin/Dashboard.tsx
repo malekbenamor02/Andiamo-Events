@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -41,10 +41,12 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { apiFetch, handleApiResponse } from "@/lib/api-client";
-import { API_ROUTES } from "@/lib/api-routes";
+import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
+import { sanitizeUrl } from "@/lib/url-validator";
 import { useQueryClient } from "@tanstack/react-query";
 import { useInvalidateEvents } from "@/hooks/useEvents";
 import { useInvalidateSiteContent } from "@/hooks/useSiteContent";
+import { logger } from "@/lib/logger";
 
 
 interface AdminDashboardProps {
@@ -156,6 +158,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [activeTab, setActiveTab] = useState("overview");
   const [currentAdminRole, setCurrentAdminRole] = useState<string | null>(null);
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
+  const [currentAdminName, setCurrentAdminName] = useState<string | null>(null);
+  const [currentAdminEmail, setCurrentAdminEmail] = useState<string | null>(null);
   const [admins, setAdmins] = useState<Array<{id: string; name: string; email: string; phone?: string; role: string; is_active: boolean; created_at: string}>>([]);
   const [isAddAdminDialogOpen, setIsAddAdminDialogOpen] = useState(false);
   const [isEditAdminDialogOpen, setIsEditAdminDialogOpen] = useState(false);
@@ -192,6 +196,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
   const [isAmbassadorDialogOpen, setIsAmbassadorDialogOpen] = useState(false);
+  const [isAmbassadorInfoDialogOpen, setIsAmbassadorInfoDialogOpen] = useState(false);
   
   // Validation errors state for ambassador form
   const [ambassadorErrors, setAmbassadorErrors] = useState<{
@@ -249,14 +254,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [uploadingAboutImage, setUploadingAboutImage] = useState(false);
 
   // Marketing/SMS state
-  const [phoneSubscribers, setPhoneSubscribers] = useState<Array<{id: string; phone_number: string; subscribed_at: string}>>([]);
+  const [phoneSubscribers, setPhoneSubscribers] = useState<Array<{id: string; phone_number: string; subscribed_at: string; city?: string}>>([]);
   const [loadingSubscribers, setLoadingSubscribers] = useState(false);
-  const [smsMessage, setSmsMessage] = useState("");
-  const [sendingSms, setSendingSms] = useState(false);
+  const [importingFromApplications, setImportingFromApplications] = useState(false);
+  
+  // Broadcast mode (popup subscribers only)
+  const [broadcastMessage, setBroadcastMessage] = useState("");
+  const [sendingBroadcast, setSendingBroadcast] = useState(false);
+  
+  // Targeted mode (ambassador applications)
+  const [targetedMessage, setTargetedMessage] = useState("");
+  const [targetedCity, setTargetedCity] = useState<string>('');
+  const [targetedCount, setTargetedCount] = useState<number>(0);
+  const [loadingTargetedCount, setLoadingTargetedCount] = useState(false);
+  const [sendingTargeted, setSendingTargeted] = useState(false);
   // Test SMS state
+  const [testMode, setTestMode] = useState<'specific' | 'broadcast' | 'targeted'>('specific');
   const [testPhoneNumber, setTestPhoneNumber] = useState("");
   const [testSmsMessage, setTestSmsMessage] = useState("");
   const [sendingTestSms, setSendingTestSms] = useState(false);
+  const [testTargetedCity, setTestTargetedCity] = useState<string>('');
   const [selectedPhones, setSelectedPhones] = useState<Set<string>>(new Set());
   const [bulkPhonesInput, setBulkPhonesInput] = useState("");
   const [addingBulkPhones, setAddingBulkPhones] = useState(false);
@@ -342,6 +359,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [codOrders, setCodOrders] = useState<any[]>([]);
   const [manualOrders, setManualOrders] = useState<any[]>([]);
   const [codAmbassadorOrders, setCodAmbassadorOrders] = useState<any[]>([]);
+  const [filteredCodOrders, setFilteredCodOrders] = useState<any[]>([]);
+  const [orderFilters, setOrderFilters] = useState({
+    status: '',
+    phone: '',
+    ambassador: '',
+    city: '',
+    ville: '',
+  });
   const [allAmbassadorOrders, setAllAmbassadorOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [selectedOrderAmbassador, setSelectedOrderAmbassador] = useState<any>(null);
@@ -357,6 +382,215 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [orderLogs, setOrderLogs] = useState<any[]>([]);
   const [performanceReports, setPerformanceReports] = useState<any>(null);
   const [salesSystemTab, setSalesSystemTab] = useState('cod-ambassador-orders');
+
+  // Export COD Ambassador Orders to Excel
+  const exportOrdersToExcel = async () => {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('COD Ambassador Orders');
+
+      // Define columns with headers
+      worksheet.columns = [
+        { header: 'Order ID', key: 'id', width: 30 },
+        { header: 'Pass Types', key: 'pass_types', width: 40 },
+        { header: 'Client Name', key: 'user_name', width: 25 },
+        { header: 'Phone', key: 'user_phone', width: 20 },
+        { header: 'Email', key: 'user_email', width: 35 },
+        { header: 'City', key: 'city', width: 15 },
+        { header: 'Ville (Neighborhood)', key: 'ville', width: 20 },
+        { header: 'Total Price (TND)', key: 'total_price', width: 18 },
+        { header: 'Ambassador Name', key: 'ambassador_name', width: 25 },
+        { header: 'Ambassador ID', key: 'ambassador_id', width: 30 },
+        { header: 'Status', key: 'status', width: 20 },
+        { header: 'Payment Method', key: 'payment_method', width: 20 },
+        { header: 'Source', key: 'source', width: 20 },
+        { header: 'Event ID', key: 'event_id', width: 30 },
+        { header: 'Created Date', key: 'created_date', width: 15 },
+        { header: 'Created Time', key: 'created_time', width: 15 },
+        { header: 'Created At (Full)', key: 'created_at', width: 25 },
+        { header: 'Updated At', key: 'updated_at', width: 25 },
+        { header: 'Payment Reference', key: 'payment_reference', width: 30 },
+        { header: 'Notes', key: 'notes', width: 40 },
+        { header: 'Cancelled At', key: 'cancelled_at', width: 25 },
+        { header: 'Cancellation Reason', key: 'cancellation_reason', width: 40 },
+        { header: 'Accepted At', key: 'accepted_at', width: 25 },
+        { header: 'Completed At', key: 'completed_at', width: 25 },
+      ];
+
+      // Style the header row
+      worksheet.getRow(1).font = { bold: true, size: 12 };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE21836' }
+      };
+      worksheet.getRow(1).font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+      worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+      // Add data rows - export ALL orders from codAmbassadorOrders (not filtered)
+      codAmbassadorOrders.forEach((order) => {
+        // Format pass types
+        const passes = order.passes || [];
+        let passTypesStr = 'N/A';
+        if (passes.length > 0) {
+          passTypesStr = passes.map((p: any) => 
+            `${p.pass_type || p.passName || 'Unknown'} ×${p.quantity || 1}`
+          ).join(', ');
+        } else if (order.pass_type) {
+          passTypesStr = `${order.pass_type} ×${order.quantity || 1}`;
+        }
+
+        // Format dates
+        const createdDate = order.created_at ? new Date(order.created_at) : null;
+        const updatedDate = order.updated_at ? new Date(order.updated_at) : null;
+        const cancelledDate = order.cancelled_at ? new Date(order.cancelled_at) : null;
+        const acceptedDate = order.accepted_at ? new Date(order.accepted_at) : null;
+        const completedDate = order.completed_at ? new Date(order.completed_at) : null;
+
+        // Format status text
+        const statusText = order.status === 'PENDING_CASH'
+          ? (language === 'en' ? 'Pending Cash' : 'En Attente Espèces')
+          : order.status === 'PAID'
+          ? (language === 'en' ? 'Paid' : 'Payé')
+          : order.status === 'CANCELLED'
+          ? (language === 'en' ? 'Cancelled' : 'Annulé')
+          : order.status === 'PENDING_ADMIN_APPROVAL'
+          ? (language === 'en' ? 'Pending Approval' : 'En Attente')
+          : order.status === 'APPROVED'
+          ? (language === 'en' ? 'Approved' : 'Approuvé')
+          : order.status === 'REJECTED'
+          ? (language === 'en' ? 'Rejected' : 'Rejeté')
+          : order.status || 'N/A';
+
+        const row = worksheet.addRow({
+          id: order.id || 'N/A',
+          pass_types: passTypesStr,
+          user_name: order.user_name || 'N/A',
+          user_phone: order.user_phone || 'N/A',
+          user_email: order.user_email || 'N/A',
+          city: order.city || 'N/A',
+          ville: order.ville || 'N/A',
+          total_price: order.total_price ? parseFloat(order.total_price).toFixed(2) : 'N/A',
+          ambassador_name: order.ambassador_name || 'N/A',
+          ambassador_id: order.ambassador_id || 'N/A',
+          status: statusText,
+          payment_method: order.payment_method || 'N/A',
+          source: order.source || 'N/A',
+          event_id: order.event_id || 'N/A',
+          created_date: createdDate ? createdDate.toLocaleDateString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
+          created_time: createdDate ? createdDate.toLocaleTimeString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
+          created_at: createdDate ? createdDate.toLocaleString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
+          updated_at: updatedDate ? updatedDate.toLocaleString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
+          payment_reference: order.payment_reference || 'N/A',
+          notes: order.notes || 'N/A',
+          cancelled_at: cancelledDate ? cancelledDate.toLocaleString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
+          cancellation_reason: order.cancellation_reason || order.rejection_reason || 'N/A',
+          accepted_at: acceptedDate ? acceptedDate.toLocaleString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
+          completed_at: completedDate ? completedDate.toLocaleString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
+        });
+
+        // Style data rows
+        row.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+        row.height = 20;
+      });
+
+      // Format price column as number
+      worksheet.getColumn('total_price').numFmt = '0.00';
+
+      // Auto-fit columns (approximate)
+      worksheet.columns.forEach((column) => {
+        if (column.width) {
+          column.width = Math.min(column.width || 15, 50);
+        }
+      });
+
+      // Generate filename with date and time
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-'); // HH-MM-SS
+      const filename = `COD_Ambassador_Orders_${dateStr}_${timeStr}.xlsx`;
+
+      // Generate buffer and download
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: language === 'en' ? 'Export Successful' : 'Export Réussi',
+        description: language === 'en' 
+          ? `${codAmbassadorOrders.length} orders exported to ${filename}`
+          : `${codAmbassadorOrders.length} commandes exportées vers ${filename}`,
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Error exporting orders:', error);
+      toast({
+        title: language === 'en' ? 'Export Failed' : 'Échec de l\'Export',
+        description: language === 'en' 
+          ? 'Failed to export orders. Please try again.'
+          : 'Échec de l\'exportation des commandes. Veuillez réessayer.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Get unique filter values from orders
+  const filterOptions = useMemo(() => {
+    const ambassadors = new Set<string>();
+
+    codAmbassadorOrders.forEach(order => {
+      if (order.ambassador_name) {
+        ambassadors.add(order.ambassador_name);
+      }
+    });
+
+    // Get all villes based on selected city (like ambassador application)
+    const getAllVilles = (city: string) => {
+      if (city === 'Sousse') {
+        return SOUSSE_VILLES;
+      } else if (city === 'Tunis') {
+        return TUNIS_VILLES;
+      }
+      return [];
+    };
+
+    return {
+      ambassadors: Array.from(ambassadors).sort(),
+      cities: CITIES,
+      getAllVilles,
+    };
+  }, [codAmbassadorOrders]);
+
+  // Filter COD orders based on filter criteria
+  useEffect(() => {
+    let filtered = [...codAmbassadorOrders];
+
+    if (orderFilters.status) {
+      filtered = filtered.filter(order => order.status === orderFilters.status);
+    }
+
+    if (orderFilters.phone) {
+      filtered = filtered.filter(order => 
+        order.user_phone?.toLowerCase().includes(orderFilters.phone.toLowerCase())
+      );
+    }
+
+    if (orderFilters.ambassador) {
+      filtered = filtered.filter(order => 
+        order.ambassador_name === orderFilters.ambassador
+      );
+    }
+
+
+    setFilteredCodOrders(filtered);
+  }, [codAmbassadorOrders, orderFilters]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingPerformance, setLoadingPerformance] = useState(false);
 
@@ -852,6 +1086,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Enhanced animation effect for tickets
   useEffect(() => {
+    if (activeTab === "marketing") {
+      // Load marketing/SMS data only when Marketing tab is opened
+      if (phoneSubscribers.length === 0) {
+        fetchPhoneSubscribers();
+      }
+      if (smsLogs.length === 0) {
+        fetchSmsLogs();
+      }
+    }
+
     if (activeTab === "tickets" && !hasTicketsAnimated) {
       const timer = setTimeout(() => {
         setHasTicketsAnimated(true);
@@ -1203,63 +1447,61 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (manualError) throw manualError;
 
-      // Fetch COD ambassador orders (ambassador_manual + payment_method = cod)
+      // Fetch COD ambassador orders - unified system uses payment_method = 'ambassador_cash'
+      // Include order_passes for multiple pass types support
       const { data: codAmbassadorData, error: codAmbassadorError } = await (supabase as any)
         .from('orders')
-        .select('*')
-        .eq('source', 'ambassador_manual')
-        .eq('payment_method', 'cod')
+        .select('*, order_passes (*)')
+        .eq('payment_method', 'ambassador_cash')
+        .in('source', ['platform_cod', 'ambassador_manual'])
         .order('created_at', { ascending: false });
 
       if (codAmbassadorError) throw codAmbassadorError;
 
-      // Enrich COD ambassador orders with event and pass info
-      const enrichedCodAmbassadorOrders = await Promise.all(
-        (codAmbassadorData || []).map(async (order: any) => {
-          let eventInfo = null;
-          let passInfo = null;
-
-          // Parse notes to get pass_id and event_id
-          let notesData = null;
-          if (order.notes) {
-            try {
-              notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
-            } catch (e) {
-              console.error('Error parsing order notes:', e);
-            }
+      // Enrich COD ambassador orders with pass info from order_passes
+      const enrichedCodAmbassadorOrders = (codAmbassadorData || []).map((order: any) => {
+        // Parse notes for legacy orders
+        let notesData = null;
+        if (order.notes) {
+          try {
+            notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+          } catch (e) {
+            console.error('Error parsing order notes:', e);
           }
+        }
 
-          const passId = notesData?.pass_id || null;
-          const eventId = order.event_id || notesData?.event_id || null;
+        // Get passes from order_passes (new system) or notes (legacy)
+        let passes = [];
+        if (order.order_passes && order.order_passes.length > 0) {
+          // New system: use order_passes
+          passes = order.order_passes.map((op: any) => ({
+            pass_type: op.pass_type,
+            quantity: op.quantity,
+            price: op.price
+          }));
+        } else if (notesData?.all_passes) {
+          // Legacy system: use notes
+          passes = notesData.all_passes.map((p: any) => ({
+            pass_type: p.passName || p.pass_type,
+            quantity: p.quantity,
+            price: p.price
+          }));
+        } else if (order.pass_type) {
+          // Very old system: single pass_type
+          passes = [{
+            pass_type: order.pass_type,
+            quantity: order.quantity || 1,
+            price: order.total_price / (order.quantity || 1)
+          }];
+        }
 
-          // Fetch event info
-          if (eventId) {
-            const { data: eventData } = await (supabase as any)
-              .from('events')
-              .select('id, name, date, venue')
-              .eq('id', eventId)
-              .single();
-            eventInfo = eventData;
-          }
-
-          // Fetch pass info
-          if (passId) {
-            const { data: passData } = await (supabase as any)
-              .from('event_passes')
-              .select('id, name, price, description')
-              .eq('id', passId)
-              .single();
-            passInfo = passData;
-          }
-
-          return {
-            ...order,
-            ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || 'Unknown') : null,
-            event: eventInfo,
-            pass: passInfo
-          };
-        })
-      );
+        return {
+          ...order,
+          ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || 'Unknown') : null,
+          ambassador_id: order.ambassador_id,
+          passes: passes
+        };
+      });
       setCodAmbassadorOrders(enrichedCodAmbassadorOrders);
 
       // Fetch all ambassador orders (all COD orders are now ambassador_manual)
@@ -1405,8 +1647,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   // Admin order management functions
-  // Approve COD Ambassador order (with email and SMS)
-  const handleApproveCodAmbassadorOrder = async (orderId: string) => {
+  // Approve Email/SMS delivery for PAID orders
+  const handleApproveEmailSmsDelivery = async (orderId: string) => {
     try {
       // Get full order details
       const { data: order, error: fetchError } = await (supabase as any)
@@ -1417,19 +1659,78 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (fetchError) throw fetchError;
 
-      // Validate order
-      if (order.source !== 'ambassador_manual' || order.payment_method !== 'cod' || order.status !== 'PENDING_ADMIN_APPROVAL') {
+      // Validate order is PAID
+      if (order.status !== 'PAID') {
         toast({
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
-            ? 'Only COD ambassador orders with PENDING_ADMIN_APPROVAL status can be approved'
-            : 'Seules les commandes COD ambassadeur avec le statut PENDING_ADMIN_APPROVAL peuvent être approuvées',
+            ? 'Only PAID orders can have email/SMS delivery approved'
+            : 'Seules les commandes PAYÉES peuvent avoir la livraison email/SMS approuvée',
           variant: 'destructive'
         });
         return;
       }
 
-      // Update order status
+      // Generate tickets and send email with QR codes
+      if (order.user_email) {
+        try {
+          console.log('🎫 Starting ticket generation for order:', orderId);
+          
+          // Small delay to ensure database is ready
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Generate tickets (this will also send the email with QR codes)
+          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+          const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
+          
+          if (!ticketApiUrl) {
+            throw new Error('Invalid API URL configuration');
+          }
+          
+          const ticketResponse = await fetch(ticketApiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ orderId }),
+          });
+
+          const responseData = await ticketResponse.json();
+          console.log('📦 Ticket generation response status:', ticketResponse.status);
+          console.log('📦 Ticket generation response data:', responseData);
+
+          if (!ticketResponse.ok) {
+            console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
+            console.error('❌ Error details:', responseData);
+            
+            // Fallback to old email system if ticket generation fails
+            console.log('📧 Falling back to old email system...');
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8082';
+            const emailResponse = await fetch(`${apiUrl}/api/send-order-completion-email`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ orderId }),
+            });
+
+            if (!emailResponse.ok) {
+              const emailErrorData = await emailResponse.json();
+              console.error('❌ Failed to send completion email:', emailErrorData);
+              throw new Error('Failed to send email');
+            } else {
+              console.log('✅ Fallback email sent successfully');
+            }
+          } else {
+            console.log('✅ Tickets generated and email sent successfully:', responseData);
+          }
+        } catch (error) {
+          console.error('❌ Error generating tickets or sending email:', error);
+          throw error;
+        }
+      }
+
+      // Update order status to APPROVED (email/SMS sent)
       const { error: updateError } = await (supabase as any)
         .from('orders')
         .update({
@@ -1441,121 +1742,133 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (updateError) throw updateError;
 
-      // Send email to client
-      let emailSent = false;
-      if (order.user_email) {
-        try {
-          // Parse notes to get event and pass info
-          let notesData = null;
-          if (order.notes) {
-            try {
-              notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
-            } catch (e) {
-              console.error('Error parsing order notes:', e);
-            }
+      // Log the action
+      await (supabase as any)
+        .from('order_logs')
+        .insert({
+          order_id: orderId,
+          action: 'status_changed',
+          performed_by: null,
+          performed_by_type: 'admin',
+          details: { 
+            old_status: 'PAID',
+            new_status: 'APPROVED',
+            action: 'email_sms_delivery_approved',
+            email_sent: true
           }
+        });
 
-          // Fetch event info
-          let eventName = 'Event';
-          if (order.event_id) {
-            const { data: eventData } = await (supabase as any)
-              .from('events')
-              .select('name')
-              .eq('id', order.event_id)
-              .single();
-            if (eventData) eventName = eventData.name;
-          }
+      toast({
+        title: language === 'en' ? 'Email/SMS Sent' : 'Email/SMS Envoyé',
+        description: language === 'en' 
+          ? 'Tickets generated and email sent to customer successfully'
+          : 'Tickets générés et email envoyé au client avec succès',
+        variant: 'default'
+      });
 
-          const emailSubject = language === 'en' 
-            ? `✅ Order Approved - ${eventName}`
-            : `✅ Commande Approuvée - ${eventName}`;
-          
-          const emailHtml = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #4CAF50;">${language === 'en' ? 'Order Approved!' : 'Commande Approuvée!'}</h2>
-              <p>${language === 'en' ? 'Dear' : 'Cher/Chère'} ${order.user_name},</p>
-              <p>${language === 'en' 
-                ? `Your order for ${eventName} has been approved. Your order details:` 
-                : `Votre commande pour ${eventName} a été approuvée. Détails de votre commande:`}</p>
-              <ul>
-                <li>${language === 'en' ? 'Event' : 'Événement'}: ${eventName}</li>
-                <li>${language === 'en' ? 'Pass Type' : 'Type de Pass'}: ${order.pass_type}</li>
-                <li>${language === 'en' ? 'Quantity' : 'Quantité'}: ${order.quantity}</li>
-                <li>${language === 'en' ? 'Total Price' : 'Prix Total'}: ${order.total_price.toFixed(2)} TND</li>
-              </ul>
-              <p>${language === 'en' 
-                ? 'Thank you for your order!' 
-                : 'Merci pour votre commande!'}</p>
-            </div>
-          `;
+      fetchAmbassadorSalesData();
+    } catch (error: any) {
+      console.error('Error approving email/SMS delivery:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' 
+          ? 'Failed to approve email/SMS delivery' 
+          : 'Échec de l\'approbation de la livraison email/SMS'),
+        variant: 'destructive'
+      });
+    }
+  };
 
-          const emailResponse = await apiFetch(API_ROUTES.SEND_EMAIL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: order.user_email,
-              subject: emailSubject,
-              html: emailHtml
-            })
-          });
+  // Approve COD Ambassador order (with email and SMS) - LEGACY FUNCTION
+  const handleApproveCodAmbassadorOrder = async (orderId: string) => {
+    try {
+      // Get full order details
+      const { data: order, error: fetchError } = await (supabase as any)
+        .from('orders')
+        .select('*')
+        .eq('id', orderId)
+        .single();
 
-          if (emailResponse.ok) {
-            emailSent = true;
-          }
-        } catch (emailError) {
-          console.error('Error sending approval email:', emailError);
-        }
+      if (fetchError) throw fetchError;
+
+      // Debug: Log order details
+      console.log('Order details:', {
+        id: order.id,
+        status: order.status,
+        payment_method: order.payment_method,
+        source: order.source
+      });
+
+      // Validate order - accept any COD order with PENDING_ADMIN_APPROVAL status
+      if (order.payment_method !== 'ambassador_cash') {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? `This order is not a COD order. Payment method: ${order.payment_method || 'N/A'}`
+            : `Cette commande n'est pas une commande COD. Méthode de paiement: ${order.payment_method || 'N/A'}`,
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      if (order.status !== 'PENDING_ADMIN_APPROVAL') {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? `Order status must be PENDING_ADMIN_APPROVAL to approve. Current status: ${order.status || 'N/A'}`
+            : `Le statut de la commande doit être PENDING_ADMIN_APPROVAL pour approuver. Statut actuel: ${order.status || 'N/A'}`,
+          variant: 'destructive'
+        });
+        return;
       }
 
-      // Send SMS to client
-      let smsSent = false;
-      if (order.user_phone) {
+      // Update order status to PAID (this will trigger ticket generation)
+      const { error: updateError } = await (supabase as any)
+        .from('orders')
+        .update({
+          status: 'PAID',
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orderId);
+
+      if (updateError) throw updateError;
+
+      // Generate tickets and send email with QR codes (only after admin approval)
+      let ticketsGenerated = false;
+      if (order.user_email) {
         try {
-          const cleanPhone = order.user_phone.trim().replace(/\s+/g, '');
-          const phoneRegex = /^\d{8}$/;
+          console.log('🎫 Starting ticket generation for order:', orderId);
           
-          if (phoneRegex.test(cleanPhone)) {
-            let notesData = null;
-            if (order.notes) {
-              try {
-                notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
-              } catch (e) {
-                console.error('Error parsing order notes:', e);
-              }
-            }
-
-            let eventName = 'Event';
-            if (order.event_id) {
-              const { data: eventData } = await (supabase as any)
-                .from('events')
-                .select('name')
-                .eq('id', order.event_id)
-                .single();
-              if (eventData) eventName = eventData.name;
-            }
-
-            const smsMessage = language === 'en'
-              ? `Your order for ${eventName} has been approved! Total: ${order.total_price.toFixed(2)} TND. Thank you! - Andiamo Events`
-              : `Votre commande pour ${eventName} a été approuvée! Total: ${order.total_price.toFixed(2)} TND. Merci! - Andiamo Events`;
-
-            const smsResponse = await apiFetch(API_ROUTES.SEND_SMS, {
+          // Small delay to ensure database is ready
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Generate tickets (this will also send the email with QR codes)
+          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+          const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
+          
+          if (ticketApiUrl) {
+            const ticketResponse = await fetch(ticketApiUrl, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                phoneNumbers: [cleanPhone],
-                message: smsMessage
-              })
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ orderId }),
             });
 
-            if (smsResponse.ok) {
-              const smsData = await smsResponse.json();
-              if (smsData.success) {
-                smsSent = true;
-              }
+            const responseData = await ticketResponse.json();
+            console.log('📦 Ticket generation response status:', ticketResponse.status);
+            console.log('📦 Ticket generation response data:', responseData);
+
+            if (ticketResponse.ok && responseData.success) {
+              ticketsGenerated = true;
+            } else {
+              console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
+              console.error('❌ Error details:', responseData);
             }
           }
-        } catch (smsError) {
-          console.error('Error sending approval SMS:', smsError);
+        } catch (ticketError) {
+          console.error('Error generating tickets:', ticketError);
         }
       }
 
@@ -1569,9 +1882,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           performed_by_type: 'admin',
           details: { 
             old_status: 'PENDING_ADMIN_APPROVAL',
-            new_status: 'APPROVED',
-            email_sent: emailSent,
-            sms_sent: smsSent,
+            new_status: 'PAID',
+            tickets_generated: ticketsGenerated,
             admin_action: true 
           }
         });
@@ -1579,8 +1891,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
         description: language === 'en' 
-          ? `Order approved${emailSent ? ' - Email sent' : ''}${smsSent ? ' - SMS sent' : ''}`
-          : `Commande approuvée${emailSent ? ' - Email envoyé' : ''}${smsSent ? ' - SMS envoyé' : ''}`,
+          ? `Order approved and tickets ${ticketsGenerated ? 'sent' : 'generation failed'}`
+          : `Commande approuvée et billets ${ticketsGenerated ? 'envoyés' : 'génération échouée'}`,
         variant: 'default'
       });
       
@@ -1611,32 +1923,91 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (fetchError) throw fetchError;
 
       // If it's an ambassador-created COD order, use the special approval function
-      if (order.source === 'ambassador_manual' && order.payment_method === 'cod') {
+      if (order.source === 'ambassador_manual' && order.payment_method === 'ambassador_cash') {
         return handleApproveCodAmbassadorOrder(orderId);
       }
 
       // Only approve COD orders that are pending approval
-      if (order.payment_method !== 'cod' || order.status !== 'PENDING_ADMIN_APPROVAL') {
+      if (order.payment_method !== 'ambassador_cash') {
         toast({
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
-            ? 'Only COD orders with PENDING_ADMIN_APPROVAL status can be approved'
-            : 'Seules les commandes COD avec le statut PENDING_ADMIN_APPROVAL peuvent être approuvées',
+            ? `This order is not a COD order. Payment method: ${order.payment_method || 'N/A'}`
+            : `Cette commande n'est pas une commande COD. Méthode de paiement: ${order.payment_method || 'N/A'}`,
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      if (order.status !== 'PENDING_ADMIN_APPROVAL') {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? `Order status must be PENDING_ADMIN_APPROVAL to approve. Current status: ${order.status || 'N/A'}`
+            : `Le statut de la commande doit être PENDING_ADMIN_APPROVAL pour approuver. Statut actuel: ${order.status || 'N/A'}`,
           variant: 'destructive'
         });
         return;
       }
 
+      // Get full order details for ticket generation
+      const { data: fullOrder, error: fullOrderError } = await (supabase as any)
+        .from('orders')
+        .select('*')
+        .eq('id', orderId)
+        .single();
+
+      if (fullOrderError) throw fullOrderError;
+
+      // Update order status to PAID (this triggers ticket generation)
       const { error } = await (supabase as any)
         .from('orders')
         .update({
-          status: 'APPROVED',
+          status: 'PAID',
           approved_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('id', orderId);
 
       if (error) throw error;
+
+      // Generate tickets and send email with QR codes
+      let ticketsGenerated = false;
+      if (fullOrder.user_email) {
+        try {
+          console.log('🎫 Starting ticket generation for order:', orderId);
+          
+          // Small delay to ensure database is ready
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Generate tickets (this will also send the email with QR codes)
+          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+          const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
+          
+          if (ticketApiUrl) {
+            const ticketResponse = await fetch(ticketApiUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ orderId }),
+            });
+
+            const responseData = await ticketResponse.json();
+            console.log('📦 Ticket generation response status:', ticketResponse.status);
+            console.log('📦 Ticket generation response data:', responseData);
+
+            if (ticketResponse.ok && responseData.success) {
+              ticketsGenerated = true;
+            } else {
+              console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
+              console.error('❌ Error details:', responseData);
+            }
+          }
+        } catch (ticketError) {
+          console.error('Error generating tickets:', ticketError);
+        }
+      }
 
       // Log the approval
       await (supabase as any)
@@ -1648,14 +2019,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           performed_by_type: 'admin',
           details: { 
             old_status: 'PENDING_ADMIN_APPROVAL',
-            new_status: 'APPROVED',
+            new_status: 'PAID',
+            tickets_generated: ticketsGenerated,
             admin_action: true 
           }
         });
 
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
-        description: language === 'en' ? 'Order approved' : 'Commande approuvée',
+        description: language === 'en' 
+          ? `Order approved and tickets ${ticketsGenerated ? 'sent' : 'generation failed'}`
+          : `Commande approuvée et billets ${ticketsGenerated ? 'envoyés' : 'génération échouée'}`,
         variant: 'default'
       });
       fetchAmbassadorSalesData();
@@ -1684,13 +2058,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (fetchError) throw fetchError;
 
-      // Only reject COD ambassador orders that are pending approval
-      if (order.source !== 'ambassador_manual' || order.payment_method !== 'cod' || order.status !== 'PENDING_ADMIN_APPROVAL') {
+      // Only reject COD orders that are pending approval
+      if (order.payment_method !== 'ambassador_cash') {
         toast({
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
-            ? 'Only COD ambassador orders with PENDING_ADMIN_APPROVAL status can be rejected'
-            : 'Seules les commandes COD ambassadeur avec le statut PENDING_ADMIN_APPROVAL peuvent être rejetées',
+            ? `This order is not a COD order. Payment method: ${order.payment_method || 'N/A'}`
+            : `Cette commande n'est pas une commande COD. Méthode de paiement: ${order.payment_method || 'N/A'}`,
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      if (order.status !== 'PENDING_ADMIN_APPROVAL') {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? `Order status must be PENDING_ADMIN_APPROVAL to reject. Current status: ${order.status || 'N/A'}`
+            : `Le statut de la commande doit être PENDING_ADMIN_APPROVAL pour rejeter. Statut actuel: ${order.status || 'N/A'}`,
           variant: 'destructive'
         });
         return;
@@ -1772,8 +2157,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (fetchError) throw fetchError;
 
-      // If it's an ambassador-created COD order, use the special rejection function
-      if (order.source === 'ambassador_manual' && order.payment_method === 'cod') {
+      // If it's a COD order, use the special rejection function
+      if (order.payment_method === 'ambassador_cash') {
         if (!rejectionReason) {
           // Open rejection dialog
           setRejectingOrderId(orderId);
@@ -1784,12 +2169,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       // Only reject COD orders that are pending approval
-      if (order.payment_method !== 'cod' || order.status !== 'PENDING_ADMIN_APPROVAL') {
+      if (order.payment_method !== 'ambassador_cash') {
         toast({
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
-            ? 'Only COD orders with PENDING_ADMIN_APPROVAL status can be rejected'
-            : 'Seules les commandes COD avec le statut PENDING_ADMIN_APPROVAL peuvent être rejetées',
+            ? `This order is not a COD order. Payment method: ${order.payment_method || 'N/A'}`
+            : `Cette commande n'est pas une commande COD. Méthode de paiement: ${order.payment_method || 'N/A'}`,
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      if (order.status !== 'PENDING_ADMIN_APPROVAL') {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? `Order status must be PENDING_ADMIN_APPROVAL to reject. Current status: ${order.status || 'N/A'}`
+            : `Le statut de la commande doit être PENDING_ADMIN_APPROVAL pour rejeter. Statut actuel: ${order.status || 'N/A'}`,
           variant: 'destructive'
         });
         return;
@@ -1860,7 +2256,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (fetchError) throw fetchError;
 
       // For COD orders, only complete if status is APPROVED
-      if (order.payment_method === 'cod' && order.status !== 'APPROVED') {
+      if (order.payment_method === 'ambassador_cash' && order.status !== 'APPROVED') {
         toast({
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
@@ -2176,24 +2572,217 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchPhoneSubscribers = async () => {
     try {
       setLoadingSubscribers(true);
-      // Note: phone_subscribers table may not exist in schema
-      // Using RPC or direct query as fallback
+      
+      // Use only basic columns that definitely exist (id, phone_number, created_at)
+      // Don't try to detect optional columns - it causes 400 errors
       const { data, error } = await supabase
         .from('phone_subscribers' as any)
-        .select('*')
-        .order('subscribed_at', { ascending: false });
-
+        .select('id, phone_number, created_at')
+        .order('created_at', { ascending: false });
+      
       if (error) {
-        console.warn('phone_subscribers table not found, skipping:', error);
+        // If even basic query fails, table might not exist or RLS issue
+        console.warn('phone_subscribers query error:', error);
         setPhoneSubscribers([]);
         return;
       }
-      setPhoneSubscribers((data || []) as unknown as Array<{id: string; phone_number: string; subscribed_at: string}>);
+      
+      // Map data to expected format (use created_at as subscribed_at fallback)
+      setPhoneSubscribers((data || []).map((item: any) => ({
+        id: item.id,
+        phone_number: item.phone_number,
+        subscribed_at: item.created_at || new Date().toISOString(),
+        city: undefined // city column doesn't exist, always undefined
+      })));
+      
     } catch (error) {
       console.error('Error fetching phone subscribers:', error);
       setPhoneSubscribers([]);
     } finally {
       setLoadingSubscribers(false);
+    }
+  };
+
+  // Import phone numbers from ambassador applications
+  const handleImportFromApplications = async () => {
+    try {
+      setImportingFromApplications(true);
+      
+      // Fetch all ambassador applications with phone numbers
+      const { data: applications, error } = await supabase
+        .from('ambassador_applications')
+        .select('phone_number, city')
+        .not('phone_number', 'is', null);
+
+      if (error) throw error;
+
+      if (!applications || applications.length === 0) {
+        toast({
+          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
+          description: language === 'en' 
+            ? 'No ambassador applications found with phone numbers'
+            : 'Aucune candidature d\'ambassadeur trouvée avec numéros de téléphone',
+          variant: 'default'
+        });
+        return;
+      }
+
+      // Prepare phone numbers with city info (only include city if column exists)
+      // We'll try to insert with city, but handle errors gracefully
+      const phonesToImport = applications
+        .filter(app => app.phone_number)
+        .map(app => ({
+          phone_number: app.phone_number,
+          language: 'en' as const,
+          ...(app.city ? { city: app.city } : {}) // Only include city if it exists
+        }));
+
+      if (phonesToImport.length === 0) {
+        toast({
+          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
+          description: language === 'en' 
+            ? 'No valid phone numbers found in applications'
+            : 'Aucun numéro de téléphone valide trouvé dans les candidatures',
+          variant: 'default'
+        });
+        return;
+      }
+
+      // Get all existing phone numbers in one query (batch check)
+      const existingPhones = phonesToImport.map(p => p.phone_number);
+      const { data: existingSubscribers, error: checkError } = await supabase
+        .from('phone_subscribers')
+        .select('phone_number')
+        .in('phone_number', existingPhones);
+
+      if (checkError) throw checkError;
+
+      const existingPhoneSet = new Set(
+        (existingSubscribers || []).map((s: any) => s.phone_number)
+      );
+
+      // Filter out duplicates
+      const newPhonesToImport = phonesToImport.filter(
+        phone => !existingPhoneSet.has(phone.phone_number)
+      );
+
+      let duplicates = phonesToImport.length - newPhonesToImport.length;
+      const results: string[] = [];
+      const errors: Array<{ phone: string; error: string }> = [];
+
+      // Batch insert all new phones at once (in chunks of 100 to avoid payload limits)
+      const chunkSize = 100;
+      for (let i = 0; i < newPhonesToImport.length; i += chunkSize) {
+        const chunk = newPhonesToImport.slice(i, i + chunkSize);
+        
+        try {
+          const { data: inserted, error: insertError } = await supabase
+            .from('phone_subscribers')
+            .insert(chunk)
+            .select('phone_number');
+
+          if (insertError) {
+            // Check if error is about city column not existing
+            const isCityColumnError = insertError.message?.includes('city') && 
+                                     (insertError.code === '42703' || insertError.code === 'PGRST116');
+            
+            if (isCityColumnError) {
+              // Retry insert without city column
+              const chunkWithoutCity = chunk.map((p: any) => {
+                const { city, ...rest } = p;
+                return rest;
+              });
+              
+              const { data: insertedWithoutCity, error: errorWithoutCity } = await supabase
+                .from('phone_subscribers')
+                .insert(chunkWithoutCity)
+                .select('phone_number');
+              
+              if (errorWithoutCity) {
+                // If still fails, try individual inserts
+                for (const phone of chunkWithoutCity) {
+                  try {
+                    const { error: singleError } = await supabase
+                      .from('phone_subscribers')
+                      .insert(phone);
+
+                    if (singleError) {
+                      if (singleError.code === '23505') {
+                        duplicates++;
+                      } else {
+                        errors.push({ phone: phone.phone_number, error: singleError.message });
+                      }
+                    } else {
+                      results.push(phone.phone_number);
+                    }
+                  } catch (err: any) {
+                    errors.push({ phone: phone.phone_number, error: err.message });
+                  }
+                }
+              } else {
+                if (insertedWithoutCity) {
+                  results.push(...insertedWithoutCity.map((item: any) => item.phone_number));
+                }
+              }
+            } else {
+              // If batch insert fails for other reasons, try individual inserts for this chunk
+              for (const phone of chunk) {
+                try {
+                  const { error: singleError } = await supabase
+                    .from('phone_subscribers')
+                    .insert(phone);
+
+                  if (singleError) {
+                    if (singleError.code === '23505') {
+                      // Duplicate (race condition)
+                      duplicates++;
+                    } else {
+                      errors.push({ phone: phone.phone_number, error: singleError.message });
+                    }
+                  } else {
+                    results.push(phone.phone_number);
+                  }
+                } catch (err: any) {
+                  errors.push({ phone: phone.phone_number, error: err.message });
+                }
+              }
+            }
+          } else {
+            // Success - add all inserted phone numbers to results
+            if (inserted) {
+              results.push(...inserted.map((item: any) => item.phone_number));
+            }
+          }
+        } catch (err: any) {
+          // If batch fails completely, log error
+          console.error('Batch insert error:', err);
+          errors.push({ phone: 'batch', error: err.message });
+        }
+      }
+
+      // Refresh subscribers list
+      await fetchPhoneSubscribers();
+
+      toast({
+        title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
+        description: language === 'en'
+          ? `Imported: ${results.length}, Duplicates: ${duplicates.length}, Errors: ${errors.length}`
+          : `Importé: ${results.length}, Doublons: ${duplicates.length}, Erreurs: ${errors.length}`,
+        variant: results.length > 0 ? 'default' : 'destructive'
+      });
+
+      if (errors.length > 0) {
+        console.error('Import errors:', errors);
+      }
+    } catch (error: any) {
+      console.error('Error importing from applications:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : 'Échec de l\'importation des numéros'),
+        variant: 'destructive'
+      });
+    } finally {
+      setImportingFromApplications(false);
     }
   };
 
@@ -2601,19 +3190,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Send Test SMS
+  // Send Test SMS - handles all three test modes
   const handleSendTestSms = async () => {
-    if (!testPhoneNumber.trim()) {
-      toast({
-        title: language === 'en' ? 'Error' : 'Erreur',
-        description: language === 'en' 
-          ? 'Please enter a phone number' 
-          : 'Veuillez entrer un numéro de téléphone',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     if (!testSmsMessage.trim()) {
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
@@ -2625,15 +3203,95 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       return;
     }
 
-    // Validate phone number format (should be 8 digits)
-    const phoneRegex = /^\d{8}$/;
-    const cleanPhone = testPhoneNumber.trim().replace(/\s+/g, '');
-    if (!phoneRegex.test(cleanPhone)) {
+    let phoneToSend = '';
+
+    // Determine which phone number to use based on test mode
+    if (testMode === 'specific') {
+      if (!testPhoneNumber.trim()) {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? 'Please enter a phone number' 
+            : 'Veuillez entrer un numéro de téléphone',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Validate phone number format (should be 8 digits)
+      const phoneRegex = /^\d{8}$/;
+      const cleanPhone = testPhoneNumber.trim().replace(/\s+/g, '');
+      if (!phoneRegex.test(cleanPhone)) {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? 'Please enter a valid 8-digit phone number (e.g., 21234567)' 
+            : 'Veuillez entrer un numéro de téléphone valide à 8 chiffres (ex: 21234567)',
+          variant: 'destructive',
+        });
+        return;
+      }
+      phoneToSend = cleanPhone;
+    } else if (testMode === 'broadcast') {
+      // Get test number from phone_subscribers (27169458)
+      const testNumber = '27169458';
+      const { data, error } = await supabase
+        .from('phone_subscribers' as any)
+        .select('phone_number')
+        .eq('phone_number', testNumber)
+        .single();
+      
+      if (error || !data) {
+        toast({
+          title: language === 'en' ? 'Test Number Not Found' : 'Numéro Test Introuvable',
+          description: language === 'en' 
+            ? 'Test number 27169458 not found in subscribers. Please run the migration to add it.'
+            : 'Le numéro test 27169458 n\'a pas été trouvé. Veuillez exécuter la migration pour l\'ajouter.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      phoneToSend = testNumber;
+    } else if (testMode === 'targeted') {
+      if (!testTargetedCity) {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' 
+            ? 'Please select a city' 
+            : 'Veuillez sélectionner une ville',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Get first phone number from ambassador_applications for selected city
+      const { data, error } = await supabase
+        .from('ambassador_applications')
+        .select('phone_number')
+        .eq('city', testTargetedCity)
+        .not('phone_number', 'is', null)
+        .limit(1)
+        .single();
+      
+      if (error || !data || !data.phone_number) {
+        toast({
+          title: language === 'en' ? 'No Numbers Found' : 'Aucun Numéro Trouvé',
+          description: language === 'en' 
+            ? `No phone numbers found for city: ${testTargetedCity}`
+            : `Aucun numéro de téléphone trouvé pour la ville: ${testTargetedCity}`,
+          variant: 'destructive',
+        });
+        return;
+      }
+      phoneToSend = data.phone_number;
+    }
+
+    if (!phoneToSend) {
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
-          ? 'Please enter a valid 8-digit phone number (e.g., 21234567)' 
-          : 'Veuillez entrer un numéro de téléphone valide à 8 chiffres (ex: 21234567)',
+          ? 'No phone number available for testing'
+          : 'Aucun numéro de téléphone disponible pour le test',
         variant: 'destructive',
       });
       return;
@@ -2658,43 +3316,55 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          phoneNumbers: [cleanPhone], 
+          phoneNumbers: [phoneToSend], 
           message: testSmsMessage.trim() 
         }),
       });
 
-      // Check if response is OK
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`Server error: ${response.status} ${response.statusText}. ${text.substring(0, 200)}`);
       }
 
-      // Check if response is JSON
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
         throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`);
       }
 
-      const data = await response.json();
+      const responseData = await response.json();
 
-      if (data.success) {
+      if (responseData.success) {
+        let description = '';
+        if (testMode === 'specific') {
+          description = language === 'en' 
+            ? `Test SMS sent successfully to +216 ${phoneToSend}`
+            : `SMS test envoyé avec succès à +216 ${phoneToSend}`;
+        } else if (testMode === 'broadcast') {
+          description = language === 'en' 
+            ? `Broadcast test sent to +216 ${phoneToSend} (test number)`
+            : `Test de diffusion envoyé à +216 ${phoneToSend} (numéro test)`;
+        } else if (testMode === 'targeted') {
+          description = language === 'en' 
+            ? `Targeted test sent to +216 ${phoneToSend} in ${testTargetedCity}`
+            : `Test ciblé envoyé à +216 ${phoneToSend} à ${testTargetedCity}`;
+        }
+
         toast({
           title: language === 'en' ? 'Test SMS Sent' : 'SMS Test Envoyé',
-          description: language === 'en' 
-            ? `Test SMS sent successfully to +216 ${cleanPhone}`
-            : `SMS test envoyé avec succès à +216 ${cleanPhone}`,
+          description,
         });
         
-        // Refresh logs and balance
         await fetchSmsLogs();
         await fetchSmsBalance();
         
-        // Clear test fields
-        setTestPhoneNumber('');
+        // Clear test fields (only clear phone number for specific mode)
+        if (testMode === 'specific') {
+          setTestPhoneNumber('');
+        }
         setTestSmsMessage('');
       } else {
-        throw new Error(data.error || 'Failed to send test SMS');
+        throw new Error(responseData.error || 'Failed to send test SMS');
       }
     } catch (error) {
       console.error('Error sending test SMS:', error);
@@ -2708,9 +3378,49 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Send SMS broadcast
-  const handleSendSmsBroadcast = async () => {
-    if (!smsMessage.trim()) {
+  // Fetch count of phone numbers from ambassador applications by city
+  const fetchTargetedCount = async (city: string) => {
+    if (!city) {
+      setTargetedCount(0);
+      return;
+    }
+    
+    try {
+      setLoadingTargetedCount(true);
+      const { data, error } = await supabase
+        .from('ambassador_applications')
+        .select('phone_number')
+        .eq('city', city)
+        .not('phone_number', 'is', null);
+      
+      if (error) {
+        console.error('Error fetching targeted count:', error);
+        setTargetedCount(0);
+        return;
+      }
+      
+      setTargetedCount(data?.length || 0);
+    } catch (error) {
+      console.error('Error fetching targeted count:', error);
+      setTargetedCount(0);
+    } finally {
+      setLoadingTargetedCount(false);
+    }
+  };
+
+  // Handle city change in targeted mode
+  const handleTargetedCityChange = async (city: string) => {
+    setTargetedCity(city);
+    if (city) {
+      await fetchTargetedCount(city);
+    } else {
+      setTargetedCount(0);
+    }
+  };
+
+  // Send SMS broadcast (popup subscribers only)
+  const handleSendBroadcast = async () => {
+    if (!broadcastMessage.trim()) {
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
@@ -2721,10 +3431,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       return;
     }
 
-    // Get all subscribers
-    const phonesToSend = phoneSubscribers.map(sub => sub.phone_number);
-
-    if (phonesToSend.length === 0) {
+    if (phoneSubscribers.length === 0) {
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
@@ -2748,24 +3455,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
 
     try {
-      setSendingSms(true);
+      setSendingBroadcast(true);
+      
+      const phonesToSend = phoneSubscribers.map(sub => sub.phone_number);
       
       const response = await apiFetch(API_ROUTES.SEND_SMS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           phoneNumbers: phonesToSend, 
-          message: smsMessage.trim() 
+          message: broadcastMessage.trim() 
         }),
       });
 
-      // Check if response is OK
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`Server error: ${response.status} ${response.statusText}. ${text.substring(0, 200)}`);
       }
 
-      // Check if response is JSON
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
@@ -2782,12 +3489,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             : `Envoyé: ${data.sent}, Échoué: ${data.failed} sur ${data.total}`,
         });
         
-        // Refresh logs and balance
         await fetchSmsLogs();
         await fetchSmsBalance();
-        
-        // Clear message
-        setSmsMessage('');
+        setBroadcastMessage('');
       } else {
         throw new Error(data.error || 'Failed to send SMS');
       }
@@ -2799,25 +3503,153 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         variant: 'destructive',
       });
     } finally {
-      setSendingSms(false);
+      setSendingBroadcast(false);
+    }
+  };
+
+  // Send targeted SMS (ambassador applications by city)
+  const handleSendTargeted = async () => {
+    if (!targetedMessage.trim()) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter a message' 
+          : 'Veuillez entrer un message',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!targetedCity) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please select a city' 
+          : 'Veuillez sélectionner une ville',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (targetedCount === 0) {
+      toast({
+        title: language === 'en' ? 'No Numbers' : 'Aucun Numéro',
+        description: language === 'en' 
+          ? `No phone numbers found for city: ${targetedCity}`
+          : `Aucun numéro de téléphone trouvé pour la ville: ${targetedCity}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Check balance before sending
+    if (smsBalance?.balanceValue === 0 || smsBalance?.balance === 0 || smsBalance?.balance === '0') {
+      const confirmSend = window.confirm(
+        language === 'en' 
+          ? '⚠️ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
+          : '⚠️ Avertissement: Votre solde SMS semble être de 0. Les messages peuvent échouer. Voulez-vous continuer?'
+      );
+      if (!confirmSend) {
+        return;
+      }
+    }
+
+    try {
+      setSendingTargeted(true);
+      
+      // Fetch phone numbers from ambassador applications for selected city
+      const { data: applicationsData, error } = await supabase
+        .from('ambassador_applications')
+        .select('phone_number')
+        .eq('city', targetedCity)
+        .not('phone_number', 'is', null);
+      
+      if (error) {
+        throw new Error(`Failed to fetch phone numbers: ${error.message}`);
+      }
+      
+      const phonesToSend = (applicationsData || []).map((app: any) => app.phone_number).filter((phone: string) => phone);
+      
+      if (phonesToSend.length === 0) {
+        throw new Error('No valid phone numbers found');
+      }
+      
+      const response = await apiFetch(API_ROUTES.SEND_SMS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          phoneNumbers: phonesToSend, 
+          message: targetedMessage.trim() 
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server error: ${response.status} ${response.statusText}. ${text.substring(0, 200)}`);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`);
+      }
+
+      const responseData = await response.json();
+
+      if (responseData.success) {
+        toast({
+          title: language === 'en' ? 'Targeted SMS Sent' : 'SMS Ciblé Envoyé',
+          description: language === 'en' 
+            ? `Sent: ${responseData.sent}, Failed: ${responseData.failed} out of ${responseData.total}`
+            : `Envoyé: ${responseData.sent}, Échoué: ${responseData.failed} sur ${responseData.total}`,
+        });
+        
+        await fetchSmsLogs();
+        await fetchSmsBalance();
+        setTargetedMessage('');
+      } else {
+        throw new Error(responseData.error || 'Failed to send SMS');
+      }
+    } catch (error) {
+      console.error('Error sending targeted SMS:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send SMS' : 'Échec de l\'envoi du SMS'),
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingTargeted(false);
     }
   };
 
   // Fetch current admin role and verify token validity
   // This ensures the 1-hour session is enforced - token expiration is checked periodically
   useEffect(() => {
-    const fetchCurrentAdminRole = async () => {
+    let retryCount = 0;
+    const MAX_RETRIES = 2;
+    const RETRY_DELAY = 5000; // 5 seconds
+    
+    const fetchCurrentAdminRole = async (isRetry = false): Promise<void> => {
       try {
-        const response = await apiFetch(API_ROUTES.VERIFY_ADMIN, {
+        // Use direct fetch instead of apiFetch to avoid auto-redirect on 401
+        // We want to handle 401 errors specifically based on the error reason
+        const response = await fetch(API_ROUTES.VERIFY_ADMIN, {
           method: 'GET',
+          credentials: 'include', // Include cookies for authentication
         });
         
         if (response.ok) {
           const data = await response.json();
+          
+          // Reset retry count on success
+          retryCount = 0;
+          
           if (data.valid && data.admin) {
             const role = data.admin.role || 'admin';
             setCurrentAdminRole(role);
             setCurrentAdminId(data.admin.id || null);
+            setCurrentAdminName(data.admin.name || null);
+            setCurrentAdminEmail(data.admin.email || null);
             
             // Update session expiration timestamp from server response
             // STRICT: This is the JWT 'exp' field - immutable, non-resettable
@@ -2843,24 +3675,85 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               console.warn('💡 If you should be super_admin, run FIX_SUPER_ADMIN_ROLE.sql and log out/in');
             }
           } else {
-            // Token invalid or expired - STRICT: redirect immediately
-            console.warn('Admin session expired or invalid - redirecting to login');
-            // Use window.location for hard redirect (clears all state)
-            window.location.href = '/admin/login';
+            // Check if it's a clear token expiration (not a server error)
+            const errorReason = data.reason || data.error || '';
+            const isTokenExpired = errorReason.includes('expired') || 
+                                  errorReason.includes('Token expired') ||
+                                  errorReason === 'Token expired - session ended';
+            
+            if (isTokenExpired || response.status === 401) {
+              // Actual token expiration - redirect to login
+              console.warn('Admin session expired - redirecting to login');
+              window.location.href = '/admin/login';
+            } else {
+              // Server error or invalid admin - log but don't redirect
+              console.warn('Admin verification failed (non-expiration):', errorReason);
+              // Don't redirect - token might still be valid, just server issue
+            }
           }
         } else {
-          // Token expired or invalid (401) - STRICT: redirect immediately
+          // Handle different error status codes appropriately
           if (response.status === 401) {
-            console.warn('Admin session expired (401) - redirecting to login');
-            // Use window.location for hard redirect (clears all state)
-            window.location.href = '/admin/login';
+            // Try to parse error to see if it's actual expiration
+            try {
+              const errorData = await response.json();
+              const errorReason = errorData.reason || errorData.error || '';
+              const isTokenExpired = errorReason.includes('expired') || 
+                                    errorReason.includes('Token expired') ||
+                                    errorReason === 'Token expired - session ended';
+              
+              if (isTokenExpired) {
+                // Actual token expiration - redirect
+                console.warn('Admin session expired (401) - redirecting to login');
+                window.location.href = '/admin/login';
+              } else {
+                // 401 but not expiration (e.g., invalid token format) - retry once
+                if (retryCount < MAX_RETRIES && !isRetry) {
+                  retryCount++;
+                  console.warn(`Retrying admin verification (attempt ${retryCount}/${MAX_RETRIES})...`);
+                  setTimeout(() => fetchCurrentAdminRole(true), RETRY_DELAY);
+                } else {
+                  console.error('Admin verification failed after retries:', errorReason);
+                }
+              }
+            } catch (parseError) {
+              // Can't parse error - assume it's expiration for security
+              console.warn('Admin session expired (401, unparseable) - redirecting to login');
+              window.location.href = '/admin/login';
+            }
+          } else if (response.status === 429) {
+            // Rate limited - don't logout, just log and retry later
+            console.warn('Admin verification rate limited - will retry on next interval');
+            retryCount = 0; // Reset retry count
+          } else if (response.status >= 500) {
+            // Server error - retry with exponential backoff
+            if (retryCount < MAX_RETRIES && !isRetry) {
+              retryCount++;
+              const backoffDelay = RETRY_DELAY * retryCount;
+              console.warn(`Server error (${response.status}), retrying in ${backoffDelay}ms (attempt ${retryCount}/${MAX_RETRIES})...`);
+              setTimeout(() => fetchCurrentAdminRole(true), backoffDelay);
+            } else {
+              console.error('Admin verification failed after retries, status:', response.status);
+              // Don't logout on server errors - token might still be valid
+            }
           } else {
-            console.error('Failed to verify admin, status:', response.status);
+            // Other client errors (400, 403, etc.) - log but don't logout
+            console.error('Admin verification failed, status:', response.status);
+            retryCount = 0;
           }
         }
       } catch (error) {
-        console.error('Error fetching admin role:', error);
-        // Network error - don't redirect, just log
+        // Network error or fetch failure - retry with exponential backoff
+        if (retryCount < MAX_RETRIES && !isRetry) {
+          retryCount++;
+          const backoffDelay = RETRY_DELAY * retryCount;
+          console.warn(`Network error during admin verification, retrying in ${backoffDelay}ms (attempt ${retryCount}/${MAX_RETRIES})...`);
+          setTimeout(() => fetchCurrentAdminRole(true), backoffDelay);
+        } else {
+          console.error('Network error fetching admin role after retries:', error);
+          // Don't logout on network errors - token might still be valid
+          retryCount = 0; // Reset for next interval
+        }
       }
     };
     
@@ -2871,7 +3764,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     // Verify token periodically to catch expiration
     // STRICT: This only checks expiration - it NEVER extends or resets the timer
     // The JWT 'exp' field is immutable and cannot be changed
-    const interval = setInterval(fetchCurrentAdminRole, 60 * 1000); // Every 1 minute
+    // Changed to 15 minutes as requested
+    const interval = setInterval(() => {
+      retryCount = 0; // Reset retry count for each interval
+      fetchCurrentAdminRole();
+    }, 15 * 60 * 1000); // Every 15 minutes
+    
     return () => clearInterval(interval);
   }, [navigate]);
 
@@ -3461,8 +4359,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchAmbassadorApplicationSettings();
       await fetchHeroImages();
       await fetchAboutImages();
-      await fetchPhoneSubscribers();
-      await fetchSmsLogs();
+      // Marketing/SMS data will be loaded only when Marketing tab is opened
       // SMS Balance check removed - user must click button to check
       await loadFaviconSettings();
       await loadOGImageUrl();
@@ -6297,6 +7194,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const handleLogout = async () => {
     try {
+      // Log admin logout before clearing state
+      if (currentAdminId) {
+        logger.action('Admin logged out', {
+          category: 'authentication',
+          userType: 'admin',
+          details: { 
+            name: currentAdminName || 'Unknown',
+            email: currentAdminEmail || 'Unknown',
+            adminId: currentAdminId 
+          }
+        });
+      }
+      
       // Call Vercel API route to clear JWT cookie
       // This will remove the httpOnly cookie containing the JWT token
       await apiFetch(API_ROUTES.ADMIN_LOGOUT, {
@@ -6307,6 +7217,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Clear any local state that might contain admin info
       setCurrentAdminRole(null);
       setCurrentAdminId(null);
+      setCurrentAdminName(null);
+      setCurrentAdminEmail(null);
       
       toast({
         title: language === 'en' ? "Logged Out" : "Déconnecté",
@@ -7282,7 +8194,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <span>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</span>
               </button>
               <button
-                onClick={() => setActiveTab("marketing")}
+                onClick={() => {
+                  setActiveTab("marketing");
+                  // Load marketing data only when Marketing tab is opened
+                  if (phoneSubscribers.length === 0) {
+                    fetchPhoneSubscribers();
+                  }
+                  if (smsLogs.length === 0) {
+                    fetchSmsLogs();
+                  }
+                }}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
                   activeTab === "marketing" 
                     ? "shadow-lg" 
@@ -12087,154 +13008,333 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       <CardHeader>
                         <div className="flex items-center justify-between">
                           <CardTitle>{language === 'en' ? 'COD Ambassador Orders' : 'Commandes COD Ambassadeur'}</CardTitle>
-                          <Button onClick={fetchAmbassadorSalesData} variant="outline" size="sm">
-                            <RefreshCw className="w-4 h-4 mr-2" />
-                            {language === 'en' ? 'Refresh' : 'Actualiser'}
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button onClick={exportOrdersToExcel} variant="outline" size="sm">
+                              <Download className="w-4 h-4 mr-2" />
+                              {language === 'en' ? 'Export Excel' : 'Exporter Excel'}
+                            </Button>
+                            <Button onClick={fetchAmbassadorSalesData} variant="outline" size="sm">
+                              <RefreshCw className="w-4 h-4 mr-2" />
+                              {language === 'en' ? 'Refresh' : 'Actualiser'}
+                            </Button>
+                          </div>
                         </div>
                       </CardHeader>
                       <CardContent>
+                        {/* Filters */}
+                        <div className="flex items-end gap-4 mb-4 pb-4 border-b">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+                          <div>
+                            <Label className="text-xs mb-2">{language === 'en' ? 'Status' : 'Statut'}</Label>
+                            <Select
+                              value={orderFilters.status || undefined}
+                              onValueChange={(value) => {
+                                setOrderFilters({ ...orderFilters, status: value });
+                              }}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder={language === 'en' ? 'All Statuses' : 'Tous les Statuts'} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="PENDING_CASH">{language === 'en' ? 'Pending Cash' : 'En Attente Espèces'}</SelectItem>
+                                <SelectItem value="PENDING_ADMIN_APPROVAL">{language === 'en' ? 'Pending Approval' : 'En Attente d\'Approbation'}</SelectItem>
+                                <SelectItem value="PAID">{language === 'en' ? 'Paid' : 'Payé'}</SelectItem>
+                                <SelectItem value="REJECTED">{language === 'en' ? 'Rejected' : 'Rejeté'}</SelectItem>
+                                <SelectItem value="CANCELLED">{language === 'en' ? 'Cancelled' : 'Annulé'}</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label className="text-xs mb-2">{language === 'en' ? 'Phone' : 'Téléphone'}</Label>
+                            <Input
+                              placeholder={language === 'en' ? 'Search by phone...' : 'Rechercher par téléphone...'}
+                              value={orderFilters.phone}
+                              onChange={(e) => setOrderFilters({ ...orderFilters, phone: e.target.value })}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs mb-2">{language === 'en' ? 'Ambassador' : 'Ambassadeur'}</Label>
+                            <Select
+                              value={orderFilters.ambassador || undefined}
+                              onValueChange={(value) => {
+                                setOrderFilters({ ...orderFilters, ambassador: value });
+                              }}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder={language === 'en' ? 'All Ambassadors' : 'Tous les Ambassadeurs'} />
+                              </SelectTrigger>
+                              <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
+                                {filterOptions.ambassadors.map((ambassador) => (
+                                  <SelectItem key={ambassador} value={ambassador}>
+                                    {ambassador}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setOrderFilters({
+                                status: '',
+                                phone: '',
+                                ambassador: '',
+                                city: '',
+                                ville: '',
+                              });
+                            }}
+                            className="h-8 text-xs"
+                          >
+                            <X className="w-4 h-4 mr-2" />
+                            {language === 'en' ? 'Clear All' : 'Tout Effacer'}
+                          </Button>
+                        </div>
                         {loadingOrders ? (
                           <div className="text-center py-8">
                             <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
                             <p className="text-muted-foreground">{language === 'en' ? 'Loading orders...' : 'Chargement des commandes...'}</p>
                           </div>
                         ) : (
-                          <Table>
-                            <TableHeader>
+                          <div className="overflow-x-auto">
+                            <Table className="text-xs">
+                              <TableHeader>
                               <TableRow>
-                                <TableHead>{language === 'en' ? 'Event' : 'Événement'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Pass' : 'Pass'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Client Name' : 'Nom du Client'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Client Phone' : 'Téléphone Client'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Client Email' : 'Email Client'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Ambassador' : 'Ambassadeur'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Created At' : 'Créé Le'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
+                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Pass Types' : 'Types de Pass'}</TableHead>
+                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Client Name' : 'Nom Client'}</TableHead>
+                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Phone' : 'Téléphone'}</TableHead>
+                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Email' : 'Email'}</TableHead>
+                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Total Price' : 'Prix Total'}</TableHead>
+                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Ambassador' : 'Ambassadeur'}</TableHead>
+                                <TableHead className="py-2 whitespace-nowrap text-center w-16">{language === 'en' ? 'Status' : 'Statut'}</TableHead>
+                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Created' : 'Créé'}</TableHead>
+                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {codAmbassadorOrders.length === 0 ? (
+                              {filteredCodOrders.length === 0 ? (
                                 <TableRow>
-                                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                                     {language === 'en' ? 'No COD ambassador orders found' : 'Aucune commande COD ambassadeur trouvée'}
                                   </TableCell>
                                 </TableRow>
                               ) : (
-                                codAmbassadorOrders
-                                  .filter(order => order.status === 'PENDING_ADMIN_APPROVAL' || order.status === 'APPROVED' || order.status === 'REJECTED')
-                                  .map((order) => (
-                                    <TableRow key={order.id}>
-                                      <TableCell>
-                                        {order.event ? (
-                                          <div>
-                                            <p className="font-medium">{order.event.name}</p>
-                                            {order.event.date && (
-                                              <p className="text-xs text-muted-foreground">
-                                                {new Date(order.event.date).toLocaleDateString()}
-                                              </p>
-                                            )}
-                                          </div>
-                                        ) : (
-                                          <span className="text-muted-foreground">N/A</span>
-                                        )}
-                                      </TableCell>
-                                      <TableCell>
-                                        {order.pass ? (
-                                          <div>
-                                            <p className="font-medium">{order.pass.name}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                              {typeof order.pass.price === 'number' ? order.pass.price : parseFloat(order.pass.price) || 0} TND
-                                            </p>
-                                          </div>
-                                        ) : (
-                                          <Badge variant="outline">{order.pass_type || 'N/A'}</Badge>
-                                        )}
-                                      </TableCell>
-                                      <TableCell>{order.quantity}</TableCell>
-                                      <TableCell>{order.user_name || 'N/A'}</TableCell>
-                                      <TableCell>{order.user_phone || 'N/A'}</TableCell>
-                                      <TableCell>{order.user_email || 'N/A'}</TableCell>
-                                      <TableCell>
-                                        {order.ambassador_name || (order.ambassador_id ? 'Unknown' : 'N/A')}
-                                      </TableCell>
-                                      <TableCell>
-                                        <Badge variant={
-                                          order.status === 'APPROVED' ? 'default' :
-                                          order.status === 'REJECTED' ? 'destructive' :
-                                          order.status === 'PENDING_ADMIN_APPROVAL' ? 'secondary' : 'outline'
-                                        }>
-                                          {order.status === 'PENDING_ADMIN_APPROVAL' 
-                                            ? (language === 'en' ? 'Pending Approval' : 'En Attente')
-                                            : order.status === 'APPROVED'
-                                            ? (language === 'en' ? 'Approved' : 'Approuvé')
-                                            : order.status === 'REJECTED'
-                                            ? (language === 'en' ? 'Rejected' : 'Rejeté')
-                                            : order.status
-                                          }
-                                        </Badge>
-                                      </TableCell>
-                                      <TableCell>
-                                        {new Date(order.created_at).toLocaleDateString()}
-                                        <br />
-                                        <span className="text-xs text-muted-foreground">
-                                          {new Date(order.created_at).toLocaleTimeString()}
-                                        </span>
-                                      </TableCell>
-                                      <TableCell>
-                                        <div className="flex gap-2">
-                                          {order.status === 'PENDING_ADMIN_APPROVAL' && (
-                                            <>
-                                              <Button
-                                                size="sm"
-                                                variant="default"
-                                                className="bg-green-600 hover:bg-green-700"
-                                                onClick={() => handleApproveCodAmbassadorOrder(order.id)}
-                                              >
-                                                <CheckCircle className="w-4 h-4 mr-1" />
-                                                {language === 'en' ? 'Approve' : 'Approuver'}
-                                              </Button>
-                                              <Button
-                                                size="sm"
-                                                variant="destructive"
-                                                onClick={() => {
-                                                  setRejectingOrderId(order.id);
-                                                  setIsRejectDialogOpen(true);
-                                                }}
-                                              >
-                                                <XCircle className="w-4 h-4 mr-1" />
-                                                {language === 'en' ? 'Reject' : 'Rejeter'}
-                                              </Button>
-                                            </>
+                                filteredCodOrders
+                                  .filter(order => 
+                                    // New unified status system
+                                    order.status === 'PENDING_CASH' || 
+                                    order.status === 'PAID' || 
+                                    order.status === 'CANCELLED' ||
+                                    // Legacy status values (for backward compatibility)
+                                    order.status === 'PENDING_ADMIN_APPROVAL' || 
+                                    order.status === 'APPROVED' || 
+                                    order.status === 'REJECTED'
+                                  )
+                                  .map((order) => {
+                                    // Get passes array (already enriched in fetchAmbassadorSalesData)
+                                    const passes = order.passes || [];
+                                    
+                                    // Status color indicator
+                                    const getStatusColor = () => {
+                                      if (order.status === 'PAID' || order.status === 'APPROVED') return 'bg-green-500';
+                                      if (order.status === 'CANCELLED' || order.status === 'REJECTED') return 'bg-red-500';
+                                      if (order.status === 'PENDING_CASH' || order.status === 'PENDING_ADMIN_APPROVAL') return 'bg-yellow-500';
+                                      return 'bg-gray-500';
+                                    };
+
+                                    // Mask email function
+                                    const maskEmail = (email: string) => {
+                                      if (!email || !email.includes('@')) return email;
+                                      const [localPart, domain] = email.split('@');
+                                      if (localPart.length <= 3) {
+                                        return `${localPart}***@${domain}`;
+                                      }
+                                      const visibleStart = localPart.substring(0, 3);
+                                      const visibleEnd = domain.substring(domain.length - 4);
+                                      return `${visibleStart}***@${visibleEnd}`;
+                                    };
+
+                                    // Copy email to clipboard
+                                    const handleCopyEmail = async (email: string) => {
+                                      try {
+                                        await navigator.clipboard.writeText(email);
+                                        toast({
+                                          title: language === 'en' ? 'Copied!' : 'Copié!',
+                                          description: language === 'en' ? 'Email copied to clipboard' : 'Email copié dans le presse-papiers',
+                                          duration: 2000,
+                                        });
+                                      } catch (err) {
+                                        console.error('Failed to copy email:', err);
+                                        toast({
+                                          title: language === 'en' ? 'Error' : 'Erreur',
+                                          description: language === 'en' ? 'Failed to copy email' : 'Échec de la copie de l\'email',
+                                          variant: 'destructive',
+                                        });
+                                      }
+                                    };
+                                    
+                                    return (
+                                      <TableRow key={order.id} className="text-xs">
+                                        <TableCell className="py-2 text-center">
+                                          {passes.length > 0 ? (
+                                            <div className="flex flex-col items-center gap-1">
+                                              {passes.map((p: any, idx: number) => (
+                                                <div key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-muted/30 text-xs">
+                                                  <span className="font-medium">{p.pass_type || p.passName}</span>
+                                                  <span className="text-muted-foreground">×{p.quantity}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <span className="text-xs">{order.pass_type || 'N/A'}</span>
                                           )}
-                                          {order.status === 'APPROVED' && (
-                                            <Badge variant="outline" className="border-green-500/30 text-green-300">
-                                              {language === 'en' ? 'Locked' : 'Verrouillé'}
-                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="py-2 text-center">{order.user_name || 'N/A'}</TableCell>
+                                        <TableCell className="py-2 text-center">{order.user_phone || 'N/A'}</TableCell>
+                                        <TableCell className="py-2 text-center text-xs">
+                                          {order.user_email ? (
+                                            <button
+                                              onClick={() => handleCopyEmail(order.user_email)}
+                                              className="hover:text-primary hover:underline cursor-pointer"
+                                              title={language === 'en' ? 'Click to copy email' : 'Cliquer pour copier l\'email'}
+                                            >
+                                              {maskEmail(order.user_email)}
+                                            </button>
+                                          ) : (
+                                            'N/A'
                                           )}
-                                          {order.status === 'REJECTED' && (
+                                        </TableCell>
+                                        <TableCell className="py-2 text-center text-xs font-semibold">
+                                          {order.total_price ? `${parseFloat(order.total_price).toFixed(2)} TND` : 'N/A'}
+                                        </TableCell>
+                                        <TableCell className="py-2 text-center whitespace-nowrap">
+                                          {order.ambassador_id ? (
+                                            <button
+                                              onClick={async () => {
+                                                const { data: ambassadorData } = await (supabase as any)
+                                                  .from('ambassadors')
+                                                  .select('*')
+                                                  .eq('id', order.ambassador_id)
+                                                  .single();
+                                                setSelectedOrderAmbassador(ambassadorData);
+                                                setIsAmbassadorInfoDialogOpen(true);
+                                              }}
+                                              className="text-primary hover:underline cursor-pointer text-xs"
+                                            >
+                                              {order.ambassador_name || 'Unknown'}
+                                            </button>
+                                          ) : (
+                                            <span className="text-muted-foreground text-xs">N/A</span>
+                                          )}
+                                        </TableCell>
+                                        <TableCell className="py-2 text-center">
+                                          <div className="flex justify-center">
                                             <TooltipProvider>
                                               <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                  <Info className="w-4 h-4 text-muted-foreground cursor-help" />
+                                                  <div className={`w-3 h-3 rounded-full cursor-help ${getStatusColor()}`} />
                                                 </TooltipTrigger>
                                                 <TooltipContent>
-                                                  <p className="max-w-xs">
-                                                    {language === 'en' ? 'Reason' : 'Raison'}: {order.rejection_reason || 'N/A'}
+                                                  <p className="text-xs">
+                                                    {order.status === 'PENDING_CASH'
+                                                      ? (language === 'en' ? 'Pending Cash' : 'En Attente Espèces')
+                                                      : order.status === 'PAID'
+                                                      ? (language === 'en' ? 'Paid' : 'Payé')
+                                                      : order.status === 'CANCELLED'
+                                                      ? (language === 'en' ? 'Cancelled' : 'Annulé')
+                                                      : order.status === 'PENDING_ADMIN_APPROVAL' 
+                                                      ? (language === 'en' ? 'Pending Approval' : 'En Attente')
+                                                      : order.status === 'APPROVED'
+                                                      ? (language === 'en' ? 'Approved' : 'Approuvé')
+                                                      : order.status === 'REJECTED'
+                                                      ? (language === 'en' ? 'Rejected' : 'Rejeté')
+                                                      : order.status
+                                                    }
                                                   </p>
                                                 </TooltipContent>
                                               </Tooltip>
                                             </TooltipProvider>
-                                          )}
-                                        </div>
-                                      </TableCell>
-                                    </TableRow>
-                                  ))
+                                          </div>
+                                        </TableCell>
+                                        <TableCell className="py-2 text-center whitespace-nowrap text-xs">
+                                          {new Date(order.created_at).toLocaleDateString(language)}
+                                        </TableCell>
+                                        <TableCell className="py-2 text-center">
+                                          <div className="flex gap-1 justify-center flex-wrap">
+                                            {order.status === 'PENDING_ADMIN_APPROVAL' && (
+                                              <>
+                                                <Button
+                                                  size="sm"
+                                                  variant="default"
+                                                  className="bg-green-600 hover:bg-green-700 text-xs px-2 py-1 h-auto"
+                                                  onClick={() => handleApproveCodAmbassadorOrder(order.id)}
+                                                >
+                                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                                  {language === 'en' ? 'Approve' : 'Approuver'}
+                                                </Button>
+                                                <Button
+                                                  size="sm"
+                                                  variant="destructive"
+                                                  className="text-xs px-2 py-1 h-auto"
+                                                  onClick={() => {
+                                                    setRejectingOrderId(order.id);
+                                                    setIsRejectDialogOpen(true);
+                                                  }}
+                                                >
+                                                  <XCircle className="w-3 h-3 mr-1" />
+                                                  {language === 'en' ? 'Reject' : 'Rejeter'}
+                                                </Button>
+                                              </>
+                                            )}
+                                            {order.status === 'PENDING_CASH' && (
+                                              <Badge variant="outline" className="border-yellow-500/30 text-yellow-300 text-xs">
+                                                {language === 'en' ? 'Waiting for Ambassador' : 'En Attente de l\'Ambassadeur'}
+                                              </Badge>
+                                            )}
+                                            {(order.status === 'PAID' || order.status === 'APPROVED') && (
+                                              <Badge variant="outline" className="border-green-500/30 text-green-300 text-xs">
+                                                {language === 'en' ? 'Paid' : 'Payé'}
+                                              </Badge>
+                                            )}
+                                            {order.status === 'REJECTED' && (
+                                              <TooltipProvider>
+                                                <Tooltip>
+                                                  <TooltipTrigger asChild>
+                                                    <Info className="w-4 h-4 text-muted-foreground cursor-help" />
+                                                  </TooltipTrigger>
+                                                  <TooltipContent>
+                                                    <p className="max-w-xs text-xs">
+                                                      {language === 'en' ? 'Reason' : 'Raison'}: {order.rejection_reason || 'N/A'}
+                                                    </p>
+                                                  </TooltipContent>
+                                                </Tooltip>
+                                              </TooltipProvider>
+                                            )}
+                                            {order.status === 'CANCELLED' && order.cancellation_reason && (
+                                              <TooltipProvider>
+                                                <Tooltip>
+                                                  <TooltipTrigger asChild>
+                                                    <Info className="w-4 h-4 text-red-400/70 cursor-help hover:text-red-400 transition-colors" />
+                                                  </TooltipTrigger>
+                                                  <TooltipContent>
+                                                    <p className="max-w-xs text-xs">
+                                                      {order.cancellation_reason}
+                                                    </p>
+                                                  </TooltipContent>
+                                                </Tooltip>
+                                              </TooltipProvider>
+                                            )}
+                                          </div>
+                                        </TableCell>
+                                      </TableRow>
+                                    );
+                                  })
                               )}
                             </TableBody>
                           </Table>
+                          </div>
                         )}
                       </CardContent>
                     </Card>
@@ -12414,7 +13514,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </Card>
                   </div>
 
-                  {/* Test SMS Card */}
+                  {/* Test SMS Card with Tabs */}
                   <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200">
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
@@ -12424,104 +13524,241 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {language === 'en' 
-                            ? 'Send a test SMS to verify the API'
-                            : 'Envoyer un SMS test pour vérifier l\'API'}
+                            ? 'Test SMS functionality for different modes'
+                            : 'Tester la fonctionnalité SMS pour différents modes'}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="testPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'} *</Label>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-muted-foreground font-heading">+216</span>
-                            <Input
-                              id="testPhone"
-                              type="text"
-                              value={testPhoneNumber}
-                              onChange={(e) => setTestPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                              placeholder="21234567"
-                              className="flex-1 font-heading"
-                              maxLength={8}
-                            />
-                          </div>
-                          <p className="text-xs text-muted-foreground font-heading">
-                            {language === 'en' ? 'Enter 8 digits (e.g., 21234567)' : 'Entrez 8 chiffres (ex: 21234567)'}
-                          </p>
-                        </div>
+                        {/* Test Mode Tabs */}
+                        <Tabs value={testMode} onValueChange={(value) => setTestMode(value as 'specific' | 'broadcast' | 'targeted')}>
+                          <TabsList className="grid w-full grid-cols-3">
+                            <TabsTrigger value="specific" className="text-xs">
+                              {language === 'en' ? 'Specific' : 'Spécifique'}
+                            </TabsTrigger>
+                            <TabsTrigger value="broadcast" className="text-xs">
+                              {language === 'en' ? 'Broadcast' : 'Diffusion'}
+                            </TabsTrigger>
+                            <TabsTrigger value="targeted" className="text-xs">
+                              {language === 'en' ? 'Targeted' : 'Ciblé'}
+                            </TabsTrigger>
+                          </TabsList>
+
+                          {/* Specific Number Test */}
+                          <TabsContent value="specific" className="space-y-4 mt-4">
                             <div className="space-y-2">
-                          <Label htmlFor="testMessage">{language === 'en' ? 'Test Message' : 'Message Test'} *</Label>
+                              <Label htmlFor="testPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'} *</Label>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground font-heading">+216</span>
+                                <Input
+                                  id="testPhone"
+                                  type="text"
+                                  value={testPhoneNumber}
+                                  onChange={(e) => setTestPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                                  placeholder="21234567"
+                                  className="flex-1 font-heading"
+                                  maxLength={8}
+                                />
+                              </div>
+                              <p className="text-xs text-muted-foreground font-heading">
+                                {language === 'en' ? 'Enter 8 digits (e.g., 21234567)' : 'Entrez 8 chiffres (ex: 21234567)'}
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="testMessage">{language === 'en' ? 'Test Message' : 'Message Test'} *</Label>
                               <Textarea
-                            id="testMessage"
-                            value={testSmsMessage}
-                            onChange={(e) => setTestSmsMessage(e.target.value)}
-                                placeholder={language === 'en' 
-                              ? 'Enter your test message here...'
-                              : 'Entrez votre message test ici...'}
-                            className="min-h-[100px] text-sm bg-background text-foreground font-heading"
-                          />
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{language === 'en' ? 'Characters' : 'Caractères'}: {testSmsMessage.length}</span>
-                            <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(testSmsMessage.length / 160)}</span>
-                          </div>
-                        </div>
-                                <Button
-                          onClick={handleSendTestSms}
-                          disabled={sendingTestSms || !testPhoneNumber.trim() || !testSmsMessage.trim()}
-                          className="w-full font-heading btn-gradient"
-                          size="lg"
-                        >
-                          {sendingTestSms ? (
-                            <>
-                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                              {language === 'en' ? 'Sending...' : 'Envoi...'}
-                                    </>
-                                  ) : (
-                                    <>
-                              <Send className="w-5 h-5 mr-2" />
-                              {language === 'en' ? 'Send Test SMS' : 'Envoyer SMS Test'}
-                                    </>
-                                  )}
-                                </Button>
+                                id="testMessage"
+                                value={testSmsMessage}
+                                onChange={(e) => setTestSmsMessage(e.target.value)}
+                                placeholder=""
+                                className="min-h-[100px] text-sm bg-background text-foreground font-heading"
+                              />
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>{language === 'en' ? 'Characters' : 'Caractères'}: {testSmsMessage.length}</span>
+                                <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(testSmsMessage.length / 160)}</span>
+                              </div>
+                            </div>
+                            <Button
+                              onClick={handleSendTestSms}
+                              disabled={sendingTestSms || !testPhoneNumber.trim() || !testSmsMessage.trim()}
+                              className="w-full font-heading btn-gradient"
+                              size="lg"
+                            >
+                              {sendingTestSms ? (
+                                <>
+                                  <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                                  {language === 'en' ? 'Sending...' : 'Envoi...'}
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-5 h-5 mr-2" />
+                                  {language === 'en' ? 'Send Test SMS' : 'Envoyer SMS Test'}
+                                </>
+                              )}
+                            </Button>
+                          </TabsContent>
+
+                          {/* Broadcast Mode Test */}
+                          <TabsContent value="broadcast" className="space-y-4 mt-4">
+                            <div className="p-3 bg-muted/30 rounded-lg border border-border">
+                              <div className="text-sm font-semibold text-foreground mb-1">
+                                {language === 'en' ? 'Test Number' : 'Numéro Test'}
+                              </div>
+                              <div className="text-lg font-bold text-primary">
+                                27169458
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {language === 'en' 
+                                  ? 'This test will send SMS to the test number in phone_subscribers table'
+                                  : 'Ce test enverra un SMS au numéro test dans la table phone_subscribers'}
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="testMessageBroadcast">{language === 'en' ? 'Test Message' : 'Message Test'} *</Label>
+                              <Textarea
+                                id="testMessageBroadcast"
+                                value={testSmsMessage}
+                                onChange={(e) => setTestSmsMessage(e.target.value)}
+                                placeholder=""
+                                className="min-h-[100px] text-sm bg-background text-foreground font-heading"
+                              />
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>{language === 'en' ? 'Characters' : 'Caractères'}: {testSmsMessage.length}</span>
+                                <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(testSmsMessage.length / 160)}</span>
+                              </div>
+                            </div>
+                            <Button
+                              onClick={handleSendTestSms}
+                              disabled={sendingTestSms || !testSmsMessage.trim()}
+                              className="w-full font-heading btn-gradient"
+                              size="lg"
+                            >
+                              {sendingTestSms ? (
+                                <>
+                                  <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                                  {language === 'en' ? 'Sending...' : 'Envoi...'}
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-5 h-5 mr-2" />
+                                  {language === 'en' ? 'Test Broadcast Mode' : 'Tester Mode Diffusion'}
+                                </>
+                              )}
+                            </Button>
+                          </TabsContent>
+
+                          {/* Targeted Mode Test */}
+                          <TabsContent value="targeted" className="space-y-4 mt-4">
+                            <div className="space-y-2">
+                              <Label>{language === 'en' ? 'Select City' : 'Sélectionner une Ville'} *</Label>
+                              <Select
+                                value={testTargetedCity || undefined}
+                                onValueChange={setTestTargetedCity}
+                              >
+                                <SelectTrigger className="h-10">
+                                  <SelectValue placeholder={language === 'en' ? 'Select a city...' : 'Sélectionner une ville...'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {CITIES.map((city) => (
+                                    <SelectItem key={city} value={city}>
+                                      {city}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <p className="text-xs text-muted-foreground">
+                                {language === 'en' 
+                                  ? 'Test will send to first number found in ambassador applications for this city'
+                                  : 'Le test enverra au premier numéro trouvé dans les candidatures d\'ambassadeurs pour cette ville'}
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="testMessageTargeted">{language === 'en' ? 'Test Message' : 'Message Test'} *</Label>
+                              <Textarea
+                                id="testMessageTargeted"
+                                value={testSmsMessage}
+                                onChange={(e) => setTestSmsMessage(e.target.value)}
+                                placeholder=""
+                                className="min-h-[100px] text-sm bg-background text-foreground font-heading"
+                              />
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>{language === 'en' ? 'Characters' : 'Caractères'}: {testSmsMessage.length}</span>
+                                <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(testSmsMessage.length / 160)}</span>
+                              </div>
+                            </div>
+                            <Button
+                              onClick={handleSendTestSms}
+                              disabled={sendingTestSms || !testSmsMessage.trim() || !testTargetedCity}
+                              className="w-full font-heading btn-gradient"
+                              size="lg"
+                            >
+                              {sendingTestSms ? (
+                                <>
+                                  <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                                  {language === 'en' ? 'Sending...' : 'Envoi...'}
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-5 h-5 mr-2" />
+                                  {language === 'en' ? 'Test Targeted Mode' : 'Tester Mode Ciblé'}
+                                </>
+                              )}
+                            </Button>
+                          </TabsContent>
+                        </Tabs>
                       </CardContent>
                     </Card>
                   </div>
 
-                  {/* SMS Broadcast Card */}
-                <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400">
+                  {/* Broadcast Mode Card - Popup Subscribers Only */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400">
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
                           <Send className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'SMS Broadcast' : 'Diffusion SMS'}
+                          {language === 'en' ? 'Broadcast Mode' : 'Mode Diffusion'}
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {language === 'en' 
-                            ? `Send message to all subscribers`
-                            : `Envoyer un message à tous les abonnés`}
+                            ? `Send message to all popup subscribers`
+                            : `Envoyer un message à tous les abonnés popup`}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
+                        {/* Subscriber Count */}
+                        <div className="p-3 bg-muted/30 rounded-lg border border-border">
+                          <div className="text-sm font-semibold text-foreground mb-1">
+                            {language === 'en' ? 'Subscribers Count' : 'Nombre d\'Abonnés'}
+                          </div>
+                          <div className="text-2xl font-bold text-primary">
+                            {phoneSubscribers.length}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {language === 'en' 
+                              ? 'This message will be sent to all popup subscribers'
+                              : 'Ce message sera envoyé à tous les abonnés popup'}
+                          </div>
+                        </div>
+                        
                         <div className="space-y-2">
                           <Label>{language === 'en' ? 'Message' : 'Message'} *</Label>
                           <Textarea
-                            value={smsMessage}
-                            onChange={(e) => setSmsMessage(e.target.value)}
-                            placeholder={language === 'en' 
-                              ? 'Enter your SMS message here...\n\nExample:\nIcy spicy with andiamo events\nle 21 décembre au Queen kantaoui\ncheck your email (or Spam) and your Qr code bch tnjmou todkhlou bih ll event\nNestnwkom.'
-                              : 'Entrez votre message SMS ici...\n\nExemple:\nIcy spicy with andiamo events\nle 21 décembre au Queen kantaoui\ncheck your email (or Spam) and your Qr code bch tnjmou todkhlou bih ll event\nNestnwkom.'}
+                            value={broadcastMessage}
+                            onChange={(e) => setBroadcastMessage(e.target.value)}
+                            placeholder=""
                             className="min-h-[200px] text-sm bg-background text-foreground"
                           />
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{language === 'en' ? 'Characters' : 'Caractères'}: {smsMessage.length}</span>
-                            <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(smsMessage.length / 160)}</span>
+                            <span>{language === 'en' ? 'Characters' : 'Caractères'}: {broadcastMessage.length}</span>
+                            <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(broadcastMessage.length / 160)}</span>
                           </div>
                         </div>
                         <Button
-                          onClick={handleSendSmsBroadcast}
-                          disabled={sendingSms || !smsMessage.trim() || phoneSubscribers.length === 0}
+                          onClick={handleSendBroadcast}
+                          disabled={sendingBroadcast || !broadcastMessage.trim() || phoneSubscribers.length === 0}
                           className="w-full btn-gradient"
                           size="lg"
                         >
-                          {sendingSms ? (
+                          {sendingBroadcast ? (
                             <>
                               <RefreshCw className="w-5 h-5 animate-spin mr-2" />
                               {language === 'en' ? 'Sending SMS...' : 'Envoi SMS...'}
@@ -12530,8 +13767,112 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             <>
                               <Send className="w-5 h-5 mr-2" />
                               {language === 'en' 
-                                ? `Send SMS to All Subscribers`
-                                : `Envoyer SMS à Tous les Abonnés`}
+                                ? `Send to ${phoneSubscribers.length} Subscribers`
+                                : `Envoyer à ${phoneSubscribers.length} Abonnés`}
+                            </>
+                          )}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Targeted Mode Card - Ambassador Applications by City */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Target className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'Targeted Mode' : 'Mode Ciblé'}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">
+                          {language === 'en' 
+                            ? `Send message to ambassador applications by city`
+                            : `Envoyer un message aux candidatures d'ambassadeurs par ville`}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        {/* City Selector */}
+                        <div className="space-y-2">
+                          <Label>{language === 'en' ? 'Select City' : 'Sélectionner une Ville'} *</Label>
+                          <Select
+                            value={targetedCity || undefined}
+                            onValueChange={handleTargetedCityChange}
+                          >
+                            <SelectTrigger className="h-10">
+                              <SelectValue placeholder={language === 'en' ? 'Select a city...' : 'Sélectionner une ville...'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CITIES.map((city) => (
+                                <SelectItem key={city} value={city}>
+                                  {city}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Count Display */}
+                        {targetedCity && (
+                          <div className="p-3 bg-muted/30 rounded-lg border border-border">
+                            {loadingTargetedCount ? (
+                              <div className="flex items-center gap-2">
+                                <RefreshCw className="w-4 h-4 animate-spin text-primary" />
+                                <span className="text-sm text-muted-foreground">
+                                  {language === 'en' ? 'Loading count...' : 'Chargement du nombre...'}
+                                </span>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="text-sm font-semibold text-foreground mb-1">
+                                  {language === 'en' ? 'Phone Numbers Count' : 'Nombre de Numéros'}
+                                </div>
+                                <div className="text-2xl font-bold text-primary">
+                                  {targetedCount}
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {language === 'en' 
+                                    ? `This message will be sent to ${targetedCount} numbers in ${targetedCity}`
+                                    : `Ce message sera envoyé à ${targetedCount} numéros à ${targetedCity}`}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                        
+                        <div className="space-y-2">
+                          <Label>{language === 'en' ? 'Message' : 'Message'} *</Label>
+                          <Textarea
+                            value={targetedMessage}
+                            onChange={(e) => setTargetedMessage(e.target.value)}
+                            placeholder=""
+                            className="min-h-[200px] text-sm bg-background text-foreground"
+                          />
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>{language === 'en' ? 'Characters' : 'Caractères'}: {targetedMessage.length}</span>
+                            <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(targetedMessage.length / 160)}</span>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={handleSendTargeted}
+                          disabled={sendingTargeted || !targetedMessage.trim() || !targetedCity || targetedCount === 0 || loadingTargetedCount}
+                          className="w-full btn-gradient"
+                          size="lg"
+                        >
+                          {sendingTargeted ? (
+                            <>
+                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                              {language === 'en' ? 'Sending SMS...' : 'Envoi SMS...'}
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-5 h-5 mr-2" />
+                              {language === 'en' 
+                                ? targetedCity && targetedCount > 0
+                                  ? `Send to ${targetedCount} Numbers in ${targetedCity}`
+                                  : 'Select City to Send'
+                                : targetedCity && targetedCount > 0
+                                  ? `Envoyer à ${targetedCount} Numéros à ${targetedCity}`
+                                  : 'Sélectionner une Ville'}
                             </>
                           )}
                         </Button>
@@ -12575,65 +13916,161 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 <p>{language === 'en' ? 'No SMS logs yet' : 'Aucun journal SMS pour le moment'}</p>
                               </div>
                             ) : (
-                              <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">
+                              <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar">
                                 {smsLogs.map((log) => {
                                   const logWithApiResponse = log as typeof log & { api_response?: any };
+                                  
+                                  // Parse API response to check actual status
+                                  let apiResponseParsed: any = null;
+                                  let actualStatus = log.status;
+                                  let apiMessage = '';
+                                  
+                                  if (logWithApiResponse.api_response) {
+                                    try {
+                                      apiResponseParsed = typeof logWithApiResponse.api_response === 'string' 
+                                        ? JSON.parse(logWithApiResponse.api_response)
+                                        : logWithApiResponse.api_response;
+                                      
+                                      // Check if API says success but log says failed (fix incorrect status)
+                                      if (apiResponseParsed.code === 'ok' || 
+                                          apiResponseParsed.code === '200' ||
+                                          (apiResponseParsed.message && apiResponseParsed.message.toLowerCase().includes('successfully'))) {
+                                        actualStatus = 'sent';
+                                        apiMessage = apiResponseParsed.message || 'Successfully sent';
+                                      }
+                                    } catch (e) {
+                                      // Keep original status if parsing fails
+                                    }
+                                  }
+                                  
+                                  const isSuccess = actualStatus === 'sent';
+                                  
                                   return (
                                   <div
                                     key={log.id}
-                                    className={`p-4 rounded-lg border transition-all duration-300 ${
-                                      log.status === 'sent'
-                                        ? 'bg-green-500/10 border-green-500/30'
+                                    className={`p-4 rounded-lg border transition-all duration-300 hover:shadow-md ${
+                                      isSuccess
+                                        ? 'bg-green-500/10 border-green-500/30 hover:border-green-500/50'
                                         : log.status === 'failed'
-                                        ? 'bg-red-500/10 border-red-500/30'
-                                        : 'bg-yellow-500/10 border-yellow-500/30'
+                                        ? 'bg-red-500/10 border-red-500/30 hover:border-red-500/50'
+                                        : 'bg-yellow-500/10 border-yellow-500/30 hover:border-yellow-500/50'
                                     }`}
                                   >
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-2">
+                                    <div className="flex items-start gap-3">
+                                      {/* Status Icon */}
+                                      <div className={`mt-0.5 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                                        isSuccess 
+                                          ? 'bg-green-500/20' 
+                                          : log.status === 'failed'
+                                          ? 'bg-red-500/20'
+                                          : 'bg-yellow-500/20'
+                                      }`}>
+                                        {isSuccess ? (
+                                          <CheckCircle className="w-5 h-5 text-green-500" />
+                                        ) : log.status === 'failed' ? (
+                                          <XCircle className="w-5 h-5 text-red-500" />
+                                        ) : (
+                                          <Clock className="w-5 h-5 text-yellow-500" />
+                                        )}
+                                      </div>
+                                      
+                                      <div className="flex-1 min-w-0">
+                                        {/* Header with Status and Phone */}
+                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                                           <Badge
-                                            variant={
-                                              log.status === 'sent'
-                                                ? 'default'
+                                            variant={isSuccess ? 'default' : log.status === 'failed' ? 'destructive' : 'secondary'}
+                                            className={
+                                              isSuccess
+                                                ? 'bg-green-500/20 text-green-300 border-green-500/30'
                                                 : log.status === 'failed'
-                                                ? 'destructive'
-                                                : 'secondary'
+                                                ? 'bg-red-500/20 text-red-300 border-red-500/30'
+                                                : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
                                             }
                                           >
-                                            {log.status === 'sent'
+                                            {isSuccess
                                               ? (language === 'en' ? 'Sent' : 'Envoyé')
                                               : log.status === 'failed'
                                               ? (language === 'en' ? 'Failed' : 'Échoué')
                                               : (language === 'en' ? 'Pending' : 'En Attente')}
                                           </Badge>
-                                          <span className="text-sm font-medium">+216 {log.phone_number}</span>
+                                          <div className="flex items-center gap-1.5 text-sm font-medium">
+                                            <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                                            <span className="font-mono">+216 {log.phone_number}</span>
+                                          </div>
                                         </div>
-                                        <p className="text-sm text-foreground/80 mb-2 line-clamp-2">
-                                          {log.message}
-                                        </p>
-                                        {log.error_message && (
-                                          <div className="mt-2 p-2 bg-red-500/20 rounded text-xs text-red-400">
-                                            <strong>{language === 'en' ? 'Error' : 'Erreur'}:</strong> {log.error_message}
+                                        
+                                        {/* Message */}
+                                        <div className="mb-3">
+                                          <p className="text-sm text-foreground/90 leading-relaxed">
+                                            {log.message}
+                                          </p>
+                                        </div>
+                                        
+                                        {/* Success Message (if API says success) */}
+                                        {isSuccess && apiMessage && (
+                                          <div className="mb-2 p-2 bg-green-500/20 rounded-md border border-green-500/30">
+                                            <div className="flex items-center gap-1.5 text-xs text-green-300">
+                                              <CheckCircle className="w-3.5 h-3.5" />
+                                              <span className="font-medium">{apiMessage}</span>
+                                            </div>
                                           </div>
                                         )}
+                                        
+                                        {/* Error Message */}
+                                        {log.error_message && !isSuccess && (
+                                          <div className="mb-2 p-2 bg-red-500/20 rounded-md border border-red-500/30">
+                                            <div className="flex items-start gap-1.5">
+                                              <XCircle className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
+                                              <div className="text-xs text-red-300">
+                                                <span className="font-medium">{language === 'en' ? 'Error' : 'Erreur'}: </span>
+                                                <span>{log.error_message}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                        
+                                        {/* API Response Details */}
                                         {logWithApiResponse.api_response && (
-                                          <details className="mt-2">
-                                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                                              {language === 'en' ? 'View API Response' : 'Voir Réponse API'}
+                                          <details className="mt-2 group">
+                                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors flex items-center gap-1.5 list-none">
+                                              <FileText className="w-3.5 h-3.5" />
+                                              <span>{language === 'en' ? 'View API Response' : 'Voir Réponse API'}</span>
+                                              <span className="ml-auto text-muted-foreground/50 group-open:hidden">▼</span>
+                                              <span className="ml-auto text-muted-foreground/50 hidden group-open:inline">▲</span>
                                             </summary>
-                                            <pre className="mt-1 p-2 bg-muted/50 rounded text-xs overflow-auto max-h-32">
-                                              {typeof logWithApiResponse.api_response === 'string' 
-                                                ? logWithApiResponse.api_response 
-                                                : JSON.stringify(logWithApiResponse.api_response, null, 2)}
-                                            </pre>
+                                            <div className="mt-2 p-3 bg-muted/50 rounded-md border border-border">
+                                              <pre className="text-xs font-mono text-foreground/80 overflow-auto max-h-40 whitespace-pre-wrap break-words">
+                                                {typeof logWithApiResponse.api_response === 'string' 
+                                                  ? logWithApiResponse.api_response 
+                                                  : JSON.stringify(logWithApiResponse.api_response, null, 2)}
+                                              </pre>
+                                            </div>
                                           </details>
                                         )}
-                                        <p className="text-xs text-muted-foreground mt-2">
-                                          {log.sent_at
-                                            ? new Date(log.sent_at).toLocaleString()
-                                            : new Date(log.created_at).toLocaleString()}
-                                        </p>
+                                        
+                                        {/* Timestamp */}
+                                        <div className="flex items-center gap-1.5 mt-3 text-xs text-muted-foreground">
+                                          <Clock className="w-3.5 h-3.5" />
+                                          <span>
+                                            {log.sent_at
+                                              ? new Date(log.sent_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
+                                                  year: 'numeric',
+                                                  month: 'short',
+                                                  day: 'numeric',
+                                                  hour: '2-digit',
+                                                  minute: '2-digit',
+                                                  second: '2-digit'
+                                                })
+                                              : new Date(log.created_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
+                                                  year: 'numeric',
+                                                  month: 'short',
+                                                  day: 'numeric',
+                                                  hour: '2-digit',
+                                                  minute: '2-digit',
+                                                  second: '2-digit'
+                                                })}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -14002,39 +15439,165 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <FileText className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Order Logs' : 'Journaux de Commande'}
+                    {language === 'en' ? 'Order Activity Log' : 'Journal d\'Activité de la Commande'}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="max-h-48 overflow-y-auto">
+                  <div className="max-h-96 overflow-y-auto">
                     {orderLogs.filter((log: any) => log.order_id === selectedOrder.id).length > 0 ? (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{language === 'en' ? 'Action' : 'Action'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Performed By' : 'Effectué Par'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Timestamp' : 'Horodatage'}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {orderLogs.filter((log: any) => log.order_id === selectedOrder.id).map((log: any) => (
-                            <TableRow key={log.id}>
-                              <TableCell><Badge variant="outline">{log.action}</Badge></TableCell>
-                              <TableCell className="text-sm">{log.performed_by_type || 'N/A'}</TableCell>
-                              <TableCell className="text-sm">{new Date(log.created_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                      <div className="space-y-3">
+                        {orderLogs
+                          .filter((log: any) => log.order_id === selectedOrder.id)
+                          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                          .map((log: any, index: number) => {
+                            const getActionIcon = () => {
+                              switch (log.action) {
+                                case 'approved':
+                                  return <CheckCircle className="w-4 h-4 text-green-500" />;
+                                case 'rejected':
+                                  return <XCircle className="w-4 h-4 text-red-500" />;
+                                case 'cancelled':
+                                  return <XCircle className="w-4 h-4 text-orange-500" />;
+                                case 'status_changed':
+                                  return <RefreshCw className="w-4 h-4 text-blue-500" />;
+                                case 'created':
+                                  return <Plus className="w-4 h-4 text-purple-500" />;
+                                default:
+                                  return <Clock className="w-4 h-4 text-muted-foreground" />;
+                              }
+                            };
+
+                            const getActionBadge = () => {
+                              const actionMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+                                'approved': { label: language === 'en' ? 'Approved' : 'Approuvé', variant: 'default' },
+                                'rejected': { label: language === 'en' ? 'Rejected' : 'Rejeté', variant: 'destructive' },
+                                'cancelled': { label: language === 'en' ? 'Cancelled' : 'Annulé', variant: 'destructive' },
+                                'status_changed': { label: language === 'en' ? 'Status Changed' : 'Statut Modifié', variant: 'secondary' },
+                                'created': { label: language === 'en' ? 'Created' : 'Créé', variant: 'outline' },
+                              };
+                              const actionInfo = actionMap[log.action] || { label: log.action, variant: 'outline' as const };
+                              return (
+                                <Badge 
+                                  variant={actionInfo.variant}
+                                  className={actionInfo.variant === 'default' ? 'bg-green-500/20 text-green-300 border-green-500/30' : ''}
+                                >
+                                  {actionInfo.label}
+                                </Badge>
+                              );
+                            };
+
+                            const getPerformedByBadge = () => {
+                              const typeMap: Record<string, { label: string; color: string }> = {
+                                'admin': { label: language === 'en' ? 'Admin' : 'Admin', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
+                                'ambassador': { label: language === 'en' ? 'Ambassador' : 'Ambassadeur', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
+                                'system': { label: language === 'en' ? 'System' : 'Système', color: 'bg-gray-500/20 text-gray-300 border-gray-500/30' },
+                              };
+                              const typeInfo = typeMap[log.performed_by_type] || { label: log.performed_by_type || 'N/A', color: 'bg-muted text-muted-foreground border-border' };
+                              return (
+                                <Badge variant="outline" className={typeInfo.color}>
+                                  {typeInfo.label}
+                                </Badge>
+                              );
+                            };
+
+                            const formatTimestamp = (timestamp: string) => {
+                              const date = new Date(timestamp);
+                              const now = new Date();
+                              const diffMs = now.getTime() - date.getTime();
+                              const diffMins = Math.floor(diffMs / 60000);
+                              const diffHours = Math.floor(diffMs / 3600000);
+                              const diffDays = Math.floor(diffMs / 86400000);
+
+                              if (diffMins < 1) return language === 'en' ? 'Just now' : 'À l\'instant';
+                              if (diffMins < 60) return `${diffMins} ${language === 'en' ? 'min ago' : 'min'}`;
+                              if (diffHours < 24) return `${diffHours} ${language === 'en' ? 'hours ago' : 'heures'}`;
+                              if (diffDays < 7) return `${diffDays} ${language === 'en' ? 'days ago' : 'jours'}`;
+                              return date.toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              });
+                            };
+
+                            return (
+                              <div 
+                                key={log.id} 
+                                className="flex items-start gap-3 p-3 rounded-lg border border-border bg-background/50 hover:bg-muted/50 transition-colors"
+                              >
+                                <div className="mt-0.5">
+                                  {getActionIcon()}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                                    {getActionBadge()}
+                                    {getPerformedByBadge()}
+                                  </div>
+                                  {log.details && typeof log.details === 'object' && (
+                                    <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                                      {log.details.old_status && log.details.new_status && (
+                                        <p>
+                                          {language === 'en' ? 'Status' : 'Statut'}: 
+                                          <span className="ml-1 font-medium">{log.details.old_status}</span>
+                                          <span className="mx-1">→</span>
+                                          <span className="font-medium">{log.details.new_status}</span>
+                                        </p>
+                                      )}
+                                      {log.details.reason && (
+                                        <p className="italic">
+                                          {language === 'en' ? 'Reason' : 'Raison'}: {log.details.reason}
+                                        </p>
+                                      )}
+                                      {log.details.email_sent !== undefined && (
+                                        <p>
+                                          {language === 'en' ? 'Email' : 'Email'}: 
+                                          <span className={`ml-1 ${log.details.email_sent ? 'text-green-500' : 'text-red-500'}`}>
+                                            {log.details.email_sent ? (language === 'en' ? 'Sent' : 'Envoyé') : (language === 'en' ? 'Failed' : 'Échoué')}
+                                          </span>
+                                        </p>
+                                      )}
+                                      {log.details.sms_sent !== undefined && (
+                                        <p>
+                                          {language === 'en' ? 'SMS' : 'SMS'}: 
+                                          <span className={`ml-1 ${log.details.sms_sent ? 'text-green-500' : 'text-red-500'}`}>
+                                            {log.details.sms_sent ? (language === 'en' ? 'Sent' : 'Envoyé') : (language === 'en' ? 'Failed' : 'Échoué')}
+                                          </span>
+                                        </p>
+                                      )}
+                                      {log.details.tickets_generated !== undefined && (
+                                        <p>
+                                          {language === 'en' ? 'Tickets' : 'Billets'}: 
+                                          <span className={`ml-1 ${log.details.tickets_generated ? 'text-green-500' : 'text-red-500'}`}>
+                                            {log.details.tickets_generated ? (language === 'en' ? 'Generated' : 'Générés') : (language === 'en' ? 'Failed' : 'Échoué')}
+                                          </span>
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                                    <Clock className="w-3 h-3" />
+                                    <span>{formatTimestamp(log.created_at)}</span>
+                                    <span className="text-muted-foreground/50">•</span>
+                                    <span>{new Date(log.created_at).toLocaleTimeString(language === 'en' ? 'en-US' : 'fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground text-center py-4">{language === 'en' ? 'No logs found for this order' : 'Aucun journal trouvé pour cette commande'}</p>
+                      <div className="text-center py-8">
+                        <FileText className="w-12 h-12 text-muted-foreground/50 mx-auto mb-3" />
+                        <p className="text-sm text-muted-foreground">{language === 'en' ? 'No activity logs found for this order' : 'Aucun journal d\'activité trouvé pour cette commande'}</p>
+                      </div>
                     )}
                   </div>
                 </CardContent>
               </Card>
 
               {/* Email Delivery Status */}
-              {(selectedOrder.status === 'COMPLETED' || selectedOrder.status === 'MANUAL_COMPLETED') && selectedOrder.payment_method === 'cod' && (
+              {(selectedOrder.status === 'COMPLETED' || selectedOrder.status === 'MANUAL_COMPLETED') && selectedOrder.payment_method === 'ambassador_cash' && (
                 <Card className="bg-muted/30">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
@@ -14226,7 +15789,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
 
               {/* Admin Actions */}
-              {selectedOrder.source === 'ambassador_manual' && selectedOrder.payment_method === 'cod' && (
+              {selectedOrder.source === 'ambassador_manual' && selectedOrder.payment_method === 'ambassador_cash' && (
                 <Card className="bg-primary/5 border-primary/20">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -14237,7 +15800,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   <CardContent>
                     <div className="flex flex-wrap gap-2">
                       {/* COD Order Actions */}
-                      {selectedOrder.payment_method === 'cod' && selectedOrder.status === 'PENDING_ADMIN_APPROVAL' && (
+                      {selectedOrder.payment_method === 'ambassador_cash' && selectedOrder.status === 'PENDING_ADMIN_APPROVAL' && (
                         <>
                           <Button
                             onClick={() => handleApproveOrderAsAdmin(selectedOrder.id)}
@@ -14251,7 +15814,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           <Button
                             onClick={() => {
                               // For COD ambassador orders, open dialog (reason required)
-                              if (selectedOrder.source === 'ambassador_manual' && selectedOrder.payment_method === 'cod') {
+                              if (selectedOrder.source === 'ambassador_manual' && selectedOrder.payment_method === 'ambassador_cash') {
                                 setRejectingOrderId(selectedOrder.id);
                                 setIsRejectDialogOpen(true);
                               } else {
@@ -14271,7 +15834,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </>
                       )}
                       {/* Approved COD orders can be completed */}
-                      {selectedOrder.payment_method === 'cod' && selectedOrder.status === 'APPROVED' && (
+                      {selectedOrder.payment_method === 'ambassador_cash' && selectedOrder.status === 'APPROVED' && (
                         <Button
                           onClick={() => handleCompleteOrderAsAdmin(selectedOrder.id)}
                           variant="default"
@@ -14282,7 +15845,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </Button>
                       )}
                       {/* Legacy status support (for backward compatibility) */}
-                      {selectedOrder.status === 'PENDING' && selectedOrder.payment_method !== 'cod' && (
+                      {selectedOrder.status === 'PENDING' && selectedOrder.payment_method !== 'ambassador_cash' && (
                         <Button
                           onClick={() => handleApproveOrderAsAdmin(selectedOrder.id)}
                           variant="default"
@@ -14292,7 +15855,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           {language === 'en' ? 'Accept Order' : 'Accepter la Commande'}
                         </Button>
                       )}
-                      {selectedOrder.status === 'ACCEPTED' && selectedOrder.payment_method !== 'cod' && (
+                      {selectedOrder.status === 'ACCEPTED' && selectedOrder.payment_method !== 'ambassador_cash' && (
                         <Button
                           onClick={() => handleCompleteOrderAsAdmin(selectedOrder.id)}
                           variant="default"
@@ -14773,6 +16336,122 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </div>
                 </CardContent>
               </Card>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Ambassador Information Dialog */}
+      <Dialog open={isAmbassadorInfoDialogOpen} onOpenChange={(open) => {
+        setIsAmbassadorInfoDialogOpen(open);
+        if (!open) {
+          setSelectedOrderAmbassador(null);
+        }
+      }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl flex items-center gap-2">
+              <User className="w-6 h-6 text-primary" />
+              {language === 'en' ? 'Ambassador Information' : 'Informations Ambassadeur'}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedOrderAmbassador && (
+            <div className="space-y-6">
+              {/* Contact Information */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Phone className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Contact Information' : 'Informations de Contact'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                        <User className="w-4 h-4" />
+                        {language === 'en' ? 'Full Name' : 'Nom Complet'}
+                      </Label>
+                      <p className="text-sm font-semibold">{selectedOrderAmbassador.full_name}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                        <Phone className="w-4 h-4" />
+                        {language === 'en' ? 'Phone' : 'Téléphone'}
+                      </Label>
+                      <p className="text-sm font-mono">{selectedOrderAmbassador.phone}</p>
+                    </div>
+                    {selectedOrderAmbassador.email && (
+                      <div className="space-y-2 md:col-span-2">
+                        <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                          <Mail className="w-4 h-4" />
+                          {language === 'en' ? 'Email' : 'Email'}
+                        </Label>
+                        <p className="text-sm break-all">{selectedOrderAmbassador.email}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Location Information */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Location' : 'Localisation'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                        <MapPin className="w-4 h-4" />
+                        {language === 'en' ? 'City' : 'Ville'}
+                      </Label>
+                      <p className="text-sm font-semibold">{selectedOrderAmbassador.city}</p>
+                    </div>
+                    {selectedOrderAmbassador.ville && (
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                          <MapPin className="w-4 h-4" />
+                          {language === 'en' ? 'Neighborhood' : 'Quartier'}
+                        </Label>
+                        <p className="text-sm font-semibold">{selectedOrderAmbassador.ville}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Commission Information */}
+              {selectedOrderAmbassador.commission_rate !== undefined && (
+                <Card className="bg-muted/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <DollarSign className="w-5 h-5 text-primary" />
+                      {language === 'en' ? 'Commission Details' : 'Détails de Commission'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1">
+                        <Label className="text-xs text-muted-foreground">
+                          {language === 'en' ? 'Commission Rate' : 'Taux de Commission'}
+                        </Label>
+                        <div className="mt-2 flex items-baseline gap-2">
+                          <span className="text-3xl font-bold text-primary">
+                            {selectedOrderAmbassador.commission_rate || 0}%
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            {language === 'en' ? 'per order' : 'par commande'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </DialogContent>

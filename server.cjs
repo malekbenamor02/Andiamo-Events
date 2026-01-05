@@ -525,7 +525,16 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     }
     
     res.cookie('adminToken', token, cookieOptions);
-    res.json({ success: true });
+    // Return admin info for logging purposes
+    res.json({ 
+      success: true,
+      admin: {
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        role: admin.role
+      }
+    });
   } catch (error) {
     console.error('❌ Admin login error:', error);
     console.error('❌ Error type:', error?.constructor?.name);
@@ -994,30 +1003,160 @@ app.get('/api/sms-test', (req, res) => {
   res.json({ success: true, message: 'SMS API routes are working!' });
 });
 
-// WinSMS API configuration
-// SECURITY: API key must be provided via environment variable - no hardcoded fallback
-if (!process.env.WINSMS_API_KEY) {
-  console.warn('Warning: WINSMS_API_KEY not configured. SMS functionality will be disabled.');
-}
+// ============================================
+// WinSMS API Configuration
+// ============================================
+// API key from environment variable (no hardcoded values)
 const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
-const WINSMS_API_HOST = "www.winsmspro.com";
-const WINSMS_API_PATH = "/sms/sms/api";
-const WINSMS_SENDER = "Andiamo"; // Your sender ID
+const WINSMS_API_HOST = 'www.winsmspro.com';
+const WINSMS_API_PATH = '/sms/sms/api';
+const WINSMS_SENDER = 'Andiamo'; // Sender ID (max 11 characters, no spaces)
 
-// Helper function to format Tunisian phone number
+if (!WINSMS_API_KEY) {
+  console.warn('⚠️  WINSMS_API_KEY not configured. SMS functionality will be disabled.');
+}
+
+// ============================================
+// Helper: Format Tunisian Phone Number
+// ============================================
+// Converts phone number to format: 216xxxxxxxx (8 digits)
 function formatPhoneNumber(phone) {
+  if (!phone) return null;
+  
+  // Remove all non-digit characters
   let cleaned = phone.replace(/\D/g, '');
+  
+  // Remove country code if present
   if (cleaned.startsWith('216')) {
     cleaned = cleaned.substring(3);
   }
+  
+  // Remove leading zeros
   cleaned = cleaned.replace(/^0+/, '');
+  
+  // Validate: must be 8 digits starting with 2, 5, 9, or 4
   if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
     return '216' + cleaned;
   }
+  
   return null;
 }
 
-// POST /api/send-sms - Send SMS broadcast
+// ============================================
+// Helper: Send SMS via WinSMS API (WAIT for response)
+// ============================================
+// Based on WinSMS documentation: Send SMS to one/multiple numbers (WAIT for response)
+async function sendSms(phoneNumbers, message, senderId = WINSMS_SENDER) {
+  if (!WINSMS_API_KEY) {
+    throw new Error('SMS service not configured: WINSMS_API_KEY is required');
+  }
+
+  if (!phoneNumbers || (Array.isArray(phoneNumbers) && phoneNumbers.length === 0)) {
+    throw new Error('Phone numbers are required');
+  }
+
+  if (!message || !message.trim()) {
+    throw new Error('Message is required');
+  }
+
+  // Format phone numbers
+  const phoneArray = Array.isArray(phoneNumbers) ? phoneNumbers : [phoneNumbers];
+  const formattedNumbers = phoneArray
+    .map(phone => formatPhoneNumber(phone))
+    .filter(phone => phone !== null);
+
+  if (formattedNumbers.length === 0) {
+    throw new Error('No valid phone numbers provided');
+  }
+
+  // Join multiple numbers with comma (as per WinSMS documentation)
+  const toParam = formattedNumbers.join(',');
+
+  // Build URL with query parameters (GET method as per documentation)
+  const queryParams = querystring.stringify({
+    action: 'send-sms',
+    api_key: WINSMS_API_KEY,
+    to: toParam,
+    sms: message.trim(),
+    from: senderId
+  });
+
+  const url = `https://${WINSMS_API_HOST}${WINSMS_API_PATH}?${queryParams}`;
+
+  // Make HTTPS GET request (as per WinSMS documentation)
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve({
+            status: res.statusCode,
+            data: parsed,
+            raw: data
+          });
+        } catch (e) {
+          resolve({
+            status: res.statusCode,
+            data: data,
+            raw: data
+          });
+        }
+      });
+    }).on('error', (e) => {
+      reject(new Error(`SMS API request failed: ${e.message}`));
+    });
+  });
+}
+
+// ============================================
+// Helper: Check WinSMS Account Balance
+// ============================================
+async function checkSmsBalance() {
+  if (!WINSMS_API_KEY) {
+    throw new Error('SMS service not configured: WINSMS_API_KEY is required');
+  }
+
+  const url = `https://${WINSMS_API_HOST}${WINSMS_API_PATH}?action=check-balance&api_key=${WINSMS_API_KEY}`;
+
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve({
+            status: res.statusCode,
+            data: parsed,
+            raw: data
+          });
+        } catch (e) {
+          resolve({
+            status: res.statusCode,
+            data: data,
+            raw: data
+          });
+        }
+      });
+    }).on('error', (e) => {
+      reject(new Error(`Balance check failed: ${e.message}`));
+    });
+  });
+}
+
+// ============================================
+// POST /api/send-sms - Send SMS Broadcast
+// ============================================
 app.post('/api/send-sms', requireAdminAuth, async (req, res) => {
   try {
     if (!supabase) {
@@ -1025,7 +1164,10 @@ app.post('/api/send-sms', requireAdminAuth, async (req, res) => {
     }
 
     if (!WINSMS_API_KEY) {
-      return res.status(500).json({ success: false, error: 'SMS service not configured. WINSMS_API_KEY environment variable is required.' });
+      return res.status(500).json({ 
+        success: false, 
+        error: 'SMS service not configured. WINSMS_API_KEY environment variable is required.' 
+      });
     }
 
     const { phoneNumbers, message } = req.body;
@@ -1041,115 +1183,35 @@ app.post('/api/send-sms', requireAdminAuth, async (req, res) => {
     const results = [];
     const errors = [];
 
+    // Process each phone number individually
     for (const phoneNumber of phoneNumbers) {
       const formattedNumber = formatPhoneNumber(phoneNumber);
       
       if (!formattedNumber) {
-        errors.push({ phoneNumber, error: `Invalid phone number format: ${phoneNumber}` });
+        const errorMsg = `Invalid phone number format: ${phoneNumber}`;
+        errors.push({ phoneNumber, error: errorMsg });
         
-        // Log invalid number
         await supabase.from('sms_logs').insert({
           phone_number: phoneNumber,
           message: message.trim(),
           status: 'failed',
-          error_message: `Invalid phone number format: ${phoneNumber}`
+          error_message: errorMsg
         });
         continue;
       }
 
       try {
-        // Format parameters according to WinSMS documentation
-        const postData = querystring.stringify({
-          'action': 'send-sms',
-          'api_key': WINSMS_API_KEY,
-          'to': formattedNumber,
-          'sms': message.trim(),
-          'from': WINSMS_SENDER
-        });
-
-        // Create HTTPS request options (as per WinSMS documentation)
-        const options = {
-          hostname: WINSMS_API_HOST,
-          port: 443,
-          path: WINSMS_API_PATH + '?' + postData,
-          method: 'GET',
-          timeout: 10000
-        };
-
-        // Make HTTPS request using native https module
-        const responseData = await new Promise((resolve, reject) => {
-          const req = https.request(options, (res) => {
-            let data = '';
-            
-            res.on('data', (chunk) => {
-              data += chunk;
-            });
-            
-            res.on('end', () => {
-              try {
-                // Try to parse JSON response
-                const parsed = JSON.parse(data);
-                resolve({ status: res.statusCode, data: parsed, raw: data });
-              } catch (e) {
-                // If not JSON, return raw string
-                resolve({ status: res.statusCode, data: data, raw: data });
-              }
-            });
-          });
-
-          req.on('error', (e) => {
-            reject(e);
-          });
-
-          req.on('timeout', () => {
-            req.destroy();
-            reject(new Error('Request timeout'));
-          });
-
-          req.end();
-        });
+        // Send SMS using clean helper function
+        const responseData = await sendSms(formattedNumber, message);
         
-        // Check API response for errors
-        const responseText = typeof responseData.data === 'string' 
-          ? responseData.data 
-          : JSON.stringify(responseData.data);
-        
-        // Check for WinSMS error codes (e.g., "102" = Authentication Failed)
-        const isError = responseData.status !== 200 ||
-                       (responseData.data && responseData.data.code && responseData.data.code !== '200') ||
-                       responseText.includes('error') || 
-                       responseText.includes('Error') || 
-                       responseText.includes('ERROR') ||
-                       responseText.includes('Authentication Failed') ||
-                       responseText.includes('Failed') ||
-                       responseText.includes('insufficient') ||
-                       responseText.includes('Insufficient') ||
-                       responseText.includes('balance') && responseText.includes('0') ||
-                       responseText.toLowerCase().includes('solde insuffisant') ||
-                       responseText.toLowerCase().includes('solde') && responseText.includes('0');
-        
-        if (isError) {
-          // Extract error message
-          let errorMessage = 'SMS sending failed';
-          if (responseData.data && responseData.data.message) {
-            errorMessage = responseData.data.message;
-          } else if (responseData.data && responseData.data.code) {
-            errorMessage = `Error code ${responseData.data.code}: ${responseData.data.message || 'Unknown error'}`;
-          } else {
-            errorMessage = responseText || 'Unknown error';
-          }
-          
-          await supabase.from('sms_logs').insert({
-            phone_number: phoneNumber,
-            message: message.trim(),
-            status: 'failed',
-            error_message: errorMessage,
-            api_response: JSON.stringify(responseData.data || responseData.raw)
-          });
-          
-          errors.push({ phoneNumber, error: errorMessage });
-        } else {
-          // Success
+        // Check if response indicates success
+        const isSuccess = responseData.status === 200 && 
+                         responseData.data && 
+                         (responseData.data.code === 'ok' || 
+                          responseData.data.code === '200' ||
+                          (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
+
+        if (isSuccess) {
           await supabase.from('sms_logs').insert({
             phone_number: phoneNumber,
             message: message.trim(),
@@ -1159,31 +1221,35 @@ app.post('/api/send-sms', requireAdminAuth, async (req, res) => {
           });
           
           results.push({ phoneNumber, success: true, response: responseData.data || responseData.raw });
+        } else {
+          const errorMsg = responseData.data?.message || 
+                          (responseData.data?.code ? `Error code ${responseData.data.code}` : 'SMS sending failed');
+          
+          await supabase.from('sms_logs').insert({
+            phone_number: phoneNumber,
+            message: message.trim(),
+            status: 'failed',
+            error_message: errorMsg,
+            api_response: JSON.stringify(responseData.data || responseData.raw)
+          });
+          
+          errors.push({ phoneNumber, error: errorMsg });
         }
       } catch (error) {
-        const errorMessage = error.message || 'Unknown error';
-        
-        // Check if it's a balance-related error
-        const isBalanceError = errorMessage.toString().includes('insufficient') ||
-                              errorMessage.toString().includes('balance') ||
-                              errorMessage.toString().includes('solde');
-        
-        const finalErrorMessage = isBalanceError 
-          ? `Insufficient balance: ${errorMessage}` 
-          : errorMessage.toString();
+        const errorMsg = error.message || 'Unknown error';
         
         await supabase.from('sms_logs').insert({
           phone_number: phoneNumber,
           message: message.trim(),
           status: 'failed',
-          error_message: finalErrorMessage,
+          error_message: errorMsg,
           api_response: null
         });
 
-        errors.push({ phoneNumber, error: finalErrorMessage });
+        errors.push({ phoneNumber, error: errorMsg });
       }
 
-      // Small delay to avoid overwhelming the API (100ms between requests)
+      // Small delay between requests to avoid overwhelming the API
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
@@ -1205,7 +1271,9 @@ app.post('/api/send-sms', requireAdminAuth, async (req, res) => {
   }
 });
 
-// GET /api/sms-balance - Check SMS balance (as per WinSMS documentation)
+// ============================================
+// GET /api/sms-balance - Check WinSMS Account Balance
+// ============================================
 app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
   try {
     if (!WINSMS_API_KEY) {
@@ -1217,57 +1285,11 @@ app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
       });
     }
     
-    // Build URL according to WinSMS documentation
-    const url = `${WINSMS_API_PATH}?action=check-balance&api_key=${WINSMS_API_KEY}&response=json`;
-
-    // Create HTTPS request options
-    const options = {
-      hostname: WINSMS_API_HOST,
-      port: 443,
-      path: url,
-      method: 'GET',
-      timeout: 10000
-    };
-
-    // Make HTTPS request using native https module (as per WinSMS documentation)
-    const responseData = await new Promise((resolve, reject) => {
-      const req = https.get(options, (res) => {
-        let data = '';
-        
-        
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
-        
-        res.on('end', () => {
-          try {
-            // Try to parse JSON response
-            const parsed = JSON.parse(data);
-            resolve({ status: res.statusCode, data: parsed, raw: data });
-          } catch (e) {
-            // If not JSON, return raw string
-            resolve({ status: res.statusCode, data: data, raw: data });
-          }
-        });
-      });
-
-      req.on('error', (e) => {
-        console.error('Balance check error:', e);
-        reject(e);
-      });
-
-      req.on('timeout', () => {
-        req.destroy();
-        reject(new Error('Request timeout'));
-      });
-
-      req.end();
-    });
-
-    // Parse the response - WinSMS might return different formats
-    let balanceData = responseData.data;
+    // Use clean helper function
+    const responseData = await checkSmsBalance();
     
-    // If response is a string, try to parse it
+    // Parse response
+    let balanceData = responseData.data;
     if (typeof balanceData === 'string') {
       try {
         balanceData = JSON.parse(balanceData);
@@ -1276,9 +1298,8 @@ app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
       }
     }
 
-    // Check for error codes (e.g., "102" = Authentication Failed)
+    // Check for error codes
     if (balanceData && balanceData.code && balanceData.code !== '200') {
-      // Return 200 status with error details instead of 500
       return res.status(200).json({
         success: true,
         balance: null,
@@ -1294,13 +1315,10 @@ app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
       success: true,
       balance: balanceData,
       rawResponse: responseData.raw,
-      // Try to extract balance value from common formats
       balanceValue: balanceData?.balance || balanceData?.solde || balanceData?.credit || balanceData?.amount || null
     });
   } catch (error) {
     console.error('Error checking SMS balance:', error);
-    // Return 200 status with error details instead of 500
-    // This prevents the UI from breaking if SMS service is unavailable
     res.status(200).json({
       success: true,
       balance: null,
@@ -1309,6 +1327,257 @@ app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
       configured: false,
       error: error.message || 'Failed to check SMS balance',
       rawResponse: null
+    });
+  }
+});
+
+// ============================================
+// Helper: Send Single SMS and Log to Database
+// ============================================
+async function sendSingleSms(phoneNumber, message) {
+  if (!supabase) {
+    throw new Error('Supabase not configured');
+  }
+
+  const formattedNumber = formatPhoneNumber(phoneNumber);
+  
+  if (!formattedNumber) {
+    const errorMsg = `Invalid phone number format: ${phoneNumber}`;
+    await supabase.from('sms_logs').insert({
+      phone_number: phoneNumber,
+      message: message.trim(),
+      status: 'failed',
+      error_message: errorMsg
+    });
+    throw new Error(errorMsg);
+  }
+
+  try {
+    // Send SMS using clean helper function
+    const responseData = await sendSms(formattedNumber, message);
+    
+    // Check if response indicates success
+    const isSuccess = responseData.status === 200 && 
+                     responseData.data && 
+                     (responseData.data.code === 'ok' || 
+                      responseData.data.code === '200' ||
+                      (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
+
+    if (isSuccess) {
+      await supabase.from('sms_logs').insert({
+        phone_number: phoneNumber,
+        message: message.trim(),
+        status: 'sent',
+        api_response: JSON.stringify(responseData.data || responseData.raw),
+        sent_at: new Date().toISOString()
+      });
+      
+      return { success: true, response: responseData.data || responseData.raw };
+    } else {
+      const errorMsg = responseData.data?.message || 
+                      (responseData.data?.code ? `Error code ${responseData.data.code}` : 'SMS sending failed');
+      
+      await supabase.from('sms_logs').insert({
+        phone_number: phoneNumber,
+        message: message.trim(),
+        status: 'failed',
+        error_message: errorMsg,
+        api_response: JSON.stringify(responseData.data || responseData.raw)
+      });
+      
+      throw new Error(errorMsg);
+    }
+  } catch (error) {
+    const errorMsg = error.message || 'Unknown error';
+    
+    await supabase.from('sms_logs').insert({
+      phone_number: phoneNumber,
+      message: message.trim(),
+      status: 'failed',
+      error_message: errorMsg,
+      api_response: null
+    });
+
+    throw error;
+  }
+}
+
+// ============================================
+// POST /api/send-order-confirmation-sms - Send SMS to Client
+// ============================================
+app.post('/api/send-order-confirmation-sms', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Supabase not configured' });
+    }
+
+    if (!WINSMS_API_KEY) {
+      return res.status(500).json({ success: false, error: 'SMS service not configured' });
+    }
+
+    const { orderId } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ success: false, error: 'Order ID is required' });
+    }
+
+    // Fetch order with relations
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        order_passes (*),
+        ambassadors (
+          id,
+          full_name,
+          phone
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    if (!order.ambassador_id || !order.ambassadors) {
+      return res.status(400).json({ success: false, error: 'Order does not have an ambassador assigned' });
+    }
+
+    // Format passes for SMS
+    let passesText = '';
+    if (order.order_passes && order.order_passes.length > 0) {
+      passesText = order.order_passes.map(p => 
+        `${p.quantity}× ${p.pass_type} (${p.price} DT)`
+      ).join(' + ');
+    } else {
+      if (order.notes) {
+        try {
+          const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+          if (notesData.all_passes && Array.isArray(notesData.all_passes)) {
+            passesText = notesData.all_passes.map((p) => 
+              `${p.quantity}× ${p.passName || p.pass_type} (${p.price} DT)`
+            ).join(' + ');
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      if (!passesText) {
+        passesText = `${order.quantity}× ${order.pass_type || 'Standard'} (${(order.total_price / order.quantity).toFixed(0)} DT)`;
+      }
+    }
+
+    const orderNumber = order.order_number ? `#${order.order_number}` : '';
+    const ambassadorName = order.ambassadors.full_name;
+    const ambassadorPhone = order.ambassadors.phone;
+
+    // Build SMS message in French
+    const message = `Votre commande ${orderNumber} est confirmée!
+Passes: ${passesText}
+Total: ${order.total_price} DT
+Votre ambassadeur: ${ambassadorName}
+Téléphone: ${ambassadorPhone}
+Il vous contactera bientôt.`;
+
+    // Send SMS
+    const smsResult = await sendSingleSms(order.user_phone, message);
+
+    res.json({ success: true, message: 'SMS sent successfully', result: smsResult });
+  } catch (error) {
+    console.error('Error sending order confirmation SMS:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send SMS'
+    });
+  }
+});
+
+// ============================================
+// POST /api/send-ambassador-order-sms - Send SMS to Ambassador
+// ============================================
+app.post('/api/send-ambassador-order-sms', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Supabase not configured' });
+    }
+
+    if (!WINSMS_API_KEY) {
+      return res.status(500).json({ success: false, error: 'SMS service not configured' });
+    }
+
+    const { orderId } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ success: false, error: 'Order ID is required' });
+    }
+
+    // Fetch order with relations
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        order_passes (*),
+        ambassadors (
+          id,
+          full_name,
+          phone
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    if (!order.ambassador_id || !order.ambassadors) {
+      return res.status(400).json({ success: false, error: 'Order does not have an ambassador assigned' });
+    }
+
+    // Format passes for SMS
+    let passesText = '';
+    if (order.order_passes && order.order_passes.length > 0) {
+      passesText = order.order_passes.map(p => 
+        `${p.quantity}× ${p.pass_type} (${p.price} DT)`
+      ).join(' + ');
+    } else {
+      if (order.notes) {
+        try {
+          const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+          if (notesData.all_passes && Array.isArray(notesData.all_passes)) {
+            passesText = notesData.all_passes.map((p) => 
+              `${p.quantity}× ${p.passName || p.pass_type} (${p.price} DT)`
+            ).join(' + ');
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      if (!passesText) {
+        passesText = `${order.quantity}× ${order.pass_type || 'Standard'} (${(order.total_price / order.quantity).toFixed(0)} DT)`;
+      }
+    }
+
+    const orderNumber = order.order_number ? `#${order.order_number}` : '';
+    const clientName = order.user_name;
+    const clientPhone = order.user_phone;
+
+    // Build SMS message in French
+    const message = `Nouvelle commande ${orderNumber} qui vous est assignée!
+Passes: ${passesText}
+Total: ${order.total_price} DT
+Client: ${clientName}
+Téléphone: ${clientPhone}
+Veuillez les contacter bientôt.`;
+
+    // Send SMS to ambassador
+    const smsResult = await sendSingleSms(order.ambassadors.phone, message);
+
+    res.json({ success: true, message: 'SMS sent successfully', result: smsResult });
+  } catch (error) {
+    console.error('Error sending ambassador order SMS:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send SMS'
     });
   }
 });
@@ -1391,9 +1660,377 @@ app.post('/api/bulk-phones', requireAdminAuth, async (req, res) => {
   }
 });
 
-// Round Robin Assignment Endpoints
+// ============================================
+// Payment Options Endpoints
+// ============================================
 
-// POST /api/assign-order - Assign an order to an ambassador using round robin
+// GET /api/payment-options - Get enabled payment options (public)
+app.get('/api/payment-options', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { data, error } = await supabase
+      .from('payment_options')
+      .select('*')
+      .eq('enabled', true)
+      .order('option_type');
+
+    if (error) {
+      console.error('Error fetching payment options:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ success: true, data: data || [] });
+  } catch (error) {
+    console.error('Error in payment-options endpoint:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch payment options' });
+  }
+});
+
+// GET /api/admin/payment-options - Get all payment options (admin)
+app.get('/api/admin/payment-options', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { data, error } = await supabase
+      .from('payment_options')
+      .select('*')
+      .order('option_type');
+
+    if (error) {
+      console.error('Error fetching payment options:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ success: true, data: data || [] });
+  } catch (error) {
+    console.error('Error in admin payment-options endpoint:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch payment options' });
+  }
+});
+
+// PUT /api/admin/payment-options/:type - Update payment option configuration (admin)
+app.put('/api/admin/payment-options/:type', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { type } = req.params;
+    const { enabled, app_name, external_link, app_image } = req.body;
+
+    if (!['online', 'external_app', 'ambassador_cash'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid payment option type' });
+    }
+
+    const updateData = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (enabled !== undefined) {
+      updateData.enabled = enabled;
+    }
+
+    if (type === 'external_app') {
+      if (app_name !== undefined) updateData.app_name = app_name;
+      if (external_link !== undefined) updateData.external_link = external_link;
+      if (app_image !== undefined) updateData.app_image = app_image;
+    }
+
+    const { data, error } = await supabase
+      .from('payment_options')
+      .update(updateData)
+      .eq('option_type', type)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating payment option:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in update payment-options endpoint:', error);
+    res.status(500).json({ error: error.message || 'Failed to update payment option' });
+  }
+});
+
+// ============================================
+// Active Ambassadors Endpoint
+// ============================================
+
+// GET /api/ambassadors/active - Get active ambassadors filtered by city/ville (public)
+app.get('/api/ambassadors/active', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { city, ville } = req.query;
+
+    if (!city) {
+      return res.status(400).json({ error: 'City parameter is required' });
+    }
+
+    // Normalize city and ville (trim whitespace)
+    const normalizedCity = String(city).trim();
+    const normalizedVille = ville && String(ville).trim() !== '' ? String(ville).trim() : null;
+    
+    console.log('🔍 Fetching active ambassadors:', { 
+      city: normalizedCity, 
+      ville: normalizedVille,
+      hasVille: !!normalizedVille
+    });
+    
+    let query = supabase
+      .from('ambassadors')
+      .select('id, full_name, phone, email, city, ville, status, commission_rate')
+      .eq('status', 'approved')
+      .eq('city', normalizedCity);
+
+    // If ville is provided, also filter by ville (match city AND ville)
+    // If ville is NOT provided, show all ambassadors in the city
+    if (normalizedVille) {
+      query = query.eq('ville', normalizedVille);
+      console.log('  ✓ Filtering by ville:', normalizedVille);
+    } else {
+      console.log('  ✓ No ville filter (showing all ambassadors in city)');
+    }
+    
+    query = query.order('full_name');
+
+    const { data: ambassadors, error } = await query;
+
+    if (error) {
+      console.error('❌ Error fetching active ambassadors:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Fetch social_link from ambassador_applications for each ambassador
+    const ambassadorsWithSocial = await Promise.all(
+      (ambassadors || []).map(async (ambassador) => {
+        // Try to find matching application by phone
+        const { data: application } = await supabase
+          .from('ambassador_applications')
+          .select('social_link')
+          .eq('phone_number', ambassador.phone)
+          .single();
+        
+        return {
+          ...ambassador,
+          social_link: application?.social_link || null
+        };
+      })
+    );
+
+    console.log(`  ✅ Found ${ambassadorsWithSocial?.length || 0} ambassador(s)`);
+    if (ambassadorsWithSocial && ambassadorsWithSocial.length > 0) {
+      console.log('  Ambassadors:', ambassadorsWithSocial.map(a => ({ name: a.full_name, city: a.city, ville: a.ville })));
+    }
+
+    res.json({ success: true, data: ambassadorsWithSocial || [] });
+  } catch (error) {
+    console.error('Error in ambassadors/active endpoint:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch active ambassadors' });
+  }
+});
+
+// ============================================
+// Ambassador Sales Analytics Endpoints
+// ============================================
+
+// GET /api/admin/ambassador-sales/overview - Get performance metrics and analytics (admin)
+app.get('/api/admin/ambassador-sales/overview', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Get all ambassador cash orders
+    const { data: allOrders, error: ordersError } = await supabase
+      .from('orders')
+      .select('id, total_price, ambassador_id, created_at, status, ambassadors!inner(full_name)')
+      .eq('payment_method', 'ambassador_cash');
+
+    if (ordersError) {
+      throw new Error(ordersError.message);
+    }
+
+    const orders = allOrders || [];
+    const thisWeekOrders = orders.filter(o => new Date(o.created_at) >= startOfWeek);
+    const thisMonthOrders = orders.filter(o => new Date(o.created_at) >= startOfMonth);
+
+    const totalOrders = {
+      allTime: orders.length,
+      thisMonth: thisMonthOrders.length,
+      thisWeek: thisWeekOrders.length
+    };
+
+    const totalRevenue = {
+      allTime: orders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0),
+      thisMonth: thisMonthOrders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0),
+      thisWeek: thisWeekOrders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0)
+    };
+
+    const calculateCommission = (revenue) => revenue * 0.10;
+    const totalCommissions = {
+      allTime: calculateCommission(totalRevenue.allTime),
+      thisMonth: calculateCommission(totalRevenue.thisMonth),
+      thisWeek: calculateCommission(totalRevenue.thisWeek)
+    };
+
+    const averageOrderValue = totalOrders.allTime > 0 ? totalRevenue.allTime / totalOrders.allTime : 0;
+    const uniqueAmbassadors = new Set(orders.map(o => o.ambassador_id).filter(Boolean));
+    const averageOrdersPerAmbassador = uniqueAmbassadors.size > 0 ? totalOrders.allTime / uniqueAmbassadors.size : 0;
+
+    // Top performers
+    const ambassadorStats = new Map();
+    orders.forEach(order => {
+      if (!order.ambassador_id) return;
+      const existing = ambassadorStats.get(order.ambassador_id) || {
+        ambassador_id: order.ambassador_id,
+        ambassador_name: order.ambassadors?.full_name || 'Unknown',
+        total_orders: 0,
+        total_revenue: 0
+      };
+      existing.total_orders += 1;
+      existing.total_revenue += parseFloat(order.total_price) || 0;
+      ambassadorStats.set(order.ambassador_id, existing);
+    });
+
+    const topPerformers = Array.from(ambassadorStats.values())
+      .map(stat => ({
+        ...stat,
+        total_commissions: calculateCommission(stat.total_revenue)
+      }))
+      .sort((a, b) => b.total_revenue - a.total_revenue)
+      .slice(0, 10);
+
+    res.json({
+      success: true,
+      data: {
+        totalOrders,
+        totalRevenue,
+        totalCommissions,
+        averageOrderValue,
+        averageOrdersPerAmbassador,
+        topPerformers
+      }
+    });
+  } catch (error) {
+    console.error('Error in ambassador-sales/overview endpoint:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch sales overview' });
+  }
+});
+
+// GET /api/admin/ambassador-sales/orders - Get COD ambassador orders with filters (admin)
+app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { status, ambassador_id, city, ville, date_from, date_to, limit = 50, offset = 0 } = req.query;
+
+    let query = supabase
+      .from('orders')
+      .select('*, order_passes (*), ambassadors (id, full_name, phone, email)', { count: 'exact' })
+      .eq('payment_method', 'ambassador_cash')
+      .order('created_at', { ascending: false })
+      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+
+    if (status) query = query.eq('status', status);
+    if (ambassador_id) query = query.eq('ambassador_id', ambassador_id);
+    if (city) query = query.eq('city', city);
+    if (ville) query = query.eq('ville', ville);
+    if (date_from) query = query.gte('created_at', date_from);
+    if (date_to) query = query.lte('created_at', date_to);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('Error fetching ambassador orders:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({
+      success: true,
+      data: data || [],
+      count: count || 0
+    });
+  } catch (error) {
+    console.error('Error in ambassador-sales/orders endpoint:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch ambassador orders' });
+  }
+});
+
+// GET /api/admin/ambassador-sales/logs - Get order logs (super admin only)
+app.get('/api/admin/ambassador-sales/logs', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    // Check if user is super admin
+    const { data: adminData } = await supabase
+      .from('admins')
+      .select('role')
+      .eq('id', req.admin.id)
+      .single();
+
+    if (!adminData || adminData.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Super admin access required' });
+    }
+
+    const { date_from, date_to, action, ambassador_id, order_id, limit = 100, offset = 0 } = req.query;
+
+    let query = supabase
+      .from('order_logs')
+      .select('*, orders!inner(payment_method)', { count: 'exact' })
+      .eq('orders.payment_method', 'ambassador_cash')
+      .order('created_at', { ascending: false })
+      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+
+    if (date_from) query = query.gte('created_at', date_from);
+    if (date_to) query = query.lte('created_at', date_to);
+    if (action) query = query.eq('action', action);
+    if (ambassador_id) query = query.eq('performed_by', ambassador_id);
+    if (order_id) query = query.eq('order_id', order_id);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('Error fetching order logs:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({
+      success: true,
+      data: data || [],
+      count: count || 0
+    });
+  } catch (error) {
+    console.error('Error in ambassador-sales/logs endpoint:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch order logs' });
+  }
+});
+
+// ============================================
+// Round Robin Assignment Endpoints (DEPRECATED - to be removed)
+// ============================================
+
+// POST /api/assign-order - Assign an order to an ambassador using round robin (DEPRECATED)
 app.post('/api/assign-order', async (req, res) => {
   try {
     if (!supabase) {

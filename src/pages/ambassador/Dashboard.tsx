@@ -23,6 +23,7 @@ import { format } from "date-fns";
 import { fetchSalesSettings, subscribeToSalesSettings } from "@/lib/salesSettings";
 import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
 import { sanitizeUrl } from "@/lib/url-validator";
+import { logger } from "@/lib/logger";
 
 interface AmbassadorDashboardProps {
   language: 'en' | 'fr';
@@ -30,7 +31,7 @@ interface AmbassadorDashboardProps {
 
 interface Order {
   id: string;
-  source: 'platform_cod' | 'platform_online' | 'ambassador_manual';
+  source: 'platform_cod' | 'platform_online';
   user_name: string; // Database column name
   user_phone: string; // Database column name
   user_email?: string; // Database column name
@@ -42,10 +43,11 @@ interface Order {
   quantity: number;
   total_price: number;
   payment_method: 'cod' | 'online'; // Payment method: 'cod' or 'online'
-  status: 'PENDING_ADMIN_APPROVAL' | 'APPROVED' | 'REJECTED' | 'COMPLETED' | 'PENDING' | 'ACCEPTED' | 'MANUAL_ACCEPTED' | 'MANUAL_COMPLETED' | 'CANCELLED_BY_AMBASSADOR' | 'CANCELLED_BY_ADMIN' | 'REFUNDED' | 'FRAUD_SUSPECT' | 'IGNORED' | 'ON_HOLD';
+  status: 'PENDING_ADMIN_APPROVAL' | 'APPROVED' | 'REJECTED' | 'COMPLETED' | 'PENDING' | 'ACCEPTED' | 'CANCELLED_BY_AMBASSADOR' | 'CANCELLED_BY_ADMIN' | 'REFUNDED' | 'FRAUD_SUSPECT' | 'IGNORED' | 'ON_HOLD' | 'PENDING_CASH' | 'PAID';
   cancellation_reason?: string;
   rejection_reason?: string;
   notes?: string | any; // JSON string or parsed object containing pass breakdown
+  order_passes?: Array<{ id: string; order_id: string; pass_type: string; quantity: number; price: number }>; // Order passes from order_passes table
   assigned_at?: string;
   accepted_at?: string;
   approved_at?: string;
@@ -70,29 +72,15 @@ interface Ambassador {
 const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   const [ambassador, setAmbassador] = useState<Ambassador | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('assigned');
-  const [assignedOrders, setAssignedOrders] = useState<Order[]>([]);
-  const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
+  const [activeTab, setActiveTab] = useState('new-orders');
+  const [newOrders, setNewOrders] = useState<Order[]>([]); // PENDING_CASH orders
+  const [historyOrders, setHistoryOrders] = useState<Order[]>([]); // PAID, COMPLETED orders
   const [performance, setPerformance] = useState<any>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [isManualOrderDialogOpen, setIsManualOrderDialogOpen] = useState(false);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cancellationReason, setCancellationReason] = useState('');
-  
-  const [events, setEvents] = useState<any[]>([]);
-  const [eventPasses, setEventPasses] = useState<Record<string, any[]>>({}); // event_id -> passes[]
-  const [manualOrderForm, setManualOrderForm] = useState({
-    customer_name: '',
-    phone: '',
-    email: '',
-    city: '',
-    ville: '',
-    event_id: '',
-    selectedPasses: [] as Array<{ passId: string; passName: string; quantity: number; price: number }>,
-    notes: ''
-  });
 
   const [profileForm, setProfileForm] = useState({
     password: '',
@@ -108,7 +96,6 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     title: "Ambassador Dashboard",
     welcome: "Welcome",
     assignedOrders: "Assigned Orders",
-    createManualOrder: "Create Manual Order",
     completedOrders: "Completed Orders",
     performance: "Performance",
     profile: "Profile",
@@ -130,19 +117,16 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     actions: "Actions",
     noAssignedOrders: "No assigned orders",
     noCompletedOrders: "No completed orders yet",
-    createOrder: "Create Manual Order",
-    newOrder: "New Manual Order",
     event: "Event",
     selectEvent: "Select event",
-    noUpcomingEvents: "No upcoming events",
     save: "Save",
     cancelOrder: "Cancel Order",
     cancelReason: "Cancellation Reason",
+    confirmCancel: "Confirm Cancel",
     reasonRequired: "Please provide a cancellation reason",
     orderAccepted: "Order accepted successfully",
     orderCancelled: "Order cancelled",
     orderCompleted: "Order completed successfully",
-    manualOrderCreated: "Manual order created successfully",
     error: "Error",
     editProfile: "Edit Profile",
     currentPhone: "Current Phone",
@@ -153,8 +137,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     profileUpdated: "Profile updated successfully",
     completionRate: "Completion Rate",
     cancellationRate: "Cancellation Rate",
+    rejectionRate: "Rejection Rate",
     ignoreRate: "Ignore Rate",
-    manualOrders: "Manual Orders",
     avgResponseTime: "Avg Response Time",
     totalOrders: "Total Orders",
     totalRevenue: "Total Revenue",
@@ -177,7 +161,6 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     title: "Tableau de Bord Ambassadeur",
     welcome: "Bienvenue",
     assignedOrders: "Commandes Assignées",
-    createManualOrder: "Créer Commande Manuelle",
     completedOrders: "Commandes Terminées",
     performance: "Performance",
     profile: "Profil",
@@ -199,19 +182,17 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     actions: "Actions",
     noAssignedOrders: "Aucune commande assignée",
     noCompletedOrders: "Aucune commande terminée",
-    createOrder: "Créer Commande Manuelle",
-    newOrder: "Nouvelle Commande Manuelle",
     event: "Événement",
     selectEvent: "Sélectionner un événement",
     noUpcomingEvents: "Aucun événement à venir",
     save: "Enregistrer",
     cancelOrder: "Annuler la Commande",
     cancelReason: "Raison d'Annulation",
+    confirmCancel: "Confirmer l'Annulation",
     reasonRequired: "Veuillez fournir une raison d'annulation",
     orderAccepted: "Commande acceptée avec succès",
     orderCancelled: "Commande annulée",
     orderCompleted: "Commande terminée avec succès",
-    manualOrderCreated: "Commande manuelle créée avec succès",
     error: "Erreur",
     editProfile: "Modifier le Profil",
     currentPhone: "Téléphone Actuel",
@@ -222,8 +203,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     profileUpdated: "Profil mis à jour avec succès",
     completionRate: "Taux de Réussite",
     cancellationRate: "Taux d'Annulation",
+    rejectionRate: "Taux de Rejet",
     ignoreRate: "Taux d'Ignoré",
-    manualOrders: "Commandes Manuelles",
     avgResponseTime: "Temps de Réponse Moyen",
     totalOrders: "Total des Commandes",
     totalRevenue: "Revenu Total",
@@ -265,10 +246,9 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
           // Update ambassador state with latest data (including status)
           setAmbassador(latestAmbassador);
           
-          // Only fetch data and events if not suspended
+          // Only fetch data if not suspended
           if (latestAmbassador.status !== 'suspended') {
             fetchData(user.id);
-            fetchEvents();
           } else {
             setLoading(false);
           }
@@ -276,14 +256,12 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
           // If fetch fails, use cached user data
           setAmbassador(user);
           fetchData(user.id);
-          fetchEvents();
         }
       } catch (error) {
         console.error('Error fetching latest ambassador status:', error);
         // If fetch fails, use cached user data
         setAmbassador(user);
         fetchData(user.id);
-        fetchEvents();
       }
     };
     
@@ -307,73 +285,79 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     };
   }, [navigate]);
   
-  const fetchEvents = async () => {
-    try {
-      // Get today's date at midnight to include all events starting today
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      // Fetch all upcoming events - include both events with event_type='upcoming' and events without event_type (for backward compatibility)
-      const { data, error } = await supabase
-        .from('events')
-        .select('id, name, date, event_type')
-        .gte('date', today.toISOString())
-        .order('date', { ascending: true });
 
-      if (error) throw error;
-      
-      // Filter to only include events with event_type='upcoming' or event_type IS NULL (for backward compatibility)
-      const upcomingEvents = (data || []).filter(event => 
-        !event.event_type || event.event_type === 'upcoming'
-      );
-      
-      setEvents(upcomingEvents);
-
-      // Fetch passes for each event
-      const passesMap: Record<string, any[]> = {};
-      for (const event of upcomingEvents) {
-        const { data: passesData, error: passesError } = await supabase
-          .from('event_passes')
-          .select('*')
-          .eq('event_id', event.id)
-          .order('is_primary', { ascending: false })
-          .order('price', { ascending: true });
-
-        if (!passesError && passesData) {
-          passesMap[event.id] = passesData;
-        }
-      }
-      setEventPasses(passesMap);
-    } catch (error) {
-      console.error('Error fetching events:', error);
+  // Helper function to extract passes from order (order_passes, notes, or fallback)
+  const getOrderPasses = (order: any): Array<{ pass_type: string; quantity: number; price: number }> => {
+    // First try: use order_passes (new system)
+    if (order.order_passes && order.order_passes.length > 0) {
+      return order.order_passes.map((pass: any) => ({
+        pass_type: pass.pass_type,
+        quantity: pass.quantity || 0,
+        price: pass.price || 0
+      }));
     }
+    
+    // Second try: parse from notes (legacy system)
+    if (order.notes) {
+      try {
+        const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+        if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
+          return notesData.all_passes.map((p: any) => ({
+            pass_type: p.passName || p.pass_type || order.pass_type || 'standard',
+            quantity: p.quantity || 0,
+            price: p.price || 0
+          }));
+        }
+      } catch (e) {
+        console.error('Error parsing order notes:', e);
+      }
+    }
+    
+    // Fallback: use order.pass_type and order.quantity (very old system)
+    if (order.pass_type && order.quantity) {
+      const pricePerPass = order.total_price / order.quantity;
+      return [{
+        pass_type: order.pass_type,
+        quantity: order.quantity,
+        price: pricePerPass
+      }];
+    }
+    
+    return [];
   };
 
   const fetchData = async (ambassadorId: string) => {
     setLoading(true);
     try {
-      // Fetch assigned orders (PENDING, ACCEPTED, MANUAL_ACCEPTED for non-COD; APPROVED for COD)
-      const { data: assignedData, error: assignedError } = await supabase
+      // Fetch new orders (PENDING_CASH - unpaid orders waiting for cash confirmation)
+      const { data: newOrdersData, error: newOrdersError } = await supabase
         .from('orders')
-        .select('*')
+        .select(`
+          *,
+          order_passes (*)
+        `)
         .eq('ambassador_id', ambassadorId)
-        .in('status', ['PENDING', 'ACCEPTED', 'MANUAL_ACCEPTED', 'APPROVED']) // Include APPROVED for COD orders
+        .eq('status', 'PENDING_CASH')
         .order('created_at', { ascending: false });
 
-      if (assignedError) throw assignedError;
-      setAssignedOrders(assignedData || []);
+      if (newOrdersError) throw newOrdersError;
+      setNewOrders(newOrdersData || []);
 
-      // Fetch completed orders (COMPLETED status)
-      const { data: completedData, error: completedError } = await supabase
+      // Fetch history orders (all orders except PENDING_CASH which are in New Orders tab)
+      // Include: PAID, PENDING_ADMIN_APPROVAL, COMPLETED, CANCELLED, and all other final statuses
+      const { data: historyData, error: historyError } = await supabase
         .from('orders')
-        .select('*')
+        .select(`
+          *,
+          order_passes (*)
+        `)
         .eq('ambassador_id', ambassadorId)
-        .in('status', ['COMPLETED', 'MANUAL_COMPLETED']) // Include MANUAL_COMPLETED for backward compatibility
-        .order('completed_at', { ascending: false })
-        .limit(50);
+        .not('status', 'eq', 'PENDING_CASH') // Exclude PENDING_CASH (those are in New Orders tab)
+        .order('updated_at', { ascending: false })
+        .limit(100);
 
-      if (completedError) throw completedError;
-      setCompletedOrders(completedData || []);
+      if (historyError) throw historyError;
+      setHistoryOrders(historyData || []);
 
       // Fetch performance data
       await fetchPerformance(ambassadorId);
@@ -391,9 +375,13 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
   const fetchPerformance = async (ambassadorId: string) => {
     try {
+      // Fetch orders with order_passes relation to calculate accurate revenue and pass counts
       const { data: allOrders, error } = await supabase
         .from('orders')
-      .select('*')
+        .select(`
+          *,
+          order_passes (*)
+        `)
         .eq('ambassador_id', ambassadorId);
 
       if (error) throw error;
@@ -401,13 +389,17 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       const total = allOrders?.length || 0;
       
       // Use uppercase status values (database uses uppercase)
-      // Include COMPLETED orders (and MANUAL_COMPLETED for backward compatibility)
-      const completed = allOrders?.filter((o: any) => 
-        o.status === 'COMPLETED' || o.status === 'MANUAL_COMPLETED'
-      ).length || 0;
+      // Count PAID orders
+      const paid = allOrders?.filter((o: any) => o.status === 'PAID').length || 0;
+      // Count cancelled orders (new unified system uses 'CANCELLED' status with cancelled_by field)
       const cancelled = allOrders?.filter((o: any) => 
-        o.status === 'CANCELLED_BY_AMBASSADOR' || o.status === 'CANCELLED_BY_ADMIN'
+        o.status === 'CANCELLED' || 
+        o.status === 'CANCELLED_BY_AMBASSADOR' || 
+        o.status === 'CANCELLED_BY_ADMIN' // Backward compatibility with old statuses
       ).length || 0;
+      
+      // Count rejected orders (admin rejected PENDING_ADMIN_APPROVAL orders)
+      const rejected = allOrders?.filter((o: any) => o.status === 'REJECTED').length || 0;
       
       // Ignored orders: PENDING that haven't been accepted for more than 15 minutes
       const ignored = allOrders?.filter((o: any) => 
@@ -417,16 +409,86 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         !o.accepted_at // Not yet accepted
       ).length || 0;
       
-      const manual = allOrders?.filter((o: any) => o.source === 'ambassador_manual').length || 0;
+      // Total revenue: Count only PAID orders
+      // Calculate from order_passes for accuracy (recalculate instead of using stored total_price)
+      const revenueOrders = allOrders?.filter((o: any) => o.status === 'PAID') || [];
       
-      // Total revenue: Only count COMPLETED orders (and MANUAL_COMPLETED for backward compatibility)
-      const completedOrders = allOrders?.filter((o: any) => 
-        o.status === 'COMPLETED' || o.status === 'MANUAL_COMPLETED'
-      ) || [];
-      const totalRevenue = completedOrders.reduce((sum: number, o: any) => sum + (o.total_price || 0), 0);
+      // Calculate revenue and passes from order_passes table (accurate calculation)
+      let totalRevenue = 0;
+      let totalPassesSold = 0;
       
-      // Commission: Only on completed orders
-      const commission = totalRevenue * ((ambassador?.commission_rate || 10) / 100);
+      revenueOrders.forEach((order: any) => {
+        if (order.order_passes && order.order_passes.length > 0) {
+          // New system: use order_passes (accurate calculation)
+          order.order_passes.forEach((pass: any) => {
+            const passRevenue = (pass.price || 0) * (pass.quantity || 0);
+            totalRevenue += passRevenue;
+            totalPassesSold += pass.quantity || 0;
+          });
+        } else {
+          // Fallback: try to parse from notes field (legacy orders)
+          let calculatedFromNotes = false;
+          if (order.notes) {
+            try {
+              const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+              if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
+                notesData.all_passes.forEach((pass: any) => {
+                  const passPrice = pass.price || 0;
+                  const passQuantity = pass.quantity || 0;
+                  const passRevenue = passPrice * passQuantity;
+                  totalRevenue += passRevenue;
+                  totalPassesSold += passQuantity;
+                });
+                calculatedFromNotes = true;
+              }
+            } catch (e) {
+              console.error('Error parsing order notes:', e);
+            }
+          }
+          
+          // Final fallback: calculate from quantity and price per pass
+          // If we have quantity and can calculate price per pass, use that
+          if (!calculatedFromNotes && order.quantity && order.quantity > 0) {
+            // Calculate price per pass from total_price / quantity
+            const pricePerPass = (order.total_price || 0) / order.quantity;
+            // But this still uses the wrong total_price, so we need another approach
+            // For now, let's use the stored values but log a warning
+            console.warn(`Order ${order.id} has no order_passes or notes. Using stored total_price: ${order.total_price}, quantity: ${order.quantity}`);
+            totalRevenue += order.total_price || 0;
+            totalPassesSold += order.quantity || 0;
+          } else if (!calculatedFromNotes) {
+            totalRevenue += order.total_price || 0;
+            totalPassesSold += order.quantity || 0;
+          }
+        }
+      });
+      
+      // New Commission Calculation Rules:
+      // - No payment for passes 1-7 (0 DT)
+      // - From pass 8 onwards: 3 DT per pass
+      // - Bonuses: 15 passes = +15 DT, 25 passes = +20 DT, 35 passes = +20 DT (cumulative)
+      
+      // Calculate base commission (only for passes 8+)
+      let baseCommission = 0;
+      if (totalPassesSold > 7) {
+        const paidPasses = totalPassesSold - 7; // Passes 8 onwards
+        baseCommission = paidPasses * 3; // 3 DT per pass
+      }
+      
+      // Calculate cumulative bonuses
+      let totalBonuses = 0;
+      if (totalPassesSold >= 15) {
+        totalBonuses += 15; // 15 DT bonus at 15 passes
+      }
+      if (totalPassesSold >= 25) {
+        totalBonuses += 20; // 20 DT bonus at 25 passes
+      }
+      if (totalPassesSold >= 35) {
+        totalBonuses += 20; // 20 DT bonus at 35 passes
+      }
+      
+      // Total commission = base + bonuses
+      const commission = baseCommission + totalBonuses;
 
       // Calculate average response time (time from assigned to accepted)
       const acceptedOrders = allOrders?.filter((o: any) => o.accepted_at && o.assigned_at) || [];
@@ -440,12 +502,17 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
       setPerformance({
         total,
-        completed,
+        paid,
+        completed: 0, // No longer using completed status
         cancelled,
+        rejected,
         ignored,
-        manual,
-        completionRate: total > 0 ? ((completed / total) * 100).toFixed(1) : '0',
+        totalPassesSold,
+        baseCommission,
+        totalBonuses,
+        completionRate: total > 0 ? ((paid / total) * 100).toFixed(1) : '0',
         cancellationRate: total > 0 ? ((cancelled / total) * 100).toFixed(1) : '0',
+        rejectionRate: total > 0 ? ((rejected / total) * 100).toFixed(1) : '0',
         ignoreRate: total > 0 ? ((ignored / total) * 100).toFixed(1) : '0',
         avgResponseTime: avgResponseTime.toFixed(1),
         totalRevenue: totalRevenue.toFixed(2),
@@ -456,7 +523,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     }
   };
 
-  const handleAcceptOrder = async (orderId: string) => {
+  const handleConfirmCash = async (orderId: string) => {
     // Check if sales are enabled
     if (!salesEnabled) {
       toast({
@@ -467,25 +534,12 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       return;
     }
 
-    // Check if order is a manual order - ambassadors cannot approve their own manual orders
-    const order = assignedOrders.find(o => o.id === orderId);
-    if (order && (order.source === 'ambassador_manual' || order.status === 'PENDING_ADMIN_APPROVAL')) {
-      toast({
-        title: t.error,
-        description: language === 'en' 
-          ? 'Manual orders require admin approval. You cannot approve your own orders.'
-          : 'Les commandes manuelles nécessitent l\'approbation de l\'administrateur. Vous ne pouvez pas approuver vos propres commandes.',
-        variant: "destructive"
-      });
-      return;
-    }
-
     try {
       const { error } = await supabase
         .from('orders')
         .update({
-          status: 'ACCEPTED', // Database uses uppercase
-          accepted_at: new Date().toISOString()
+          status: 'PENDING_ADMIN_APPROVAL',
+          updated_at: new Date().toISOString()
         })
         .eq('id', orderId);
 
@@ -494,22 +548,28 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       // Log the action
       await supabase.from('order_logs').insert({
         order_id: orderId,
-        action: 'accepted',
+        action: 'status_changed',
         performed_by: ambassador?.id,
-        performed_by_type: 'ambassador'
+        performed_by_type: 'ambassador',
+        details: { from_status: 'PENDING_CASH', to_status: 'PENDING_ADMIN_APPROVAL' }
       });
 
       toast({
-        title: t.orderAccepted,
+        title: language === 'en' ? 'Cash Confirmed' : 'Paiement Confirmé',
+        description: language === 'en' 
+          ? 'Cash payment confirmed. Waiting for admin approval before tickets are sent.'
+          : 'Paiement en espèces confirmé. En attente de l\'approbation de l\'administrateur avant l\'envoi des billets.',
         variant: "default"
       });
 
+      // Refresh orders data
       fetchData(ambassador?.id || '');
-    } catch (error) {
-      console.error('Error accepting order:', error);
+    } catch (error: any) {
+      console.error('Error confirming cash:', error);
+      const errorMessage = error?.message || error?.error?.message || 'Failed to confirm cash payment.';
       toast({
         title: t.error,
-        description: "Failed to accept order.",
+        description: errorMessage,
         variant: "destructive"
       });
     }
@@ -535,421 +595,84 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       return;
     }
 
+    // Validate order can be cancelled
+    if (selectedOrder.status === 'CANCELLED' || selectedOrder.status === 'CANCELLED_BY_AMBASSADOR' || selectedOrder.status === 'CANCELLED_BY_ADMIN') {
+      toast({
+        title: t.error,
+        description: language === 'en' ? 'This order is already cancelled.' : 'Cette commande est déjà annulée.',
+        variant: "destructive"
+      });
+      setIsCancelDialogOpen(false);
+      setCancellationReason('');
+      return;
+    }
+
+    if (selectedOrder.status === 'PAID' || selectedOrder.status === 'COMPLETED') {
+      toast({
+        title: t.error,
+        description: language === 'en' ? 'Cannot cancel a paid or completed order.' : 'Impossible d\'annuler une commande payée ou terminée.',
+        variant: "destructive"
+      });
+      setIsCancelDialogOpen(false);
+      setCancellationReason('');
+      return;
+    }
+
+    // Verify order belongs to this ambassador
+    if (selectedOrder.ambassador_id !== ambassador?.id) {
+      toast({
+        title: t.error,
+        description: language === 'en' ? 'You do not have permission to cancel this order.' : 'Vous n\'avez pas la permission d\'annuler cette commande.',
+        variant: "destructive"
+      });
+      setIsCancelDialogOpen(false);
+      setCancellationReason('');
+      return;
+    }
+
     try {
       // Cancel order without reassignment
-      {
-        const { error } = await supabase
-          .from('orders')
-          .update({
-            status: 'CANCELLED_BY_AMBASSADOR',
-            cancellation_reason: cancellationReason,
-            cancelled_at: new Date().toISOString()
-          })
-          .eq('id', selectedOrder.id);
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({
+          status: 'CANCELLED',
+          cancelled_by: 'ambassador',
+          cancellation_reason: cancellationReason.trim(),
+          cancelled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedOrder.id);
 
-        if (error) throw error;
-
-        // Log the action
-        await supabase.from('order_logs').insert({
-          order_id: selectedOrder.id,
-          action: 'cancelled',
-          performed_by: ambassador?.id,
-          performed_by_type: 'ambassador',
-          details: { reason: cancellationReason }
-        });
-
-        toast({
-          title: t.orderCancelled,
-          variant: "default"
-        });
+      if (updateError) {
+        throw new Error(updateError.message || 'Failed to update order status');
       }
+
+      // Log the action (don't fail if logging fails)
+      const { error: logError } = await supabase.from('order_logs').insert({
+        order_id: selectedOrder.id,
+        action: 'cancelled',
+        performed_by: ambassador?.id,
+        performed_by_type: 'ambassador',
+        details: { reason: cancellationReason.trim() }
+      });
+
+      if (logError) {
+        console.warn('Failed to log cancellation:', logError);
+        // Don't throw - order is cancelled, logging is secondary
+      }
+
+      toast({
+        title: t.orderCancelled,
+        variant: "default"
+      });
 
       setIsCancelDialogOpen(false);
       setSelectedOrder(null);
       setCancellationReason('');
       fetchData(ambassador?.id || '');
-    } catch (error) {
-      console.error('Error cancelling order:', error);
-      toast({
-        title: t.error,
-        description: "Failed to cancel order.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleCompleteOrder = async (orderId: string) => {
-    // Check if sales are enabled
-    if (!salesEnabled) {
-      toast({
-        title: t.salesDisabledTitle,
-        description: t.salesDisabledMessage,
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      // First, get the order to check if it's a manual order
-      const { data: order, error: fetchError } = await supabase
-        .from('orders')
-        .select('source, status, payment_method, user_email')
-        .eq('id', orderId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      // COD orders (ambassador_manual) should be COMPLETED after approval
-      // Check if order is in APPROVED status (required for COD orders)
-      if (order.payment_method === 'cod' && order.status !== 'APPROVED') {
-        toast({
-          title: t.error,
-          description: language === 'en'
-            ? 'COD orders must be approved by admin before they can be completed.'
-            : 'Les commandes COD doivent être approuvées par l\'administrateur avant de pouvoir être terminées.',
-          variant: "destructive"
-        });
-        return;
-      }
-      
-      // All completed orders use COMPLETED status (unified status)
-      const newStatus = 'COMPLETED';
-
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          status: newStatus,
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', orderId);
-
-      if (error) throw error;
-
-      // Log the action
-      await supabase.from('order_logs').insert({
-        order_id: orderId,
-        action: 'completed',
-        performed_by: ambassador?.id,
-        performed_by_type: 'ambassador'
-      });
-
-      // Generate tickets and send confirmation email for COD orders
-      if (order.payment_method === 'cod' && order.user_email) {
-        try {
-          console.log('🎫 Starting ticket generation for order:', orderId);
-          console.log('📋 Order status after update:', newStatus);
-          
-          // Small delay to ensure database update is committed
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // First, generate tickets (this will also send the email with QR codes)
-          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
-          const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
-          
-          if (!ticketApiUrl) {
-            throw new Error('Invalid API URL configuration');
-          }
-          
-          const ticketResponse = await fetch(ticketApiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ orderId }),
-          });
-
-          const responseData = await ticketResponse.json();
-          console.log('📦 Ticket generation response status:', ticketResponse.status);
-          console.log('📦 Ticket generation response data:', responseData);
-
-          if (!ticketResponse.ok) {
-            console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
-            console.error('❌ Error details:', responseData);
-            
-            // Fallback to old email system if ticket generation fails
-            console.log('📧 Falling back to old email system...');
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8082';
-            const emailResponse = await fetch(`${apiUrl}/api/send-order-completion-email`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ orderId }),
-            });
-
-            if (!emailResponse.ok) {
-              const emailErrorData = await emailResponse.json();
-              console.error('❌ Failed to send completion email:', emailErrorData);
-            } else {
-              console.log('✅ Fallback email sent successfully');
-            }
-          } else {
-            console.log('✅ Tickets generated successfully:', responseData);
-          }
-        } catch (error) {
-          console.error('❌ Error generating tickets or sending email:', error);
-          console.error('Error details:', error);
-          // Don't fail the order completion if ticket/email generation fails
-        }
-      } else {
-        console.log('⚠️ Skipping ticket generation - payment_method:', order.payment_method, 'user_email:', order.user_email);
-      }
-
-      toast({
-        title: t.orderCompleted,
-        variant: "default"
-      });
-
-      fetchData(ambassador?.id || '');
-    } catch (error) {
-      console.error('Error completing order:', error);
-      toast({
-        title: t.error,
-        description: "Failed to complete order.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleCreateManualOrder = async () => {
-    // Check if sales are enabled
-    if (!salesEnabled) {
-      toast({
-        title: t.salesDisabledTitle,
-        description: t.salesDisabledMessage,
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Validate ambassador is logged in
-    if (!ambassador?.id) {
-      toast({
-        title: t.error,
-        description: "You must be logged in to create orders.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Debug: Log the entire form state
-    console.log('Form state before validation:', manualOrderForm);
-
-    // Validate form - check each field individually
-    if (!manualOrderForm.customer_name || manualOrderForm.customer_name.trim() === '') {
-      toast({
-        title: t.error,
-        description: "Customer name is required.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!manualOrderForm.phone || manualOrderForm.phone.trim() === '') {
-      toast({
-        title: t.error,
-        description: "Phone number is required.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!manualOrderForm.city || manualOrderForm.city.trim() === '') {
-      toast({
-        title: t.error,
-        description: "City is required.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!manualOrderForm.event_id) {
-      toast({
-        title: t.error,
-        description: "Event selection is required.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Validate phone
-    const phoneRegex = /^[2594][0-9]{7}$/;
-    if (!phoneRegex.test(manualOrderForm.phone)) {
-      toast({
-        title: t.error,
-        description: "Invalid phone number format.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Validate ville if city is Sousse
-    if ((manualOrderForm.city === 'Sousse' || manualOrderForm.city === 'Tunis') && !manualOrderForm.ville) {
-      toast({
-        title: t.error,
-        description: "Ville is required for Sousse.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      // Get selected event
-      const selectedEvent = events.find(e => e.id === manualOrderForm.event_id);
-      if (!selectedEvent) {
-        toast({
-          title: t.error,
-          description: "Please select a valid event.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Validate that at least one pass is selected
-      if (!manualOrderForm.selectedPasses || manualOrderForm.selectedPasses.length === 0) {
-        toast({
-          title: t.error,
-          description: "Please select at least one pass.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Validate all passes have quantity > 0
-      for (const selectedPass of manualOrderForm.selectedPasses) {
-        if (selectedPass.quantity <= 0) {
-          toast({
-            title: t.error,
-            description: "Each pass must have a quantity greater than 0.",
-            variant: "destructive"
-          });
-          return;
-        }
-      }
-
-      // Trim and validate all required fields
-      const customerName = manualOrderForm.customer_name?.trim();
-      const phone = manualOrderForm.phone?.trim();
-      const city = manualOrderForm.city?.trim();
-
-      if (!customerName || !phone || !city) {
-        toast({
-          title: t.error,
-          description: "Please fill in all required fields (customer name, phone, city).",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Calculate total quantity and total price
-      const totalQuantity = manualOrderForm.selectedPasses.reduce((sum, pass) => sum + pass.quantity, 0);
-      const totalPrice = manualOrderForm.selectedPasses.reduce((sum, pass) => sum + (pass.price * pass.quantity), 0);
-      
-      // Determine primary pass name (first selected pass name, or 'mixed' if multiple types)
-      const primaryPassName = manualOrderForm.selectedPasses.length === 1 
-        ? manualOrderForm.selectedPasses[0].passName 
-        : 'mixed';
-
-      // Prepare insert data - match the actual database schema
-      // Database uses: user_name, user_phone, user_email (NOT customer_name, phone, email)
-      // Status values are UPPERCASE: 'PENDING_ADMIN_APPROVAL'
-      // Database uses payment_method (NOT payment_type)
-      const insertData: any = {
-        source: 'ambassador_manual',
-        user_name: String(customerName || '').trim(), // Database column is user_name (NOT NULL)
-        user_phone: String(phone || '').trim(), // Database column is user_phone (NOT NULL)
-        user_email: manualOrderForm.email ? String(manualOrderForm.email).trim() : null, // Database column is user_email
-        city: String(city || '').trim(),
-        ville: manualOrderForm.ville ? String(manualOrderForm.ville).trim() : null,
-        event_id: manualOrderForm.event_id || null,
-        ambassador_id: ambassador.id,
-        pass_type: primaryPassName, // Primary pass name (or 'mixed' if multiple)
-        quantity: totalQuantity, // Total quantity across all passes
-        total_price: totalPrice, // Total price of all passes combined
-        payment_method: 'cod', // Database uses payment_method (NOT NULL)
-        status: 'PENDING_ADMIN_APPROVAL', // Manual orders require admin approval
-        notes: JSON.stringify({
-          all_passes: manualOrderForm.selectedPasses.map(p => ({
-            passId: p.passId,
-            passName: p.passName,
-            quantity: p.quantity,
-            price: p.price
-          })), // Store all pass types with their quantities and prices
-          total_order_price: totalPrice,
-          pass_count: manualOrderForm.selectedPasses.length, // Number of different pass types
-          ambassador_notes: manualOrderForm.notes?.trim() || null
-        })
-      };
-
-      // Final validation - ensure user_name is not empty (database column name)
-      if (!insertData.user_name || insertData.user_name.length === 0) {
-        console.error('ERROR: user_name is empty!', insertData);
-        toast({
-          title: t.error,
-          description: "Customer name cannot be empty. Please check the form.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Debug log - comprehensive logging
-      console.log('=== DEBUGGING ORDER CREATION ===');
-      console.log('1. Original form state:', manualOrderForm);
-      console.log('2. Trimmed customerName:', customerName);
-      console.log('3. Insert data object:', insertData);
-      console.log('4. user_name in insertData:', insertData.user_name);
-      console.log('5. user_name type:', typeof insertData.user_name);
-      console.log('6. user_name length:', insertData.user_name?.length);
-      console.log('7. JSON stringified:', JSON.stringify(insertData, null, 2));
-      
-      // Double-check: if user_name is still empty/null, abort
-      if (!insertData.user_name || insertData.user_name.trim() === '') {
-        console.error('ABORTING: user_name is empty in final insertData!');
-        console.error('Form state was:', manualOrderForm);
-        toast({
-          title: t.error,
-          description: "Customer name is missing. Please ensure the field is filled.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Make the insert request
-      console.log('8. Making Supabase insert request...');
-      const { data, error } = await supabase
-        .from('orders')
-        .insert(insertData)
-        .select()
-        .single();
-      
-      console.log('9. Insert response - data:', data);
-      console.log('10. Insert response - error:', error);
-
-      if (error) {
-        console.error('Supabase error details:', error);
-        throw error;
-      }
-
-      toast({
-        title: t.manualOrderCreated,
-        variant: "default"
-      });
-
-      setIsManualOrderDialogOpen(false);
-      setManualOrderForm({
-        customer_name: '',
-        phone: '',
-        email: '',
-        city: '',
-        ville: '',
-        event_id: '',
-        selectedPasses: [],
-        notes: ''
-      });
-      fetchData(ambassador?.id || '');
     } catch (error: any) {
-      console.error('Error creating manual order:', error);
-      const errorMessage = error?.message || error?.error?.message || "Failed to create manual order.";
+      console.error('Error cancelling order:', error);
+      const errorMessage = error?.message || error?.error?.message || 'Failed to cancel order.';
       toast({
         title: t.error,
         description: errorMessage,
@@ -957,6 +680,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       });
     }
   };
+
 
   const handleUpdateProfile = async () => {
     if (profileForm.password && profileForm.password !== profileForm.confirmPassword) {
@@ -1039,6 +763,19 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   };
 
   const handleLogout = () => {
+    // Log ambassador logout
+    if (ambassador) {
+      logger.action('Ambassador logged out', {
+        category: 'authentication',
+        userType: 'ambassador',
+        details: { 
+          name: ambassador.full_name,
+          phone: ambassador.phone, 
+          ambassadorId: ambassador.id 
+        }
+      });
+    }
+    
     localStorage.removeItem('ambassadorSession');
     navigate('/ambassador/auth');
   };
@@ -1048,7 +785,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     const normalizedStatus = status.toUpperCase();
     
     // Status badge styling with proper colors
-    if (normalizedStatus === 'ACCEPTED' || normalizedStatus === 'MANUAL_ACCEPTED') {
+    if (normalizedStatus === 'ACCEPTED') {
       return (
         <Badge className="bg-gradient-to-r from-primary to-primary/90 text-white border-0 shadow-lg shadow-primary/30">
           {t.accepted}
@@ -1090,10 +827,24 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         </Badge>
       );
     }
-    if (normalizedStatus === 'COMPLETED' || normalizedStatus === 'MANUAL_COMPLETED') {
+    if (normalizedStatus === 'COMPLETED') {
       return (
         <Badge className="bg-green-500/20 text-green-300 border border-green-500/30 shadow-lg shadow-green-500/20">
           {t.completed}
+        </Badge>
+      );
+    }
+    if (normalizedStatus === 'PENDING_CASH') {
+      return (
+        <Badge className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 shadow-lg shadow-yellow-500/20">
+          {language === 'en' ? 'Pending Cash' : 'Paiement en Attente'}
+        </Badge>
+      );
+    }
+    if (normalizedStatus === 'PAID') {
+      return (
+        <Badge className="bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-lg shadow-blue-500/20">
+          {language === 'en' ? 'Paid' : 'Payé'}
         </Badge>
       );
     }
@@ -1250,24 +1001,18 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           {/* Scrollable Tabs on Mobile */}
           <div className="overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
-            <TabsList className="inline-flex h-10 items-center justify-start sm:justify-center rounded-lg bg-muted/50 p-1 text-muted-foreground w-full sm:w-auto min-w-full sm:min-w-0 sm:grid sm:grid-cols-5 gap-1 border border-border/30">
+            <TabsList className="inline-flex h-10 items-center justify-start sm:justify-center rounded-lg bg-muted/50 p-1 text-muted-foreground w-full sm:w-auto min-w-full sm:min-w-0 sm:grid sm:grid-cols-4 gap-1 border border-border/30">
               <TabsTrigger 
-                value="assigned"
+                value="new-orders"
                 className="whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary/20 data-[state=active]:to-secondary/20 data-[state=active]:text-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/30 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-md"
               >
-                {language === 'en' ? 'My Orders' : 'Mes Commandes'}
+                {language === 'en' ? 'New Orders' : 'Nouvelles Commandes'}
               </TabsTrigger>
               <TabsTrigger 
-                value="manual"
+                value="history"
                 className="whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary/20 data-[state=active]:to-secondary/20 data-[state=active]:text-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/30 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-md"
               >
-                {t.createManualOrder}
-              </TabsTrigger>
-              <TabsTrigger 
-                value="completed"
-                className="whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary/20 data-[state=active]:to-secondary/20 data-[state=active]:text-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/30 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-md"
-              >
-                {t.completedOrders}
+                {language === 'en' ? 'History' : 'Historique'}
               </TabsTrigger>
               <TabsTrigger 
                 value="performance"
@@ -1284,126 +1029,156 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
             </TabsList>
           </div>
 
-          {/* My Orders Tab (shows APPROVED COD orders and ACCEPTED/MANUAL_ACCEPTED non-COD orders) */}
-          <TabsContent value="assigned" className="mt-6">
-            <Card className="border-border/50 shadow-lg shadow-primary/5">
-              <CardHeader>
-                <CardTitle className="text-xl sm:text-2xl font-heading">{language === 'en' ? 'My Orders' : 'Mes Commandes'}</CardTitle>
-                <p className="text-sm text-muted-foreground mt-2">
-                  {language === 'en' 
-                    ? 'Shows approved COD orders ready to complete, and accepted non-COD orders'
-                    : 'Affiche les commandes COD approuvées prêtes à être complétées, et les commandes non-COD acceptées'}
-                </p>
+          {/* New Orders Tab (shows PENDING_CASH orders waiting for cash confirmation) */}
+          <TabsContent value="new-orders" className="mt-6">
+            <Card className="border-border/50 shadow-lg shadow-primary/5 bg-gradient-to-br from-background to-background/95">
+              <CardHeader className="bg-gradient-to-r from-yellow-500/10 via-orange-500/5 to-yellow-500/10 border-b border-border/50 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-gradient-to-br from-yellow-500/20 to-orange-500/20">
+                    <Package className="w-5 h-5 text-yellow-400" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl sm:text-2xl font-heading bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
+                      {language === 'en' ? 'New Orders' : 'Nouvelles Commandes'}
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {language === 'en' 
+                        ? 'Contact the client, collect cash payment, then confirm the order'
+                        : 'Contactez le client, collectez le paiement en espèces, puis confirmez la commande'}
+                    </p>
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent>
-                {assignedOrders.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    {language === 'en' ? 'No active orders' : 'Aucune commande active'}
-                  </p>
+              <CardContent className="p-4 sm:p-6">
+                {newOrders.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="inline-flex p-4 rounded-full bg-muted/50 mb-4">
+                      <Package className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                    <p className="text-muted-foreground text-lg font-medium">
+                      {language === 'en' ? 'No new orders' : 'Aucune nouvelle commande'}
+                    </p>
+                    <p className="text-sm text-muted-foreground/80 mt-2">
+                      {language === 'en' ? 'New orders will appear here' : 'Les nouvelles commandes apparaîtront ici'}
+                    </p>
+                  </div>
                 ) : (
                   <>
                     {/* Desktop Table View */}
-                    <div className="hidden md:block overflow-x-auto">
+                    <div className="hidden md:block overflow-x-auto rounded-lg border border-border/30">
                       <Table>
                         <TableHeader>
-                          <TableRow className="border-border/50">
-                            <TableHead className="font-semibold">{t.customerName}</TableHead>
-                            <TableHead className="font-semibold">{t.phone}</TableHead>
-                            <TableHead className="font-semibold">{t.city}</TableHead>
-                            <TableHead className="font-semibold">{t.passType}</TableHead>
-                            <TableHead className="font-semibold">{t.quantity}</TableHead>
-                            <TableHead className="font-semibold">{t.totalPrice}</TableHead>
-                            <TableHead className="font-semibold">{t.status}</TableHead>
-                            <TableHead className="font-semibold">{t.actions}</TableHead>
+                          <TableRow className="bg-gradient-to-r from-muted/50 to-muted/30 border-b-2 border-border/50">
+                            <TableHead className="font-semibold text-foreground/90">{t.customerName}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.phone}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.city}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.passType}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.quantity}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.totalPrice}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.status}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.actions}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {assignedOrders.map((order) => (
-                            <TableRow key={order.id} className="border-border/30 hover:bg-card/50 transition-colors">
-                              <TableCell className="font-medium">{order.user_name}</TableCell>
-                              <TableCell>{order.user_phone}</TableCell>
-                              <TableCell>{order.city}{order.ville ? ` – ${order.ville}` : ''}</TableCell>
+                          {newOrders.map((order, index) => (
+                            <TableRow 
+                              key={order.id} 
+                              className={`border-border/30 transition-all duration-200 ${
+                                index % 2 === 0 
+                                  ? 'bg-card/30 hover:bg-card/50' 
+                                  : 'bg-card/20 hover:bg-card/40'
+                              }`}
+                            >
+                              <TableCell className="font-medium text-foreground">{order.user_name}</TableCell>
+                              <TableCell className="text-foreground/90 flex items-center gap-2">
+                                <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                                {order.user_phone}
+                              </TableCell>
+                              <TableCell className="text-foreground/90 flex items-center gap-2">
+                                <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                                {order.city}{order.ville ? ` – ${order.ville}` : ''}
+                              </TableCell>
                               <TableCell>
                                 {(() => {
-                                  if (order.pass_type === 'mixed' && order.notes) {
-                                    try {
-                                      const notesData = typeof order.notes === 'string' 
-                                        ? JSON.parse(order.notes) 
-                                        : order.notes;
-                                      if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                                        const passBreakdown = notesData.all_passes
-                                          .map((p: any) => `${p.quantity} ${p.passType === 'vip' ? t.vip : t.standard}`)
-                                          .join(' + ');
-                                        return (
-                                          <div className="space-y-1">
-                                            <Badge variant="outline" className="border-primary/30">MIXED</Badge>
-                                            <p className="text-xs text-muted-foreground">{passBreakdown}</p>
-                                          </div>
-                                        );
-                                      }
-                                    } catch (e) {
-                                      // Fall through to default
-                                    }
+                                  const passes = getOrderPasses(order);
+                                  if (passes.length === 0) {
+                                    return <span className="text-muted-foreground text-sm">-</span>;
                                   }
-                                  return order.pass_type === 'vip' ? t.vip : order.pass_type === 'mixed' ? 'MIXED' : t.standard;
+                                  
+                                  if (passes.length === 1) {
+                                    const pass = passes[0];
+                                    const isVip = pass.pass_type?.toLowerCase() === 'vip';
+                                    const passName = isVip ? t.vip : (pass.pass_type || t.standard);
+                                    return (
+                                      <Badge 
+                                        variant={isVip ? "default" : "secondary"}
+                                        className={isVip 
+                                          ? "bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 text-yellow-300 border-yellow-500/30" 
+                                          : "bg-muted/50 text-foreground/80"
+                                        }
+                                      >
+                                        {passName}
+                                      </Badge>
+                                    );
+                                  }
+                                  
+                                  // Multiple passes - show breakdown
+                                  const passBreakdown = passes
+                                    .map((p: any) => {
+                                      const passName = p.pass_type?.toLowerCase() === 'vip' ? t.vip : 
+                                                      p.pass_type?.toLowerCase() === 'zone 1' ? 'Zone 1' :
+                                                      p.pass_type?.toLowerCase() === 'standard' ? t.standard : 
+                                                      p.pass_type || t.standard;
+                                      return `${p.quantity}× ${passName}`;
+                                    })
+                                    .join(' + ');
+                                  return (
+                                    <div className="space-y-1">
+                                      <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary text-xs">MIXED</Badge>
+                                      <p className="text-xs text-muted-foreground mt-1">{passBreakdown}</p>
+                                    </div>
+                                  );
                                 })()}
                               </TableCell>
-                              <TableCell>{order.quantity}</TableCell>
-                              <TableCell className="font-semibold">{order.total_price.toFixed(2)} TND</TableCell>
+                              <TableCell className="text-center">
+                                {(() => {
+                                  const passes = getOrderPasses(order);
+                                  const totalQuantity = passes.reduce((sum, p) => sum + (p.quantity || 0), 0) || order.quantity || 0;
+                                  return (
+                                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold">
+                                      {totalQuantity}
+                                    </span>
+                                  );
+                                })()}
+                              </TableCell>
+                              <TableCell className="font-semibold">
+                                <span className="text-green-400 font-bold">{order.total_price.toFixed(2)} TND</span>
+                              </TableCell>
                               <TableCell>{getStatusBadge(order.status)}</TableCell>
                               <TableCell>
                                 <div className="flex gap-2">
-                                  {(order.status === 'PENDING' && order.source !== 'ambassador_manual') && (
+                                  {order.status === 'PENDING_CASH' && (
                                     <Button
                                       size="sm"
-                                      onClick={() => handleAcceptOrder(order.id)}
-                                      className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-white border-0 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300"
+                                      onClick={() => handleConfirmCash(order.id)}
+                                      className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0 shadow-lg shadow-green-500/30 hover:shadow-green-500/50 transition-all duration-300"
                                     >
                                       <CheckCircle className="w-4 h-4 mr-1" />
-                                      {t.accept}
+                                      {language === 'en' ? 'Confirm' : 'Confirmer'}
                                     </Button>
                                   )}
-                                  {(order.status === 'PENDING_ADMIN_APPROVAL' || order.status === 'REJECTED') && (
-                                    <Badge variant="outline" className={
-                                      order.status === 'REJECTED' 
-                                        ? "border-red-500/30 text-red-300"
-                                        : "border-yellow-500/30 text-yellow-300"
-                                    }>
-                                      {order.status === 'REJECTED' 
-                                        ? (language === 'en' ? 'Rejected' : 'Rejeté')
-                                        : (language === 'en' ? 'Awaiting Admin Approval' : 'En Attente d\'Approbation')
-                                      }
-                                    </Badge>
-                                  )}
-                                  {order.status !== 'CANCELLED_BY_AMBASSADOR' && 
-                                   order.status !== 'CANCELLED_BY_ADMIN' && 
-                                   order.status !== 'COMPLETED' && 
-                                   order.status !== 'PENDING_ADMIN_APPROVAL' && (
-                                    <Button
-                                      size="sm"
-                                      variant="destructive"
-                                      onClick={() => {
-                                        setSelectedOrder(order);
-                                        setIsCancelDialogOpen(true);
-                                      }}
-                                      className="bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 shadow-lg shadow-red-500/20 hover:shadow-red-500/30 transition-all duration-300"
-                                    >
-                                      <XCircle className="w-4 h-4 mr-1" />
-                                      {t.cancel}
-                                    </Button>
-                                  )}
-                                  {/* Only allow completion for APPROVED COD orders or ACCEPTED/MANUAL_ACCEPTED non-COD orders */}
-                                  {((order.payment_method === 'cod' && order.status === 'APPROVED') ||
-                                    (order.payment_method !== 'cod' && (order.status === 'ACCEPTED' || order.status === 'MANUAL_ACCEPTED'))) && (
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleCompleteOrder(order.id)}
-                                      className="bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white border-0 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300"
-                                    >
-                                      <CheckCircle className="w-4 h-4 mr-1" />
-                                      {t.complete}
-                                    </Button>
-                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => {
+                                      setSelectedOrder(order);
+                                      setIsCancelDialogOpen(true);
+                                    }}
+                                    className="bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 shadow-lg shadow-red-500/20 hover:shadow-red-500/30 transition-all duration-300"
+                                  >
+                                    <XCircle className="w-4 h-4 mr-1" />
+                                    {t.cancel}
+                                  </Button>
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -1414,8 +1189,11 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
                     {/* Mobile Card View */}
                     <div className="md:hidden space-y-4">
-                      {assignedOrders.map((order) => (
-                        <Card key={order.id} className="border-border/50 bg-card/50 shadow-md hover:shadow-lg transition-shadow">
+                      {newOrders.map((order) => (
+                        <Card 
+                          key={order.id} 
+                          className="border-2 border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 via-yellow-500/5 to-background shadow-lg transition-all duration-300 hover:shadow-xl hover:scale-[1.02]"
+                        >
                           <CardContent className="p-4 sm:p-6 space-y-4">
                             <div className="space-y-3">
                               <div>
@@ -1432,101 +1210,102 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                                   <p className="text-sm">{order.city}{order.ville ? ` – ${order.ville}` : ''}</p>
                                 </div>
                               </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-1">{t.passType}</p>
-                                  <div>
-                                    {(() => {
-                                      if (order.pass_type === 'mixed' && order.notes) {
-                                        try {
-                                          const notesData = typeof order.notes === 'string' 
-                                            ? JSON.parse(order.notes) 
-                                            : order.notes;
-                                          if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                                            const passBreakdown = notesData.all_passes
-                                              .map((p: any) => `${p.quantity} ${p.passType === 'vip' ? t.vip : t.standard}`)
-                                              .join(' + ');
-                                            return (
-                                              <div className="space-y-1">
-                                                <Badge variant="outline" className="border-primary/30 text-xs">MIXED</Badge>
-                                                <p className="text-xs text-muted-foreground">{passBreakdown}</p>
-                                              </div>
-                                            );
-                                          }
-                                        } catch (e) {
-                                          // Fall through to default
-                                        }
-                                      }
-                                      return <span className="text-sm">{order.pass_type === 'vip' ? t.vip : order.pass_type === 'mixed' ? 'MIXED' : t.standard}</span>;
-                                    })()}
-                                  </div>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-1">{t.quantity}</p>
-                                  <p className="text-sm font-medium">{order.quantity}</p>
-                                </div>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">{t.totalPrice}</p>
-                                <p className="text-lg font-bold text-foreground">{order.total_price.toFixed(2)} TND</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-2">{t.status}</p>
-                                {getStatusBadge(order.status)}
-                              </div>
                             </div>
+
+                            {/* Pass Details */}
+                            <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
+                              <p className="text-xs text-muted-foreground mb-2">{t.passType}</p>
+                              {(() => {
+                                const passes = getOrderPasses(order);
+                                if (passes.length === 0) {
+                                  return <span className="text-muted-foreground text-sm">-</span>;
+                                }
+                                
+                                if (passes.length === 1) {
+                                  const pass = passes[0];
+                                  const isVip = pass.pass_type?.toLowerCase() === 'vip';
+                                  const passName = isVip ? t.vip : (pass.pass_type || t.standard);
+                                  return (
+                                    <div className="space-y-2">
+                                      <Badge 
+                                        variant={isVip ? "default" : "secondary"}
+                                        className={isVip 
+                                          ? "bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 text-yellow-300 border-yellow-500/30" 
+                                          : "bg-muted/50 text-foreground/80"
+                                        }
+                                      >
+                                        {passName}
+                                      </Badge>
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-xs text-muted-foreground">{t.quantity}:</p>
+                                        <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/20 text-primary font-bold">
+                                          {pass.quantity}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                
+                                // Multiple passes - show all passes clearly
+                                return (
+                                  <div className="space-y-2">
+                                    <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary text-xs">MIXED</Badge>
+                                    <div className="space-y-1.5 mt-2">
+                                      {passes.map((p: any, idx: number) => {
+                                        const passName = p.pass_type?.toLowerCase() === 'vip' ? t.vip : 
+                                                        p.pass_type?.toLowerCase() === 'zone 1' ? 'Zone 1' :
+                                                        p.pass_type?.toLowerCase() === 'standard' ? t.standard : 
+                                                        p.pass_type || t.standard;
+                                        return (
+                                          <div key={idx} className="flex items-center justify-between text-sm bg-background/50 p-2 rounded">
+                                            <span className="font-medium">{passName}</span>
+                                            <span className="text-muted-foreground">× {p.quantity}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                    <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+                                      <p className="text-xs text-muted-foreground">{t.quantity}:</p>
+                                      <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/20 text-primary font-bold">
+                                        {passes.reduce((sum, p) => sum + (p.quantity || 0), 0)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+
+                            {/* Total Price - Highlighted */}
+                            <div className="p-4 rounded-lg bg-gradient-to-r from-green-500/20 via-green-500/10 to-green-500/20 border border-green-500/30">
+                              <p className="text-xs text-green-300/80 mb-1">{t.totalPrice}</p>
+                              <p className="text-2xl font-bold text-green-400">{order.total_price.toFixed(2)} TND</p>
+                            </div>
+
+                            {/* Action Buttons */}
                             <div className="pt-2 border-t border-border/30">
                               <div className="flex flex-wrap gap-2">
-                                {(order.status === 'PENDING' && order.source !== 'ambassador_manual') && (
+                                {order.status === 'PENDING_CASH' && (
                                   <Button
                                     size="sm"
-                                    onClick={() => handleAcceptOrder(order.id)}
-                                    className="flex-1 sm:flex-none bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-white border-0 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 min-w-[100px]"
+                                    onClick={() => handleConfirmCash(order.id)}
+                                    className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0 shadow-lg shadow-green-500/30 hover:shadow-green-500/50 transition-all duration-300"
                                   >
                                     <CheckCircle className="w-4 h-4 mr-1" />
-                                    {t.accept}
+                                    {language === 'en' ? 'Confirm' : 'Confirmer'}
                                   </Button>
                                 )}
-                                {(order.status === 'PENDING_ADMIN_APPROVAL' || order.status === 'REJECTED') && (
-                                  <Badge variant="outline" className={
-                                    order.status === 'REJECTED' 
-                                      ? "border-red-500/30 text-red-300 text-xs"
-                                      : "border-yellow-500/30 text-yellow-300 text-xs"
-                                  }>
-                                    {order.status === 'REJECTED' 
-                                      ? (language === 'en' ? 'Rejected' : 'Rejeté')
-                                      : (language === 'en' ? 'Awaiting Approval' : 'En Attente')
-                                    }
-                                  </Badge>
-                                )}
-                                {order.status !== 'CANCELLED_BY_AMBASSADOR' && 
-                                 order.status !== 'CANCELLED_BY_ADMIN' && 
-                                 order.status !== 'COMPLETED' && (
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => {
-                                      setSelectedOrder(order);
-                                      setIsCancelDialogOpen(true);
-                                    }}
-                                    className="flex-1 sm:flex-none bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 shadow-lg shadow-red-500/20 hover:shadow-red-500/30 transition-all duration-300 min-w-[100px]"
-                                  >
-                                    <XCircle className="w-4 h-4 mr-1" />
-                                    {t.cancel}
-                                  </Button>
-                                )}
-                                {/* Only allow completion for APPROVED COD orders or ACCEPTED/MANUAL_ACCEPTED non-COD orders */}
-                                {((order.payment_method === 'cod' && order.status === 'APPROVED') ||
-                                  (order.payment_method !== 'cod' && (order.status === 'ACCEPTED' || order.status === 'MANUAL_ACCEPTED'))) && (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleCompleteOrder(order.id)}
-                                    className="flex-1 sm:flex-none bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-white border-0 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 min-w-[100px]"
-                                  >
-                                    <CheckCircle className="w-4 h-4 mr-1" />
-                                    {t.complete}
-                                  </Button>
-                                )}
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => {
+                                    setSelectedOrder(order);
+                                    setIsCancelDialogOpen(true);
+                                  }}
+                                  className="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 shadow-lg shadow-red-500/20 hover:shadow-red-500/30 transition-all duration-300"
+                                >
+                                  <XCircle className="w-4 h-4 mr-1" />
+                                  {t.cancel}
+                                </Button>
                               </div>
                             </div>
                           </CardContent>
@@ -1539,337 +1318,142 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
             </Card>
           </TabsContent>
 
-          {/* Create Manual Order Tab */}
-          <TabsContent value="manual" className="mt-6">
-            <Card className="border-border/50 shadow-lg shadow-primary/5">
-              <CardHeader>
-                <CardTitle className="text-xl sm:text-2xl font-heading">{t.createManualOrder}</CardTitle>
+          {/* History Tab (shows PAID, COMPLETED, CANCELLED orders) */}
+          <TabsContent value="history" className="mt-6">
+            <Card className="border-border/50 shadow-lg shadow-primary/5 bg-gradient-to-br from-background to-background/95">
+              <CardHeader className="bg-gradient-to-r from-primary/10 via-secondary/5 to-primary/10 border-b border-border/50 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 to-secondary/20">
+                    <BarChart className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl sm:text-2xl font-heading bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
+                      {language === 'en' ? 'History' : 'Historique'}
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {language === 'en' 
+                        ? 'View your completed, paid, and cancelled orders'
+                        : 'Consultez vos commandes terminées, payées et annulées'}
+                    </p>
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent>
-                {!salesEnabled && (
-                  <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-                    <div className="flex items-center gap-2 text-destructive">
-                      <AlertCircle className="w-5 h-5" />
-                      <h3 className="font-semibold">{t.salesDisabledTitle}</h3>
+              <CardContent className="p-4 sm:p-6">
+                {historyOrders.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="inline-flex p-4 rounded-full bg-muted/50 mb-4">
+                      <Package className="w-8 h-8 text-muted-foreground" />
                     </div>
-                    <p className="mt-2 text-sm text-muted-foreground">{t.salesDisabledMessage}</p>
+                    <p className="text-muted-foreground text-lg font-medium">
+                      {language === 'en' ? 'No order history' : 'Aucun historique de commande'}
+                    </p>
+                    <p className="text-sm text-muted-foreground/80 mt-2">
+                      {language === 'en' ? 'Your completed orders will appear here' : 'Vos commandes terminées apparaîtront ici'}
+                    </p>
                   </div>
-                )}
-                <div className={`space-y-4 ${!salesEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <Label>{t.customerName} *</Label>
-                      <Input
-                        value={manualOrderForm.customer_name || ''}
-                        onChange={(e) => setManualOrderForm({ ...manualOrderForm, customer_name: e.target.value })}
-                        required
-                        placeholder={language === 'en' ? "Enter customer name" : "Entrez le nom du client"}
-                      />
-                    </div>
-                    <div>
-                      <Label>{t.phone} *</Label>
-                      <Input
-                        value={manualOrderForm.phone}
-                        onChange={(e) => setManualOrderForm({ ...manualOrderForm, phone: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label>{t.email}</Label>
-                    <Input
-                      type="email"
-                      value={manualOrderForm.email}
-                      onChange={(e) => setManualOrderForm({ ...manualOrderForm, email: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>{t.event} *</Label>
-                    <Select
-                      value={manualOrderForm.event_id}
-                      onValueChange={(value) => {
-                        setManualOrderForm({ 
-                          ...manualOrderForm, 
-                          event_id: value,
-                          pass_id: '' // Reset pass selection when event changes
-                        });
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t.selectEvent} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {events.length === 0 ? (
-                          <SelectItem value="no-events" disabled>
-                            {t.noUpcomingEvents}
-                          </SelectItem>
-                        ) : (
-                          events.map(event => (
-                            <SelectItem key={event.id} value={event.id}>
-                              {event.name} - {new Date(event.date).toLocaleDateString()}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <Label>{t.city} *</Label>
-                      <Select
-                        value={manualOrderForm.city}
-                        onValueChange={(value) => setManualOrderForm({ ...manualOrderForm, city: value, ville: '' })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select city" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CITIES.map(city => (
-                            <SelectItem key={city} value={city}>{city}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {(manualOrderForm.city === 'Sousse' || manualOrderForm.city === 'Tunis') && (
-                      <div>
-                        <Label>{t.ville} *</Label>
-                        <Select
-                          value={manualOrderForm.ville}
-                          onValueChange={(value) => setManualOrderForm({ ...manualOrderForm, ville: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select ville" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {manualOrderForm.city === 'Sousse' && SOUSSE_VILLES.map(ville => (
-                              <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                            ))}
-                            {manualOrderForm.city === 'Tunis' && TUNIS_VILLES.map(ville => (
-                              <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
-                  {manualOrderForm.event_id && (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <Label>{language === 'en' ? 'Select Passes' : 'Sélectionner les Passes'} *</Label>
-                        <Select
-                          value=""
-                          onValueChange={(value) => {
-                            if (value && value !== '') {
-                              const availablePasses = eventPasses[manualOrderForm.event_id] || [];
-                              const selectedPass = availablePasses.find((p: any) => p.id === value);
-                              if (selectedPass && !manualOrderForm.selectedPasses.find(p => p.passId === value)) {
-                                const passPrice = typeof selectedPass.price === 'number' ? selectedPass.price : parseFloat(selectedPass.price) || 0;
-                                setManualOrderForm({
-                                  ...manualOrderForm,
-                                  selectedPasses: [
-                                    ...manualOrderForm.selectedPasses,
-                                    {
-                                      passId: selectedPass.id,
-                                      passName: selectedPass.name,
-                                      quantity: 1,
-                                      price: passPrice
-                                    }
-                                  ]
-                                });
-                              }
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="w-auto">
-                            <SelectValue placeholder={language === 'en' ? "Add a pass" : "Ajouter un pass"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {eventPasses[manualOrderForm.event_id]?.length === 0 ? (
-                              <SelectItem value="no-passes" disabled>
-                                {language === 'en' ? 'No passes available' : 'Aucun pass disponible'}
-                              </SelectItem>
-                            ) : (
-                              eventPasses[manualOrderForm.event_id]?.filter((pass: any) => 
-                                !manualOrderForm.selectedPasses.find(p => p.passId === pass.id)
-                              ).map((pass: any) => (
-                                <SelectItem key={pass.id} value={pass.id}>
-                                  {pass.name} - {typeof pass.price === 'number' ? pass.price : parseFloat(pass.price) || 0} TND
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      {manualOrderForm.selectedPasses.length > 0 && (
-                        <div className="space-y-2">
-                          {manualOrderForm.selectedPasses.map((selectedPass, index) => (
-                            <div 
-                              key={selectedPass.passId} 
-                              className="flex items-center gap-3 p-4 rounded-lg border transition-all duration-200"
-                              style={{
-                                background: '#1F1F1F',
-                                borderColor: '#2A2A2A'
-                              }}
-                            >
-                              <div className="flex-1">
-                                <p className="font-medium text-sm" style={{ color: '#FFFFFF' }}>{selectedPass.passName}</p>
-                                <p className="text-xs mt-1" style={{ color: '#B0B0B0' }}>{selectedPass.price.toFixed(2)} TND each</p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Label className="text-xs" style={{ color: '#B0B0B0' }}>{language === 'en' ? 'Qty:' : 'Qté:'}</Label>
-                                <Input
-                                  type="number"
-                                  min="1"
-                                  max="10"
-                                  value={selectedPass.quantity}
-                                  onChange={(e) => {
-                                    const newQuantity = Math.max(1, parseInt(e.target.value) || 1);
-                                    const updatedPasses = [...manualOrderForm.selectedPasses];
-                                    updatedPasses[index] = { ...selectedPass, quantity: newQuantity };
-                                    setManualOrderForm({ ...manualOrderForm, selectedPasses: updatedPasses });
-                                  }}
-                                  className="w-16 h-8 text-sm"
-                                />
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    const updatedPasses = manualOrderForm.selectedPasses.filter((_, i) => i !== index);
-                                    setManualOrderForm({ ...manualOrderForm, selectedPasses: updatedPasses });
-                                  }}
-                                  className="h-8 w-8 p-0"
-                                  style={{
-                                    color: '#EF4444'
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = 'transparent';
-                                  }}
-                                >
-                                  <X className="w-4 h-4" />
-                                </Button>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-semibold text-sm" style={{ color: '#E21836' }}>{(selectedPass.price * selectedPass.quantity).toFixed(2)} TND</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      
-                      {manualOrderForm.selectedPasses.length === 0 && (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          {language === 'en' ? 'No passes selected. Use the dropdown above to add passes.' : 'Aucun pass sélectionné. Utilisez le menu déroulant ci-dessus pour ajouter des passes.'}
-                        </p>
-                      )}
-                      
-                      {manualOrderForm.selectedPasses.length > 0 && (
-                        <div 
-                          className="p-4 rounded-lg border"
-                          style={{
-                            background: '#1F1F1F',
-                            borderColor: '#2A2A2A'
-                          }}
-                        >
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm" style={{ color: '#B0B0B0' }}>{t.totalPrice}:</span>
-                            <span className="text-xl font-bold" style={{ color: '#E21836' }}>
-                              {manualOrderForm.selectedPasses.reduce((sum, pass) => sum + (pass.price * pass.quantity), 0).toFixed(2)} TND
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center mt-2 text-xs" style={{ color: '#B0B0B0' }}>
-                            <span>{language === 'en' ? 'Total Quantity:' : 'Quantité Totale:'}</span>
-                            <span style={{ color: '#FFFFFF' }}>{manualOrderForm.selectedPasses.reduce((sum, pass) => sum + pass.quantity, 0)}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <div>
-                    <Label>{language === 'en' ? 'Notes (Optional)' : 'Notes (Optionnel)'}</Label>
-                    <Textarea
-                      value={manualOrderForm.notes}
-                      onChange={(e) => setManualOrderForm({ ...manualOrderForm, notes: e.target.value })}
-                      placeholder={language === 'en' ? 'Add any additional notes...' : 'Ajoutez des notes supplémentaires...'}
-                      rows={3}
-                    />
-                  </div>
-                  <Button 
-                    onClick={handleCreateManualOrder} 
-                    disabled={!salesEnabled}
-                    className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-white border-0 shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    {t.createOrder}
-                  </Button>
-            </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Completed Orders Tab */}
-          <TabsContent value="completed" className="mt-6">
-            <Card className="border-border/50 shadow-lg shadow-primary/5">
-              <CardHeader>
-                <CardTitle className="text-xl sm:text-2xl font-heading">{t.completedOrders}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {completedOrders.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">{t.noCompletedOrders}</p>
                 ) : (
                   <>
                     {/* Desktop Table View */}
-                    <div className="hidden md:block overflow-x-auto">
+                    <div className="hidden md:block overflow-x-auto rounded-lg border border-border/30">
                       <Table>
                         <TableHeader>
-                          <TableRow className="border-border/50">
-                            <TableHead className="font-semibold">{t.customerName}</TableHead>
-                            <TableHead className="font-semibold">{t.phone}</TableHead>
-                            <TableHead className="font-semibold">{t.city}</TableHead>
-                            <TableHead className="font-semibold">{t.passType}</TableHead>
-                            <TableHead className="font-semibold">{t.quantity}</TableHead>
-                            <TableHead className="font-semibold">{t.totalPrice}</TableHead>
-                            <TableHead className="font-semibold">Completed At</TableHead>
+                          <TableRow className="bg-gradient-to-r from-muted/50 to-muted/30 border-b-2 border-border/50">
+                            <TableHead className="font-semibold text-foreground/90">{t.customerName}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.phone}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.city}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.passType}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.quantity}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.totalPrice}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{t.status}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{language === 'en' ? 'Date' : 'Date'}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {completedOrders.map((order) => (
-                            <TableRow key={order.id} className="border-border/30 hover:bg-card/50 transition-colors">
-                              <TableCell className="font-medium">{order.user_name}</TableCell>
-                              <TableCell>{order.user_phone}</TableCell>
-                              <TableCell>{order.city}{order.ville ? ` – ${order.ville}` : ''}</TableCell>
+                          {historyOrders.map((order, index) => (
+                            <TableRow 
+                              key={order.id} 
+                              className={`border-border/30 transition-all duration-200 ${
+                                index % 2 === 0 
+                                  ? 'bg-card/30 hover:bg-card/50' 
+                                  : 'bg-card/20 hover:bg-card/40'
+                              }`}
+                            >
+                              <TableCell className="font-medium text-foreground">{order.user_name}</TableCell>
+                              <TableCell className="text-foreground/90 flex items-center gap-2">
+                                <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                                {order.user_phone}
+                              </TableCell>
+                              <TableCell className="text-foreground/90 flex items-center gap-2">
+                                <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                                {order.city}{order.ville ? ` – ${order.ville}` : ''}
+                              </TableCell>
                               <TableCell>
                                 {(() => {
-                                  if (order.pass_type === 'mixed' && order.notes) {
-                                    try {
-                                      const notesData = typeof order.notes === 'string' 
-                                        ? JSON.parse(order.notes) 
-                                        : order.notes;
-                                      if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                                        const passBreakdown = notesData.all_passes
-                                          .map((p: any) => `${p.quantity} ${p.passType === 'vip' ? t.vip : t.standard}`)
-                                          .join(' + ');
-                                        return (
-                                          <div className="space-y-1">
-                                            <Badge variant="outline" className="border-primary/30">MIXED</Badge>
-                                            <p className="text-xs text-muted-foreground">{passBreakdown}</p>
-                                          </div>
-                                        );
-                                      }
-                                    } catch (e) {
-                                      // Fall through to default
-                                    }
+                                  const passes = getOrderPasses(order);
+                                  if (passes.length === 0) {
+                                    return <span className="text-muted-foreground text-sm">-</span>;
                                   }
-                                  return order.pass_type === 'vip' ? t.vip : order.pass_type === 'mixed' ? 'MIXED' : t.standard;
+                                  
+                                  if (passes.length === 1) {
+                                    const pass = passes[0];
+                                    const isVip = pass.pass_type?.toLowerCase() === 'vip';
+                                    const passName = isVip ? t.vip : (pass.pass_type || t.standard);
+                                    return (
+                                      <Badge 
+                                        variant={isVip ? "default" : "secondary"}
+                                        className={isVip 
+                                          ? "bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 text-yellow-300 border-yellow-500/30" 
+                                          : "bg-muted/50 text-foreground/80"
+                                        }
+                                      >
+                                        {passName}
+                                      </Badge>
+                                    );
+                                  }
+                                  
+                                  // Multiple passes - show breakdown
+                                  const passBreakdown = passes
+                                    .map((p: any) => {
+                                      const passName = p.pass_type?.toLowerCase() === 'vip' ? t.vip : 
+                                                      p.pass_type?.toLowerCase() === 'zone 1' ? 'Zone 1' :
+                                                      p.pass_type?.toLowerCase() === 'standard' ? t.standard : 
+                                                      p.pass_type || t.standard;
+                                      return `${p.quantity}× ${passName}`;
+                                    })
+                                    .join(' + ');
+                                  return (
+                                    <div className="space-y-1">
+                                      <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary text-xs">MIXED</Badge>
+                                      <p className="text-xs text-muted-foreground mt-1">{passBreakdown}</p>
+                                    </div>
+                                  );
                                 })()}
                               </TableCell>
-                              <TableCell>{order.quantity}</TableCell>
-                              <TableCell className="font-semibold">{order.total_price.toFixed(2)} TND</TableCell>
+                              <TableCell className="text-center">
+                                {(() => {
+                                  const passes = getOrderPasses(order);
+                                  const totalQuantity = passes.reduce((sum, p) => sum + (p.quantity || 0), 0) || order.quantity || 0;
+                                  return (
+                                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold">
+                                      {totalQuantity}
+                                    </span>
+                                  );
+                                })()}
+                              </TableCell>
+                              <TableCell className="font-semibold">
+                                <span className="text-green-400 font-bold">{order.total_price.toFixed(2)} TND</span>
+                              </TableCell>
+                              <TableCell>{getStatusBadge(order.status)}</TableCell>
                               <TableCell>
-                                {order.completed_at ? format(new Date(order.completed_at), 'PPp') : '-'}
+                                <div className="text-xs space-y-1">
+                                  <div className="font-medium text-foreground/90">
+                                    {format(new Date(order.completed_at || order.cancelled_at || order.updated_at), 'MMM d, yyyy')}
+                                  </div>
+                                  <div className="text-muted-foreground flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {format(new Date(order.completed_at || order.cancelled_at || order.updated_at), 'HH:mm')}
+                                  </div>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -1879,70 +1463,127 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
                     {/* Mobile Card View */}
                     <div className="md:hidden space-y-4">
-                      {completedOrders.map((order) => (
-                        <Card key={order.id} className="border-border/50 bg-card/50 shadow-md hover:shadow-lg transition-shadow">
-                          <CardContent className="p-4 sm:p-6 space-y-4">
-                            <div className="space-y-3">
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">{t.customerName}</p>
-                                <p className="font-semibold text-base">{order.user_name}</p>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-1">{t.phone}</p>
-                                  <p className="text-sm">{order.user_phone}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-1">{t.city}</p>
-                                  <p className="text-sm">{order.city}{order.ville ? ` – ${order.ville}` : ''}</p>
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-1">{t.passType}</p>
-                                  <div>
-                                    {(() => {
-                                      if (order.pass_type === 'mixed' && order.notes) {
-                                        try {
-                                          const notesData = typeof order.notes === 'string' 
-                                            ? JSON.parse(order.notes) 
-                                            : order.notes;
-                                          if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                                            const passBreakdown = notesData.all_passes
-                                              .map((p: any) => `${p.quantity} ${p.passType === 'vip' ? t.vip : t.standard}`)
-                                              .join(' + ');
-                                            return (
-                                              <div className="space-y-1">
-                                                <Badge variant="outline" className="border-primary/30 text-xs">MIXED</Badge>
-                                                <p className="text-xs text-muted-foreground">{passBreakdown}</p>
-                                              </div>
-                                            );
-                                          }
-                                        } catch (e) {
-                                          // Fall through to default
-                                        }
-                                      }
-                                      return <span className="text-sm">{order.pass_type === 'vip' ? t.vip : order.pass_type === 'mixed' ? 'MIXED' : t.standard}</span>;
-                                    })()}
+                      {historyOrders.map((order) => {
+                        const isPaid = order.status === 'PAID';
+                        const isCompleted = order.status === 'COMPLETED';
+                        const isCancelled = order.status === 'CANCELLED' || order.status === 'CANCELLED_BY_AMBASSADOR' || order.status === 'CANCELLED_BY_ADMIN';
+                        
+                        return (
+                          <Card 
+                            key={order.id} 
+                            className={`border-2 shadow-lg transition-all duration-300 hover:shadow-xl hover:scale-[1.02] ${
+                              isPaid 
+                                ? 'bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-background border-blue-500/30' 
+                                : isCompleted
+                                ? 'bg-gradient-to-br from-green-500/10 via-green-500/5 to-background border-green-500/30'
+                                : isCancelled
+                                ? 'bg-gradient-to-br from-red-500/10 via-red-500/5 to-background border-red-500/30'
+                                : 'bg-gradient-to-br from-card/50 to-card/30 border-border/50'
+                            }`}
+                          >
+                            <CardContent className="p-5 space-y-4">
+                              {/* Header with status */}
+                              <div className="flex items-start justify-between pb-3 border-b border-border/30">
+                                <div className="flex-1">
+                                  <h3 className="font-bold text-lg text-foreground mb-1">{order.user_name}</h3>
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    {format(new Date(order.completed_at || order.cancelled_at || order.updated_at), 'MMM d, yyyy HH:mm')}
                                   </div>
                                 </div>
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-1">{t.quantity}</p>
-                                  <p className="text-sm font-medium">{order.quantity}</p>
+                                <div>{getStatusBadge(order.status)}</div>
+                              </div>
+
+                              {/* Customer Info */}
+                              <div className="grid grid-cols-1 gap-3">
+                                <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/30">
+                                  <Phone className="w-4 h-4 text-primary/70" />
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">{t.phone}</p>
+                                    <p className="text-sm font-medium text-foreground">{order.user_phone}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/30">
+                                  <MapPin className="w-4 h-4 text-primary/70" />
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">{t.city}</p>
+                                    <p className="text-sm font-medium text-foreground">{order.city}{order.ville ? ` – ${order.ville}` : ''}</p>
+                                  </div>
                                 </div>
                               </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">{t.totalPrice}</p>
-                                <p className="text-lg font-bold text-foreground">{order.total_price.toFixed(2)} TND</p>
+
+                              {/* Pass Details */}
+                              <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
+                                <p className="text-xs text-muted-foreground mb-2">{t.passType}</p>
+                                {(() => {
+                                  const passes = getOrderPasses(order);
+                                  if (passes.length === 0) {
+                                    return <span className="text-muted-foreground text-sm">-</span>;
+                                  }
+                                  
+                                  if (passes.length === 1) {
+                                    const pass = passes[0];
+                                    const isVip = pass.pass_type?.toLowerCase() === 'vip';
+                                    const passName = isVip ? t.vip : (pass.pass_type || t.standard);
+                                    return (
+                                      <div className="space-y-2">
+                                        <Badge 
+                                          variant={isVip ? "default" : "secondary"}
+                                          className={isVip 
+                                            ? "bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 text-yellow-300 border-yellow-500/30" 
+                                            : "bg-muted/50 text-foreground/80"
+                                          }
+                                        >
+                                          {passName}
+                                        </Badge>
+                                        <div className="flex items-center gap-2">
+                                          <p className="text-xs text-muted-foreground">{t.quantity}:</p>
+                                          <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/20 text-primary font-bold">
+                                            {pass.quantity}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  
+                                  // Multiple passes - show all passes clearly
+                                  return (
+                                    <div className="space-y-2">
+                                      <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary text-xs">MIXED</Badge>
+                                      <div className="space-y-1.5 mt-2">
+                                        {passes.map((p: any, idx: number) => {
+                                          const passName = p.pass_type?.toLowerCase() === 'vip' ? t.vip : 
+                                                          p.pass_type?.toLowerCase() === 'zone 1' ? 'Zone 1' :
+                                                          p.pass_type?.toLowerCase() === 'standard' ? t.standard : 
+                                                          p.pass_type || t.standard;
+                                          return (
+                                            <div key={idx} className="flex items-center justify-between text-sm bg-background/50 p-2 rounded">
+                                              <span className="font-medium">{passName}</span>
+                                              <span className="text-muted-foreground">× {p.quantity}</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                      <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+                                        <p className="text-xs text-muted-foreground">{t.quantity}:</p>
+                                        <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/20 text-primary font-bold">
+                                          {passes.reduce((sum, p) => sum + (p.quantity || 0), 0)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Completed At</p>
-                                <p className="text-sm">{order.completed_at ? format(new Date(order.completed_at), 'PPp') : '-'}</p>
+
+                              {/* Total Price - Highlighted */}
+                              <div className="p-4 rounded-lg bg-gradient-to-r from-green-500/20 via-green-500/10 to-green-500/20 border border-green-500/30">
+                                <p className="text-xs text-green-300/80 mb-1">{t.totalPrice}</p>
+                                <p className="text-2xl font-bold text-green-400">{order.total_price.toFixed(2)} TND</p>
                               </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
                     </div>
                   </>
                 )}
@@ -1952,77 +1593,160 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
           {/* Performance Tab */}
           <TabsContent value="performance" className="mt-6">
-            {performance && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                <Card className="border-border/50 shadow-lg shadow-primary/5 hover:shadow-xl hover:shadow-primary/10 transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                      <TrendingUp className="w-5 h-5 text-primary" />
+            {performance ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                {/* Completion Rate Card */}
+                <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent hover:from-emerald-500/15 hover:via-emerald-500/10 transition-all duration-300 shadow-lg shadow-emerald-500/10 hover:shadow-xl hover:shadow-emerald-500/20 hover:scale-[1.02]">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-emerald-500/10 transition-colors" />
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-3 text-sm sm:text-base font-semibold text-muted-foreground">
+                      <div className="p-2 rounded-lg bg-emerald-500/20 group-hover:bg-emerald-500/30 transition-colors">
+                        <TrendingUp className="w-4 h-4 text-emerald-400" />
+                      </div>
                       {t.completionRate}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl sm:text-3xl font-bold text-gradient-neon">{performance.completionRate}%</p>
-                    <p className="text-sm text-muted-foreground mt-1">{performance.completed} / {performance.total}</p>
+                  <CardContent className="pt-0">
+                    <p className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent mb-2">
+                      {performance.completionRate}%
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground/80 font-medium">
+                      {performance.paid} / {performance.total} {language === 'en' ? 'paid' : 'payées'}
+                    </p>
+                    <div className="mt-3 h-1.5 bg-emerald-500/10 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-emerald-400 to-emerald-300 rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(parseFloat(performance.completionRate) || 0, 100)}%` }}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
-                <Card className="border-border/50 shadow-lg shadow-primary/5 hover:shadow-xl hover:shadow-primary/10 transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                      <XCircle className="w-5 h-5 text-red-400" />
+
+                {/* Cancellation Rate Card */}
+                <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-red-500/10 via-red-500/5 to-transparent hover:from-red-500/15 hover:via-red-500/10 transition-all duration-300 shadow-lg shadow-red-500/10 hover:shadow-xl hover:shadow-red-500/20 hover:scale-[1.02]">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-red-500/10 transition-colors" />
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-3 text-sm sm:text-base font-semibold text-muted-foreground">
+                      <div className="p-2 rounded-lg bg-red-500/20 group-hover:bg-red-500/30 transition-colors">
+                        <XCircle className="w-4 h-4 text-red-400" />
+                      </div>
                       {t.cancellationRate}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl sm:text-3xl font-bold text-red-400">{performance.cancellationRate}%</p>
-                    <p className="text-sm text-muted-foreground mt-1">{performance.cancelled} orders</p>
+                  <CardContent className="pt-0">
+                    <p className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-red-400 to-red-300 bg-clip-text text-transparent mb-2">
+                      {performance.cancellationRate}%
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground/80 font-medium">
+                      {performance.cancelled} {language === 'en' ? 'cancelled orders' : 'commandes annulées'}
+                    </p>
+                    <div className="mt-3 h-1.5 bg-red-500/10 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-red-400 to-red-300 rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(parseFloat(performance.cancellationRate) || 0, 100)}%` }}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
-                <Card className="border-border/50 shadow-lg shadow-primary/5 hover:shadow-xl hover:shadow-primary/10 transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                      <Clock className="w-5 h-5 text-cyan-400" />
-                      {t.avgResponseTime}
+
+                {/* Rejection Rate Card */}
+                <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-orange-500/10 via-orange-500/5 to-transparent hover:from-orange-500/15 hover:via-orange-500/10 transition-all duration-300 shadow-lg shadow-orange-500/10 hover:shadow-xl hover:shadow-orange-500/20 hover:scale-[1.02]">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-orange-500/10 transition-colors" />
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-3 text-sm sm:text-base font-semibold text-muted-foreground">
+                      <div className="p-2 rounded-lg bg-orange-500/20 group-hover:bg-orange-500/30 transition-colors">
+                        <AlertCircle className="w-4 h-4 text-orange-400" />
+                      </div>
+                      {t.rejectionRate}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl sm:text-3xl font-bold text-cyan-400">{performance.avgResponseTime} min</p>
+                  <CardContent className="pt-0">
+                    <p className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-orange-400 to-orange-300 bg-clip-text text-transparent mb-2">
+                      {performance.rejectionRate}%
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground/80 font-medium">
+                      {performance.rejected} {language === 'en' ? 'rejected orders' : 'commandes rejetées'}
+                    </p>
+                    <div className="mt-3 h-1.5 bg-orange-500/10 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-orange-400 to-orange-300 rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(parseFloat(performance.rejectionRate) || 0, 100)}%` }}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
-                <Card className="border-border/50 shadow-lg shadow-primary/5 hover:shadow-xl hover:shadow-primary/10 transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                      <Package className="w-5 h-5 text-secondary" />
-                      {t.manualOrders}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl sm:text-3xl font-bold text-secondary">{performance.manual}</p>
-                  </CardContent>
-                </Card>
-                <Card className="border-border/50 shadow-lg shadow-primary/5 hover:shadow-xl hover:shadow-primary/10 transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                      <DollarSign className="w-5 h-5 text-green-400" />
+
+                {/* Total Revenue Card */}
+                <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-green-500/10 via-green-500/5 to-transparent hover:from-green-500/15 hover:via-green-500/10 transition-all duration-300 shadow-lg shadow-green-500/10 hover:shadow-xl hover:shadow-green-500/20 hover:scale-[1.02]">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-green-500/10 transition-colors" />
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-3 text-sm sm:text-base font-semibold text-muted-foreground">
+                      <div className="p-2 rounded-lg bg-green-500/20 group-hover:bg-green-500/30 transition-colors">
+                        <DollarSign className="w-4 h-4 text-green-400" />
+                      </div>
                       {t.totalRevenue}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl sm:text-3xl font-bold text-green-400">{performance.totalRevenue} TND</p>
+                  <CardContent className="pt-0">
+                    <p className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-green-400 to-emerald-300 bg-clip-text text-transparent mb-2">
+                      {parseFloat(performance.totalRevenue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground/80 font-medium">
+                      TND {language === 'en' ? 'total revenue' : 'revenu total'}
+                    </p>
+                    <div className="mt-3 flex items-center gap-1 text-green-400/60">
+                      <TrendingUp className="w-3 h-3" />
+                      <span className="text-xs font-medium">{language === 'en' ? 'All time' : 'Tout le temps'}</span>
+                    </div>
                   </CardContent>
                 </Card>
-                <Card className="border-border/50 shadow-lg shadow-primary/5 hover:shadow-xl hover:shadow-primary/10 transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                      <DollarSign className="w-5 h-5 text-green-500" />
+
+                {/* Commission Earned Card */}
+                <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 hover:from-primary/25 hover:via-primary/15 transition-all duration-300 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 hover:scale-[1.02]">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-primary/15 transition-colors" />
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-3 text-sm sm:text-base font-semibold text-muted-foreground">
+                      <div className="p-2 rounded-lg bg-primary/30 group-hover:bg-primary/40 transition-colors">
+                        <DollarSign className="w-4 h-4 text-primary" />
+                      </div>
                       {t.commissionEarned}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl sm:text-3xl font-bold text-gradient-neon">{performance.commission} TND</p>
+                  <CardContent className="pt-0">
+                    <p className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-primary via-primary/90 to-primary/80 bg-clip-text text-transparent mb-2">
+                      {parseFloat(performance.commission).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground/80 font-medium">
+                      {language === 'en' 
+                        ? `${performance.totalPassesSold || 0} ${(performance.totalPassesSold || 0) === 1 ? 'pass sold' : 'passes sold'}`
+                        : `${performance.totalPassesSold || 0} ${(performance.totalPassesSold || 0) === 1 ? 'pass vendu' : 'passes vendus'}`}
+                    </p>
+                    <div className="mt-3 flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground/70">{language === 'en' ? 'Base (passes 8+)' : 'Base (passes 8+)'}:</span>
+                        <span className="font-semibold text-primary">{(performance.baseCommission || 0).toFixed(0)} DT</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground/70">{language === 'en' ? 'Bonuses' : 'Bonus'}:</span>
+                        <span className="font-semibold text-primary">+{(performance.totalBonuses || 0).toFixed(0)} DT</span>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
+            ) : (
+              <Card className="border-border/50 shadow-lg shadow-primary/5">
+                <CardContent className="p-12">
+                  <div className="flex flex-col items-center justify-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <BarChart className="w-6 h-6 text-primary animate-pulse" />
+                    </div>
+                    <p className="text-center text-muted-foreground font-medium">
+                    {language === 'en' ? 'Loading performance data...' : 'Chargement des données de performance...'}
+                  </p>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
 
@@ -2062,7 +1786,12 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         </Tabs>
 
         {/* Cancel Order Dialog */}
-        <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+        <Dialog open={isCancelDialogOpen} onOpenChange={(open) => {
+          setIsCancelDialogOpen(open);
+          if (!open) {
+            setCancellationReason('');
+          }
+        }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{t.cancelOrder}</DialogTitle>
@@ -2076,15 +1805,9 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                   placeholder="Enter cancellation reason..."
                 />
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => {
-                  setIsCancelDialogOpen(false);
-                  setCancellationReason('');
-                }}>
-                  {t.cancel}
-                </Button>
+              <div className="flex justify-end">
                 <Button variant="destructive" onClick={handleCancelOrder}>
-                  {t.cancel}
+                  {t.confirmCancel}
                 </Button>
               </div>
       </div>

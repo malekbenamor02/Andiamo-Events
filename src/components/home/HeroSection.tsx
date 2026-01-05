@@ -170,10 +170,18 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
         const now = new Date().toISOString();
         console.log('🔍 Fetching upcoming events, current time:', now);
         
+        // Check if we're on localhost (for testing) or production
+        const isLocalhost = typeof window !== 'undefined' && (
+          window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1' ||
+          window.location.hostname.startsWith('192.168.') ||
+          window.location.hostname.startsWith('10.0.')
+        );
+        
         // Get all events and filter in JavaScript for more flexibility
         const { data, error } = await supabase
           .from('events')
-          .select('id, name, date, event_type, event_status')
+          .select('id, name, date, event_type, event_status, is_test')
           .order('date', { ascending: true });
 
         if (error) {
@@ -181,11 +189,16 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
           return;
         }
 
-        console.log('📋 All events fetched:', data?.length || 0, data);
+        // Filter out test events if on production (not localhost)
+        const filteredData = isLocalhost 
+          ? data 
+          : (data || []).filter((event: any) => !event.is_test);
 
-        if (data && data.length > 0) {
+        console.log('📋 All events fetched:', filteredData?.length || 0, filteredData);
+
+        if (filteredData && filteredData.length > 0) {
           // Filter for future events (date >= now) and not cancelled
-          const futureEvents = data.filter(event => {
+          const futureEvents = filteredData.filter((event: any) => {
             const eventDate = new Date(event.date);
             const isFuture = eventDate >= new Date(now);
             const notCancelled = event.event_status !== 'cancelled' && (!event.event_status || event.event_status !== 'cancelled');
@@ -196,10 +209,10 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
 
           if (futureEvents.length > 0) {
             // Prefer event_type = 'upcoming', otherwise take the first one
-            const upcomingEvent = futureEvents.find(e => e.event_type === 'upcoming') || futureEvents[0];
+            const upcomingEvent = futureEvents.find((e: any) => e.event_type === 'upcoming') || futureEvents[0];
             
             console.log('✅ Setting next event:', upcomingEvent);
-            setNextEvent(upcomingEvent);
+            setNextEvent(upcomingEvent as any);
           } else {
             console.log('⚠️ No valid future events found');
             setNextEvent(null);
@@ -442,7 +455,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
               <span className="relative z-10 flex items-center">
                 <Calendar className="w-5 h-5 mr-2 transition-transform duration-300 group-hover:scale-110" />
                 {nextEvent 
-                  ? (language === 'en' ? 'Book Pass' : 'Réserver un Pass')
+                  ? (language === 'en' ? 'Book Now' : 'Réserver un Pass')
                   : (content?.watchVideo || defaultContent[language].watchVideo)
                 }
               </span>

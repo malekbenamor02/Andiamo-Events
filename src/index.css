@@ -82,7 +82,7 @@ All colors MUST be HSL.
     --muted: 0 0% 16%; /* #292929 - Muted background */
     --muted-foreground: 0 0% 69%; /* #B0B0B0 - Soft light-gray text */
 
-    --accent: 195 100% 55%;
+    --accent: 352 80% 49%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 352 85% 42%;
@@ -103,7 +103,7 @@ All colors MUST be HSL.
     
     /* Gradients */
     --gradient-primary: linear-gradient(135deg, hsl(352 80% 49%), hsl(352 100% 65%));
-    --gradient-neon: linear-gradient(135deg, hsl(352 80% 49%), hsl(352 100% 65%), hsl(25 100% 60%)); /* Red → Neon Red → Orange */
+    --gradient-neon: linear-gradient(135deg, hsl(352 80% 49%), hsl(352 100% 65%), hsl(352 100% 70%)); /* Red → Neon Red → Bright Red */
     --gradient-dark: #1A1A1A; /* Deep charcoal black - solid color for consistency */
     
     /* Shadows & Glows */
@@ -146,7 +146,7 @@ All colors MUST be HSL.
     --muted: 0 0% 16%; /* #292929 - Muted background */
     --muted-foreground: 0 0% 69%; /* #B0B0B0 - Soft light-gray text */
 
-    --accent: 195 100% 55%;
+    --accent: 352 80% 49%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 352 85% 42%;
