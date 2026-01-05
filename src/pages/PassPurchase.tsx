@@ -160,6 +160,14 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
   const fetchEvent = async () => {
     try {
+      // Check if we're on localhost (for testing) or production
+      const isLocalhost = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.0.')
+      );
+
       const { data: eventData, error: eventError } = await supabase
         .from('events')
         .select('*')
@@ -167,6 +175,20 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         .single();
 
       if (eventError) throw eventError;
+
+      // Block test events on production (not localhost)
+      if (!isLocalhost && eventData?.is_test) {
+        // Redirect to home page or show error
+        toast({
+          title: t[language].error,
+          description: language === 'en' 
+            ? 'This event is not available.' 
+            : 'Cet événement n\'est pas disponible.',
+          variant: 'destructive'
+        });
+        navigate('/');
+        return;
+      }
 
       const { data: passesData, error: passesError } = await supabase
         .from('event_passes')
