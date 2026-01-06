@@ -8,7 +8,7 @@ const PrivacyPolicy = ({ language }: PrivacyPolicyProps) => {
       title: "Politique de Confidentialité",
       sections: [
         {
-          title: "13. Données personnelles",
+          title: "1. Données personnelles",
           content: [
             "Les données personnelles collectées sont utilisées exclusivement pour :",
             "• le traitement des commandes,",
@@ -23,7 +23,7 @@ const PrivacyPolicy = ({ language }: PrivacyPolicyProps) => {
       title: "Privacy Policy",
       sections: [
         {
-          title: "13. Personal Data",
+          title: "1. Personal Data",
           content: [
             "Personal data collected is used exclusively for:",
             "• order processing,",

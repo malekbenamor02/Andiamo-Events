@@ -8,7 +8,7 @@ const RefundPolicy = ({ language }: RefundPolicyProps) => {
       title: "Politique de Remboursement & Annulation",
       sections: [
         {
-          title: "9. Politique de remboursement",
+          title: "1. Politique de remboursement",
           content: [
             "Sauf mention contraire explicite, les billets ne sont ni échangeables ni remboursables, y compris en cas :",
             "• d'empêchement personnel,",
@@ -18,7 +18,7 @@ const RefundPolicy = ({ language }: RefundPolicyProps) => {
           ]
         },
         {
-          title: "10. Annulation ou report d'événement",
+          title: "2. Annulation ou report d'événement",
           content: [
             "En cas d'annulation ou de report d'un événement par l'Organisateur, les modalités applicables (remboursement, report ou avoir) seront communiquées par les canaux officiels d'Andiamo Events.",
             "Aucun frais annexe (transport, hébergement, restauration ou autres) ne pourra être réclamé à l'Organisateur."
@@ -30,7 +30,7 @@ const RefundPolicy = ({ language }: RefundPolicyProps) => {
       title: "Refund & Cancellation Policy",
       sections: [
         {
-          title: "9. Refund Policy",
+          title: "1. Refund Policy",
           content: [
             "Unless explicitly stated otherwise, tickets are neither exchangeable nor refundable, including in cases of:",
             "• personal inability to attend,",
@@ -40,7 +40,7 @@ const RefundPolicy = ({ language }: RefundPolicyProps) => {
           ]
         },
         {
-          title: "10. Event Cancellation or Postponement",
+          title: "2. Event Cancellation or Postponement",
           content: [
             "In the event of cancellation or postponement of an event by the Organizer, the applicable terms (refund, postponement, or credit) will be communicated through Andiamo Events' official channels.",
             "No additional expenses (transportation, accommodation, catering, or others) may be claimed from the Organizer."

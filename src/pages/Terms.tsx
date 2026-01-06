@@ -77,7 +77,7 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "11. Accès et comportement",
+          title: "9. Accès et comportement",
           content: [
             "L'Organisateur se réserve le droit de refuser l'accès ou d'exclure toute personne dont le comportement est jugé :",
             "• dangereux,",
@@ -87,7 +87,7 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "12. Responsabilité",
+          title: "10. Responsabilité",
           content: [
             "L'Organisateur décline toute responsabilité en cas :",
             "• de perte, vol ou détérioration d'effets personnels,",
@@ -96,21 +96,21 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "14. Propriété intellectuelle",
+          title: "11. Propriété intellectuelle",
           content: [
             "L'ensemble des contenus présents sur le site Andiamo Events (textes, visuels, logos, vidéos, concepts) est la propriété exclusive de l'Organisateur.",
             "Toute reproduction ou utilisation sans autorisation préalable est strictement interdite."
           ]
         },
         {
-          title: "15. Droit applicable",
+          title: "12. Droit applicable",
           content: [
             "Les présentes Conditions Générales de Vente sont soumises au droit tunisien.",
             "À défaut de résolution amiable, tout litige sera soumis aux juridictions compétentes en Tunisie."
           ]
         },
         {
-          title: "16. Acceptation des CGV",
+          title: "13. Acceptation des CGV",
           content: [
             "La validation de la commande vaut acceptation pleine et entière des présentes Conditions Générales de Vente."
           ]
@@ -190,7 +190,7 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "11. Access and behavior",
+          title: "9. Access and behavior",
           content: [
             "The Organizer reserves the right to refuse access or exclude any person whose behavior is deemed:",
             "• dangerous,",
@@ -200,7 +200,7 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "12. Liability",
+          title: "10. Liability",
           content: [
             "The Organizer disclaims all liability in the event of:",
             "• loss, theft or deterioration of personal effects,",
@@ -209,21 +209,21 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "14. Intellectual property",
+          title: "11. Intellectual property",
           content: [
             "All content on the Andiamo Events website (texts, visuals, logos, videos, concepts) is the exclusive property of the Organizer.",
             "Any reproduction or use without prior authorization is strictly prohibited."
           ]
         },
         {
-          title: "15. Applicable law",
+          title: "12. Applicable law",
           content: [
             "These General Terms and Conditions of Sale are subject to Tunisian law.",
             "In the absence of an amicable resolution, any dispute will be submitted to the competent courts in Tunisia."
           ]
         },
         {
-          title: "16. Acceptance of GTCS",
+          title: "13. Acceptance of GTCS",
           content: [
             "Order validation constitutes full and complete acceptance of these General Terms and Conditions of Sale."
           ]
