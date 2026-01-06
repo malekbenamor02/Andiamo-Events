@@ -52,28 +52,41 @@ export const apiFetch = async (
 
     // Handle 401 Unauthorized responses - STRICT: immediate redirect
     // This happens when JWT 'exp' field has passed or token is invalid
+    // BUT: Only redirect for admin endpoints, not for ambassador/login endpoints
     if (response.status === 401) {
-      // STRICT: Token expired or invalid - redirect immediately
-      // No token refresh, no extension - session is over
-      handleUnauthorized();
+      // Check if this is an admin endpoint that requires token-based auth
+      const isAdminEndpoint = url.includes('/api/admin-') || 
+                              url.includes('/api/verify-admin') ||
+                              url.includes('/api/send-email') ||
+                              url.includes('/api/test-email');
       
-      // Return a response that won't cause console errors
-      // Create a mock response that indicates unauthorized
-      // This prevents the browser from logging the 401 error
-      return new Response(
-        JSON.stringify({ 
-          error: 'Unauthorized', 
-          valid: false,
-          reason: 'Token expired or invalid - session ended'
-        }),
-        {
-          status: 401,
-          statusText: 'Unauthorized',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      // Only redirect for admin endpoints (token expiration)
+      // For ambassador/login endpoints, 401 just means invalid credentials - don't redirect
+      if (isAdminEndpoint) {
+        // STRICT: Token expired or invalid - redirect immediately
+        // No token refresh, no extension - session is over
+        handleUnauthorized();
+        
+        // Return a response that won't cause console errors
+        // Create a mock response that indicates unauthorized
+        // This prevents the browser from logging the 401 error
+        return new Response(
+          JSON.stringify({ 
+            error: 'Unauthorized', 
+            valid: false,
+            reason: 'Token expired or invalid - session ended'
+          }),
+          {
+            status: 401,
+            statusText: 'Unauthorized',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+      // For non-admin endpoints (like ambassador-login), just return the original response
+      // so the error message can be displayed to the user
     }
 
     // Handle 404 Not Found responses gracefully

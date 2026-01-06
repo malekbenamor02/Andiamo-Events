@@ -260,29 +260,48 @@ const Auth = ({ language }: AuthProps) => {
         throw new Error('Login failed');
       }
     } catch (error: any) {
-      const errorMessage = error.message || (language === 'en' ? "An error occurred" : "Une erreur s'est produite");
+      // Extract error message from API response
+      let errorMessage = error.message || (language === 'en' ? "An error occurred" : "Une erreur s'est produite");
+      
+      // Check if error has details from API response
+      if (error.data) {
+        errorMessage = error.data.error || error.data.details || error.data.message || errorMessage;
+      }
       
       // Log failed ambassador login attempt
       logger.warning('Ambassador login failed', {
         category: 'authentication',
         userType: 'ambassador',
-        details: { phone: loginData.phone, error: errorMessage }
+        details: { phone: loginData.phone, error: errorMessage, status: error.status }
       });
       
       // Handle specific error messages from API
       let title = t.login.error;
       let description = errorMessage;
       
-      if (errorMessage.includes('Invalid phone number or password')) {
-        description = language === 'en' ? "Invalid phone number or password" : "Numéro de téléphone ou mot de passe invalide";
+      if (errorMessage.includes('Invalid phone number or password') || errorMessage.includes('Invalid credentials')) {
+        title = language === 'en' ? "Invalid Credentials" : "Identifiants invalides";
+        description = language === 'en' 
+          ? "The phone number or password you entered is incorrect. Please check your credentials and try again." 
+          : "Le numéro de téléphone ou le mot de passe que vous avez saisi est incorrect. Veuillez vérifier vos identifiants et réessayer.";
       } else if (errorMessage.includes('under review')) {
         title = t.login.pending;
         description = language === 'en' ? "Your application is under review" : "Votre candidature est en cours d'examen";
       } else if (errorMessage.includes('not approved') || errorMessage.includes('rejected')) {
         title = t.login.rejected;
         description = language === 'en' ? "Your application was not approved" : "Votre candidature n'a pas été approuvée";
+      } else if (errorMessage.includes('suspended')) {
+        title = language === 'en' ? "Account Suspended" : "Compte suspendu";
+        description = language === 'en' 
+          ? "Your ambassador account has been suspended. Please contact support for assistance." 
+          : "Votre compte ambassadeur a été suspendu. Veuillez contacter le support pour obtenir de l'aide.";
       } else if (errorMessage.includes('Too many')) {
         description = errorMessage;
+      } else if (errorMessage.includes('No ambassador found')) {
+        title = language === 'en' ? "Account Not Found" : "Compte introuvable";
+        description = language === 'en' 
+          ? "No ambassador account found with this phone number. Please check your phone number or contact support." 
+          : "Aucun compte ambassadeur trouvé avec ce numéro de téléphone. Veuillez vérifier votre numéro de téléphone ou contacter le support.";
       }
 
       toast({

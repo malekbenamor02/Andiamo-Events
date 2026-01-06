@@ -3355,13 +3355,51 @@ app.post('/api/ambassador-update-password', authLimiter, async (req, res) => {
 app.post('/api/ambassador-login', authLimiter, async (req, res) => {
   try {
     if (!supabase) {
-      return res.status(500).json({ error: 'Supabase not configured' });
+      console.error('❌ /api/ambassador-login: Supabase not configured');
+      return res.status(500).json({ 
+        error: 'Server configuration error',
+        details: 'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
+      });
     }
 
     const { phone, password, recaptchaToken } = req.body;
 
     if (!phone || !password) {
       return res.status(400).json({ error: 'Phone number and password are required' });
+    }
+
+    // Normalize phone number for Tunisian format
+    // Remove spaces, dashes, parentheses, and country code prefixes
+    const normalizePhone = (phoneNum) => {
+      if (!phoneNum) return '';
+      // Remove all non-digit characters
+      let cleaned = phoneNum.replace(/[\s\-\(\)]/g, '').trim();
+      // Remove country code prefixes (+216, 216, 00216)
+      if (cleaned.startsWith('+216')) {
+        cleaned = cleaned.substring(4);
+      } else if (cleaned.startsWith('216')) {
+        cleaned = cleaned.substring(3);
+      } else if (cleaned.startsWith('00216')) {
+        cleaned = cleaned.substring(5);
+      }
+      // Remove leading zeros
+      cleaned = cleaned.replace(/^0+/, '');
+      // Should be exactly 8 digits starting with 2, 4, 5, or 9
+      return cleaned;
+    };
+    
+    const normalizedPhone = normalizePhone(phone);
+    
+    // Validate phone number format (Tunisian: 8 digits starting with 2, 4, 5, or 9)
+    if (!/^[2459]\d{7}$/.test(normalizedPhone)) {
+      console.error('❌ /api/ambassador-login: Invalid phone format:', {
+        original: phone,
+        normalized: normalizedPhone
+      });
+      return res.status(400).json({ 
+        error: 'Invalid phone number format',
+        details: 'Phone number must be 8 digits starting with 2, 4, 5, or 9'
+      });
     }
 
     // Verify reCAPTCHA if provided
@@ -3376,42 +3414,173 @@ app.post('/api/ambassador-login', authLimiter, async (req, res) => {
           });
           const verifyData = await verifyResponse.json();
           if (!verifyData.success) {
+            console.error('❌ /api/ambassador-login: reCAPTCHA verification failed');
             return res.status(400).json({ error: 'reCAPTCHA verification failed' });
           }
         } catch (recaptchaError) {
-          console.error('reCAPTCHA verification error:', recaptchaError);
+          console.error('❌ /api/ambassador-login: reCAPTCHA verification error:', recaptchaError);
           return res.status(500).json({ error: 'reCAPTCHA verification service unavailable' });
         }
       }
     }
 
-    // Fetch ambassador by phone number
-    const { data: ambassador, error } = await supabase
+    // Try to find ambassador by phone number (try normalized first, then exact)
+    let ambassador = null;
+    let dbError = null;
+
+    // Strategy 1: Try normalized phone match (most reliable)
+    const { data: ambassadorByNormalized, error: normalizedError } = await supabase
       .from('ambassadors')
       .select('*')
-      .eq('phone', phone)
-      .single();
+      .eq('phone', normalizedPhone)
+      .maybeSingle();
 
-    if (error || !ambassador) {
-      return res.status(401).json({ error: 'Invalid phone number or password' });
+    if (ambassadorByNormalized) {
+      ambassador = ambassadorByNormalized;
+    } else if (normalizedError && normalizedError.code !== 'PGRST116') {
+      // PGRST116 is "not found" which is OK, other errors are not
+      dbError = normalizedError;
+    } else {
+      // Strategy 2: Try exact phone match (in case it's stored with formatting)
+      const { data: ambassadorByPhone, error: phoneError } = await supabase
+        .from('ambassadors')
+        .select('*')
+        .eq('phone', phone)
+        .maybeSingle();
+
+      if (ambassadorByPhone) {
+        ambassador = ambassadorByPhone;
+      } else if (phoneError && phoneError.code !== 'PGRST116') {
+        dbError = phoneError;
+      } else {
+        // Strategy 3: Fetch all and find by normalized comparison
+        const { data: allAmbassadors, error: fetchError } = await supabase
+          .from('ambassadors')
+          .select('*');
+        
+        if (fetchError) {
+          dbError = fetchError;
+        } else if (allAmbassadors) {
+          ambassador = allAmbassadors.find(amb => {
+            const ambPhone = normalizePhone(amb.phone || '');
+            return ambPhone === normalizedPhone;
+          }) || null;
+        }
+      }
+    }
+
+    if (dbError) {
+      console.error('❌ /api/ambassador-login: Database error:', {
+        error: dbError.message,
+        code: dbError.code,
+        phone: phone
+      });
+      return res.status(500).json({ 
+        error: 'Database error',
+        details: 'Failed to verify ambassador credentials'
+      });
+    }
+
+    if (!ambassador) {
+      console.error('❌ /api/ambassador-login: Ambassador not found:', {
+        originalPhone: phone,
+        normalizedPhone: normalizedPhone,
+        phoneLength: phone.length,
+        normalizedLength: normalizedPhone.length
+      });
+      
+      // Log available ambassadors for debugging (first 5)
+      if (process.env.NODE_ENV === 'development') {
+        const { data: sampleAmbassadors } = await supabase
+          .from('ambassadors')
+          .select('phone, full_name, status')
+          .limit(5);
+        console.log('Sample ambassadors in database:', sampleAmbassadors);
+      }
+      
+      return res.status(401).json({ 
+        error: 'Invalid phone number or password',
+        details: 'No ambassador found with this phone number. Please check your phone number and try again.'
+      });
+    }
+
+    // Check if ambassador has a password
+    if (!ambassador.password) {
+      console.error('❌ /api/ambassador-login: Ambassador has no password:', {
+        ambassadorId: ambassador.id,
+        phone: ambassador.phone
+      });
+      return res.status(500).json({ 
+        error: 'Account configuration error',
+        details: 'Ambassador account is not properly configured. Please contact support.'
+      });
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(password, ambassador.password);
+    let isPasswordValid = false;
+    try {
+      isPasswordValid = await bcrypt.compare(password, ambassador.password);
+    } catch (bcryptError) {
+      console.error('❌ /api/ambassador-login: Password verification error:', {
+        error: bcryptError.message,
+        ambassadorId: ambassador.id
+      });
+      return res.status(500).json({ 
+        error: 'Server error',
+        details: 'Failed to verify password'
+      });
+    }
+
     if (!isPasswordValid) {
+      console.error('❌ /api/ambassador-login: Invalid password:', {
+        phone: ambassador.phone,
+        ambassadorId: ambassador.id
+      });
       return res.status(401).json({ error: 'Invalid phone number or password' });
     }
 
     // Check application status
     if (ambassador.status === 'pending') {
-      return res.status(403).json({ error: 'Your application is under review' });
+      return res.status(403).json({ 
+        error: 'Your application is under review',
+        details: 'Please wait for your application to be approved before logging in.'
+      });
     }
 
     if (ambassador.status === 'rejected') {
-      return res.status(403).json({ error: 'Your application was not approved' });
+      return res.status(403).json({ 
+        error: 'Your application was not approved',
+        details: 'Your ambassador application was not approved. Please contact support if you believe this is an error.'
+      });
+    }
+
+    if (ambassador.status === 'suspended') {
+      return res.status(403).json({ 
+        error: 'Your account is suspended',
+        details: 'Your ambassador account has been suspended. Please contact support for assistance.'
+      });
+    }
+
+    // Only allow approved ambassadors to login
+    if (ambassador.status !== 'approved') {
+      console.error('❌ /api/ambassador-login: Invalid status:', {
+        phone: ambassador.phone,
+        status: ambassador.status,
+        ambassadorId: ambassador.id
+      });
+      return res.status(403).json({ 
+        error: 'Account not active',
+        details: `Your account status is "${ambassador.status}". Only approved ambassadors can log in.`
+      });
     }
 
     // Success - return ambassador data (frontend will handle session storage)
+    console.log('✅ /api/ambassador-login: Login successful:', {
+      ambassadorId: ambassador.id,
+      phone: ambassador.phone,
+      name: ambassador.full_name
+    });
+
     res.status(200).json({ 
       success: true, 
       ambassador: {
@@ -3419,14 +3588,21 @@ app.post('/api/ambassador-login', authLimiter, async (req, res) => {
         full_name: ambassador.full_name,
         phone: ambassador.phone,
         email: ambassador.email,
-        status: ambassador.status
+        status: ambassador.status,
+        city: ambassador.city
       }
     });
   } catch (error) {
-    console.error('Error in ambassador login:', error);
+    console.error('❌ /api/ambassador-login: Unexpected error:', {
+      error: error.message,
+      stack: error.stack,
+      phone: req.body?.phone
+    });
     res.status(500).json({ 
       error: 'Internal server error', 
-      details: error.message 
+      details: process.env.NODE_ENV === 'production' 
+        ? 'An error occurred. Please try again later.' 
+        : error.message
     });
   }
 });

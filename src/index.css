@@ -69,7 +69,7 @@ All colors MUST be HSL.
     --primary: 352 80% 49%; /* #E21836 - Red accent */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 270 80% 60%;
+    --secondary: 352 80% 49%; /* Red accent - changed from purple */
     --secondary-foreground: 0 0% 100%;
 
     --muted: 0 0% 16%; /* #292929 - Muted background */
@@ -133,7 +133,7 @@ All colors MUST be HSL.
     --primary: 352 80% 49%; /* #E21836 - Red accent */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 270 80% 60%;
+    --secondary: 352 80% 49%; /* Red accent - changed from purple */
     --secondary-foreground: 0 0% 100%;
 
     --muted: 0 0% 16%; /* #292929 - Muted background */

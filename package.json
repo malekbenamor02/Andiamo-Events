@@ -10,7 +10,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "node server.cjs",
-    "dev:full": "concurrently \"npm run dev\" \"npm run server\""
+    "dev:full": "concurrently \"npm run dev\" \"npm run server\"",
+    "security:generate-secret": "node scripts/generate-webhook-secret.js",
+    "security:check": "node scripts/check-security-config.js",
+    "security:setup": "node scripts/setup-security.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

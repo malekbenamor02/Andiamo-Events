@@ -18,6 +18,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import { API_ROUTES } from './api-routes';
+import { createQRCodeEmail } from './email';
 
 // Types
 interface OrderPass {
@@ -259,6 +260,7 @@ const generateAndUploadQRCodes = async (
 
 /**
  * Compose confirmation email HTML with all ticket QR codes
+ * Now uses the ambassador-style template from email.ts
  */
 const composeConfirmationEmail = (
   orderData: OrderData,
@@ -268,20 +270,20 @@ const composeConfirmationEmail = (
   const customerName = orderData.user_name || 'Valued Customer';
   const eventName = orderData.events?.name || 'Event';
   const totalAmount = orderData.total_price;
-  const ambassadorName = orderData.ambassadors?.full_name || 'Our Ambassador';
+  const ambassadorName = orderData.ambassadors?.full_name;
 
-  // Group tickets by pass type
-  const ticketsByPassType = new Map<string, Ticket[]>();
-  tickets.forEach(ticket => {
-    const pass = orderPasses.find(p => p.id === ticket.order_pass_id);
-    if (pass) {
-      const key = pass.pass_type;
-      if (!ticketsByPassType.has(key)) {
-        ticketsByPassType.set(key, []);
-      }
-      ticketsByPassType.get(key)!.push(ticket);
-    }
-  });
+  // Group tickets by pass type for the email template
+  const ticketsForEmail = tickets
+    .filter(ticket => ticket.qr_code_url)
+    .map(ticket => {
+      const pass = orderPasses.find(p => p.id === ticket.order_pass_id);
+      return {
+        id: ticket.id,
+        passType: pass?.pass_type || 'Standard',
+        qrCodeUrl: ticket.qr_code_url!,
+        secureToken: ticket.secure_token,
+      };
+    });
 
   // Build passes summary
   const passesSummary = orderPasses.map(p => ({
@@ -290,216 +292,20 @@ const composeConfirmationEmail = (
     price: p.price,
   }));
 
-  // Build tickets HTML
-  const ticketsHtml = Array.from(ticketsByPassType.entries())
-    .map(([passType, passTickets]) => {
-      const ticketsList = passTickets
-        .map(ticket => {
-          if (ticket.qr_code_url) {
-            return `
-              <div style="margin: 20px 0; padding: 20px; background: #f9f9f9; border-radius: 8px; text-align: center;">
-                <h4 style="margin: 0 0 15px 0; color: #667eea;">${passType} - Ticket ${passTickets.indexOf(ticket) + 1}</h4>
-                <img src="${ticket.qr_code_url}" alt="QR Code for ${passType}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid hsl(195, 100%, 50%, 0.3); display: block; margin: 0 auto;" />
-                <p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">Token: ${ticket.secure_token.substring(0, 8)}...</p>
-              </div>
-            `;
-          }
-          return '';
-        })
-        .join('');
+  // Use the new QR code email template
+  const emailConfig = createQRCodeEmail({
+    customerName,
+    customerEmail: orderData.user_email || '',
+    orderId: orderData.id,
+    eventName,
+    totalAmount,
+    ambassadorName,
+    passes: passesSummary,
+    tickets: ticketsForEmail,
+    supportContactUrl: typeof window !== 'undefined' ? `${window.location.origin}/contact` : 'https://andiamo-events.tn/contact',
+  });
 
-      return `
-        <div style="margin: 30px 0;">
-          <h3 style="color: #667eea; margin-bottom: 15px;">${passType} Tickets (${passTickets.length})</h3>
-          ${ticketsList}
-        </div>
-      `;
-    })
-    .join('');
-
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Order Confirmation - Andiamo Events</title>
-      <style>
-        body { 
-          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          font-optical-sizing: auto;
-          font-style: normal; 
-          line-height: 1.7; 
-          color: #333; 
-          background: #f4f4f4; 
-          padding: 20px; 
-        }
-        .container { 
-          max-width: 600px; 
-          margin: 0 auto; 
-          background: white; 
-          padding: 30px; 
-          border-radius: 10px; 
-          box-shadow: 0 0 10px rgba(0,0,0,0.1); 
-        }
-        .header { 
-          background: linear-gradient(135deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 50%, hsl(330, 100%, 65%) 100%); 
-          color: white; 
-          padding: 30px; 
-          text-align: center; 
-          border-radius: 10px 10px 0 0; 
-          margin: -30px -30px 30px -30px; 
-        }
-        .header h1 { 
-          margin: 0; 
-          font-size: 28px; 
-        }
-        .content { 
-          padding: 20px 0; 
-        }
-        .order-info { 
-          background: #f9f9f9; 
-          padding: 20px; 
-          border-radius: 8px; 
-          margin: 20px 0; 
-        }
-        .order-info h3 { 
-          margin-top: 0; 
-          color: #667eea; 
-        }
-        .info-row { 
-          display: flex; 
-          justify-content: space-between; 
-          padding: 10px 0; 
-          border-bottom: 1px solid #eee; 
-        }
-        .info-row:last-child { 
-          border-bottom: none; 
-        }
-        .passes-table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin: 20px 0; 
-        }
-        .passes-table th, .passes-table td { 
-          padding: 12px; 
-          text-align: left; 
-          border-bottom: 1px solid #eee; 
-        }
-        .passes-table th { 
-          background: #f9f9f9; 
-          color: #667eea; 
-          font-weight: 600; 
-        }
-        .total-row { 
-          font-weight: bold; 
-          font-size: 18px; 
-          color: #667eea; 
-        }
-        .footer { 
-          text-align: center; 
-          margin-top: 30px; 
-          padding-top: 20px; 
-          border-top: 1px solid #eee; 
-          color: #666; 
-          font-size: 14px; 
-        }
-        .support-link { 
-          display: inline-block; 
-          margin-top: 20px; 
-          padding: 12px 24px; 
-          background: #667eea; 
-          color: white; 
-          text-decoration: none; 
-          border-radius: 5px; 
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>✅ Order Confirmed!</h1>
-          <p>Your Digital Tickets Are Ready</p>
-        </div>
-        <div class="content">
-          <p>Dear <strong>${customerName}</strong>,</p>
-          <p>We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.</p>
-          
-          <div class="order-info">
-            <h3>📋 Order Details</h3>
-            <div class="info-row">
-              <span><strong>Order ID:</strong></span>
-              <span>${orderData.id.substring(0, 8).toUpperCase()}</span>
-            </div>
-            <div class="info-row">
-              <span><strong>Event:</strong></span>
-              <span>${eventName}</span>
-            </div>
-            <div class="info-row">
-              <span><strong>Total Amount:</strong></span>
-              <span><strong>${totalAmount.toFixed(2)} TND</strong></span>
-            </div>
-            ${orderData.ambassadors ? `
-            <div class="info-row">
-              <span><strong>Delivered by:</strong></span>
-              <span>${ambassadorName}</span>
-            </div>
-            ` : ''}
-          </div>
-
-          <div class="order-info">
-            <h3>🎫 Passes Purchased</h3>
-            <table class="passes-table">
-              <thead>
-                <tr>
-                  <th>Pass Type</th>
-                  <th>Quantity</th>
-                  <th>Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${passesSummary.map(p => `
-                  <tr>
-                    <td>${p.passType}</td>
-                    <td>${p.quantity}</td>
-                    <td>${p.price.toFixed(2)} TND</td>
-                  </tr>
-                `).join('')}
-                <tr class="total-row">
-                  <td colspan="2"><strong>Total Amount Paid:</strong></td>
-                  <td><strong>${totalAmount.toFixed(2)} TND</strong></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div class="order-info">
-            <h3>🎫 Your Digital Tickets</h3>
-            <p>Please present these QR codes at the event entrance. Each ticket has a unique QR code for verification.</p>
-            ${ticketsHtml}
-          </div>
-
-          <div class="order-info">
-            <h3>💳 Payment Confirmation</h3>
-            <p>Your payment of <strong>${totalAmount.toFixed(2)} TND</strong> has been successfully received${orderData.ambassadors ? ` by our ambassador <strong>${ambassadorName}</strong>` : ''}. Your order is now fully validated and confirmed.</p>
-          </div>
-
-          <div class="order-info">
-            <h3>💬 Need Help?</h3>
-            <p>If you have any questions about your order, need to verify your purchase, or require assistance, please don't hesitate to contact our support team.</p>
-            <a href="${typeof window !== 'undefined' ? window.location.origin : 'https://andiamo-events.tn'}/contact" class="support-link">Contact Support</a>
-          </div>
-
-          <p>Thank you for choosing Andiamo Events! We look forward to seeing you at the event.</p>
-          <p><strong>Best regards,<br>The Andiamo Team</strong></p>
-        </div>
-        <div class="footer">
-          <p>© 2024 Andiamo Events. All rights reserved.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
+  return emailConfig.html;
 };
 
 /**

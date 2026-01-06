@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual Email Test - Andiamo Events</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #E21836;
+      margin-bottom: 30px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+    input:focus {
+      outline: none;
+      border-color: #E21836;
+    }
+    button {
+      background: #E21836;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 10px;
+    }
+    button:hover {
+      background: #C81430;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      display: none;
+    }
+    .result.success {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+      display: block;
+    }
+    .result.error {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+      display: block;
+    }
+    .result.info {
+      background: #d1ecf1;
+      border: 1px solid #bee5eb;
+      color: #0c5460;
+      display: block;
+    }
+    pre {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin-top: 10px;
+    }
+    .instructions {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+    .instructions h3 {
+      margin-top: 0;
+      color: #856404;
+    }
+    .instructions ol {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+    .instructions li {
+      margin: 8px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 Manual Email Test Tool</h1>
+    
+    <div class="instructions">
+      <h3>📋 Instructions:</h3>
+      <ol>
+        <li>Make sure you're logged in as admin (this page needs admin authentication)</li>
+        <li>Enter an order ID that has status <strong>PAID</strong> (for online) or <strong>COMPLETED</strong> (for COD)</li>
+        <li>Click "Generate Tickets & Send Email"</li>
+        <li>Check the result below and your server logs</li>
+      </ol>
+    </div>
+
+    <form id="testForm">
+      <div class="form-group">
+        <label for="orderId">Order ID:</label>
+        <input 
+          type="text" 
+          id="orderId" 
+          name="orderId" 
+          placeholder="Enter order ID (e.g., abc123-def456-ghi789)"
+          required
+        />
+      </div>
+
+      <button type="submit" id="submitBtn">
+        🎫 Generate Tickets & Send Email
+      </button>
+    </form>
+
+    <div id="result" class="result"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById('testForm');
+    const resultDiv = document.getElementById('result');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const orderId = document.getElementById('orderId').value.trim();
+      
+      if (!orderId) {
+        showResult('error', 'Please enter an order ID');
+        return;
+      }
+
+      // Disable button
+      submitBtn.disabled = true;
+      submitBtn.textContent = '⏳ Processing...';
+
+      // Clear previous result
+      resultDiv.className = 'result';
+      resultDiv.innerHTML = '';
+
+      try {
+        showResult('info', '📤 Sending request to server...');
+
+        const response = await fetch('/api/generate-tickets-for-order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Include cookies for admin auth
+          body: JSON.stringify({ orderId }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          const emailStatus = data.emailSent ? 'Yes ✅' : 'No ❌';
+          const emailErrorMsg = data.emailError ? `<p style="color: #721c24; margin-top: 10px;"><strong>Email Error:</strong> ${data.emailError}</p>` : '';
+          
+          showResult(data.emailSent ? 'success' : 'error', `
+            <h3>${data.emailSent ? '✅ Success!' : '⚠️ Partial Success'}</h3>
+            <p><strong>Message:</strong> ${data.message || 'Tickets generated successfully'}</p>
+            <p><strong>Tickets Generated:</strong> ${data.ticketsCount || 0}</p>
+            <p><strong>Email Sent:</strong> ${emailStatus}</p>
+            ${emailErrorMsg}
+            <p><strong>Order ID:</strong> ${data.orderId}</p>
+            <hr>
+            ${!data.emailSent ? `
+            <p><strong>🔧 Email Not Sent - Troubleshooting:</strong></p>
+            <ul>
+              <li>Check your <code>.env</code> file for <code>EMAIL_USER</code>, <code>EMAIL_PASS</code>, and <code>EMAIL_HOST</code></li>
+              <li>Restart your server after updating environment variables</li>
+              <li>Check server console logs for detailed error messages</li>
+              <li>Verify your email provider's SMTP settings</li>
+              <li>See <code>EMAIL_CONFIGURATION_CHECK.md</code> for more help</li>
+            </ul>
+            ` : `
+            <p><strong>📧 Next Steps:</strong></p>
+            <ul>
+              <li>Check the recipient's email inbox (and spam folder)</li>
+              <li>Check server logs for detailed information</li>
+              <li>Check email_delivery_logs table in database</li>
+            </ul>
+            `}
+            <details>
+              <summary>📋 Full Response</summary>
+              <pre>${JSON.stringify(data, null, 2)}</pre>
+            </details>
+          `);
+        } else {
+          showResult('error', `
+            <h3>❌ Error!</h3>
+            <p><strong>Status:</strong> ${response.status}</p>
+            <p><strong>Error:</strong> ${data.error || 'Unknown error'}</p>
+            <p><strong>Details:</strong> ${data.details || 'No details provided'}</p>
+            <hr>
+            <p><strong>💡 Common Issues:</strong></p>
+            <ul>
+              <li><strong>401 Unauthorized:</strong> Make sure you're logged in as admin</li>
+              <li><strong>404 Not Found:</strong> Order ID doesn't exist</li>
+              <li><strong>403 Forbidden:</strong> Order is not in PAID/COMPLETED status</li>
+              <li><strong>500 Server Error:</strong> Check server logs for details</li>
+            </ul>
+            <details>
+              <summary>📋 Full Error Response</summary>
+              <pre>${JSON.stringify(data, null, 2)}</pre>
+            </details>
+          `);
+        }
+      } catch (error) {
+        showResult('error', `
+          <h3>❌ Network Error!</h3>
+          <p><strong>Error:</strong> ${error.message}</p>
+          <p>Make sure the server is running and accessible.</p>
+        `);
+      } finally {
+        // Re-enable button
+        submitBtn.disabled = false;
+        submitBtn.textContent = '🎫 Generate Tickets & Send Email';
+      }
+    });
+
+    function showResult(type, content) {
+      resultDiv.className = `result ${type}`;
+      resultDiv.innerHTML = content;
+    }
+  </script>
+</body>
+</html>
+
