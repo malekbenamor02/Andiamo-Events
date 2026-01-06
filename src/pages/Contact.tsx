@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { logFormSubmission, logger } from "@/lib/logger";
+import { Mail, Phone, MapPin } from "lucide-react";
 
 interface ContactProps {
   language: 'en' | 'fr';
@@ -235,50 +236,62 @@ const Contact = ({ language }: ContactProps) => {
               <div className="space-y-4">
                 {contactInfo?.email && (
                   <div className="p-3">
-                    <div>
-                      <p className="font-medium">Email</p>
-                      <a href={`mailto:${contactInfo.email}`} className="text-muted-foreground hover:text-primary transition-colors">
-                        {contactInfo.email}
-                      </a>
+                    <div className="flex items-start gap-3">
+                      <Mail className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
+                      <div>
+                        <p className="font-medium mb-1">Email</p>
+                        <a href={`mailto:${contactInfo.email}`} className="text-muted-foreground hover:text-primary transition-colors">
+                          {contactInfo.email}
+                        </a>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 <div className="p-3">
-                  <div>
-                    <p className="font-medium">Phone</p>
-                    <a 
-                      href={`tel:28070128`}
-                      className="text-muted-foreground hover:text-primary transition-colors"
-                    >
-                      28070128
-                    </a>
+                  <div className="flex items-start gap-3">
+                    <Phone className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium mb-1">Phone</p>
+                      <a 
+                        href={`tel:+21628070128`}
+                        className="text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        +216 28 070 128
+                      </a>
+                    </div>
                   </div>
                 </div>
 
                 {contactInfo?.phone && (
                   <div className="p-3">
-                    <div>
-                      <p className="font-medium">WhatsApp</p>
-                      <a 
-                        href={`https://wa.me/${contactInfo.phone.replace(/\D/g, '')}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-primary transition-colors"
-                      >
-                        {contactInfo.phone}
-                      </a>
+                    <div className="flex items-start gap-3">
+                      <Phone className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
+                      <div>
+                        <p className="font-medium mb-1">WhatsApp</p>
+                        <a 
+                          href={`https://wa.me/${contactInfo.phone.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-primary transition-colors"
+                        >
+                          {contactInfo.phone}
+                        </a>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {contactInfo?.address && (
                   <div className="p-3">
-                    <div>
-                      <p className="font-medium">
-                        {language === 'en' ? 'Address' : 'Adresse'}
-                      </p>
-                      <p className="text-muted-foreground">{contactInfo.address}</p>
+                    <div className="flex items-start gap-3">
+                      <MapPin className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
+                      <div>
+                        <p className="font-medium mb-1">
+                          {language === 'en' ? 'Address' : 'Adresse'}
+                        </p>
+                        <p className="text-muted-foreground">{contactInfo.address}</p>
+                      </div>
                     </div>
                   </div>
                 )}
