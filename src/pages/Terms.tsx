@@ -297,8 +297,8 @@ const Terms = ({ language }: TermsProps) => {
           <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-4 uppercase">
             {pageContent.title}
           </h1>
-          <p className="text-lg font-semibold text-muted-foreground mb-2">{pageContent.organization}</p>
-          <p className="text-sm text-muted-foreground/80">
+          <p className="text-lg font-semibold text-muted-foreground mb-2 uppercase">{pageContent.organization}</p>
+          <p className="text-sm text-muted-foreground/80 uppercase">
             {language === 'en' ? 'Last updated:' : 'Dernière mise à jour :'} {pageContent.lastUpdated}
           </p>
         </div>
@@ -310,7 +310,7 @@ const Terms = ({ language }: TermsProps) => {
                 <h2 className="text-2xl font-bold text-primary mb-4 uppercase">{section.title}</h2>
                 <div className="space-y-3">
                   {section.content.map((paragraph, pIndex) => (
-                    <p key={pIndex} className={paragraph.startsWith('•') ? 'ml-4' : ''}>
+                    <p key={pIndex} className={`uppercase ${paragraph.startsWith('•') ? 'ml-4' : ''}`}>
                       {paragraph}
                     </p>
                   ))}
@@ -321,7 +321,7 @@ const Terms = ({ language }: TermsProps) => {
         </div>
 
         <div className="mt-12 pt-8 border-t border-border/20 text-center">
-          <a href="/" className="text-primary hover:text-primary/80 underline transition-colors">
+          <a href="/" className="text-primary hover:text-primary/80 underline transition-colors uppercase">
             {language === 'en' ? 'Return to Home' : "Retour à l'Accueil"}
           </a>
         </div>
