@@ -63,7 +63,7 @@ const TypewriterText = ({
 
   return (
     <span className={className}>
-      {displayText}
+      {displayText.toUpperCase()}
       <span className={`inline-block w-[2px] h-[1em] bg-current ml-1.5 align-middle ${showCursor ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`} style={{ animation: 'blink 1s infinite' }}>
         |
       </span>

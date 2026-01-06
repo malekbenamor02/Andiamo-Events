@@ -8322,7 +8322,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <div className="mb-8 flex justify-between items-start min-w-0 animate-in slide-in-from-top-4 fade-in duration-700">
               <div>
                 <h1 
-                  className="text-4xl font-heading font-bold mb-2 animate-in slide-in-from-left-4 duration-1000"
+                  className="text-4xl font-heading font-bold mb-2 animate-in slide-in-from-left-4 duration-1000 uppercase"
                   style={{
                     color: '#E21836',
                     textShadow: '0 0 12px rgba(226, 24, 54, 0.45)'

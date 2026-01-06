@@ -164,7 +164,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
     return (
       <div className="pt-16 min-h-screen bg-background flex items-center justify-center animate-page-intro">
         <div className="text-center animate-content-fade-in">
-          <h1 className="text-4xl font-bold mb-4">{t.noEventFound}</h1>
+          <h1 className="text-4xl font-bold mb-4 uppercase">{t.noEventFound}</h1>
           <Button onClick={() => navigate('/events')}>
             {t.backToEvents}
           </Button>
@@ -215,7 +215,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
                   </Badge>
                 )}
               </div>
-              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-4 drop-shadow-2xl animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-4 drop-shadow-2xl animate-fade-in-up uppercase" style={{ animationDelay: '0.4s' }}>
                 {event.name}
               </h1>
               {event.event_category && (

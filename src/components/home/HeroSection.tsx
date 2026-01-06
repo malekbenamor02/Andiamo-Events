@@ -408,7 +408,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
       {/* Content */}
       <div className="relative z-20 text-center max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="animate-fade-in-up">
-          <h1 className="text-3xl sm:text-4xl md:text-7xl font-heading font-semibold mb-6 min-h-[1.2em]">
+          <h1 className="text-3xl sm:text-4xl md:text-7xl font-heading font-bold mb-6 min-h-[1.2em] uppercase">
             <span className="block text-gradient-neon animate-pulse-glow">
               <TypewriterText 
                 texts={typewriterTexts[language]}

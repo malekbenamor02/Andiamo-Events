@@ -332,7 +332,7 @@ const OnlinePayment = ({ language }: OnlinePaymentProps) => {
             <ArrowLeft className="w-4 h-4 mr-2" />
             {t[language].backToEvents}
           </Button>
-          <h1 className="text-3xl font-heading font-bold text-gradient-neon ml-4">
+          <h1 className="text-3xl font-heading font-bold text-gradient-neon ml-4 uppercase">
             {t[language].title}
           </h1>
         </div>

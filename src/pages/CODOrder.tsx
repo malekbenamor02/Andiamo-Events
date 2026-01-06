@@ -230,7 +230,7 @@ const CODOrder = ({ language }: CODOrderProps) => {
 
         <Card className="bg-card/95 backdrop-blur">
           <CardHeader>
-            <CardTitle className="text-3xl font-bold text-gradient-neon">
+            <CardTitle className="text-3xl font-bold text-gradient-neon uppercase">
               {t.title}
             </CardTitle>
             <p className="text-muted-foreground mt-2">{t.subtitle}</p>

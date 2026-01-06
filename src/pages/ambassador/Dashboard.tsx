@@ -878,7 +878,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
           <div className="mb-6 sm:mb-8">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 sm:gap-0">
               <div className="text-center sm:text-left">
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-bold text-gradient-neon mb-2 sm:mb-3">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-bold text-gradient-neon mb-2 sm:mb-3 uppercase">
                   {t.title}
                 </h1>
                 <p className="text-sm sm:text-base text-muted-foreground">
@@ -930,7 +930,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
           <div className="mb-6 sm:mb-8">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 sm:gap-0">
               <div className="text-center sm:text-left">
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-bold text-gradient-neon mb-2 sm:mb-3">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-heading font-bold text-gradient-neon mb-2 sm:mb-3 uppercase">
                   {t.title}
                 </h1>
                 <p className="text-sm sm:text-base text-muted-foreground">

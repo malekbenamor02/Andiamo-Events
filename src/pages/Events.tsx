@@ -488,7 +488,7 @@ const Events = ({ language }: EventsProps) => {
       {/* Header */}
       <section className="py-20 bg-gradient-dark">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-6xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-top-4 duration-1000">
+          <h1 className="text-4xl md:text-6xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-top-4 duration-1000 uppercase">
             {content[language].title}
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto animate-in slide-in-from-bottom-4 duration-1000 delay-300">
@@ -502,7 +502,7 @@ const Events = ({ language }: EventsProps) => {
         <section className="py-20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-12 animate-in slide-in-from-bottom-4 duration-700 delay-200">
-              <h2 className="text-3xl md:text-4xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-left-4 duration-1000">
+              <h2 className="text-3xl md:text-4xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-left-4 duration-1000 uppercase">
                 {content[language].upcomingTitle}
               </h2>
             </div>
@@ -597,7 +597,7 @@ const Events = ({ language }: EventsProps) => {
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center mb-16 animate-in slide-in-from-bottom-4 duration-700 delay-200">
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-left-4 duration-1000">
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-left-4 duration-1000 uppercase">
               {content[language].galleryTitle}
             </h2>
             <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">

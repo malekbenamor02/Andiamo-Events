@@ -273,7 +273,7 @@ const About = ({ language }: AboutProps) => {
                   {t.btlHero.label}
                 </span>
               </div>
-              <h1 className="text-4xl md:text-6xl lg:text-7xl font-heading font-bold mb-6 text-gradient-neon leading-tight">
+              <h1 className="text-4xl md:text-6xl lg:text-7xl font-heading font-bold mb-6 text-gradient-neon leading-tight uppercase">
                 {t.btlHero.title}
               </h1>
               <p className="text-lg md:text-xl text-foreground/80 leading-relaxed whitespace-pre-line">
@@ -293,14 +293,14 @@ const About = ({ language }: AboutProps) => {
               ? 'opacity-100 translate-y-0' 
               : 'opacity-0 translate-y-12'
           }`}>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-4 text-gradient-neon">
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-4 text-gradient-neon uppercase">
               {t.btlBrands.title}
             </h2>
           </div>
           <div className="grid md:grid-cols-2 gap-6 md:gap-8">
             <Card className="group relative overflow-hidden border-2 border-transparent hover:border-primary/30 bg-card/50 backdrop-blur-sm transform transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-primary/10">
               <CardContent className="p-6 md:p-8">
-                <h3 className="text-xl md:text-2xl font-heading font-bold mb-4 text-center text-primary">
+                <h3 className="text-xl md:text-2xl font-heading font-bold mb-4 text-center text-primary uppercase">
                   {t.btlBrands.andiamo.title}
                 </h3>
                 <p className="text-base md:text-lg text-foreground/80 leading-relaxed text-center">
@@ -310,7 +310,7 @@ const About = ({ language }: AboutProps) => {
             </Card>
             <Card className="group relative overflow-hidden border-2 border-transparent hover:border-primary/30 bg-card/50 backdrop-blur-sm transform transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-primary/10">
               <CardContent className="p-6 md:p-8">
-                <h3 className="text-xl md:text-2xl font-heading font-bold mb-4 text-center text-primary">
+                <h3 className="text-xl md:text-2xl font-heading font-bold mb-4 text-center text-primary uppercase">
                   {t.btlBrands.wagxt.title}
                 </h3>
                 <p className="text-base md:text-lg text-foreground/80 leading-relaxed text-center">
@@ -330,7 +330,7 @@ const About = ({ language }: AboutProps) => {
               ? 'opacity-100 translate-y-0' 
               : 'opacity-0 translate-y-12'
           }`}>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-6 text-gradient-neon">
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-6 text-gradient-neon uppercase">
               {t.btlVision.title}
             </h2>
             <p className="text-base md:text-lg text-foreground/80 leading-relaxed max-w-3xl mx-auto">
@@ -354,7 +354,7 @@ const About = ({ language }: AboutProps) => {
                 {t.andiamoHero.label}
               </span>
             </div>
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-heading font-bold mb-6 text-gradient-neon leading-tight">
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-heading font-bold mb-6 text-gradient-neon leading-tight uppercase">
               {t.andiamoHero.title}
             </h1>
             <p className="text-lg md:text-xl lg:text-2xl text-foreground/80 max-w-4xl mx-auto leading-relaxed">
@@ -390,7 +390,7 @@ const About = ({ language }: AboutProps) => {
                   </div>
                   
                   {/* Title */}
-                  <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-8 text-foreground leading-tight">
+                  <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-8 text-foreground leading-tight uppercase">
                     {t.andiamoDescription.title}
                   </h2>
                   
@@ -464,7 +464,7 @@ const About = ({ language }: AboutProps) => {
               : 'opacity-0 translate-y-12'
           }`}>
             <div className="space-y-4">
-              <h3 className="text-2xl md:text-3xl font-heading font-bold mb-4 text-gradient-neon">
+              <h3 className="text-2xl md:text-3xl font-heading font-bold mb-4 text-gradient-neon uppercase">
                 {t.andiamoDetails.international.title}
               </h3>
               <p className="text-base md:text-lg text-foreground/80 leading-relaxed">
@@ -472,7 +472,7 @@ const About = ({ language }: AboutProps) => {
               </p>
             </div>
             <div className="space-y-4">
-              <h3 className="text-2xl md:text-3xl font-heading font-bold mb-4 text-gradient-neon">
+              <h3 className="text-2xl md:text-3xl font-heading font-bold mb-4 text-gradient-neon uppercase">
                 {t.andiamoDetails.mission.title}
               </h3>
               <p className="text-base md:text-lg text-foreground/80 leading-relaxed">
@@ -509,7 +509,7 @@ const About = ({ language }: AboutProps) => {
             ? 'opacity-100 translate-y-0' 
             : 'opacity-0 translate-y-12'
         }`}>
-          <h2 className="text-2xl md:text-3xl lg:text-4xl font-heading font-bold mb-6 md:mb-8 text-white leading-tight whitespace-nowrap">
+          <h2 className="text-2xl md:text-3xl lg:text-4xl font-heading font-bold mb-6 md:mb-8 text-white leading-tight whitespace-nowrap uppercase">
             {language === 'en' ? 'We Create Memories' : 'Nous Créons des Souvenirs'}
           </h2>
           <div className="w-32 h-1 bg-gradient-to-r from-transparent via-white/50 to-transparent mx-auto rounded-full"></div>

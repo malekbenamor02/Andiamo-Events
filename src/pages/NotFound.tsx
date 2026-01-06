@@ -114,7 +114,7 @@ const NotFound = () => {
               </span>
             </div>
             
-            <h2 className="text-3xl md:text-5xl font-heading font-bold text-gradient-neon mb-4">
+            <h2 className="text-3xl md:text-5xl font-heading font-bold text-gradient-neon mb-4 uppercase">
               {content.title === "404" ? "Lost in the Night?" : content.title}
             </h2>
             

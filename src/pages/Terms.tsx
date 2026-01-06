@@ -238,7 +238,7 @@ const Terms = ({ language }: TermsProps) => {
     <div className="pt-16 min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-4">
+          <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-4 uppercase">
             {pageContent.title}
           </h1>
           <p className="text-lg font-semibold text-muted-foreground">{pageContent.organization}</p>
@@ -248,7 +248,7 @@ const Terms = ({ language }: TermsProps) => {
           <div className="space-y-8 text-foreground/80 leading-relaxed">
             {pageContent.sections.map((section, index) => (
               <div key={index} className="border-b border-border/20 pb-6 last:border-b-0">
-                <h2 className="text-2xl font-semibold text-primary mb-4">{section.title}</h2>
+                <h2 className="text-2xl font-bold text-primary mb-4 uppercase">{section.title}</h2>
                 <div className="space-y-3">
                   {section.content.map((paragraph, pIndex) => (
                     <p key={pIndex} className={paragraph.startsWith('•') ? 'ml-4' : ''}>
@@ -256,8 +256,8 @@ const Terms = ({ language }: TermsProps) => {
                     </p>
                   ))}
                 </div>
-              </div>
-            ))}
+            </div>
+          ))}
           </div>
         </div>
 
@@ -271,4 +271,4 @@ const Terms = ({ language }: TermsProps) => {
   );
 };
 
-export default Terms;
+export default Terms; 
