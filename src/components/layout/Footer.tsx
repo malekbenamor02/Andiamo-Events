@@ -336,15 +336,8 @@ const Footer = ({ language }: FooterProps) => {
               </div>
             </div>
             
-            {/* Legal Links - Temporarily masked */}
-            {/* <div className="flex items-center gap-4 sm:gap-6 text-sm flex-wrap justify-center">
-              <RouterLink 
-                to="/privacy-policy" 
-                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
-              >
-                {content[language].privacy}
-              </RouterLink>
-              <span className="text-border/50 hidden sm:inline">•</span>
+            {/* Legal Links */}
+            <div className="flex items-center gap-4 sm:gap-6 text-sm flex-wrap justify-center">
               <RouterLink 
                 to="/terms" 
                 className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
@@ -353,12 +346,19 @@ const Footer = ({ language }: FooterProps) => {
               </RouterLink>
               <span className="text-border/50 hidden sm:inline">•</span>
               <RouterLink 
+                to="/privacy-policy" 
+                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
+              >
+                {content[language].privacy}
+              </RouterLink>
+              <span className="text-border/50 hidden sm:inline">•</span>
+              <RouterLink 
                 to="/refund-policy" 
                 className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
               >
                 {content[language].refund}
               </RouterLink>
-            </div> */}
+            </div>
           </div>
 
           {/* Desktop: Single line layout */}
@@ -380,15 +380,8 @@ const Footer = ({ language }: FooterProps) => {
               </a>
             </div>
             
-            {/* Legal Links - Temporarily masked */}
-            {/* <div className="flex items-center gap-3 shrink-0">
-              <RouterLink 
-                to="/privacy-policy" 
-                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
-              >
-                {content[language].privacy}
-              </RouterLink>
-              <span className="text-border/50">•</span>
+            {/* Legal Links */}
+            <div className="flex items-center gap-3 shrink-0">
               <RouterLink 
                 to="/terms" 
                 className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
@@ -397,12 +390,19 @@ const Footer = ({ language }: FooterProps) => {
               </RouterLink>
               <span className="text-border/50">•</span>
               <RouterLink 
+                to="/privacy-policy" 
+                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
+              >
+                {content[language].privacy}
+              </RouterLink>
+              <span className="text-border/50">•</span>
+              <RouterLink 
                 to="/refund-policy" 
                 className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
               >
                 {content[language].refund}
               </RouterLink>
-            </div> */}
+            </div>
           </div>
         </div>
       </div>
