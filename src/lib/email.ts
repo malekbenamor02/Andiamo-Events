@@ -1247,7 +1247,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
   // Build digital ticket section if available
   const digitalTicketSection = (orderData.qrCode || orderData.ticketNumber || orderData.referenceNumber) ? `
     <div class="ticket-card" style="background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%); border: 1px solid hsl(285, 85%, 65%, 0.3); border-radius: 12px; padding: 25px; margin: 30px 0; box-shadow: 0 0 20px rgba(185, 85, 211, 0.1);">
-      <h3 style="font-family: 'Josefin Sans', sans-serif; font-optical-sizing: auto; font-style: normal; font-size: 18px; color: hsl(195, 100%, 50%); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+      <h3 style="font-family: 'Montserrat', sans-serif; font-style: normal; font-size: 18px; color: hsl(195, 100%, 50%); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
         🎫 Your Digital Ticket
       </h3>
       ${orderData.qrCode ? `
@@ -1292,8 +1292,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-          font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          font-optical-sizing: auto;
+          font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           font-style: normal; 
           line-height: 1.7; 
           color: #e0e0e0; 
@@ -1336,8 +1335,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           z-index: 1;
         }
         .logo {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
+          font-family: 'Montserrat', sans-serif;
           font-style: normal;
           font-size: 28px;
           font-weight: 700;
@@ -1347,8 +1345,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
         }
         .header h1 {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
+          font-family: 'Montserrat', sans-serif;
           font-style: normal;
           font-size: 32px;
           font-weight: 700;
@@ -1385,8 +1382,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           box-shadow: 0 0 20px rgba(185, 85, 211, 0.1), inset 0 0 20px rgba(185, 85, 211, 0.05);
         }
         .order-info-card h3 {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
+          font-family: 'Montserrat', sans-serif;
           font-style: normal;
           font-size: 18px;
           color: hsl(195, 100%, 50%);
@@ -1456,8 +1452,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           box-shadow: 0 0 20px rgba(0, 195, 255, 0.1);
         }
         .payment-confirmation h3 {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
+          font-family: 'Montserrat', sans-serif;
           font-style: normal;
           font-size: 18px;
           color: hsl(195, 100%, 50%);
@@ -1478,8 +1473,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           box-shadow: 0 0 20px rgba(185, 85, 211, 0.05);
         }
         .support-section h3 {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
+          font-family: 'Montserrat', sans-serif;
           font-style: normal;
           font-size: 18px;
           color: hsl(285, 85%, 65%);
@@ -1520,8 +1514,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
         }
         .signature strong {
           color: hsl(285, 85%, 65%);
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
+          font-family: 'Montserrat', sans-serif;
           font-style: normal;
         }
         .footer {
@@ -1536,8 +1529,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           margin: 0;
         }
         .footer-brand {
-          font-family: 'Josefin Sans', sans-serif;
-          font-optical-sizing: auto;
+          font-family: 'Montserrat', sans-serif;
           font-style: normal;
           font-size: 14px;
           color: hsl(285, 85%, 65%);
@@ -1655,6 +1647,510 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
   return {
     from: 'Andiamo Events <support@andiamoevents.com>',
     to: '', // Will be set by the caller
+    subject,
+    html
+  };
+};
+
+// QR Code Email Data Interface
+interface QRCodeEmailData {
+  customerName: string;
+  customerEmail: string;
+  orderId: string;
+  eventName: string;
+  totalAmount: number;
+  ambassadorName?: string;
+  passes: Array<{
+    passType: string;
+    quantity: number;
+    price: number;
+  }>;
+  tickets: Array<{
+    id: string;
+    passType: string;
+    qrCodeUrl: string;
+    secureToken: string;
+  }>;
+  supportContactUrl?: string;
+}
+
+/**
+ * Create QR code email template matching ambassador email style
+ */
+export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
+  const subject = "Your Digital Tickets Are Ready - Andiamo Events";
+  
+  // Group tickets by pass type
+  const ticketsByPassType = new Map<string, typeof orderData.tickets>();
+  orderData.tickets.forEach(ticket => {
+    if (!ticketsByPassType.has(ticket.passType)) {
+      ticketsByPassType.set(ticket.passType, []);
+    }
+    ticketsByPassType.get(ticket.passType)!.push(ticket);
+  });
+
+  // Build tickets HTML
+  const ticketsHtml = Array.from(ticketsByPassType.entries())
+    .map(([passType, passTickets]) => {
+      const ticketsList = passTickets
+        .map((ticket, index) => {
+          return `
+            <div style="margin: 20px 0; padding: 20px; background: #E8E8E8; border-radius: 8px; text-align: center; border: 1px solid rgba(0, 0, 0, 0.1);">
+              <h4 style="margin: 0 0 15px 0; color: #E21836; font-size: 16px; font-weight: 600;">${passType} - Ticket ${index + 1}</h4>
+              <img src="${ticket.qrCodeUrl}" alt="QR Code for ${passType}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid rgba(226, 24, 54, 0.3); display: block; margin: 0 auto;" />
+              <p style="margin: 10px 0 0 0; font-size: 12px; color: #666666; font-family: 'Courier New', monospace;">Token: ${ticket.secureToken.substring(0, 8)}...</p>
+            </div>
+          `;
+        })
+        .join('');
+
+      return `
+        <div style="margin: 30px 0;">
+          <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">${passType} Tickets (${passTickets.length})</h3>
+          ${ticketsList}
+        </div>
+      `;
+    })
+    .join('');
+
+  // Build passes summary
+  const passesSummary = orderData.passes.map(p => `
+    <tr style="border-bottom: 1px solid rgba(0, 0, 0, 0.1);">
+      <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px;">${p.passType}</td>
+      <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: center;">${p.quantity}</td>
+      <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: right;">${p.price.toFixed(2)} TND</td>
+    </tr>
+  `).join('');
+
+  const supportUrl = orderData.supportContactUrl || (typeof window !== 'undefined' ? `${window.location.origin}/contact` : 'https://andiamo-events.tn/contact');
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
+      <title>Your Digital Tickets - Andiamo Events</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+          line-height: 1.6; 
+          color: #1A1A1A; 
+          background: #FFFFFF;
+          padding: 0;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+        @media (prefers-color-scheme: dark) {
+          body {
+            color: #FFFFFF;
+            background: #1A1A1A;
+          }
+        }
+        a {
+          color: #E21836 !important;
+          text-decoration: none;
+        }
+        .email-wrapper {
+          max-width: 600px;
+          margin: 0 auto;
+          background: #FFFFFF;
+        }
+        @media (prefers-color-scheme: dark) {
+          .email-wrapper {
+            background: #1A1A1A;
+          }
+        }
+        .content-card {
+          background: #F5F5F5;
+          margin: 0 20px 30px;
+          border-radius: 12px;
+          padding: 50px 40px;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .content-card {
+            background: #1F1F1F;
+            border: 1px solid rgba(42, 42, 42, 0.5);
+          }
+        }
+        .title-section {
+          text-align: center;
+          margin-bottom: 40px;
+          padding-bottom: 30px;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .title-section {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          }
+        }
+        .title {
+          font-size: 32px;
+          font-weight: 700;
+          color: #1A1A1A;
+          margin-bottom: 12px;
+          letter-spacing: -0.5px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .title {
+            color: #FFFFFF;
+          }
+        }
+        .subtitle {
+          font-size: 16px;
+          color: #666666;
+          font-weight: 400;
+        }
+        @media (prefers-color-scheme: dark) {
+          .subtitle {
+            color: #B0B0B0;
+          }
+        }
+        .greeting {
+          font-size: 18px;
+          color: #1A1A1A;
+          margin-bottom: 30px;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .greeting {
+            color: #FFFFFF;
+          }
+        }
+        .greeting strong {
+          color: #E21836;
+          font-weight: 600;
+        }
+        .message {
+          font-size: 16px;
+          color: #666666;
+          margin-bottom: 25px;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .message {
+            color: #B0B0B0;
+          }
+        }
+        .order-info-block {
+          background: #E8E8E8;
+          border: 1px solid rgba(0, 0, 0, 0.15);
+          border-radius: 8px;
+          padding: 30px;
+          margin: 40px 0;
+        }
+        @media (prefers-color-scheme: dark) {
+          .order-info-block {
+            background: #252525;
+            border: 1px solid rgba(42, 42, 42, 0.8);
+          }
+        }
+        .info-row {
+          margin-bottom: 20px;
+        }
+        .info-row:last-child {
+          margin-bottom: 0;
+        }
+        .info-label {
+          font-size: 11px;
+          color: #999999;
+          text-transform: uppercase;
+          letter-spacing: 1.2px;
+          margin-bottom: 10px;
+          font-weight: 600;
+        }
+        @media (prefers-color-scheme: dark) {
+          .info-label {
+            color: #6B6B6B;
+          }
+        }
+        .info-value {
+          font-family: 'Courier New', 'Monaco', monospace;
+          font-size: 18px;
+          color: #1A1A1A;
+          font-weight: 500;
+          word-break: break-all;
+          letter-spacing: 0.5px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .info-value {
+            color: #FFFFFF;
+          }
+        }
+        .passes-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 20px 0;
+        }
+        .passes-table th {
+          text-align: left;
+          padding: 12px 0;
+          color: #E21836;
+          font-weight: 600;
+          font-size: 14px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          border-bottom: 2px solid rgba(226, 24, 54, 0.3);
+        }
+        .passes-table td {
+          padding: 12px 0;
+          color: #1A1A1A;
+          font-size: 15px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .passes-table td {
+            color: #FFFFFF;
+          }
+        }
+        .total-row {
+          border-top: 2px solid rgba(226, 24, 54, 0.3);
+          margin-top: 10px;
+          padding-top: 15px;
+        }
+        .total-row td {
+          font-weight: 700;
+          font-size: 18px;
+          color: #E21836;
+          padding-top: 15px;
+        }
+        .tickets-section {
+          background: #E8E8E8;
+          border: 1px solid rgba(0, 0, 0, 0.15);
+          border-radius: 8px;
+          padding: 30px;
+          margin: 40px 0;
+        }
+        @media (prefers-color-scheme: dark) {
+          .tickets-section {
+            background: #252525;
+            border: 1px solid rgba(42, 42, 42, 0.8);
+          }
+        }
+        .support-section {
+          background: #E8E8E8;
+          border-left: 3px solid rgba(226, 24, 54, 0.3);
+          padding: 20px 25px;
+          margin: 35px 0;
+          border-radius: 4px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .support-section {
+            background: #252525;
+          }
+        }
+        .support-text {
+          font-size: 14px;
+          color: #666666;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .support-text {
+            color: #B0B0B0;
+          }
+        }
+        .support-email {
+          color: #E21836 !important;
+          text-decoration: none;
+          font-weight: 500;
+        }
+        .closing-section {
+          text-align: center;
+          margin: 50px 0 40px;
+          padding-top: 40px;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .closing-section {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+          }
+        }
+        .slogan {
+          font-size: 24px;
+          font-style: italic;
+          color: #E21836;
+          font-weight: 300;
+          letter-spacing: 1px;
+          margin-bottom: 30px;
+        }
+        .signature {
+          font-size: 16px;
+          color: #666666;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .signature {
+            color: #B0B0B0;
+          }
+        }
+        .footer {
+          margin-top: 50px;
+          padding: 40px 20px 30px;
+          text-align: center;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer {
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+          }
+        }
+        .footer-text {
+          font-size: 12px;
+          color: #999999;
+          margin-bottom: 20px;
+          line-height: 1.6;
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer-text {
+            color: #6B6B6B;
+          }
+        }
+        .footer-links {
+          margin: 15px auto 0;
+          text-align: center;
+        }
+        .footer-link {
+          color: #999999;
+          text-decoration: none;
+          font-size: 13px;
+          margin: 0 8px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer-link {
+            color: #6B6B6B;
+          }
+        }
+        .footer-link:hover {
+          color: #E21836 !important;
+        }
+        @media only screen and (max-width: 600px) {
+          .content-card {
+            margin: 0 15px 20px;
+            padding: 35px 25px;
+          }
+          .title {
+            font-size: 26px;
+          }
+          .order-info-block {
+            padding: 25px 20px;
+          }
+          .tickets-section {
+            padding: 25px 20px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="email-wrapper">
+        <!-- Main Content Card -->
+        <div class="content-card">
+          <!-- Title Section -->
+          <div class="title-section">
+            <h1 class="title">Your Tickets Are Ready</h1>
+            <p class="subtitle">Order Confirmation - Andiamo Events</p>
+          </div>
+          
+          <!-- Greeting -->
+          <p class="greeting">Dear <strong>${orderData.customerName}</strong>,</p>
+          
+          <!-- Message -->
+          <p class="message">
+            We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.
+          </p>
+          
+          <!-- Order Info Section -->
+          <div class="order-info-block">
+            <div class="info-row">
+              <div class="info-label">Order ID</div>
+              <div class="info-value">${orderData.orderId.substring(0, 8).toUpperCase()}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Event</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${orderData.eventName}</div>
+            </div>
+            ${orderData.ambassadorName ? `
+            <div class="info-row">
+              <div class="info-label">Delivered by</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${orderData.ambassadorName}</div>
+            </div>
+            ` : ''}
+          </div>
+
+          <!-- Passes Summary -->
+          <div class="order-info-block">
+            <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Passes Purchased</h3>
+            <table class="passes-table">
+              <thead>
+                <tr>
+                  <th>Pass Type</th>
+                  <th style="text-align: center;">Quantity</th>
+                  <th style="text-align: right;">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${passesSummary}
+                <tr class="total-row">
+                  <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
+                  <td style="text-align: right;"><strong>${orderData.totalAmount.toFixed(2)} TND</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Tickets Section -->
+          <div class="tickets-section">
+            <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Your Digital Tickets</h3>
+            <p class="message" style="margin-bottom: 25px;">
+              Please present these QR codes at the event entrance. Each ticket has a unique QR code for verification.
+            </p>
+            ${ticketsHtml}
+          </div>
+
+          <!-- Payment Confirmation -->
+          <div class="order-info-block">
+            <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">Payment Confirmation</h3>
+            <p class="message" style="margin: 0;">
+              Your payment of <strong style="color: #E21836;">${orderData.totalAmount.toFixed(2)} TND</strong> has been successfully received${orderData.ambassadorName ? ` by our ambassador <strong>${orderData.ambassadorName}</strong>` : ''}. Your order is now fully validated and confirmed.
+            </p>
+          </div>
+          
+          <!-- Support Section -->
+          <div class="support-section">
+            <p class="support-text">
+              Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a> or visit <a href="${supportUrl}" class="support-email">our support page</a>.
+            </p>
+          </div>
+          
+          <!-- Closing Section -->
+          <div class="closing-section">
+            <p class="slogan">We Create Memories</p>
+            <p class="signature">
+              Best regards,<br>
+              The Andiamo Events Team
+            </p>
+          </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+          <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+          <div class="footer-links">
+            <a href="https://www.instagram.com/malek.bamor/" target="_blank" class="footer-link">Instagram</a>
+            <span style="color: #999999;">•</span>
+            <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return {
+    from: 'Andiamo Events <support@andiamoevents.com>',
+    to: orderData.customerEmail,
     subject,
     html
   };

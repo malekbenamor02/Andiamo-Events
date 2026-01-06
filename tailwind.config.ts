@@ -73,13 +73,13 @@ export default {
 				}
 			},
 			fontFamily: {
-				// AndiamoFont - Global Default (Local Font)
-				sans: ['AndiamoFont', 'sans-serif'], // Set as default sans-serif
-				heading: ['AndiamoFont', 'sans-serif'],
-				body: ['AndiamoFont', 'sans-serif'],
+				// Montserrat - Global Default (Google Fonts)
+				sans: ['Montserrat', 'sans-serif'], // Set as default sans-serif
+				heading: ['Montserrat', 'sans-serif'],
+				body: ['Montserrat', 'sans-serif'],
 				// Legacy font names for backward compatibility
-				josefin: ['AndiamoFont', 'sans-serif'],
-				saira: ['AndiamoFont', 'sans-serif'],
+				josefin: ['Montserrat', 'sans-serif'],
+				saira: ['Montserrat', 'sans-serif'],
 			},
 			fontWeight: {
 				thin: '200',

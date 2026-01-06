@@ -1,12 +1,5 @@
 /* All @import statements must be at the very top, before any other CSS rules */
-/* Local Font - AndiamoFont */
-@font-face {
-  font-family: 'AndiamoFont';
-  src: url('/fonts/AndiamoFont.ttf') format('truetype');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
+/* Montserrat font loaded from Google Fonts */
 
 @tailwind base;
 @tailwind components;
@@ -169,16 +162,14 @@ All colors MUST be HSL.
 @layer base {
   * {
     @apply border-border;
-    /* Apply AndiamoFont globally to ALL elements - buttons, footer, navbar, everything */
-    font-family: "AndiamoFont", sans-serif;
-    font-optical-sizing: auto;
+    /* Apply Montserrat globally to ALL elements - buttons, footer, navbar, everything */
+    font-family: "Montserrat", sans-serif;
   }
 
   html, body {
     @apply text-foreground;
     background-color: #1A1A1A; /* Deep charcoal black */
-    font-family: "AndiamoFont", sans-serif;
-    font-optical-sizing: auto;
+    font-family: "Montserrat", sans-serif;
     font-weight: 300;
     font-style: normal;
     letter-spacing: 0.025em;
@@ -411,14 +402,12 @@ All colors MUST be HSL.
   
   /* Font Families */
   .font-josefin {
-    font-family: "AndiamoFont", sans-serif;
-    font-optical-sizing: auto;
+    font-family: "Montserrat", sans-serif;
     font-style: normal;
   }
   
   .font-saira {
-    font-family: "AndiamoFont", sans-serif;
-    font-optical-sizing: auto;
+    font-family: "Montserrat", sans-serif;
     font-weight: 300;
     font-style: normal;
   }
