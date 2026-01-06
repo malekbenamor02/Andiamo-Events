@@ -5126,24 +5126,101 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setProcessingId(application.id);
     
     try {
-      // Find the ambassador first - also get email from ambassador record
-      const { data: ambassador } = await supabase
+      // Normalize phone number (remove spaces, dashes, etc. for better matching)
+      const normalizePhone = (phone: string) => {
+        return phone.replace(/[\s\-\(\)]/g, '').trim();
+      };
+      
+      const normalizedPhone = normalizePhone(application.phone_number);
+      
+      // Try multiple lookup strategies to find the ambassador
+      let ambassador = null;
+      
+      // Strategy 1: Try exact phone match first
+      let { data: ambassadorByPhone } = await supabase
         .from('ambassadors')
-        .select('id, email')
+        .select('id, email, phone, full_name')
         .eq('phone', application.phone_number)
         .maybeSingle();
+      
+      if (ambassadorByPhone) {
+        ambassador = ambassadorByPhone;
+      } else {
+        // Strategy 2: Try phone match with different formats (remove common formatting)
+        // Try variations: with/without spaces, with/without country code prefix
+        const phoneVariations = [
+          application.phone_number.replace(/\s/g, ''), // Remove spaces
+          application.phone_number.replace(/[\s\-]/g, ''), // Remove spaces and dashes
+          application.phone_number.replace(/^\+216/, ''), // Remove +216 prefix
+          application.phone_number.replace(/^216/, ''), // Remove 216 prefix
+        ].filter((v, i, arr) => arr.indexOf(v) === i); // Remove duplicates
+        
+        for (const phoneVar of phoneVariations) {
+          if (phoneVar === application.phone_number) continue; // Already tried
+          
+          const { data: ambByVar } = await supabase
+            .from('ambassadors')
+            .select('id, email, phone, full_name')
+            .eq('phone', phoneVar)
+            .maybeSingle();
+          
+          if (ambByVar) {
+            ambassador = ambByVar;
+            break;
+          }
+        }
+        
+        // Strategy 3: If still not found and we have an email, try by email
+        if (!ambassador && application.email) {
+          const { data: ambassadorByEmail } = await supabase
+            .from('ambassadors')
+            .select('id, email, phone, full_name')
+            .eq('email', application.email)
+            .maybeSingle();
+          
+          if (ambassadorByEmail) {
+            ambassador = ambassadorByEmail;
+          }
+        }
+      }
 
       if (!ambassador) {
+        console.error('❌ Ambassador not found for resend email:', {
+          applicationId: application.id,
+          phoneNumber: application.phone_number,
+          normalizedPhone: normalizedPhone,
+          email: application.email,
+          applicationStatus: application.status,
+          fullName: application.full_name
+        });
+        
+        // Log available ambassadors for debugging (only in development)
+        if (process.env.NODE_ENV === 'development') {
+          const { data: allAmbassadors } = await supabase
+            .from('ambassadors')
+            .select('id, phone, email, full_name')
+            .limit(10);
+          console.log('Available ambassadors (first 10):', allAmbassadors);
+        }
+        
         toast({
           title: t.error,
           description: language === 'en' 
-            ? "Ambassador not found. The application may need to be approved again." 
-            : "Ambassadeur introuvable. La candidature devra peut-être être approuvée à nouveau.",
+            ? `Ambassador not found for phone ${application.phone_number}. Please verify the ambassador exists and try again, or approve the application again if needed.` 
+            : `Ambassadeur introuvable pour le téléphone ${application.phone_number}. Veuillez vérifier que l'ambassadeur existe et réessayer, ou approuver à nouveau la candidature si nécessaire.`,
           variant: "destructive",
         });
         setProcessingId(null);
         return;
       }
+      
+      // Log successful lookup for debugging
+      console.log('✅ Ambassador found for resend email:', {
+        ambassadorId: ambassador.id,
+        phone: ambassador.phone,
+        email: ambassador.email,
+        applicationPhone: application.phone_number
+      });
 
       // Determine the email address to use - prefer application email, fallback to ambassador email
       const emailToUse = application.email || ambassador.email;

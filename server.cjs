@@ -8,6 +8,7 @@ const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const https = require('https');
 const querystring = require('querystring');
+const crypto = require('crypto');
 
 // Load environment variables
 // On Vercel, environment variables are already available, but dotenv is safe to call
@@ -24,6 +25,24 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
 }
 if (!process.env.JWT_SECRET) {
   console.warn('Warning: JWT_SECRET not configured. Using fallback (insecure for production).');
+}
+
+// Check email configuration on startup
+console.log('📧 Email Configuration Check:', {
+  EMAIL_HOST: process.env.EMAIL_HOST || 'NOT SET',
+  EMAIL_PORT: process.env.EMAIL_PORT || 'NOT SET (default: 587)',
+  EMAIL_USER: process.env.EMAIL_USER ? `${process.env.EMAIL_USER.substring(0, 3)}***` : 'NOT SET',
+  EMAIL_PASS_SET: !!process.env.EMAIL_PASS,
+  EMAIL_PASS_LENGTH: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0
+});
+
+if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+  console.error('❌ Email configuration is incomplete! Emails will not work.');
+  console.error('   Missing:', {
+    EMAIL_HOST: !process.env.EMAIL_HOST,
+    EMAIL_USER: !process.env.EMAIL_USER,
+    EMAIL_PASS: !process.env.EMAIL_PASS
+  });
 }
 
 // Initialize Supabase client only if environment variables are available
@@ -98,9 +117,176 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+// Middleware to capture raw body for webhook signature verification
+app.use('/api/flouci-webhook', bodyParser.raw({ type: 'application/json' }), (req, res, next) => {
+  // Store raw body for signature verification
+  req.rawBody = req.body;
+  // Parse JSON body for use in route handler
+  try {
+    req.body = JSON.parse(req.body.toString());
+  } catch (e) {
+    req.body = {};
+  }
+  next();
+});
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Security: Request logging middleware for security audit
+// Logs all requests to sensitive endpoints for security auditing
+const logSecurityRequest = async (req, res, next) => {
+  // Only log in production or if explicitly enabled
+  const shouldLog = process.env.NODE_ENV === 'production' || process.env.ENABLE_SECURITY_LOGGING === 'true';
+  
+  if (!shouldLog || !supabase) {
+    return next();
+  }
+  
+  // Capture response details
+  const originalSend = res.send;
+  const originalJson = res.json;
+  let responseBody = null;
+  let responseStatus = res.statusCode || 200;
+  
+  // Override res.send to capture response
+  res.send = function(body) {
+    responseBody = typeof body === 'string' ? body.substring(0, 500) : JSON.stringify(body).substring(0, 500);
+    responseStatus = res.statusCode || 200;
+    return originalSend.call(this, body);
+  };
+  
+  res.json = function(body) {
+    responseBody = JSON.stringify(body).substring(0, 500);
+    responseStatus = res.statusCode || 200;
+    return originalJson.call(this, body);
+  };
+  
+  // Log after response is sent
+  res.on('finish', async () => {
+    try {
+      // Determine severity based on response status and endpoint
+      let severity = 'low';
+      if (responseStatus >= 500) severity = 'high';
+      else if (responseStatus >= 400) severity = 'medium';
+      else if (req.path.includes('webhook') || req.path.includes('generate-tickets')) severity = 'medium';
+      
+      // Sanitize request body (don't log sensitive data)
+      let sanitizedBody = null;
+      if (req.body) {
+        const bodyCopy = { ...req.body };
+        // Remove sensitive fields
+        if (bodyCopy.password) bodyCopy.password = '[REDACTED]';
+        if (bodyCopy.token) bodyCopy.token = bodyCopy.token.substring(0, 10) + '...';
+        if (bodyCopy.recaptchaToken) bodyCopy.recaptchaToken = '[REDACTED]';
+        sanitizedBody = bodyCopy;
+      }
+      
+      // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+        event_type: 'api_request',
+        endpoint: req.path,
+        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        user_agent: req.headers['user-agent'] || 'unknown',
+        request_method: req.method,
+        request_path: req.path,
+        request_body: sanitizedBody,
+        response_status: responseStatus,
+        details: {
+          query_params: req.query,
+          headers: {
+            origin: req.headers.origin,
+            referer: req.headers.referer,
+            'content-type': req.headers['content-type']
+          }
+        },
+        severity: severity
+      });
+    } catch (logError) {
+      // Don't fail the request if logging fails
+      console.error('Failed to log security request:', logError);
+    }
+  });
+  
+  next();
+};
+
+// Security: Request origin validation middleware
+// Validates that requests come from allowed origins (for sensitive endpoints)
+const validateOrigin = (req, res, next) => {
+  const origin = req.headers.origin || req.headers.referer;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Skip validation in development
+  if (!isProduction) {
+    return next();
+  }
+  
+  // Allow requests with no origin (mobile apps, curl, etc.) - but log them
+  if (!origin) {
+    // Log for security audit
+    if (supabase) {
+      // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      securityLogClient.from('security_audit_logs').insert({
+        event_type: 'request_without_origin',
+        endpoint: req.path,
+        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        user_agent: req.headers['user-agent'] || 'unknown',
+        request_method: req.method,
+        request_path: req.path,
+        details: { reason: 'Request without origin header' },
+        severity: 'low'
+      }).catch(err => console.error('Failed to log:', err));
+    }
+    return next();
+  }
+  
+  // Check if origin is allowed
+  const isAllowed = allowedOrigins.some(allowed => {
+    if (typeof allowed === 'string') {
+      if (allowed.includes('*')) {
+        const pattern = allowed.replace(/\*/g, '.*');
+        return new RegExp(`^${pattern}$`).test(origin);
+      }
+      return origin === allowed;
+    }
+    if (allowed instanceof RegExp) {
+      return allowed.test(origin);
+    }
+    return false;
+  });
+  
+  if (!isAllowed) {
+    // Log security event
+    if (supabase) {
+      // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      securityLogClient.from('security_audit_logs').insert({
+        event_type: 'origin_validation_failed',
+        endpoint: req.path,
+        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        user_agent: req.headers['user-agent'] || 'unknown',
+        request_method: req.method,
+        request_path: req.path,
+        details: { 
+          reason: 'Origin not in allowed list',
+          origin: origin 
+        },
+        severity: 'medium'
+      }).catch(err => console.error('Failed to log:', err));
+    }
+    
+    return res.status(403).json({ 
+      error: 'Origin not allowed',
+      message: 'This request is not allowed from your origin'
+    });
+  }
+  
+  next();
+};
 
 // Middleware to handle Vercel serverless function paths
 // Vercel strips the /api prefix, so we need to add it back for route matching
@@ -114,15 +300,172 @@ app.use((req, res, next) => {
 });
 
 // Configure SMTP transporter using environment variables
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: parseInt(process.env.EMAIL_PORT || '587'),
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Create transporter function to ensure fresh credentials are read each time
+function getEmailTransporter() {
+  const host = process.env.EMAIL_HOST;
+  const port = parseInt(process.env.EMAIL_PORT || '587');
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASS;
+  
+  if (!host || !user || !pass) {
+    throw new Error('Email configuration incomplete. Check EMAIL_HOST, EMAIL_USER, and EMAIL_PASS environment variables.');
+  }
+  
+  // Debug: Log configuration (without exposing password)
+  console.log('📧 Creating email transporter:', {
+    host: host,
+    port: port,
+    user: user ? `${user.substring(0, 3)}***` : 'NOT SET',
+    hasPassword: !!pass,
+    passwordLength: pass ? pass.length : 0
+  });
+  
+  // Authentication configuration
+  // IMPORTANT: Don't modify the password - use it exactly as provided
+  const authConfig = {
+    user: user.trim(), // Remove any whitespace - should be full email: support@andiamoevents.com
+    pass: pass // Use password exactly as provided (don't trim - might remove needed characters)
+  };
+  
+  // Debug: Verify password is read correctly
+  console.log('🔐 Auth config check:', {
+    user: authConfig.user,
+    passLength: authConfig.pass ? authConfig.pass.length : 0,
+    passStartsWith: authConfig.pass ? authConfig.pass.substring(0, 2) : '',
+    passEndsWith: authConfig.pass ? authConfig.pass.substring(authConfig.pass.length - 2) : ''
+  });
+  
+  // Configuration for mail.routing.net with STARTTLS on port 587
+  // IMPORTANT: Port 587 uses STARTTLS, so secure MUST be false
+  // Using secure: true with port 587 causes authentication failure (535 5.7.8)
+  const transporterConfig = {
+    host: host,
+    port: port,
+    secure: false, // CRITICAL: Must be false for STARTTLS on port 587
+    requireTLS: true, // Require TLS upgrade via STARTTLS
+    tls: {
+      // Allow self-signed certificates (some servers use them)
+      rejectUnauthorized: false, // Set to false to allow self-signed certs
+    },
+    auth: {
+      user: authConfig.user,
+      pass: authConfig.pass
+    }
+    // Don't specify authMethod - let nodemailer negotiate with server
+  };
+  
+  console.log('📧 Transporter config:', {
+    host: transporterConfig.host,
+    port: transporterConfig.port,
+    secure: transporterConfig.secure,
+    requireTLS: transporterConfig.requireTLS,
+    authMethod: transporterConfig.authMethod,
+    user: authConfig.user ? `${authConfig.user.substring(0, 3)}***` : 'NOT SET',
+    userFull: authConfig.user, // Log full username to verify it's correct
+    passLength: authConfig.pass ? authConfig.pass.length : 0,
+    passContainsSpecialChars: authConfig.pass ? /[^a-zA-Z0-9]/.test(authConfig.pass) : false,
+    passFirstChar: authConfig.pass ? authConfig.pass.substring(0, 1) : '',
+    passLastChar: authConfig.pass ? authConfig.pass.substring(authConfig.pass.length - 1) : ''
+  });
+  
+  return nodemailer.createTransport(transporterConfig);
+}
+
+// Create default transporter (for backward compatibility)
+const transporter = getEmailTransporter();
+
+// Security: Monitoring and alerting for suspicious activity
+const checkSuspiciousActivity = async (eventType, details, req) => {
+  if (!supabase) return;
+  
+  try {
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    
+    // Check for suspicious patterns in the last hour
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    
+    // Count similar events from same IP
+    const { data: recentEvents, error: countError } = await supabase
+      .from('security_audit_logs')
+      .select('id')
+      .eq('ip_address', ipAddress)
+      .eq('event_type', eventType)
+      .gte('created_at', oneHourAgo);
+    
+    if (countError) {
+      console.error('Error checking suspicious activity:', countError);
+      return;
+    }
+    
+    const eventCount = recentEvents?.length || 0;
+    
+    // Define thresholds for different event types
+    const thresholds = {
+      'rate_limit_exceeded': 5, // Alert after 5 rate limit violations
+      'webhook_signature_failed': 3, // Alert after 3 failed signatures
+      'unauthorized_ticket_generation': 2, // Alert after 2 unauthorized attempts
+      'invalid_order_access': 10, // Alert after 10 invalid order IDs
+      'origin_validation_failed': 5, // Alert after 5 origin failures
+    };
+    
+    const threshold = thresholds[eventType] || 10; // Default threshold
+    
+    if (eventCount >= threshold) {
+      // Log critical alert
+      // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+        event_type: 'suspicious_activity_alert',
+        endpoint: req.path || 'unknown',
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        request_method: req.method,
+        request_path: req.path,
+        details: {
+          reason: `Suspicious activity detected: ${eventType}`,
+          event_count: eventCount,
+          threshold: threshold,
+          time_window: '1 hour',
+          original_event: eventType,
+          original_details: details
+        },
+        severity: 'critical'
+      });
+      
+      // Send alert email if configured
+      const ALERT_EMAIL = process.env.SECURITY_ALERT_EMAIL;
+      if (ALERT_EMAIL && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+        try {
+          await transporter.sendMail({
+            from: `Andiamo Events Security <${process.env.EMAIL_USER}>`,
+            to: ALERT_EMAIL,
+            subject: `🚨 Security Alert: Suspicious Activity Detected - ${eventType}`,
+            html: `
+              <h2>Security Alert</h2>
+              <p><strong>Event Type:</strong> ${eventType}</p>
+              <p><strong>IP Address:</strong> ${ipAddress}</p>
+              <p><strong>Event Count:</strong> ${eventCount} (Threshold: ${threshold})</p>
+              <p><strong>Time Window:</strong> Last 1 hour</p>
+              <p><strong>Endpoint:</strong> ${req.path || 'unknown'}</p>
+              <p><strong>User Agent:</strong> ${userAgent}</p>
+              <p><strong>Details:</strong></p>
+              <pre>${JSON.stringify(details, null, 2)}</pre>
+              <p><em>This is an automated security alert. Please review the security audit logs.</em></p>
+            `
+          });
+          console.log('🚨 Security alert email sent to:', ALERT_EMAIL);
+        } catch (emailError) {
+          console.error('Failed to send security alert email:', emailError);
+        }
+      }
+      
+      console.log(`🚨 SUSPICIOUS ACTIVITY ALERT: ${eventType} - ${eventCount} events from ${ipAddress}`);
+    }
+  } catch (error) {
+    console.error('Error in checkSuspiciousActivity:', error);
+  }
+};
 
 // Helper function to create rate limiters (disabled in local development)
 const createRateLimiter = (config) => {
@@ -197,6 +540,75 @@ const adminLogoutLimiter = createRateLimiter({
   legacyHeaders: false,
 });
 
+// Rate limiter for QR code access - prevent brute force token enumeration
+const qrCodeAccessLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // 20 QR code access attempts per 15 minutes per IP
+  message: { error: 'Too many QR code access attempts, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false, // Count all requests, even successful ones
+  skipFailedRequests: false, // Count failed requests too
+  handler: async (req, res) => {
+    // Log rate limit violation to security audit
+    if (supabase) {
+      try {
+        // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+          event_type: 'rate_limit_exceeded',
+          endpoint: '/api/qr-codes/:accessToken',
+          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.path,
+          details: { 
+            reason: 'QR code access rate limit exceeded',
+            access_token: req.params?.accessToken?.substring(0, 10) + '...' // Log partial token
+          },
+          severity: 'medium'
+        });
+      } catch (logError) {
+        console.error('Failed to log rate limit violation:', logError);
+      }
+    }
+    res.status(429).json({ error: 'Too many QR code access attempts, please try again later.' });
+  }
+});
+
+// Rate limiter for SMS endpoints - prevent spam/abuse
+const smsLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // 10 SMS requests per hour per IP
+  message: { error: 'Too many SMS requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: async (req, res) => {
+    // Log rate limit violation to security audit
+    if (supabase) {
+      try {
+        // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+          event_type: 'rate_limit_exceeded',
+          endpoint: req.path,
+          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.path,
+          details: { 
+            reason: 'SMS endpoint rate limit exceeded'
+          },
+          severity: 'high'
+        });
+      } catch (logError) {
+        console.error('Failed to log rate limit violation:', logError);
+      }
+    }
+    res.status(429).json({ error: 'Too many SMS requests, please try again later.' });
+  }
+});
+
 app.use('/api/send-email', emailLimiter);
 
 app.post('/api/send-email', requireAdminAuth, async (req, res) => {
@@ -238,19 +650,41 @@ app.post('/api/send-email', requireAdminAuth, async (req, res) => {
     
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error('Email sending failed:', error);
+    console.error('❌ Email sending failed:', {
+      error: error.message,
+      code: error.code,
+      responseCode: error.responseCode,
+      response: error.response,
+      command: error.command,
+      to: req.body?.to,
+      from: process.env.EMAIL_USER,
+      host: process.env.EMAIL_HOST,
+      port: process.env.EMAIL_PORT || '587'
+    });
     
     // Provide more specific error messages based on error type
     let errorMessage = 'Failed to send email';
     let errorDetails = error.message || 'Unknown error occurred';
     
     // Check for common SMTP errors
-    if (error.code === 'EAUTH' || error.responseCode === 535) {
+    if (error.code === 'EAUTH' || error.responseCode === 535 || error.responseCode === 534) {
       errorMessage = 'Email authentication failed';
-      errorDetails = 'The email server credentials are invalid. Please contact the administrator.';
+      errorDetails = 'The email server credentials are invalid. Please verify EMAIL_USER and EMAIL_PASS environment variables are correct and the password has not expired.';
+      
+      // Log credential info (without exposing password)
+      console.error('❌ Authentication failed. Check credentials:', {
+        emailUser: process.env.EMAIL_USER,
+        emailHost: process.env.EMAIL_HOST,
+        emailPort: process.env.EMAIL_PORT || '587',
+        passwordLength: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0,
+        passwordSet: !!process.env.EMAIL_PASS,
+        errorCode: error.code,
+        responseCode: error.responseCode,
+        responseMessage: error.response
+      });
     } else if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT') {
       errorMessage = 'Email server connection failed';
-      errorDetails = 'Unable to connect to the email server. Please try again later.';
+      errorDetails = `Unable to connect to the email server at ${process.env.EMAIL_HOST}:${process.env.EMAIL_PORT || '587'}. Please check the server is accessible and try again later.`;
     } else if (error.responseCode === 550 || error.message?.includes('550')) {
       errorMessage = 'Email address rejected';
       errorDetails = `The email address "${req.body.to}" was rejected by the email server. Please verify the email address and try again.`;
@@ -436,7 +870,6 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     }
     
     // Fetch admin by email
-    
     const { data: admin, error } = await supabase
       .from('admins')
       .select('*')
@@ -444,25 +877,35 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
       .single();
       
     if (error) {
-      console.error('Supabase error:', error);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-      console.error('Error details:', error.details);
+      console.error('❌ /api/admin-login: Supabase database error:', {
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        email: email.toLowerCase().trim()
+      });
+      // Don't reveal database structure - return generic error
       return res.status(401).json({ 
-        error: 'Invalid credentials', 
-        details: error.message,
-        code: error.code 
+        error: 'Invalid credentials'
       });
     }
     
     if (!admin) {
+      console.error('❌ /api/admin-login: Admin not found:', {
+        email: email.toLowerCase().trim()
+      });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    
     if (!admin.password) {
-      console.error('Admin has no password field');
-      return res.status(500).json({ error: 'Server configuration error' });
+      console.error('❌ /api/admin-login: Admin has no password field:', {
+        adminId: admin.id,
+        email: admin.email
+      });
+      return res.status(500).json({ 
+        error: 'Server configuration error',
+        details: 'Admin account configuration error'
+      });
     }
     
     // Compare password
@@ -536,13 +979,18 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Admin login error:', error);
-    console.error('❌ Error type:', error?.constructor?.name);
-    console.error('❌ Error message:', error?.message);
-    console.error('❌ Error stack:', error?.stack);
+    console.error('❌ /api/admin-login: Unexpected error:', {
+      error: error.message,
+      stack: error.stack,
+      name: error.name,
+      type: error?.constructor?.name,
+      email: req.body?.email
+    });
     res.status(500).json({ 
       error: 'Internal server error', 
-      details: error.message 
+      details: process.env.NODE_ENV === 'production' 
+        ? 'An error occurred. Please try again later.' 
+        : error.message
     });
   }
 });
@@ -669,7 +1117,12 @@ app.post('/api/admin-logout', adminLogoutLimiter, (req, res) => {
 // The session countdown continues from the original login time
 app.get('/api/verify-admin', verifyAdminLimiter, requireAdminAuth, async (req, res) => {
   if (!supabase) {
-    return res.status(500).json({ valid: false, error: 'Supabase not configured' });
+    console.error('❌ /api/verify-admin: Supabase not configured');
+    return res.status(500).json({ 
+      valid: false, 
+      error: 'Supabase not configured',
+      details: 'Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables'
+    });
   }
   
   try {
@@ -684,8 +1137,32 @@ app.get('/api/verify-admin', verifyAdminLimiter, requireAdminAuth, async (req, r
       .eq('is_active', true)
       .single();
 
-    if (error || !admin) {
-      return res.status(401).json({ valid: false, error: 'Invalid admin' });
+    if (error) {
+      console.error('❌ /api/verify-admin: Database error:', {
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        adminId: req.admin?.id,
+        adminEmail: req.admin?.email
+      });
+      return res.status(500).json({ 
+        valid: false, 
+        error: 'Database error',
+        details: error.message || 'Failed to verify admin'
+      });
+    }
+
+    if (!admin) {
+      console.error('❌ /api/verify-admin: Admin not found or inactive:', {
+        adminId: req.admin?.id,
+        adminEmail: req.admin?.email
+      });
+      return res.status(401).json({ 
+        valid: false, 
+        error: 'Invalid admin',
+        details: 'Admin not found or account is inactive'
+      });
     }
 
     // Return admin info with token expiration time
@@ -703,8 +1180,18 @@ app.get('/api/verify-admin', verifyAdminLimiter, requireAdminAuth, async (req, r
       sessionTimeRemaining: timeRemaining // Remaining seconds
     });
   } catch (error) {
-    console.error('Token verification error:', error);
-    res.status(401).json({ valid: false, error: 'Invalid token' });
+    console.error('❌ /api/verify-admin: Unexpected error:', {
+      error: error.message,
+      stack: error.stack,
+      name: error.name,
+      adminId: req.admin?.id,
+      adminEmail: req.admin?.email
+    });
+    res.status(500).json({ 
+      valid: false, 
+      error: 'Server error',
+      details: error.message || 'An unexpected error occurred'
+    });
   }
 });
 
@@ -817,29 +1304,79 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
 // Verifies the HttpOnly JWT cookie and checks expiration
 // The JWT contains a 1-hour expiration that cannot be extended
 function requireAdminAuth(req, res, next) {
-  const token = req.cookies.adminToken;
-  if (!token) {
-    return res.status(401).json({ error: 'Not authenticated', reason: 'No token provided' });
-  }
   try {
+    const token = req.cookies?.adminToken;
+    if (!token) {
+      return res.status(401).json({ 
+        error: 'Not authenticated', 
+        reason: 'No token provided',
+        valid: false
+      });
+    }
+    
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
-      console.error('WARNING: JWT_SECRET is not set! Using fallback secret. This is insecure in production.');
+      console.error('⚠️ WARNING: JWT_SECRET is not set! Using fallback secret. This is insecure in production.');
       if (process.env.NODE_ENV === 'production') {
-        return res.status(500).json({ error: 'Server configuration error: JWT_SECRET is required in production.' });
+        return res.status(500).json({ 
+          error: 'Server configuration error', 
+          details: 'JWT_SECRET is required in production.',
+          valid: false
+        });
       }
     }
+    
     // jwt.verify automatically checks expiration - throws error if expired
-    const decoded = jwt.verify(token, jwtSecret || 'fallback-secret-dev-only');
+    let decoded;
+    try {
+      decoded = jwt.verify(token, jwtSecret || 'fallback-secret-dev-only');
+    } catch (jwtError) {
+      // Token is invalid, expired, or malformed
+      console.error('❌ requireAdminAuth: JWT verification failed:', {
+        error: jwtError.message,
+        name: jwtError.name,
+        path: req.path
+      });
+      // Clear the cookie to prevent reuse
+      res.clearCookie('adminToken', { path: '/' });
+      return res.status(401).json({ 
+        error: 'Invalid or expired token', 
+        reason: jwtError.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token',
+        valid: false
+      });
+    }
+    
+    // Validate decoded token has required fields
+    if (!decoded.id || !decoded.email || !decoded.role) {
+      console.error('❌ requireAdminAuth: Invalid token payload:', {
+        hasId: !!decoded.id,
+        hasEmail: !!decoded.email,
+        hasRole: !!decoded.role,
+        path: req.path
+      });
+      res.clearCookie('adminToken', { path: '/' });
+      return res.status(401).json({ 
+        error: 'Invalid token', 
+        reason: 'Token payload is invalid',
+        valid: false
+      });
+    }
+    
     req.admin = decoded;
     next();
-  } catch (err) {
-    // Token is invalid, expired, or malformed
-    // Clear the cookie to prevent reuse
+  } catch (error) {
+    // Catch any unexpected errors in the middleware
+    console.error('❌ requireAdminAuth: Unexpected error:', {
+      error: error.message,
+      stack: error.stack,
+      name: error.name,
+      path: req.path
+    });
     res.clearCookie('adminToken', { path: '/' });
-    return res.status(401).json({ 
-      error: 'Invalid or expired token', 
-      reason: err.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token'
+    return res.status(500).json({ 
+      error: 'Authentication error', 
+      details: 'An unexpected error occurred during authentication',
+      valid: false
     });
   }
 }
@@ -1017,16 +1554,17 @@ if (!WINSMS_API_KEY) {
 }
 
 // ============================================
-// Helper: Format Tunisian Phone Number
+// Helper: Format Tunisian Phone Number for SMS
 // ============================================
-// Converts phone number to format: 216xxxxxxxx (8 digits)
+// Converts phone number to format: +216xxxxxxxx (for WinSMS API)
+// Database stores just the 8 digits (xxxxxxxx), this function adds +216 prefix for SMS
 function formatPhoneNumber(phone) {
   if (!phone) return null;
   
   // Remove all non-digit characters
   let cleaned = phone.replace(/\D/g, '');
   
-  // Remove country code if present
+  // Remove country code if present (216 or +216)
   if (cleaned.startsWith('216')) {
     cleaned = cleaned.substring(3);
   }
@@ -1036,7 +1574,8 @@ function formatPhoneNumber(phone) {
   
   // Validate: must be 8 digits starting with 2, 5, 9, or 4
   if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
-    return '216' + cleaned;
+    // Return with +216 prefix for WinSMS API
+    return '+216' + cleaned;
   }
   
   return null;
@@ -1405,7 +1944,7 @@ async function sendSingleSms(phoneNumber, message) {
 // ============================================
 // POST /api/send-order-confirmation-sms - Send SMS to Client
 // ============================================
-app.post('/api/send-order-confirmation-sms', async (req, res) => {
+app.post('/api/send-order-confirmation-sms', logSecurityRequest, smsLimiter, async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
@@ -1443,6 +1982,14 @@ app.post('/api/send-order-confirmation-sms', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Order does not have an ambassador assigned' });
     }
 
+    // Get order access token for single URL with all QR codes
+    const apiBase = process.env.VITE_API_URL || process.env.API_URL || 'https://andiamoevents.com';
+    let qrCodeUrl = null;
+    
+    if (order.qr_access_token) {
+      qrCodeUrl = `${apiBase}/api/qr-codes/${order.qr_access_token}`;
+    }
+
     // Format passes for SMS
     let passesText = '';
     if (order.order_passes && order.order_passes.length > 0) {
@@ -1471,13 +2018,19 @@ app.post('/api/send-order-confirmation-sms', async (req, res) => {
     const ambassadorName = order.ambassadors.full_name;
     const ambassadorPhone = order.ambassadors.phone;
 
-    // Build SMS message in French
-    const message = `Votre commande ${orderNumber} est confirmée!
+    // Build SMS message in French with QR code URLs
+    let message = `Votre commande ${orderNumber} est confirmée!
 Passes: ${passesText}
 Total: ${order.total_price} DT
 Votre ambassadeur: ${ambassadorName}
 Téléphone: ${ambassadorPhone}
 Il vous contactera bientôt.`;
+
+    // Add single QR code URL if available (shows all QR codes)
+    if (qrCodeUrl) {
+      message += `\n\n🎫 Vos QR Codes:\n${qrCodeUrl}`;
+      message += `\n\n⚠️ Ce lien ne peut être utilisé qu'une seule fois.`;
+    }
 
     // Send SMS
     const smsResult = await sendSingleSms(order.user_phone, message);
@@ -1495,7 +2048,7 @@ Il vous contactera bientôt.`;
 // ============================================
 // POST /api/send-ambassador-order-sms - Send SMS to Ambassador
 // ============================================
-app.post('/api/send-ambassador-order-sms', async (req, res) => {
+app.post('/api/send-ambassador-order-sms', smsLimiter, async (req, res) => {
   try {
     if (!supabase) {
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
@@ -1757,6 +2310,727 @@ app.put('/api/admin/payment-options/:type', requireAdminAuth, async (req, res) =
   } catch (error) {
     console.error('Error in update payment-options endpoint:', error);
     res.status(500).json({ error: error.message || 'Failed to update payment option' });
+  }
+});
+
+// ============================================
+// Flouci Payment API Endpoints
+// ============================================
+
+// POST /api/flouci-generate-payment - Generate Flouci payment (backend only - keeps secret key secure)
+app.post('/api/flouci-generate-payment', async (req, res) => {
+  try {
+    const { orderId, amount, successLink, failLink, webhookUrl } = req.body;
+
+    console.log('🔔 Flouci payment generation request:', { orderId, amount, hasSuccessLink: !!successLink, hasFailLink: !!failLink, hasWebhookUrl: !!webhookUrl });
+
+    // Validate required fields
+    if (!orderId || !amount || !successLink || !failLink || !webhookUrl) {
+      console.error('❌ Missing required fields:', { orderId: !!orderId, amount: !!amount, successLink: !!successLink, failLink: !!failLink, webhookUrl: !!webhookUrl });
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
+    const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
+
+    if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
+      console.error('❌ Flouci API keys not configured');
+      console.error('   FLOUCI_PUBLIC_KEY:', FLOUCI_PUBLIC_KEY ? 'Set' : 'Missing');
+      console.error('   FLOUCI_SECRET_KEY:', FLOUCI_SECRET_KEY ? 'Set' : 'Missing');
+      return res.status(500).json({ 
+        error: 'Flouci API keys not configured',
+        message: 'Please add FLOUCI_PUBLIC_KEY and FLOUCI_SECRET_KEY to your .env file'
+      });
+    }
+
+    // Check if order already has a payment_id (duplicate submission protection)
+    if (supabase) {
+      const { data: existingOrder, error: fetchError } = await supabase
+        .from('orders')
+        .select('payment_gateway_reference, payment_response_data, status')
+        .eq('id', orderId)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('❌ Error fetching order:', fetchError);
+        // Continue anyway - don't block payment generation
+      } else if (existingOrder) {
+        // Check if order is already paid
+        if (existingOrder.status === 'PAID') {
+          console.log('⚠️ Order already paid, returning existing payment info');
+          return res.status(400).json({ 
+            error: 'Order already paid',
+            message: 'This order has already been paid',
+            alreadyPaid: true
+          });
+        }
+
+        // Check if payment already generated (has payment_id)
+        if (existingOrder.payment_gateway_reference) {
+          console.log('⚠️ Payment already generated for this order:', existingOrder.payment_gateway_reference);
+          
+          // Try to get the payment link from stored response data
+          let paymentLink = null;
+          if (existingOrder.payment_response_data?.result?.link) {
+            paymentLink = existingOrder.payment_response_data.result.link;
+          } else if (existingOrder.payment_response_data?.link) {
+            paymentLink = existingOrder.payment_response_data.link;
+          }
+
+          // If we have the link, return it (don't create duplicate payment)
+          if (paymentLink) {
+            console.log('✅ Returning existing payment link (duplicate submission prevented)');
+            return res.json({ 
+              success: true,
+              payment_id: existingOrder.payment_gateway_reference,
+              link: paymentLink,
+              isDuplicate: true,
+              message: 'Payment already generated for this order'
+            });
+          } else {
+            // Payment ID exists but no link stored - might be from old format
+            // Generate new payment but log the duplicate attempt
+            console.log('⚠️ Payment ID exists but no link found, generating new payment');
+          }
+        }
+      }
+    }
+
+    // Convert TND to millimes (Flouci uses millimes: 1 TND = 1000 millimes)
+    const amountInMillimes = Math.round(amount * 1000);
+    
+    // Validate amount
+    if (amountInMillimes <= 0) {
+      console.error('❌ Invalid amount:', amount, 'millimes:', amountInMillimes);
+      return res.status(400).json({ error: 'Invalid payment amount' });
+    }
+
+    // Generate payment with Flouci
+    console.log('📤 Calling Flouci API to generate payment...');
+    
+    // Build payment request - webhook is optional but recommended
+    // IMPORTANT: success_link and fail_link must be absolute URLs
+    console.log('🔗 Setting redirect URLs:', { 
+      successLink, 
+      failLink,
+      successLinkValid: successLink.startsWith('http'),
+      failLinkValid: failLink.startsWith('http')
+    });
+    
+    const paymentRequest = {
+      amount: amountInMillimes,
+      success_link: successLink,
+      fail_link: failLink,
+      developer_tracking_id: orderId,
+      session_timeout_secs: 1800, // 30 minutes
+      accept_card: true
+    };
+    
+    // Only add webhook if URL is valid (not localhost for production)
+    // For localhost, webhook won't work anyway, so we can skip it
+    if (webhookUrl && !webhookUrl.includes('localhost') && !webhookUrl.includes('127.0.0.1')) {
+      paymentRequest.webhook = webhookUrl;
+      console.log('📤 Webhook URL included:', webhookUrl.substring(0, 50) + '...');
+    } else {
+      console.log('⚠️ Webhook URL skipped (localhost detected or invalid):', webhookUrl);
+    }
+    
+    console.log('📤 Flouci request payload:', { 
+      ...paymentRequest, 
+      webhook: paymentRequest.webhook ? paymentRequest.webhook.substring(0, 50) + '...' : 'Not included',
+      amount: amountInMillimes,
+      amountTND: amount
+    });
+
+    const response = await fetch('https://developers.flouci.com/api/v2/generate_payment', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
+      },
+      body: JSON.stringify(paymentRequest)
+    });
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      console.error('❌ Failed to parse Flouci response:', parseError);
+      const textResponse = await response.text();
+      console.error('   Raw response:', textResponse);
+      return res.status(500).json({ 
+        error: 'Invalid response from Flouci API',
+        details: textResponse,
+        status: response.status
+      });
+    }
+
+    // Flouci API returns success in data.result.success, not data.success
+    const isSuccess = response.ok && data.result?.success === true;
+    
+    console.log('📥 Flouci API response:', { 
+      status: response.status, 
+      responseOk: response.ok,
+      resultSuccess: data.result?.success,
+      isSuccess: isSuccess,
+      hasResult: !!data.result,
+      hasLink: !!data.result?.link,
+      hasPaymentId: !!data.result?.payment_id,
+      message: data.message || data.result?.message,
+      code: data.code
+    });
+
+    if (!isSuccess) {
+      console.error('❌ Flouci payment generation failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: data,
+        fullResponse: JSON.stringify(data, null, 2)
+      });
+      
+      // Provide more detailed error message
+      let errorMessage = 'Failed to generate payment';
+      if (data.message) {
+        errorMessage = data.message;
+      } else if (data.result?.message) {
+        errorMessage = data.result.message;
+      } else if (data.code !== undefined && data.code !== 0) {
+        errorMessage = `Flouci API error (code: ${data.code})`;
+      } else if (response.status === 401 || response.status === 403) {
+        errorMessage = 'Invalid API keys. Please check your Flouci credentials.';
+      } else if (response.status === 400) {
+        errorMessage = 'Invalid payment request. Please check your payment details.';
+      }
+      
+      return res.status(500).json({ 
+        error: errorMessage,
+        details: data,
+        status: response.status,
+        flouciError: data.result || data
+      });
+    }
+
+    // Update order with payment_id
+    if (supabase && data.result?.payment_id) {
+      console.log('💾 Updating order with payment_id:', data.result.payment_id);
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({
+          payment_gateway_reference: data.result.payment_id,
+          payment_response_data: data,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orderId);
+
+      if (updateError) {
+        console.error('❌ Error updating order:', updateError);
+        // Don't fail the request if order update fails - payment was generated successfully
+      } else {
+        console.log('✅ Order updated successfully');
+      }
+    } else {
+      if (!supabase) {
+        console.warn('⚠️ Supabase not initialized - skipping order update');
+      }
+      if (!data.result?.payment_id) {
+        console.warn('⚠️ No payment_id in response - skipping order update');
+      }
+    }
+
+    console.log('✅ Payment generated successfully:', { payment_id: data.result?.payment_id, hasLink: !!data.result?.link });
+    res.json({ 
+      success: true, 
+      payment_id: data.result?.payment_id,
+      link: data.result?.link,
+      isDuplicate: false
+    });
+  } catch (error) {
+    console.error('❌ Error generating Flouci payment:', error);
+    console.error('   Error stack:', error.stack);
+    res.status(500).json({ 
+      error: error.message || 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// POST /api/flouci-verify-payment-by-order - Verify payment by orderId (manual verification)
+app.post('/api/flouci-verify-payment-by-order', async (req, res) => {
+  try {
+    const { orderId } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    // Get order with payment_id
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, payment_gateway_reference, status')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (!order.payment_gateway_reference) {
+      return res.status(400).json({ error: 'Order does not have a payment ID' });
+    }
+
+    if (order.status === 'PAID') {
+      return res.json({ 
+        success: true, 
+        status: 'SUCCESS', 
+        message: 'Order is already paid',
+        orderUpdated: true
+      });
+    }
+
+    // Verify payment using the payment_id from order
+    const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
+    const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
+
+    if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
+      return res.status(500).json({ error: 'Flouci API keys not configured' });
+    }
+
+    const response = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${order.payment_gateway_reference}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
+      }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(500).json({ 
+        error: data.message || 'Failed to verify payment',
+        details: data
+      });
+    }
+
+    const paymentStatus = data.result?.status;
+
+    // Update order based on payment status
+    let updateData = {
+      payment_response_data: data.result,
+      updated_at: new Date().toISOString()
+    };
+
+    if (paymentStatus === 'SUCCESS') {
+      // Payment successful - mark as PAID
+      updateData.status = 'PAID';
+      updateData.payment_status = 'PAID';
+      updateData.completed_at = new Date().toISOString();
+      
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', orderId);
+
+      if (updateError) {
+        console.error('❌ Error updating order status:', updateError);
+        return res.status(500).json({ 
+          success: true,
+          status: paymentStatus,
+          result: data.result,
+          orderUpdated: false,
+          error: 'Payment verified but order update failed'
+        });
+      }
+
+      console.log('✅ Order status updated to PAID via manual verification:', orderId);
+      return res.json({ 
+        success: true,
+        status: paymentStatus,
+        result: data.result,
+        orderUpdated: true,
+        orderId: orderId
+      });
+    } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
+      // Payment failed - mark as failed but keep status as PENDING_ONLINE for admin review
+      updateData.status = 'PENDING_ONLINE'; // Keep as pending, admin can review
+      updateData.payment_status = 'FAILED';
+      
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', orderId);
+
+      if (updateError) {
+        console.error('❌ Error updating order status:', updateError);
+        return res.json({ 
+          success: true,
+          status: paymentStatus,
+          result: data.result,
+          orderUpdated: false,
+          error: 'Payment verified but order update failed'
+        });
+      }
+
+      console.log(`⚠️ Order payment marked as FAILED (status: ${paymentStatus}):`, orderId);
+      return res.json({ 
+        success: true,
+        status: paymentStatus,
+        result: data.result,
+        orderUpdated: true,
+        orderId: orderId,
+        message: `Payment ${paymentStatus.toLowerCase()}. Order status updated to reflect failure.`
+      });
+    }
+
+    // PENDING or other status - don't update order yet
+    res.json({ 
+      success: data.success,
+      status: paymentStatus,
+      result: data.result,
+      orderUpdated: false,
+      message: `Payment status is ${paymentStatus}. Order will be updated when payment completes.`
+    });
+  } catch (error) {
+    console.error('Error verifying payment by order:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// POST /api/flouci-verify-payment - Verify Flouci payment status and update order
+app.post('/api/flouci-verify-payment', async (req, res) => {
+  try {
+    const { paymentId, orderId } = req.body;
+
+    if (!paymentId) {
+      return res.status(400).json({ error: 'Payment ID is required' });
+    }
+
+    const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
+    const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
+
+    if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
+      return res.status(500).json({ error: 'Flouci API keys not configured' });
+    }
+
+    // Verify payment with Flouci
+    const response = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${paymentId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
+      }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(500).json({ 
+        error: data.message || 'Failed to verify payment',
+        details: data
+      });
+    }
+
+    const paymentStatus = data.result?.status;
+
+    // If orderId is provided and payment is successful, update the order status
+    if (orderId && supabase && paymentStatus === 'SUCCESS') {
+      let targetOrderId = orderId;
+      
+      // First, try to find order by payment_gateway_reference (more reliable)
+      const { data: orderByPayment, error: paymentError } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('payment_gateway_reference', paymentId)
+        .maybeSingle();
+      
+      // If found by payment_id, use that order ID
+      if (orderByPayment && !paymentError) {
+        targetOrderId = orderByPayment.id;
+        console.log('📦 Found order by payment_id:', targetOrderId);
+      } else {
+        // Use provided orderId and verify it exists
+        const { data: orderById, error: orderError } = await supabase
+          .from('orders')
+          .select('id')
+          .eq('id', orderId)
+          .maybeSingle();
+        
+        if (orderById && !orderError) {
+          console.log('📦 Using provided orderId:', targetOrderId);
+        } else {
+          console.warn('⚠️ Order not found with provided orderId:', orderId);
+          // Still try to update - might work if order exists
+        }
+      }
+
+      // Update order based on payment status
+      let updateData = {
+        payment_gateway_reference: paymentId,
+        payment_response_data: data.result,
+        updated_at: new Date().toISOString()
+      };
+
+      if (paymentStatus === 'SUCCESS') {
+        updateData.status = 'PAID';
+        updateData.payment_status = 'PAID';
+        updateData.completed_at = new Date().toISOString();
+      } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
+        updateData.status = 'PENDING_ONLINE'; // Keep as pending, admin can review
+        updateData.payment_status = 'FAILED';
+      } else {
+        // PENDING - don't update order status yet
+        console.log('⏳ Payment pending for order:', targetOrderId);
+        return res.status(200).json({ 
+          success: true, 
+          status: paymentStatus,
+          result: data.result,
+          message: 'Payment pending' 
+        });
+      }
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', targetOrderId);
+
+      let orderUpdated = false;
+      
+      if (updateError) {
+        console.error('❌ Error updating order status:', updateError);
+        console.error('❌ Update error details:', JSON.stringify(updateError, null, 2));
+        // Don't fail the verification - payment is verified, just order update failed
+      } else {
+        if (paymentStatus === 'SUCCESS') {
+          console.log('✅ Order status updated to PAID:', targetOrderId);
+        } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
+          console.log(`⚠️ Order payment marked as FAILED (status: ${paymentStatus}):`, targetOrderId);
+        }
+        orderUpdated = true;
+        
+        // Automatically generate tickets if payment is successful
+        if (paymentStatus === 'SUCCESS') {
+          process.nextTick(async () => {
+            try {
+              console.log('🎫 Auto-generating tickets for verified payment:', targetOrderId);
+              // The generateTicketsAndSendEmail function will be called by the webhook or manually
+              // We don't call it here to avoid duplicate ticket generation
+            } catch (ticketError) {
+              console.error('❌ Error in ticket generation trigger:', ticketError);
+            }
+          });
+        }
+      }
+      
+      res.json({ 
+        success: data.success,
+        status: paymentStatus,
+        result: data.result,
+        orderUpdated: orderUpdated,
+        orderId: targetOrderId
+      });
+    } else {
+      // Payment not successful or no orderId provided
+      res.json({ 
+        success: data.success,
+        status: paymentStatus,
+        result: data.result,
+        orderUpdated: false
+      });
+    }
+  } catch (error) {
+    console.error('Error verifying Flouci payment:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// ============================================
+// Flouci Payment Webhook
+// ============================================
+
+// POST /api/flouci-webhook - Handle Flouci payment webhook notifications
+app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    // Security: Verify webhook signature if configured
+    const FLOUCI_WEBHOOK_SECRET = process.env.FLOUCI_WEBHOOK_SECRET;
+    const webhookSignature = req.headers['x-flouci-signature'] || req.headers['x-signature'];
+    
+    if (FLOUCI_WEBHOOK_SECRET && webhookSignature) {
+      // Get raw body for signature verification (captured by middleware)
+      const rawBody = req.rawBody ? req.rawBody.toString() : JSON.stringify(req.body);
+      const expectedSignature = crypto
+        .createHmac('sha256', FLOUCI_WEBHOOK_SECRET)
+        .update(rawBody)
+        .digest('hex');
+      
+      // Use constant-time comparison to prevent timing attacks
+      // Handle case where signature might be in different format
+      const receivedSig = webhookSignature.replace(/^sha256=/, ''); // Remove prefix if present
+      const signatureMatch = receivedSig.length === expectedSignature.length && 
+        crypto.timingSafeEqual(
+          Buffer.from(receivedSig),
+          Buffer.from(expectedSignature)
+        );
+      
+      if (!signatureMatch) {
+        console.error('❌ Flouci webhook: Invalid signature', {
+          received: webhookSignature.substring(0, 10) + '...',
+          expected: expectedSignature.substring(0, 10) + '...',
+          ip: req.ip || req.headers['x-forwarded-for']
+        });
+        
+        // Log security event
+        try {
+          const logData = {
+            event_type: 'webhook_signature_failed',
+            endpoint: '/api/flouci-webhook',
+            ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+            user_agent: req.headers['user-agent'] || 'unknown',
+            details: { reason: 'Invalid webhook signature' },
+            severity: 'high'
+          };
+          // Use service role client for security audit logs (bypasses RLS)
+          const securityLogClient = supabaseService || supabase;
+          await securityLogClient.from('security_audit_logs').insert(logData);
+          // Check for suspicious activity
+          await checkSuspiciousActivity('webhook_signature_failed', logData.details, req);
+        } catch (logError) {
+          console.error('Failed to log security event:', logError);
+        }
+        
+        return res.status(401).json({ error: 'Invalid webhook signature' });
+      }
+      console.log('✅ Flouci webhook signature verified');
+    } else if (FLOUCI_WEBHOOK_SECRET && !webhookSignature) {
+      console.warn('⚠️ Flouci webhook secret configured but no signature provided');
+    }
+
+    const { payment_id, status, developer_tracking_id } = req.body;
+
+    // Validate required fields
+    if (!payment_id || !status || !developer_tracking_id) {
+      console.error('Flouci webhook: Missing required fields', req.body);
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    console.log('🔔 Flouci webhook received:', { payment_id, status, developer_tracking_id });
+
+    // Find order by developer_tracking_id (which is the order ID)
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', developer_tracking_id)
+      .single();
+
+    if (orderError || !order) {
+      console.error('❌ Order not found for Flouci webhook:', developer_tracking_id);
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Verify payment with Flouci API to ensure authenticity
+    const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
+    const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
+
+    if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
+      console.error('❌ Flouci API keys not configured');
+      return res.status(500).json({ error: 'Payment gateway not configured' });
+    }
+
+    // Verify payment status with Flouci
+    const verifyResponse = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${payment_id}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
+      }
+    });
+
+    const verifyData = await verifyResponse.json();
+
+    if (!verifyData.success) {
+      console.error('❌ Flouci verification failed:', verifyData);
+      return res.status(400).json({ error: 'Payment verification failed' });
+    }
+
+    const paymentStatus = verifyData.result?.status;
+
+    // Update order based on payment status
+    let updateData = {
+      payment_gateway_reference: payment_id,
+      payment_response_data: verifyData.result,
+      updated_at: new Date().toISOString()
+    };
+
+    if (paymentStatus === 'SUCCESS') {
+      updateData.status = 'PAID';
+      updateData.payment_status = 'PAID';
+      updateData.completed_at = new Date().toISOString();
+      console.log('✅ Payment successful for order:', developer_tracking_id);
+    } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
+      updateData.status = 'PENDING_ONLINE'; // Keep as pending, admin can review
+      updateData.payment_status = 'FAILED';
+      console.log('❌ Payment failed for order:', developer_tracking_id, 'Status:', paymentStatus);
+    } else {
+      // PENDING - don't update order status yet
+      console.log('⏳ Payment pending for order:', developer_tracking_id);
+      return res.status(200).json({ success: true, message: 'Payment pending' });
+    }
+
+    // Update order in database
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update(updateData)
+      .eq('id', developer_tracking_id);
+
+    if (updateError) {
+      console.error('❌ Error updating order:', updateError);
+      return res.status(500).json({ error: 'Failed to update order' });
+    }
+
+    console.log('✅ Order updated successfully:', developer_tracking_id);
+
+    // If payment is successful, automatically generate tickets and send email
+    // Note: This is done asynchronously to not block the webhook response
+    if (paymentStatus === 'SUCCESS') {
+      console.log('🎫 Automatically generating tickets for order:', developer_tracking_id);
+      
+      // Call ticket generation function (fire and forget - don't block webhook response)
+      // Use process.nextTick to ensure function is available and run after current execution
+      process.nextTick(async () => {
+        try {
+          console.log('🎫 Starting ticket generation for order:', developer_tracking_id);
+          
+          // Check if function exists
+          if (typeof generateTicketsAndSendEmail !== 'function') {
+            console.error('❌ generateTicketsAndSendEmail function not found!');
+            return;
+          }
+          
+          const result = await generateTicketsAndSendEmail(developer_tracking_id);
+          console.log('✅ Tickets generated and email sent for order:', developer_tracking_id);
+          console.log('✅ Result:', JSON.stringify(result, null, 2));
+        } catch (error) {
+          console.error('❌ Error generating tickets after payment:', error);
+          console.error('❌ Error details:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+            name: error.name
+          });
+          // Don't fail the webhook - tickets can be generated manually later via admin panel
+        }
+      });
+    }
+
+    // Return success response to Flouci
+    res.status(200).json({ success: true, message: 'Webhook processed' });
+  } catch (error) {
+    console.error('❌ Error processing Flouci webhook:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 
@@ -2027,139 +3301,6 @@ app.get('/api/admin/ambassador-sales/logs', requireAdminAuth, async (req, res) =
 });
 
 // ============================================
-// Round Robin Assignment Endpoints (DEPRECATED - to be removed)
-// ============================================
-
-// POST /api/assign-order - Assign an order to an ambassador using round robin (DEPRECATED)
-app.post('/api/assign-order', async (req, res) => {
-  try {
-    if (!supabase) {
-      return res.status(500).json({ success: false, error: 'Supabase not configured' });
-    }
-
-    const { order_id, ville } = req.body;
-
-    if (!order_id || !ville) {
-      return res.status(400).json({ success: false, error: 'order_id and ville are required' });
-    }
-
-    // Call the database function to assign order
-    const { data, error } = await supabase.rpc('assign_order_to_ambassador', {
-      p_order_id: order_id,
-      p_ville: ville
-    });
-
-    if (error) {
-      console.error('Error assigning order:', error);
-      return res.status(500).json({ success: false, error: error.message });
-    }
-
-    if (!data) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'No available ambassadors for this ville' 
-      });
-    }
-
-    // Get ambassador details for notification
-    const { data: ambassador } = await supabase
-      .from('ambassadors')
-      .select('id, full_name, phone, email')
-      .eq('id', data)
-      .single();
-
-    res.json({
-      success: true,
-      ambassador_id: data,
-      ambassador: ambassador
-    });
-
-  } catch (error) {
-    console.error('Error in assign-order endpoint:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to assign order'
-    });
-  }
-});
-
-// POST /api/auto-reassign - Auto-reassign ignored orders
-app.post('/api/auto-reassign', requireAdminAuth, async (req, res) => {
-  try {
-    if (!supabase) {
-      return res.status(500).json({ success: false, error: 'Supabase not configured' });
-    }
-
-    const { ignore_minutes } = req.body;
-    const minutes = ignore_minutes || 15; // Default 15 minutes
-
-    // Call the database function to auto-reassign
-    const { data, error } = await supabase.rpc('auto_reassign_ignored_orders', {
-      p_ignore_minutes: minutes
-    });
-
-    if (error) {
-      console.error('Error auto-reassigning orders:', error);
-      return res.status(500).json({ success: false, error: error.message });
-    }
-
-    res.json({
-      success: true,
-      reassigned_count: data || 0
-    });
-
-  } catch (error) {
-    console.error('Error in auto-reassign endpoint:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to auto-reassign orders'
-    });
-  }
-});
-
-// GET /api/next-ambassador/:ville - Get next ambassador for a ville (for admin preview)
-app.get('/api/next-ambassador/:ville', async (req, res) => {
-  try {
-    if (!supabase) {
-      return res.status(500).json({ success: false, error: 'Supabase not configured' });
-    }
-
-    const { ville } = req.params;
-
-    if (!ville) {
-      return res.status(400).json({ success: false, error: 'ville parameter is required' });
-    }
-
-    // Call the database function to get next ambassador
-    const { data, error } = await supabase.rpc('get_next_ambassador_for_ville', {
-      p_ville: ville
-    });
-
-    if (error) {
-      console.error('Error getting next ambassador:', error);
-      return res.status(500).json({ success: false, error: error.message });
-    }
-
-    if (!data || data.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'No available ambassadors for this ville' 
-      });
-    }
-
-    res.json({
-      success: true,
-      ambassador: data[0]
-    });
-
-  } catch (error) {
-    console.error('Error in next-ambassador endpoint:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get next ambassador'
-    });
-  }
-});
 
 // Update ambassador password endpoint
 app.post('/api/ambassador-update-password', authLimiter, async (req, res) => {
@@ -2892,15 +4033,32 @@ app.post('/api/send-order-completion-email', async (req, res) => {
 
       // Provide more detailed error message
       const errorMessage = emailError.message || 'Unknown error';
-      const isAuthError = errorMessage.includes('Invalid login') || errorMessage.includes('authentication');
+      const isAuthError = emailError.code === 'EAUTH' || 
+                         emailError.responseCode === 535 || 
+                         emailError.responseCode === 534 ||
+                         errorMessage.includes('Invalid login') || 
+                         errorMessage.includes('authentication') ||
+                         errorMessage.includes('credentials');
       const isConfigError = !process.env.EMAIL_USER || !process.env.EMAIL_PASS;
+
+      console.error('❌ Email sending error details:', {
+        error: emailError.message,
+        code: emailError.code,
+        responseCode: emailError.responseCode,
+        response: emailError.response,
+        isAuthError,
+        isConfigError,
+        emailUser: process.env.EMAIL_USER,
+        emailHost: process.env.EMAIL_HOST,
+        passwordSet: !!process.env.EMAIL_PASS
+      });
 
       return res.status(500).json({ 
         error: 'Failed to send email', 
         details: isConfigError 
           ? 'Email service not configured. Please check EMAIL_USER and EMAIL_PASS environment variables.'
           : isAuthError
-          ? 'Email authentication failed. Please check email credentials.'
+          ? 'Email authentication failed. The email server credentials are invalid. Please verify EMAIL_USER and EMAIL_PASS environment variables are correct and the password has not expired.'
           : errorMessage
       });
     }
@@ -3059,6 +4217,15 @@ app.post('/api/resend-order-completion-email', requireAdminAuth, async (req, res
         emailLogId: emailLog?.id
       });
     } catch (emailError) {
+      console.error('❌ Error resending order completion email:', {
+        error: emailError.message,
+        code: emailError.code,
+        responseCode: emailError.responseCode,
+        response: emailError.response,
+        orderId: orderId,
+        to: order.user_email
+      });
+      
       if (emailLog) {
         await supabase
           .from('email_delivery_logs')
@@ -3070,9 +4237,23 @@ app.post('/api/resend-order-completion-email', requireAdminAuth, async (req, res
           .eq('id', emailLog.id);
       }
 
+      // Provide more detailed error message
+      const errorMessage = emailError.message || 'Unknown error';
+      const isAuthError = emailError.code === 'EAUTH' || 
+                         emailError.responseCode === 535 || 
+                         emailError.responseCode === 534 ||
+                         errorMessage.includes('Invalid login') || 
+                         errorMessage.includes('authentication') ||
+                         errorMessage.includes('credentials');
+      const isConfigError = !process.env.EMAIL_USER || !process.env.EMAIL_PASS;
+
       return res.status(500).json({ 
         error: 'Failed to send email', 
-        details: emailError.message 
+        details: isConfigError 
+          ? 'Email service not configured. Please check EMAIL_USER and EMAIL_PASS environment variables.'
+          : isAuthError
+          ? 'Email authentication failed. The email server credentials are invalid. Please verify EMAIL_USER and EMAIL_PASS environment variables are correct and the password has not expired.'
+          : errorMessage
       });
     }
   } catch (error) {
@@ -3114,6 +4295,356 @@ app.get('/api/email-delivery-logs/:orderId', requireAdminAuth, async (req, res) 
 });
 
 // POST /api/generate-qr-code - Generate QR code image from token
+// Secure QR code access endpoint - one-time access with event-based expiration
+// Shows ALL QR codes for an order in a single URL
+app.get('/api/qr-codes/:accessToken', logSecurityRequest, qrCodeAccessLimiter, async (req, res) => {
+  try {
+    const { accessToken } = req.params;
+    
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const dbClient = supabaseService || supabase;
+    
+    // Find order by QR access token
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .select(`
+        *,
+        events (
+          id,
+          name,
+          date,
+          venue
+        )
+      `)
+      .eq('qr_access_token', accessToken)
+      .single();
+
+    // Log access attempt
+    const logAccess = async (result, errorMsg = null) => {
+      try {
+        await dbClient.from('qr_code_access_logs').insert({
+          ticket_id: null, // Order-level access, not ticket-specific
+          order_id: order?.id || null,
+          access_token: accessToken,
+          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          access_result: result,
+          error_message: errorMsg
+        });
+      } catch (logError) {
+        console.error('Error logging access:', logError);
+      }
+    };
+
+    // Check if token exists
+    if (orderError || !order) {
+      await logAccess('invalid_token', 'Token not found');
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Invalid Link</title>
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+            .error { color: #e74c3c; }
+          </style>
+        </head>
+        <body>
+          <h1 class="error">Invalid or Expired Link</h1>
+          <p>The QR code link you're trying to access is invalid or has expired.</p>
+          <p>Please contact support if you need assistance.</p>
+        </body>
+        </html>
+      `);
+    }
+
+    // Check if URL already accessed
+    if (order.qr_url_accessed) {
+      await logAccess('already_accessed', 'URL already accessed');
+      return res.status(403).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Link Already Used</title>
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+            .warning { color: #f39c12; }
+          </style>
+        </head>
+        <body>
+          <h1 class="warning">Link Already Used</h1>
+          <p>This QR code link has already been accessed.</p>
+          <p>If you need to access your QR codes again, please check your email or contact support.</p>
+        </body>
+        </html>
+      `);
+    }
+
+    // Check event-based expiration
+    const now = new Date();
+    if (order.qr_url_expires_at) {
+      const expiresAt = new Date(order.qr_url_expires_at);
+      if (now > expiresAt) {
+        await logAccess('event_expired', `Expired at ${expiresAt.toISOString()}`);
+        return res.status(410).send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Link Expired</title>
+            <style>
+              body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+              .error { color: #e74c3c; }
+            </style>
+          </head>
+          <body>
+            <h1 class="error">Link Expired</h1>
+            <p>This QR code link has expired.</p>
+            <p>Please contact support if you need assistance.</p>
+          </body>
+          </html>
+        `);
+      }
+    }
+
+    // Fetch all tickets for this order
+    const { data: orderTickets, error: ticketsError } = await dbClient
+      .from('tickets')
+      .select(`
+        *,
+        order_passes (
+          pass_type
+        )
+      `)
+      .eq('order_id', order.id)
+      .order('created_at', { ascending: true });
+
+    if (ticketsError || !orderTickets || orderTickets.length === 0) {
+      await logAccess('invalid_token', 'No tickets found for order');
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>No Tickets Found</title>
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+            .error { color: #e74c3c; }
+          </style>
+        </head>
+        <body>
+          <h1 class="error">No Tickets Found</h1>
+          <p>No tickets were found for this order.</p>
+          <p>Please contact support if you need assistance.</p>
+        </body>
+        </html>
+      `);
+    }
+
+    // Mark URL as accessed
+    await dbClient
+      .from('orders')
+      .update({
+        qr_url_accessed: true,
+        qr_url_accessed_at: new Date().toISOString()
+      })
+      .eq('id', order.id);
+
+    // Log successful access
+    await logAccess('success');
+
+    // Build HTML with all QR codes
+    const eventName = order.events?.name || 'Event';
+    const eventDate = order.events?.date 
+      ? new Date(order.events.date).toLocaleDateString() 
+      : '';
+    
+    // Group tickets by pass type
+    const ticketsByPassType = {};
+    orderTickets.forEach(ticket => {
+      const passType = ticket.order_passes?.pass_type || 'Standard';
+      if (!ticketsByPassType[passType]) {
+        ticketsByPassType[passType] = [];
+      }
+      ticketsByPassType[passType].push(ticket);
+    });
+
+    // Build QR codes HTML
+    let qrCodesHtml = '';
+    Object.entries(ticketsByPassType).forEach(([passType, tickets]) => {
+      qrCodesHtml += `
+        <div style="margin: 30px 0;">
+          <h3 style="color: #667eea; margin-bottom: 20px; font-size: 18px;">${passType} (${tickets.length} ticket${tickets.length > 1 ? 's' : ''})</h3>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+      `;
+      
+      tickets.forEach((ticket, index) => {
+        if (ticket.qr_code_url) {
+          qrCodesHtml += `
+            <div style="background: #f8f9fa; border-radius: 15px; padding: 20px; text-align: center; border: 2px dashed #667eea;">
+              <p style="margin-bottom: 10px; font-weight: 600; color: #667eea;">Ticket ${index + 1}</p>
+              <img src="${ticket.qr_code_url}" alt="QR Code ${index + 1}" style="max-width: 100%; height: auto; border-radius: 10px; margin-bottom: 10px;">
+              <a href="${ticket.qr_code_url}" download="qr-code-${ticket.secure_token.substring(0, 8)}.png" style="display: inline-block; background: #667eea; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 12px; margin-top: 10px;">📥 Download</a>
+            </div>
+          `;
+        }
+      });
+      
+      qrCodesHtml += `
+          </div>
+        </div>
+      `;
+    });
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Your QR Code - Andiamo Events</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+          }
+          .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 900px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+          }
+          h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 28px;
+          }
+          .event-info {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+          }
+          .qr-container {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin: 30px 0;
+            border: 2px dashed #667eea;
+          }
+          .qr-codes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+          }
+          .qr-code-item {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            border: 2px solid #667eea;
+          }
+          .qr-code {
+            max-width: 100%;
+            height: auto;
+            border-radius: 10px;
+            margin: 10px 0;
+          }
+          .download-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 12px;
+            margin-top: 10px;
+            transition: transform 0.2s;
+          }
+          .download-btn:hover {
+            transform: scale(1.05);
+          }
+          .info {
+            background: #e8f4f8;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            text-align: left;
+            font-size: 14px;
+            color: #555;
+          }
+          .success-badge {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px 20px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 20px;
+            font-size: 14px;
+            font-weight: 600;
+          }
+          .pass-type-header {
+            color: #667eea;
+            margin: 30px 0 20px 0;
+            font-size: 18px;
+            font-weight: 600;
+            text-align: left;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="success-badge">✅ QR Codes Accessed</div>
+          <h1>Your Digital Tickets</h1>
+          <div class="event-info">
+            ${eventName}${eventDate ? `<br>${eventDate}` : ''}
+          </div>
+          ${qrCodesHtml}
+          <div class="info">
+            <strong>Important:</strong> Please save these QR codes to your phone. You'll need to present them at the event entrance. This link can only be accessed once.
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Error serving QR code:', error);
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Error</title>
+        <style>
+          body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+          .error { color: #e74c3c; }
+        </style>
+      </head>
+      <body>
+        <h1 class="error">Error</h1>
+        <p>An error occurred while loading your QR code.</p>
+        <p>Please try again later or contact support.</p>
+      </body>
+      </html>
+    `);
+  }
+});
+
 app.post('/api/generate-qr-code', async (req, res) => {
   try {
     const { token } = req.body;
@@ -3152,29 +4683,32 @@ app.post('/api/generate-qr-code', async (req, res) => {
   }
 });
 
-// POST /api/generate-tickets-for-order - Generate tickets when order reaches PAID status
-app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) => {
+/**
+ * Helper function to generate tickets and send email for an order
+ * This can be called from webhook or manual endpoint
+ */
+async function generateTicketsAndSendEmail(orderId) {
   try {
-    const { orderId } = req.body;
+    console.log('🎫 generateTicketsAndSendEmail called for order:', orderId);
     
-    if (!orderId) {
-      console.error('❌ No orderId provided');
-      return res.status(400).json({ error: 'Order ID is required' });
-    }
-
     if (!supabase) {
-      console.error('❌ Supabase not configured');
-      return res.status(500).json({ error: 'Supabase not configured' });
+      throw new Error('Supabase not configured');
+    }
+    
+    // Check email configuration early
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.warn('⚠️ Email service not configured - EMAIL_USER or EMAIL_PASS not set');
+      console.warn('⚠️ Tickets will be generated but email will not be sent');
+    } else {
+      console.log('✅ Email service configured');
     }
 
     // Use service role client for ALL operations (storage AND database) if available
-    // This bypasses RLS policies and ensures we can create tickets
     const dbClient = supabaseService || supabase;
     const storageClient = supabaseService || supabase;
     
     if (!supabaseService) {
       console.warn('⚠️ Service role key not set - using anon key (may fail due to RLS)');
-    } else {
     }
 
     // Fetch order data using service role client
@@ -3196,29 +4730,39 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
       `)
       .eq('id', orderId)
       .single();
+    
+    // Debug: Log order data to check if user_phone exists
+    if (orderData) {
+      // For debugging: show full phone number (can be masked in production)
+      const showFullPhone = process.env.NODE_ENV === 'development';
+      const phoneDisplay = orderData.user_phone 
+        ? (showFullPhone ? orderData.user_phone : `${orderData.user_phone.substring(0, 3)}***`)
+        : 'NOT SET';
+      
+      console.log('📋 Order data for SMS check:', {
+        orderId: orderData.id,
+        hasUserPhone: !!orderData.user_phone,
+        userPhone: phoneDisplay,
+        userPhoneLength: orderData.user_phone ? orderData.user_phone.length : 0,
+        hasUserEmail: !!orderData.user_email,
+        status: orderData.status,
+        source: orderData.source
+      });
+    }
 
     if (orderError || !orderData) {
-      console.error('❌ Order not found:', orderError);
-      return res.status(404).json({ error: 'Order not found', details: orderError?.message });
+      throw new Error(`Order not found: ${orderError?.message || 'Unknown error'}`);
     }
 
     const order = orderData;
 
     // Check if order is in the correct status (COMPLETED for COD, PAID for online)
-    // Also accept MANUAL_COMPLETED for manual orders
     const isPaidStatus = 
       (order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED')) ||
       (order.source === 'platform_online' && order.status === 'PAID');
 
-
     if (!isPaidStatus) {
-      console.error(`❌ Order not in paid status: ${order.status} (source: ${order.source})`);
-      return res.status(400).json({ 
-        error: `Order is not in a paid status. Current status: ${order.status}, Source: ${order.source}`,
-        orderStatus: order.status,
-        orderSource: order.source,
-        expectedStatus: order.source === 'platform_cod' ? 'COMPLETED or MANUAL_COMPLETED' : 'PAID'
-      });
+      throw new Error(`Order is not in a paid status. Current status: ${order.status}, Source: ${order.source}`);
     }
 
     // Check if tickets already exist
@@ -3229,11 +4773,8 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
       .limit(1);
 
     if (existingTickets && existingTickets.length > 0) {
-      return res.status(200).json({ 
-        success: true, 
-        message: 'Tickets already generated for this order',
-        orderId 
-      });
+      console.log('✅ Tickets already exist for order:', orderId);
+      return { success: true, message: 'Tickets already generated', ticketsCount: existingTickets.length };
     }
 
     // Fetch all passes for this order
@@ -3244,26 +4785,17 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
       .eq('order_id', orderId);
 
     if (passesError) {
-      console.error('❌ Error fetching order passes:', passesError);
-      return res.status(500).json({ 
-        error: `Failed to fetch order passes: ${passesError.message}`,
-        details: passesError 
-      });
+      throw new Error(`Failed to fetch order passes: ${passesError.message}`);
     }
 
     orderPasses = passesData;
 
     // Fallback: If no passes in order_passes table, create them from order data
     if (!orderPasses || orderPasses.length === 0) {
-      
-      // Check if order has pass_type (old format)
       if (order.pass_type) {
-        
-        // Calculate price per pass
         const quantity = order.quantity || 1;
         const pricePerPass = order.total_price / quantity;
         
-        // Create order_pass entry using service role client
         const { data: newPass, error: createPassError } = await dbClient
           .from('order_passes')
           .insert({
@@ -3276,27 +4808,43 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
           .single();
 
         if (createPassError) {
-          console.error('❌ Error creating order_pass:', createPassError);
-          return res.status(500).json({ 
-            error: `Failed to create order pass: ${createPassError.message}`,
-            details: createPassError 
-          });
+          throw new Error(`Failed to create order pass: ${createPassError.message}`);
         }
 
         orderPasses = [newPass];
       } else {
-        console.error('❌ No passes found and order has no pass_type');
-        return res.status(400).json({ 
-          error: 'No passes found for this order',
-          orderId: orderId,
-          suggestion: 'The order must have either entries in order_passes table or a pass_type field'
-        });
+        throw new Error('No passes found for this order');
       }
     }
 
-
     const { v4: uuidv4 } = require('uuid');
     const QRCode = require('qrcode');
+
+    // Generate single access token for order (for SMS URL with all QR codes)
+    const orderAccessToken = uuidv4();
+    
+    // Calculate expiration date: event date + 1 day (or 30 days if no event date)
+    let urlExpiresAt = null;
+    if (order.events?.date) {
+      const eventDate = new Date(order.events.date);
+      eventDate.setDate(eventDate.getDate() + 1); // Event date + 1 day
+      urlExpiresAt = eventDate.toISOString();
+    } else {
+      // Fallback: 30 days from now if no event date
+      const fallbackDate = new Date();
+      fallbackDate.setDate(fallbackDate.getDate() + 30);
+      urlExpiresAt = fallbackDate.toISOString();
+    }
+
+    // Update order with access token
+    await dbClient
+      .from('orders')
+      .update({
+        qr_access_token: orderAccessToken,
+        qr_url_accessed: false,
+        qr_url_expires_at: urlExpiresAt
+      })
+      .eq('id', orderId);
 
     // Create tickets and generate QR codes
     const tickets = [];
@@ -3327,14 +4875,12 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
           continue;
         }
 
-
         // Get public URL
         const { data: urlData } = storageClient.storage
           .from('tickets')
           .getPublicUrl(fileName);
         
-
-        // Create ticket entry using service role client
+        // Create ticket entry (no individual access token needed - using order-level token)
         const ticketInsertData = {
           order_id: orderId,
           order_pass_id: pass.id,
@@ -3344,7 +4890,6 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
           generated_at: new Date().toISOString()
         };
         
-        
         const { data: ticketData, error: ticketError } = await dbClient
           .from('tickets')
           .insert(ticketInsertData)
@@ -3353,84 +4898,580 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
 
         if (ticketError) {
           console.error(`❌ Error creating ticket in database:`, ticketError);
-          console.error('❌ Ticket error code:', ticketError.code);
-          console.error('❌ Ticket error message:', ticketError.message);
-          console.error('❌ Ticket error details:', JSON.stringify(ticketError, null, 2));
-          console.error('❌ Ticket data that failed:', JSON.stringify(ticketInsertData, null, 2));
           continue;
         }
 
         if (ticketData) {
           tickets.push(ticketData);
-        } else {
-          console.error(`❌ Ticket insert returned no data`);
         }
       }
     }
 
     if (tickets.length === 0) {
-      console.error('❌ No tickets were successfully created');
-      return res.status(500).json({ error: 'Failed to generate any tickets' });
+      throw new Error('Failed to generate any tickets');
     }
 
+    // Group tickets by pass type for email
+    const ticketsByPassType = new Map();
+    tickets.forEach(ticket => {
+      const pass = orderPasses.find(p => p.id === ticket.order_pass_id);
+      if (pass) {
+        const key = pass.pass_type;
+        if (!ticketsByPassType.has(key)) {
+          ticketsByPassType.set(key, []);
+        }
+        ticketsByPassType.get(key).push({ ...ticket, passType: key });
+      }
+    });
 
-    // Send confirmation email with all QR codes
+    // Build passes summary
+    const passesSummary = orderPasses.map(p => ({
+      passType: p.pass_type,
+      quantity: p.quantity,
+      price: p.price,
+    }));
+
+    // Build tickets for email
+    const ticketsForEmail = tickets.map(ticket => {
+      const pass = orderPasses.find(p => p.id === ticket.order_pass_id);
+      return {
+        id: ticket.id,
+        passType: pass?.pass_type || 'Standard',
+        qrCodeUrl: ticket.qr_code_url,
+        secureToken: ticket.secure_token,
+      };
+    });
+
+    // Track email sending status
+    let emailSent = false;
+    let emailError = null;
+
+    // Send confirmation email with QR codes using the new template
     if (order.user_email) {
       try {
-        // Build email HTML with all ticket QR codes
-        const ticketsHtml = tickets
-          .filter(t => t.qr_code_url)
-          .map((ticket, index) => `
-            <div style="margin: 20px 0; padding: 20px; background: #f9f9f9; border-radius: 8px; text-align: center;">
-              <h4 style="margin: 0 0 15px 0; color: #667eea;">Ticket ${index + 1}</h4>
-              <img src="${ticket.qr_code_url}" alt="QR Code" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid hsl(195, 100%, 50%, 0.3); display: block; margin: 0 auto;" />
-            </div>
-          `)
+        // Check if email service is configured
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+          console.error('❌ Email service not configured - EMAIL_USER or EMAIL_PASS not set');
+          emailError = 'Email service not configured. Please set EMAIL_USER and EMAIL_PASS environment variables.';
+          throw new Error(emailError);
+        }
+
+        if (!process.env.EMAIL_HOST) {
+          console.error('❌ Email service not configured - EMAIL_HOST not set');
+          emailError = 'Email service not configured. Please set EMAIL_HOST environment variable.';
+          throw new Error(emailError);
+        }
+
+        // Verify transporter configuration
+        console.log('📧 Email configuration:', {
+          host: process.env.EMAIL_HOST,
+          port: process.env.EMAIL_PORT || '587',
+          user: process.env.EMAIL_USER ? `${process.env.EMAIL_USER.substring(0, 3)}***` : 'NOT SET',
+          hasPassword: !!process.env.EMAIL_PASS
+        });
+
+        console.log('📧 Preparing to send email to:', order.user_email);
+        
+        // Verify transporter connection (optional, but helpful for debugging)
+        try {
+          await transporter.verify();
+          console.log('✅ SMTP connection verified');
+        } catch (verifyError) {
+          console.error('❌ SMTP verification failed:', verifyError.message);
+          console.error('❌ SMTP error details:', {
+            code: verifyError.code,
+            command: verifyError.command,
+            response: verifyError.response,
+            responseCode: verifyError.responseCode
+          });
+          
+          // Provide helpful error message for custom SMTP servers
+          if (verifyError.code === 'EAUTH') {
+            console.error('❌ Email authentication failed. Please check:');
+            console.error('   1. EMAIL_USER and EMAIL_PASS are correct');
+            console.error('   2. EMAIL_HOST is set correctly:', process.env.EMAIL_HOST);
+            console.error('   3. EMAIL_PORT is correct (587 for STARTTLS, 465 for SSL)');
+            console.error('   4. Your email server may require:');
+            console.error('      - Different authentication method');
+            console.error('      - TLS/SSL configuration adjustments');
+            console.error('      - IP whitelisting');
+            console.error('   5. Try setting EMAIL_TLS_REJECT_UNAUTHORIZED=false if using self-signed certificates');
+            console.error('   6. Try setting EMAIL_DEBUG=true to see detailed connection logs');
+          }
+          
+          // Still attempt to send - sometimes verification fails but sending works
+          console.warn('⚠️ Will still attempt to send email despite verification failure');
+        }
+        
+        // Build the email HTML matching the ambassador template style
+        const supportUrl = `${process.env.VITE_API_URL || process.env.API_URL || 'https://andiamoevents.com'}/contact`;
+        
+        // Build tickets HTML grouped by pass type
+        const ticketsHtml = Array.from(ticketsByPassType.entries())
+          .map(([passType, passTickets]) => {
+            const ticketsList = passTickets
+              .map((ticket, index) => {
+                return `
+                  <div style="margin: 20px 0; padding: 20px; background: #E8E8E8; border-radius: 8px; text-align: center; border: 1px solid rgba(0, 0, 0, 0.1);">
+                    <h4 style="margin: 0 0 15px 0; color: #E21836; font-size: 16px; font-weight: 600;">${passType} - Ticket ${index + 1}</h4>
+                    <img src="${ticket.qr_code_url}" alt="QR Code for ${passType}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid rgba(226, 24, 54, 0.3); display: block; margin: 0 auto;" />
+                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #666666; font-family: 'Courier New', monospace;">Token: ${ticket.secure_token.substring(0, 8)}...</p>
+                  </div>
+                `;
+              })
+              .join('');
+
+            return `
+              <div style="margin: 30px 0;">
+                <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">${passType} Tickets (${passTickets.length})</h3>
+                ${ticketsList}
+              </div>
+            `;
+          })
           .join('');
 
+        // Build passes summary HTML
+        const passesSummaryHtml = passesSummary.map(p => `
+          <tr style="border-bottom: 1px solid rgba(0, 0, 0, 0.1);">
+            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px;">${p.passType}</td>
+            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: center;">${p.quantity}</td>
+            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: right;">${p.price.toFixed(2)} TND</td>
+          </tr>
+        `).join('');
+
+        // Use the ambassador-style email template
         const emailHtml = `
           <!DOCTYPE html>
           <html>
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Order Confirmation - Andiamo Events</title>
+            <meta name="color-scheme" content="light dark">
+            <meta name="supported-color-schemes" content="light dark">
+            <title>Your Digital Tickets - Andiamo Events</title>
             <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; padding: 20px; }
-              .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-              .header { background: linear-gradient(135deg, hsl(285, 85%, 65%) 0%, hsl(195, 100%, 50%) 50%, hsl(330, 100%, 65%) 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
-              .header h1 { margin: 0; font-size: 28px; }
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                line-height: 1.6; 
+                color: #1A1A1A; 
+                background: #FFFFFF;
+                padding: 0;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+              }
+              @media (prefers-color-scheme: dark) {
+                body {
+                  color: #FFFFFF;
+                  background: #1A1A1A;
+                }
+              }
+              a {
+                color: #E21836 !important;
+                text-decoration: none;
+              }
+              .email-wrapper {
+                max-width: 600px;
+                margin: 0 auto;
+                background: #FFFFFF;
+              }
+              @media (prefers-color-scheme: dark) {
+                .email-wrapper {
+                  background: #1A1A1A;
+                }
+              }
+              .content-card {
+                background: #F5F5F5;
+                margin: 0 20px 30px;
+                border-radius: 12px;
+                padding: 50px 40px;
+                border: 1px solid rgba(0, 0, 0, 0.1);
+              }
+              @media (prefers-color-scheme: dark) {
+                .content-card {
+                  background: #1F1F1F;
+                  border: 1px solid rgba(42, 42, 42, 0.5);
+                }
+              }
+              .title-section {
+                text-align: center;
+                margin-bottom: 40px;
+                padding-bottom: 30px;
+                border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+              }
+              @media (prefers-color-scheme: dark) {
+                .title-section {
+                  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                }
+              }
+              .title {
+                font-size: 32px;
+                font-weight: 700;
+                color: #1A1A1A;
+                margin-bottom: 12px;
+                letter-spacing: -0.5px;
+              }
+              @media (prefers-color-scheme: dark) {
+                .title {
+                  color: #FFFFFF;
+                }
+              }
+              .subtitle {
+                font-size: 16px;
+                color: #666666;
+                font-weight: 400;
+              }
+              @media (prefers-color-scheme: dark) {
+                .subtitle {
+                  color: #B0B0B0;
+                }
+              }
+              .greeting {
+                font-size: 18px;
+                color: #1A1A1A;
+                margin-bottom: 30px;
+                line-height: 1.7;
+              }
+              @media (prefers-color-scheme: dark) {
+                .greeting {
+                  color: #FFFFFF;
+                }
+              }
+              .greeting strong {
+                color: #E21836;
+                font-weight: 600;
+              }
+              .message {
+                font-size: 16px;
+                color: #666666;
+                margin-bottom: 25px;
+                line-height: 1.7;
+              }
+              @media (prefers-color-scheme: dark) {
+                .message {
+                  color: #B0B0B0;
+                }
+              }
+              .order-info-block {
+                background: #E8E8E8;
+                border: 1px solid rgba(0, 0, 0, 0.15);
+                border-radius: 8px;
+                padding: 30px;
+                margin: 40px 0;
+              }
+              @media (prefers-color-scheme: dark) {
+                .order-info-block {
+                  background: #252525;
+                  border: 1px solid rgba(42, 42, 42, 0.8);
+                }
+              }
+              .info-row {
+                margin-bottom: 20px;
+              }
+              .info-row:last-child {
+                margin-bottom: 0;
+              }
+              .info-label {
+                font-size: 11px;
+                color: #999999;
+                text-transform: uppercase;
+                letter-spacing: 1.2px;
+                margin-bottom: 10px;
+                font-weight: 600;
+              }
+              @media (prefers-color-scheme: dark) {
+                .info-label {
+                  color: #6B6B6B;
+                }
+              }
+              .info-value {
+                font-family: 'Courier New', 'Monaco', monospace;
+                font-size: 18px;
+                color: #1A1A1A;
+                font-weight: 500;
+                word-break: break-all;
+                letter-spacing: 0.5px;
+              }
+              @media (prefers-color-scheme: dark) {
+                .info-value {
+                  color: #FFFFFF;
+                }
+              }
+              .passes-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 20px 0;
+              }
+              .passes-table th {
+                text-align: left;
+                padding: 12px 0;
+                color: #E21836;
+                font-weight: 600;
+                font-size: 14px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                border-bottom: 2px solid rgba(226, 24, 54, 0.3);
+              }
+              .passes-table td {
+                padding: 12px 0;
+                color: #1A1A1A;
+                font-size: 15px;
+              }
+              @media (prefers-color-scheme: dark) {
+                .passes-table td {
+                  color: #FFFFFF;
+                }
+              }
+              .total-row {
+                border-top: 2px solid rgba(226, 24, 54, 0.3);
+                margin-top: 10px;
+                padding-top: 15px;
+              }
+              .total-row td {
+                font-weight: 700;
+                font-size: 18px;
+                color: #E21836;
+                padding-top: 15px;
+              }
+              .tickets-section {
+                background: #E8E8E8;
+                border: 1px solid rgba(0, 0, 0, 0.15);
+                border-radius: 8px;
+                padding: 30px;
+                margin: 40px 0;
+              }
+              @media (prefers-color-scheme: dark) {
+                .tickets-section {
+                  background: #252525;
+                  border: 1px solid rgba(42, 42, 42, 0.8);
+                }
+              }
+              .support-section {
+                background: #E8E8E8;
+                border-left: 3px solid rgba(226, 24, 54, 0.3);
+                padding: 20px 25px;
+                margin: 35px 0;
+                border-radius: 4px;
+              }
+              @media (prefers-color-scheme: dark) {
+                .support-section {
+                  background: #252525;
+                }
+              }
+              .support-text {
+                font-size: 14px;
+                color: #666666;
+                line-height: 1.7;
+              }
+              @media (prefers-color-scheme: dark) {
+                .support-text {
+                  color: #B0B0B0;
+                }
+              }
+              .support-email {
+                color: #E21836 !important;
+                text-decoration: none;
+                font-weight: 500;
+              }
+              .closing-section {
+                text-align: center;
+                margin: 50px 0 40px;
+                padding-top: 40px;
+                border-top: 1px solid rgba(0, 0, 0, 0.1);
+              }
+              @media (prefers-color-scheme: dark) {
+                .closing-section {
+                  border-top: 1px solid rgba(255, 255, 255, 0.1);
+                }
+              }
+              .slogan {
+                font-size: 24px;
+                font-style: italic;
+                color: #E21836;
+                font-weight: 300;
+                letter-spacing: 1px;
+                margin-bottom: 30px;
+              }
+              .signature {
+                font-size: 16px;
+                color: #666666;
+                line-height: 1.7;
+              }
+              @media (prefers-color-scheme: dark) {
+                .signature {
+                  color: #B0B0B0;
+                }
+              }
+              .footer {
+                margin-top: 50px;
+                padding: 40px 20px 30px;
+                text-align: center;
+                border-top: 1px solid rgba(0, 0, 0, 0.1);
+              }
+              @media (prefers-color-scheme: dark) {
+                .footer {
+                  border-top: 1px solid rgba(255, 255, 255, 0.05);
+                }
+              }
+              .footer-text {
+                font-size: 12px;
+                color: #999999;
+                margin-bottom: 20px;
+                line-height: 1.6;
+              }
+              @media (prefers-color-scheme: dark) {
+                .footer-text {
+                  color: #6B6B6B;
+                }
+              }
+              .footer-links {
+                margin: 15px auto 0;
+                text-align: center;
+              }
+              .footer-link {
+                color: #999999;
+                text-decoration: none;
+                font-size: 13px;
+                margin: 0 8px;
+              }
+              @media (prefers-color-scheme: dark) {
+                .footer-link {
+                  color: #6B6B6B;
+                }
+              }
+              .footer-link:hover {
+                color: #E21836 !important;
+              }
+              @media only screen and (max-width: 600px) {
+                .content-card {
+                  margin: 0 15px 20px;
+                  padding: 35px 25px;
+                }
+                .title {
+                  font-size: 26px;
+                }
+                .order-info-block {
+                  padding: 25px 20px;
+                }
+                .tickets-section {
+                  padding: 25px 20px;
+                }
+              }
             </style>
           </head>
           <body>
-            <div class="container">
-              <div class="header">
-                <h1>✅ Order Confirmed!</h1>
-                <p>Your Digital Tickets Are Ready</p>
+            <div class="email-wrapper">
+              <div class="content-card">
+                <div class="title-section">
+                  <h1 class="title">Your Tickets Are Ready</h1>
+                  <p class="subtitle">Order Confirmation - Andiamo Events</p>
+                </div>
+                
+                <p class="greeting">Dear <strong>${order.user_name || 'Valued Customer'}</strong>,</p>
+                
+                <p class="message">
+                  We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.
+                </p>
+                
+                <div class="order-info-block">
+                  <div class="info-row">
+                    <div class="info-label">Order ID</div>
+                    <div class="info-value">${orderId.substring(0, 8).toUpperCase()}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="info-label">Event</div>
+                    <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.name || 'Event'}</div>
+                  </div>
+                  ${order.ambassadors ? `
+                  <div class="info-row">
+                    <div class="info-label">Delivered by</div>
+                    <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.ambassadors.full_name}</div>
+                  </div>
+                  ` : ''}
+                </div>
+
+                <div class="order-info-block">
+                  <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Passes Purchased</h3>
+                  <table class="passes-table">
+                    <thead>
+                      <tr>
+                        <th>Pass Type</th>
+                        <th style="text-align: center;">Quantity</th>
+                        <th style="text-align: right;">Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${passesSummaryHtml}
+                      <tr class="total-row">
+                        <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
+                        <td style="text-align: right;"><strong>${order.total_price.toFixed(2)} TND</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div class="tickets-section">
+                  <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Your Digital Tickets</h3>
+                  <p class="message" style="margin-bottom: 25px;">
+                    Please present these QR codes at the event entrance. Each ticket has a unique QR code for verification.
+                  </p>
+                  ${ticketsHtml}
+                </div>
+
+                <div class="order-info-block">
+                  <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">Payment Confirmation</h3>
+                  <p class="message" style="margin: 0;">
+                    Your payment of <strong style="color: #E21836;">${order.total_price.toFixed(2)} TND</strong> has been successfully received${order.ambassadors ? ` by our ambassador <strong>${order.ambassadors.full_name}</strong>` : ''}. Your order is now fully validated and confirmed.
+                  </p>
+                </div>
+                
+                <div class="support-section">
+                  <p class="support-text">
+                    Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a> or visit <a href="${supportUrl}" class="support-email">our support page</a>.
+                  </p>
+                </div>
+                
+                <div class="closing-section">
+                  <p class="slogan">We Create Memories</p>
+                  <p class="signature">
+                    Best regards,<br>
+                    The Andiamo Events Team
+                  </p>
+                </div>
               </div>
-              <div style="padding: 20px 0;">
-                <p>Dear <strong>${order.user_name || 'Valued Customer'}</strong>,</p>
-                <p>Your digital tickets with unique QR codes are ready!</p>
-                <h3 style="color: #667eea;">🎫 Your Digital Tickets</h3>
-                <p>Please present these QR codes at the event entrance:</p>
-                ${ticketsHtml}
-                <p>Thank you for choosing Andiamo Events!</p>
+              
+              <div class="footer">
+                <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+                <div class="footer-links">
+                  <a href="https://www.instagram.com/malek.bamor/" target="_blank" class="footer-link">Instagram</a>
+                  <span style="color: #999999;">•</span>
+                  <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
+                </div>
               </div>
             </div>
           </body>
           </html>
         `;
 
+        // Send email
+        console.log('📤 Sending email via SMTP...');
         const emailResult = await transporter.sendMail({
           from: `Andiamo Events <${process.env.EMAIL_USER}>`,
           to: order.user_email,
-          subject: '✅ Order Confirmation - Your Digital Tickets Are Ready!',
+          subject: 'Your Digital Tickets Are Ready - Andiamo Events',
           html: emailHtml
         });
 
-        // Update tickets to DELIVERED using service role client
+        console.log('✅ Email sent successfully!', {
+          messageId: emailResult.messageId,
+          to: order.user_email,
+          accepted: emailResult.accepted,
+          rejected: emailResult.rejected
+        });
+
+        // Update tickets to DELIVERED
         const ticketIds = tickets.map(t => t.id);
-        const { error: updateError } = await dbClient
+        await dbClient
           .from('tickets')
           .update({
             status: 'DELIVERED',
@@ -3438,60 +5479,449 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
             delivered_at: new Date().toISOString()
           })
           .in('id', ticketIds);
-        
-        if (updateError) {
-          console.error('❌ Error updating tickets to DELIVERED:', updateError);
-        } else {
-        }
 
-        // Log email delivery using service role client
-        const { error: logError } = await dbClient.from('email_delivery_logs').insert({
-          order_id: orderId,
-          email_type: 'ticket_delivery',
-          recipient_email: order.user_email,
-          recipient_name: order.user_name,
-          subject: '✅ Order Confirmation - Your Digital Tickets Are Ready!',
-          status: 'sent',
-          sent_at: new Date().toISOString()
-        });
-
-      } catch (emailError) {
-        console.error('❌ Error sending confirmation email:', emailError);
-        console.error('Email error details:', emailError.message);
-        // Update tickets email delivery status to failed using service role client
-        const ticketIds = tickets.map(t => t.id);
-        await dbClient
-          .from('tickets')
-          .update({
-            email_delivery_status: 'failed'
-          })
-          .in('id', ticketIds);
-
-        // Log email failure using service role client
+        // Log email delivery
         await dbClient.from('email_delivery_logs').insert({
           order_id: orderId,
           email_type: 'ticket_delivery',
           recipient_email: order.user_email,
           recipient_name: order.user_name,
-          subject: '✅ Order Confirmation - Your Digital Tickets Are Ready!',
-          status: 'failed',
-          error_message: emailError.message
+          subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+          status: 'sent',
+          sent_at: new Date().toISOString()
         });
+
+        console.log('✅ Email delivery logged successfully');
+        emailSent = true; // Mark email as successfully sent
+      } catch (emailErrorCaught) {
+        emailError = emailErrorCaught;
+        console.error('❌ Error sending confirmation email:', emailErrorCaught);
+        console.error('❌ Email error details:', {
+          message: emailErrorCaught.message,
+          code: emailErrorCaught.code,
+          command: emailErrorCaught.command,
+          response: emailErrorCaught.response,
+          responseCode: emailErrorCaught.responseCode,
+          stack: emailErrorCaught.stack
+        });
+        
+        // Update tickets email delivery status to failed
+        const ticketIds = tickets.map(t => t.id);
+        try {
+          await dbClient
+            .from('tickets')
+            .update({
+              email_delivery_status: 'failed'
+            })
+            .in('id', ticketIds);
+
+          // Log email failure
+          await dbClient.from('email_delivery_logs').insert({
+            order_id: orderId,
+            email_type: 'ticket_delivery',
+            recipient_email: order.user_email,
+            recipient_name: order.user_name,
+            subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+            status: 'failed',
+            error_message: emailErrorCaught.message || 'Unknown error'
+          });
+        } catch (logError) {
+          console.error('❌ Error logging email failure:', logError);
+        }
+        
+        // Don't re-throw - we want to return success for tickets even if email fails
+        // This allows tickets to be generated even if email service is down
+        console.warn('⚠️ Email sending failed, but tickets were generated successfully');
+      }
+    } else {
+      console.warn('⚠️ No email address found for order:', orderId);
+    }
+
+    // Send SMS with QR code URLs automatically after payment
+    let smsSent = false;
+    let smsError = null;
+    
+    console.log('📱 SMS sending check:', {
+      hasUserPhone: !!order.user_phone,
+      userPhone: order.user_phone || 'NOT SET',
+      hasWinsmsKey: !!WINSMS_API_KEY,
+      orderId: orderId
+    });
+    
+    if (order.user_phone && WINSMS_API_KEY) {
+      try {
+        console.log('📱 Preparing to send SMS to:', order.user_phone);
+        
+        // Get order access token for single URL with all QR codes
+        const { data: orderData, error: orderDataError } = await dbClient
+          .from('orders')
+          .select('qr_access_token')
+          .eq('id', orderId)
+          .single();
+
+        // Build single secure QR code URL (shows all QR codes)
+        const apiBase = process.env.VITE_API_URL || process.env.API_URL || 'https://andiamoevents.com';
+        let qrCodeUrl = null;
+        
+        if (orderData && orderData.qr_access_token) {
+          qrCodeUrl = `${apiBase}/api/qr-codes/${orderData.qr_access_token}`;
+        }
+
+        // Build SMS message
+        const eventName = order.events?.name || 'Event';
+        const orderNumber = order.order_number ? `#${order.order_number}` : '';
+        
+        let smsMessage = `Votre commande ${orderNumber} est confirmée!\n`;
+        smsMessage += `Événement: ${eventName}\n`;
+        smsMessage += `Total: ${order.total_price} DT\n`;
+        smsMessage += `Merci pour votre achat!`;
+
+        // Add single QR code URL if available
+        if (qrCodeUrl) {
+          smsMessage += `\n\n🎫 Vos QR Codes:\n${qrCodeUrl}`;
+          smsMessage += `\n\n⚠️ Ce lien ne peut être utilisé qu'une seule fois.`;
+        }
+
+        // Format phone number for logging (sendSingleSms will format it again)
+        const formattedPhonePreview = formatPhoneNumber(order.user_phone);
+        console.log('📱 Phone number formatting check:', {
+          original: order.user_phone,
+          willBeFormattedTo: formattedPhonePreview || 'INVALID FORMAT',
+          isValid: !!formattedPhonePreview
+        });
+        
+        if (!formattedPhonePreview) {
+          throw new Error(`Invalid phone number format: ${order.user_phone}. Expected 8-digit Tunisian number starting with 2, 4, 5, or 9 (e.g., 27169458)`);
+        }
+        
+        // Send SMS (sendSingleSms will format the number internally)
+        const smsResult = await sendSingleSms(order.user_phone, smsMessage);
+        
+        if (smsResult.success) {
+          console.log('✅ SMS sent successfully to:', formattedPhonePreview, '(original:', order.user_phone + ')');
+          smsSent = true;
+        } else {
+          throw new Error('SMS sending failed');
+        }
+      } catch (smsErrorCaught) {
+        smsError = smsErrorCaught;
+        console.error('❌ Error sending SMS:', smsErrorCaught);
+        console.error('❌ SMS error details:', {
+          message: smsErrorCaught.message,
+          stack: smsErrorCaught.stack
+        });
+        // Don't throw - SMS failure shouldn't break ticket generation
+        console.warn('⚠️ SMS sending failed, but tickets were generated successfully');
+      }
+    } else {
+      if (!order.user_phone) {
+        console.warn('⚠️ No phone number found for order:', orderId);
+      }
+      if (!WINSMS_API_KEY) {
+        console.warn('⚠️ SMS service not configured - WINSMS_API_KEY not set');
       }
     }
 
-    
-    res.status(200).json({ 
+    return { 
       success: true, 
       message: 'Tickets generated successfully',
       ticketsCount: tickets.length,
       orderId,
-      ticketIds: tickets.map(t => t.id)
-    });
-
+      emailSent: emailSent, // Use actual email sending status
+      emailError: emailError ? emailError.message : null, // Include error message if email failed
+      smsSent: smsSent, // SMS sending status
+      smsError: smsError ? smsError.message : null // Include error message if SMS failed
+    };
   } catch (error) {
     console.error('❌ Error generating tickets:', error);
-    console.error('Error stack:', error.stack);
+    console.error('❌ Error stack:', error.stack);
+    console.error('❌ Error details:', {
+      message: error.message,
+      code: error.code,
+      name: error.name
+    });
+    throw error;
+  }
+}
+
+// POST /api/generate-tickets-for-order - Generate tickets when order reaches PAID status (Manual trigger or frontend backup)
+// Note: This endpoint can be called without admin auth if called from frontend after payment verification
+// POST /api/generate-tickets-for-order - Generate tickets when order reaches PAID status
+// Can be called from frontend (after payment) or admin panel (requires auth)
+app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, async (req, res) => {
+  try {
+    const { orderId, recaptchaToken } = req.body;
+    
+    if (!orderId) {
+      console.error('❌ No orderId provided');
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    // Check if this is an admin request (has admin cookie)
+    const isAdminRequest = req.headers.cookie && req.headers.cookie.includes('adminToken');
+    
+    // Security: Require CAPTCHA for non-admin requests (public endpoint)
+    if (!isAdminRequest) {
+      // Verify reCAPTCHA token
+      if (!recaptchaToken) {
+        return res.status(400).json({ 
+          error: 'reCAPTCHA verification required',
+          details: 'Please complete the reCAPTCHA verification'
+        });
+      }
+      
+      // Bypass reCAPTCHA for localhost development
+      if (recaptchaToken !== 'localhost-bypass-token') {
+        const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+        
+        if (!RECAPTCHA_SECRET_KEY) {
+          console.error('RECAPTCHA_SECRET_KEY is not set');
+          return res.status(500).json({ 
+            error: 'Server configuration error',
+            details: 'reCAPTCHA secret key is not configured'
+          });
+        }
+        
+        // Verify with Google reCAPTCHA API
+        const verifyResponse = await fetch(`https://www.google.com/recaptcha/api/siteverify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
+        });
+        
+        const verifyData = await verifyResponse.json();
+        
+        if (!verifyData.success) {
+          console.error('reCAPTCHA verification failed for ticket generation:', verifyData);
+          
+          // Log security event
+          try {
+            // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+              event_type: 'captcha_verification_failed',
+              endpoint: '/api/generate-tickets-for-order',
+              ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+              user_agent: req.headers['user-agent'] || 'unknown',
+              request_method: req.method,
+              request_path: req.path,
+              details: { 
+                reason: 'reCAPTCHA verification failed',
+                order_id: orderId,
+                error_codes: verifyData['error-codes'] || []
+              },
+              severity: 'medium'
+            });
+          } catch (logError) {
+            console.error('Failed to log security event:', logError);
+          }
+          
+          return res.status(400).json({ 
+            error: 'reCAPTCHA verification failed',
+            details: verifyData['error-codes'] || []
+          });
+        }
+        
+        console.log('✅ reCAPTCHA verified for ticket generation');
+      }
+    }
+    
+    // For admin requests, verify auth
+    if (isAdminRequest) {
+      try {
+        const { verifyAdminAuth } = require('./authAdminMiddleware.js');
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(401).json({ error: 'Admin authentication required' });
+        }
+      } catch (authError) {
+        // If auth middleware fails, continue (might be frontend call)
+        console.log('⚠️ Admin auth check skipped');
+      }
+    }
+
+    // Verify order exists and is in correct status
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    // Security: Verify order exists and check ownership/status
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, status, payment_status, user_email, user_phone, source, created_at')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      console.error('❌ Order not found:', orderId);
+      
+      // Log security event - invalid order ID attempt
+      try {
+        // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+          event_type: 'invalid_order_access',
+          endpoint: '/api/generate-tickets-for-order',
+          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.path,
+          details: { 
+            reason: 'Order not found',
+            order_id: orderId 
+          },
+          severity: 'medium'
+        });
+      } catch (logError) {
+        console.error('Failed to log security event:', logError);
+      }
+      
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Security: Verify order is in correct status (PAID) before generating tickets
+    if (order.status !== 'PAID' && order.payment_status !== 'PAID') {
+      console.error('❌ Order not paid:', orderId, 'Status:', order.status, 'Payment Status:', order.payment_status);
+      
+      // Log security event - attempt to generate tickets for unpaid order
+      try {
+        // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+          event_type: 'unauthorized_ticket_generation',
+          endpoint: '/api/generate-tickets-for-order',
+          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.path,
+          details: { 
+            reason: 'Order not in PAID status',
+            order_id: orderId,
+            order_status: order.status,
+            payment_status: order.payment_status
+          },
+          severity: 'high'
+        });
+      } catch (logError) {
+        console.error('Failed to log security event:', logError);
+      }
+      
+      return res.status(403).json({ 
+        error: 'Order must be paid before generating tickets',
+        order_status: order.status,
+        payment_status: order.payment_status
+      });
+    }
+
+    // Security: Check if tickets already exist (prevent duplicate generation)
+    const { data: existingTickets, error: ticketsError } = await supabase
+      .from('tickets')
+      .select('id')
+      .eq('order_id', orderId)
+      .limit(1);
+
+    if (ticketsError) {
+      console.error('❌ Error checking existing tickets:', ticketsError);
+    }
+
+    if (existingTickets && existingTickets.length > 0) {
+      console.log('⚠️ Tickets already exist for order:', orderId);
+      // Don't block - just log (tickets might need regeneration)
+      // But log it for security audit
+      try {
+        // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+          event_type: 'duplicate_ticket_generation_attempt',
+          endpoint: '/api/generate-tickets-for-order',
+          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.path,
+          details: { 
+            reason: 'Tickets already exist for this order',
+            order_id: orderId
+          },
+          severity: 'low'
+        });
+      } catch (logError) {
+        console.error('Failed to log security event:', logError);
+      }
+    }
+
+    if (orderError || !order) {
+      // Log security event - invalid order ID attempt
+      try {
+        // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+          event_type: 'invalid_order_access',
+          endpoint: '/api/generate-tickets-for-order',
+          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.path,
+          details: { 
+            reason: 'Order not found',
+            order_id: orderId 
+          },
+          severity: 'medium'
+        });
+      } catch (logError) {
+        console.error('Failed to log security event:', logError);
+      }
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Security: Verify order is in correct status (PAID) before generating tickets
+    // Only allow ticket generation for PAID orders (or COMPLETED for COD)
+    const isPaidStatus = 
+      (order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED')) ||
+      (order.source === 'platform_online' && order.status === 'PAID');
+
+    if (!isPaidStatus && !isAdminRequest) {
+      // Log security event - attempt to generate tickets for unpaid order
+      try {
+        // Use service role client for security audit logs (bypasses RLS)
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+          event_type: 'unauthorized_ticket_generation',
+          endpoint: '/api/generate-tickets-for-order',
+          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.path,
+          details: { 
+            reason: 'Order not in PAID status',
+            order_id: orderId,
+            order_status: order.status,
+            payment_status: order.payment_status,
+            source: order.source
+          },
+          severity: 'high'
+        });
+      } catch (logError) {
+        console.error('Failed to log security event:', logError);
+      }
+      
+      // For non-admin requests, only allow if order is PAID
+      return res.status(403).json({ 
+        error: 'Order is not in a paid status',
+        currentStatus: order.status,
+        source: order.source
+      });
+    }
+
+    console.log('🎫 Generating tickets for order:', orderId, 'Request type:', isAdminRequest ? 'Admin' : 'Frontend');
+
+    // Use the shared helper function
+    const result = await generateTicketsAndSendEmail(orderId);
+    
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('❌ Error generating tickets:', error);
     res.status(500).json({ 
       error: 'Failed to generate tickets', 
       details: error.message 
@@ -3499,7 +5929,190 @@ app.post('/api/generate-tickets-for-order', requireAdminAuth, async (req, res) =
   }
 });
 
-// Test email endpoint
+// Simple test email endpoint (GET for browser, POST for API)
+app.get('/api/test-email-simple', async (req, res) => {
+  res.json({
+    message: 'Email test endpoint - Use POST method to send test email',
+    endpoint: '/api/test-email-simple',
+    method: 'POST',
+    recipient: 'fmalekbenamorf@gmail.com',
+    instructions: 'Send a POST request to this endpoint to test email configuration',
+    config: {
+      EMAIL_HOST: process.env.EMAIL_HOST,
+      EMAIL_PORT: process.env.EMAIL_PORT,
+      EMAIL_USER: process.env.EMAIL_USER ? `${process.env.EMAIL_USER.substring(0, 3)}***` : 'NOT SET',
+      EMAIL_PASS_SET: !!process.env.EMAIL_PASS,
+      EMAIL_PASS_LENGTH: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0,
+      EMAIL_PASS_FIRST_CHAR: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.substring(0, 1) : '',
+      EMAIL_PASS_LAST_CHAR: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.substring(process.env.EMAIL_PASS.length - 1) : ''
+    }
+  });
+});
+
+app.post('/api/test-email-simple', async (req, res) => {
+  try {
+    console.log('🧪 Simple email test endpoint called');
+    
+    // Check email configuration
+    const emailConfig = {
+      EMAIL_HOST: process.env.EMAIL_HOST,
+      EMAIL_PORT: process.env.EMAIL_PORT || '587',
+      EMAIL_USER: process.env.EMAIL_USER,
+      EMAIL_PASS: process.env.EMAIL_PASS ? '***SET***' : 'NOT SET',
+      EMAIL_PASS_LENGTH: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0
+    };
+    
+    console.log('📧 Email configuration:', {
+      ...emailConfig,
+      EMAIL_USER: emailConfig.EMAIL_USER ? `${emailConfig.EMAIL_USER.substring(0, 3)}***` : 'NOT SET'
+    });
+    
+    if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      return res.status(500).json({ 
+        error: 'Email service not configured', 
+        details: 'Missing email configuration',
+        config: emailConfig
+      });
+    }
+
+    const testEmailTo = 'fmalekbenamorf@gmail.com';
+    console.log('📧 Preparing to send test email to:', testEmailTo);
+
+    // Create fresh transporter
+    const testTransporter = getEmailTransporter();
+    
+    // Try to verify connection first - but continue even if it fails
+    console.log('🔍 Verifying SMTP connection...');
+    let verificationPassed = false;
+    try {
+      await testTransporter.verify();
+      console.log('✅ SMTP connection verified successfully');
+      verificationPassed = true;
+    } catch (verifyError) {
+      console.error('❌ SMTP verification failed:', verifyError.message);
+      console.error('❌ Verification error details:', {
+        code: verifyError.code,
+        command: verifyError.command,
+        response: verifyError.response,
+        responseCode: verifyError.responseCode,
+        stack: verifyError.stack
+      });
+      
+      // Some servers fail verification but still allow sending
+      // Continue to try sending anyway
+      console.warn('⚠️ Verification failed, but will attempt to send email anyway...');
+      
+      if (verifyError.code === 'EAUTH') {
+        console.error('💡 Authentication failed. Possible issues:');
+        console.error('   1. Password might need URL encoding');
+        console.error('   2. Server might require different auth method (try LOGIN)');
+        console.error('   3. Account might be locked after failed attempts');
+        console.error('   4. Special characters in password might need escaping');
+      }
+    }
+
+    // Send test email (even if verification failed)
+    console.log('📤 Attempting to send test email...');
+    if (!verificationPassed) {
+      console.warn('⚠️ Sending email despite verification failure (some servers allow this)');
+    }
+    
+    const emailResult = await testTransporter.sendMail({
+      from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+      to: testEmailTo,
+      subject: '🧪 Test Email - Andiamo Events Email Configuration',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Test Email - Andiamo Events</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; padding: 20px; }
+            .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+            .header { background: linear-gradient(135deg, #E21836 0%, #c4162f 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
+            .header h1 { margin: 0; font-size: 28px; }
+            .content { padding: 20px 0; }
+            .success-box { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin: 20px 0; }
+            .success-box h3 { color: #155724; margin-top: 0; }
+            .info-box { background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0; }
+            .info-box p { margin: 10px 0; }
+            .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 14px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✅ Test Email Successful!</h1>
+            </div>
+            <div class="content">
+              <p>Dear User,</p>
+              
+              <div class="success-box">
+                <h3>🎉 Email Configuration Test</h3>
+                <p>This is a test email to verify that your email configuration is working correctly.</p>
+              </div>
+
+              <div class="info-box">
+                <h3>📧 Email Configuration Details:</h3>
+                <p><strong>Email Host:</strong> ${process.env.EMAIL_HOST}</p>
+                <p><strong>Email Port:</strong> ${process.env.EMAIL_PORT || '587'}</p>
+                <p><strong>Email User:</strong> ${process.env.EMAIL_USER}</p>
+                <p><strong>Sent At:</strong> ${new Date().toLocaleString()}</p>
+              </div>
+
+              <p>If you received this email, it means your email service is properly configured and ready to use!</p>
+              
+              <p>Best regards,<br>
+              <strong>The Andiamo Events Team</strong></p>
+            </div>
+            <div class="footer">
+              <p>© 2024 Andiamo Events. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    });
+
+    console.log('✅ Test email sent successfully!', {
+      messageId: emailResult.messageId,
+      to: testEmailTo,
+      accepted: emailResult.accepted,
+      rejected: emailResult.rejected
+    });
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Test email sent successfully',
+      to: testEmailTo,
+      messageId: emailResult.messageId,
+      accepted: emailResult.accepted,
+      rejected: emailResult.rejected
+    });
+  } catch (error) {
+    console.error('❌ Error sending test email:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+      response: error.response,
+      responseCode: error.responseCode,
+      stack: error.stack
+    });
+    
+    res.status(500).json({ 
+      error: 'Failed to send test email', 
+      details: error.message,
+      errorCode: error.code,
+      response: error.response,
+      responseCode: error.responseCode
+    });
+  }
+});
+
+// Test email endpoint (admin auth required)
 app.post('/api/test-email', requireAdminAuth, async (req, res) => {
   try {
     // Check if email service is configured
@@ -3661,15 +6274,103 @@ app.get('/api/og-image', ogImageLimiter, async (req, res) => {
   }
 });
 
-// Catch-all 404 handler for undefined routes
-app.use('/api/*', (req, res) => {
+// API info endpoint
+app.get('/api', (req, res) => {
+  res.json({
+    message: 'Andiamo Events API',
+    version: '1.0.0',
+    endpoints: {
+      'POST /api/test-email-simple': 'Test email configuration (sends to fmalekbenamorf@gmail.com)',
+      'GET /api/test-email-simple': 'Get info about email test endpoint',
+      'POST /api/test-email': 'Test email (admin auth required)',
+      'POST /api/send-email': 'Send email (admin auth required)',
+      'GET /api/test': 'Test endpoint',
+      'GET /api/sms-test': 'SMS test endpoint'
+    }
+  });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Andiamo Events API Server',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      '/api': 'API information',
+      '/api/test-email-simple': 'Test email endpoint (GET for info, POST to send)',
+      '/api/admin-login': 'Admin login endpoint',
+      '/api/verify-admin': 'Verify admin authentication',
+      '/api/send-email': 'Send email (admin auth required)'
+    }
+  });
+});
+
+// Catch-all 404 handler for undefined API routes
+app.use('/api', (req, res) => {
+  console.error(`404 - API route not found: ${req.method} ${req.path}`);
+  res.status(404).json({ 
+    success: false,
+    error: 'Route not found',
+    details: `The route ${req.path} does not exist`,
+    method: req.method,
+    path: req.path,
+    hint: 'Try GET /api/test-email-simple for email test endpoint info'
+  });
+});
+
+// Catch-all 404 handler for all other undefined routes (non-API)
+app.use((req, res) => {
+  // Skip if it's already an API route (should have been handled above)
+  if (req.path.startsWith('/api')) {
+    return; // Shouldn't reach here, but just in case
+  }
+  
   console.error(`404 - Route not found: ${req.method} ${req.path}`);
   res.status(404).json({ 
     success: false,
     error: 'Route not found',
     details: `The route ${req.path} does not exist`,
     method: req.method,
-    path: req.path
+    path: req.path,
+    hint: 'Visit / for API server information'
+  });
+});
+
+// Global error handlers for unhandled promise rejections and exceptions
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise);
+  console.error('❌ Reason:', reason);
+  // Don't exit in production, just log
+  if (process.env.NODE_ENV !== 'production') {
+    console.error('Stack:', reason?.stack);
+  }
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  console.error('Stack:', error.stack);
+  // Exit in production for uncaught exceptions
+  process.exit(1);
+});
+
+// Express error handler middleware (must be last)
+app.use((err, req, res, next) => {
+  console.error('❌ Express error handler:', {
+    error: err.message,
+    stack: err.stack,
+    path: req.path,
+    method: req.method
+  });
+  
+  // Don't send error details in production
+  const errorMessage = process.env.NODE_ENV === 'production' 
+    ? 'Internal server error' 
+    : err.message;
+  
+  res.status(err.status || 500).json({
+    error: errorMessage,
+    ...(process.env.NODE_ENV !== 'production' && { details: err.message, stack: err.stack })
   });
 });
 
@@ -3677,12 +6378,27 @@ app.use('/api/*', (req, res) => {
 // If running as standalone server, start listening
 if (require.main === module) {
   const port = process.env.PORT || 8082;
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
+    console.log(`🚀 Server running on port ${port}`);
     console.log('  POST /api/admin-login');
     console.log('  POST /api/admin-logout');
     console.log('  GET  /api/verify-admin');
     console.log('  GET  /api/og-image');
     console.log('  ... and more');
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n❌ Error: Port ${port} is already in use.`);
+      console.error(`   Please either:`);
+      console.error(`   1. Stop the process using port ${port}`);
+      console.error(`   2. Set a different port via PORT environment variable (e.g., PORT=8083)`);
+      console.error(`   3. On Windows, find and kill the process: netstat -ano | findstr :${port}`);
+      process.exit(1);
+    } else {
+      console.error('❌ Server error:', err);
+      process.exit(1);
+    }
   });
 }
 
