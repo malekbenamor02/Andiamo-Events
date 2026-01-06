@@ -82,9 +82,7 @@ const Footer = ({ language }: FooterProps) => {
       follow: "Follow us",
       contact: "Contact",
       links: "Quick Links",
-      privacy: "Privacy Policy",
-      terms: "Terms of Service",
-      refund: "Refund & Cancellation Policy"
+      terms: "Terms and General Conditions of Sale"
     },
     fr: {
       newsletter: "Restez informé de nos derniers événements",
@@ -96,9 +94,7 @@ const Footer = ({ language }: FooterProps) => {
       follow: "Suivez-nous",
       contact: "Contact",
       links: "Liens Rapides",
-      privacy: "Politique de Confidentialité",
-      terms: "Conditions d'Utilisation",
-      refund: "Politique de Remboursement et d'Annulation"
+      terms: "Terms et conditions générales de vente"
     }
   };
 
@@ -344,20 +340,6 @@ const Footer = ({ language }: FooterProps) => {
               >
                 {content[language].terms}
               </RouterLink>
-              <span className="text-border/50 hidden sm:inline">•</span>
-              <RouterLink 
-                to="/privacy-policy" 
-                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
-              >
-                {content[language].privacy}
-              </RouterLink>
-              <span className="text-border/50 hidden sm:inline">•</span>
-              <RouterLink 
-                to="/refund-policy" 
-                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
-              >
-                {content[language].refund}
-              </RouterLink>
             </div>
           </div>
 
@@ -387,20 +369,6 @@ const Footer = ({ language }: FooterProps) => {
                 className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
               >
                 {content[language].terms}
-              </RouterLink>
-              <span className="text-border/50">•</span>
-              <RouterLink 
-                to="/privacy-policy" 
-                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
-              >
-                {content[language].privacy}
-              </RouterLink>
-              <span className="text-border/50">•</span>
-              <RouterLink 
-                to="/refund-policy" 
-                className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
-              >
-                {content[language].refund}
               </RouterLink>
             </div>
           </div>

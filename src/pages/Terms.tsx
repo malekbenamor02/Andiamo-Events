@@ -5,8 +5,9 @@ interface TermsProps {
 const Terms = ({ language }: TermsProps) => {
   const content = {
     fr: {
-      title: "Conditions Générales de Vente (CGV)",
+      title: "Terms et conditions générales de vente",
       organization: "Andiamo Events",
+      lastUpdated: "01/01/2026",
       sections: [
         {
           title: "1. Organisation",
@@ -77,7 +78,24 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "9. Accès et comportement",
+          title: "9. Politique de remboursement",
+          content: [
+            "Sauf mention contraire explicite, les billets ne sont ni échangeables ni remboursables, y compris en cas :",
+            "• d'empêchement personnel,",
+            "• de retard,",
+            "• d'absence le jour de l'événement.",
+            "Toute contestation de paiement initiée auprès de la banque ou du prestataire de paiement sans contact préalable avec l'Organisateur pourra entraîner le refus de la demande."
+          ]
+        },
+        {
+          title: "10. Annulation ou report d'événement",
+          content: [
+            "En cas d'annulation ou de report d'un événement par l'Organisateur, les modalités applicables (remboursement, report ou avoir) seront communiquées par les canaux officiels d'Andiamo Events.",
+            "Aucun frais annexe (transport, hébergement, restauration ou autres) ne pourra être réclamé à l'Organisateur."
+          ]
+        },
+        {
+          title: "11. Accès et comportement",
           content: [
             "L'Organisateur se réserve le droit de refuser l'accès ou d'exclure toute personne dont le comportement est jugé :",
             "• dangereux,",
@@ -87,7 +105,7 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "10. Responsabilité",
+          title: "12. Responsabilité",
           content: [
             "L'Organisateur décline toute responsabilité en cas :",
             "• de perte, vol ou détérioration d'effets personnels,",
@@ -96,21 +114,31 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "11. Propriété intellectuelle",
+          title: "13. Données personnelles",
+          content: [
+            "Les données personnelles collectées sont utilisées exclusivement pour :",
+            "• le traitement des commandes,",
+            "• la gestion des accès aux événements,",
+            "• la communication liée aux événements Andiamo Events.",
+            "Elles ne sont ni vendues ni cédées à des tiers non autorisés."
+          ]
+        },
+        {
+          title: "14. Propriété intellectuelle",
           content: [
             "L'ensemble des contenus présents sur le site Andiamo Events (textes, visuels, logos, vidéos, concepts) est la propriété exclusive de l'Organisateur.",
             "Toute reproduction ou utilisation sans autorisation préalable est strictement interdite."
           ]
         },
         {
-          title: "12. Droit applicable",
+          title: "15. Droit applicable",
           content: [
             "Les présentes Conditions Générales de Vente sont soumises au droit tunisien.",
             "À défaut de résolution amiable, tout litige sera soumis aux juridictions compétentes en Tunisie."
           ]
         },
         {
-          title: "13. Acceptation des CGV",
+          title: "16. Acceptation des CGV",
           content: [
             "La validation de la commande vaut acceptation pleine et entière des présentes Conditions Générales de Vente."
           ]
@@ -118,8 +146,9 @@ const Terms = ({ language }: TermsProps) => {
       ]
     },
     en: {
-      title: "Terms of Service",
+      title: "Terms and General Conditions of Sale",
       organization: "Andiamo Events",
+      lastUpdated: "01/01/2026",
       sections: [
         {
           title: "1. Organization",
@@ -190,7 +219,24 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "9. Access and behavior",
+          title: "9. Refund Policy",
+          content: [
+            "Unless explicitly stated otherwise, tickets are neither exchangeable nor refundable, including in cases of:",
+            "• personal inability to attend,",
+            "• lateness,",
+            "• absence on the day of the event.",
+            "Any payment dispute initiated with the bank or the payment service provider without prior contact with the Organizer may result in refusal of the request."
+          ]
+        },
+        {
+          title: "10. Event Cancellation or Postponement",
+          content: [
+            "In the event of cancellation or postponement of an event by the Organizer, the applicable terms (refund, postponement, or credit) will be communicated through Andiamo Events' official channels.",
+            "No additional expenses (transportation, accommodation, catering, or others) may be claimed from the Organizer."
+          ]
+        },
+        {
+          title: "11. Access and behavior",
           content: [
             "The Organizer reserves the right to refuse access or exclude any person whose behavior is deemed:",
             "• dangerous,",
@@ -200,7 +246,7 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "10. Liability",
+          title: "12. Liability",
           content: [
             "The Organizer disclaims all liability in the event of:",
             "• loss, theft or deterioration of personal effects,",
@@ -209,21 +255,31 @@ const Terms = ({ language }: TermsProps) => {
           ]
         },
         {
-          title: "11. Intellectual property",
+          title: "13. Personal Data",
+          content: [
+            "Personal data collected is used exclusively for:",
+            "• order processing,",
+            "• event access management,",
+            "• communication related to Andiamo Events events.",
+            "Such data is neither sold nor transferred to unauthorized third parties."
+          ]
+        },
+        {
+          title: "14. Intellectual property",
           content: [
             "All content on the Andiamo Events website (texts, visuals, logos, videos, concepts) is the exclusive property of the Organizer.",
             "Any reproduction or use without prior authorization is strictly prohibited."
           ]
         },
         {
-          title: "12. Applicable law",
+          title: "15. Applicable law",
           content: [
             "These General Terms and Conditions of Sale are subject to Tunisian law.",
             "In the absence of an amicable resolution, any dispute will be submitted to the competent courts in Tunisia."
           ]
         },
         {
-          title: "13. Acceptance of GTCS",
+          title: "16. Acceptance of GTCS",
           content: [
             "Order validation constitutes full and complete acceptance of these General Terms and Conditions of Sale."
           ]
@@ -241,7 +297,10 @@ const Terms = ({ language }: TermsProps) => {
           <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-4 uppercase">
             {pageContent.title}
           </h1>
-          <p className="text-lg font-semibold text-muted-foreground">{pageContent.organization}</p>
+          <p className="text-lg font-semibold text-muted-foreground mb-2">{pageContent.organization}</p>
+          <p className="text-sm text-muted-foreground/80">
+            {language === 'en' ? 'Last updated:' : 'Dernière mise à jour :'} {pageContent.lastUpdated}
+          </p>
         </div>
 
         <div className="prose prose-lg max-w-none">

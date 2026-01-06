@@ -15,9 +15,7 @@ import Events from "./pages/Events";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
 import NotFound from "./pages/NotFound";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Terms from "./pages/Terms";
-import RefundPolicy from "./pages/RefundPolicy";
 import ScrollToTop from "./components/layout/ScrollToTop";
 import Auth from "./pages/ambassador/Auth";
 import AdminLogin from "./pages/admin/Login";
@@ -101,9 +99,7 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
               </ProtectedAdminRoute>
             } />
             <Route path="/contact" element={<Contact language={language} />} />
-            <Route path="/privacy-policy" element={<PrivacyPolicy language={language} />} />
             <Route path="/terms" element={<Terms language={language} />} />
-            <Route path="/refund-policy" element={<RefundPolicy language={language} />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <Footer language={language} />
