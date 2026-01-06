@@ -32,7 +32,7 @@ import CODOrder from "./pages/CODOrder";
 import GalleryEvent from "./pages/GalleryEvent";
 import UpcomingEvent from "./pages/UpcomingEvent";
 import OnlinePayment from "./pages/OnlinePayment";
-import PaymentProcessing from "./pages/PaymentProcessing";
+// import PaymentProcessing from "./pages/PaymentProcessing";
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { FaviconLoader } from "./components/FaviconLoader";
@@ -83,7 +83,7 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
             <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
             <Route path="/cod-order" element={<CODOrder language={language} />} />
             <Route path="/online-payment" element={<OnlinePayment language={language} />} />
-            <Route path="/payment-processing" element={<PaymentProcessing language={language} />} />
+            {/* <Route path="/payment-processing" element={<PaymentProcessing language={language} />} /> */}
     
             <Route path="/about" element={<About language={language} />} />
             <Route path="/ambassador" element={<AmbassadorApplication language={language} />} />
