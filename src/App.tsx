@@ -32,6 +32,7 @@ import CODOrder from "./pages/CODOrder";
 import GalleryEvent from "./pages/GalleryEvent";
 import UpcomingEvent from "./pages/UpcomingEvent";
 import OnlinePayment from "./pages/OnlinePayment";
+import PaymentProcessing from "./pages/PaymentProcessing";
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { FaviconLoader } from "./components/FaviconLoader";
@@ -82,6 +83,7 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
             <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
             <Route path="/cod-order" element={<CODOrder language={language} />} />
             <Route path="/online-payment" element={<OnlinePayment language={language} />} />
+            <Route path="/payment-processing" element={<PaymentProcessing language={language} />} />
     
             <Route path="/about" element={<About language={language} />} />
             <Route path="/ambassador" element={<AmbassadorApplication language={language} />} />
@@ -99,10 +101,9 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
               </ProtectedAdminRoute>
             } />
             <Route path="/contact" element={<Contact language={language} />} />
-            {/* Temporarily masked - pages preserved but not accessible */}
-            {/* <Route path="/privacy-policy" element={<PrivacyPolicy language={language} />} /> */}
-            {/* <Route path="/terms" element={<Terms language={language} />} /> */}
-            {/* <Route path="/refund-policy" element={<RefundPolicy language={language} />} /> */}
+            <Route path="/privacy-policy" element={<PrivacyPolicy language={language} />} />
+            <Route path="/terms" element={<Terms language={language} />} />
+            <Route path="/refund-policy" element={<RefundPolicy language={language} />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <Footer language={language} />

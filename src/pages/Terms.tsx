@@ -1,191 +1,238 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-
 interface TermsProps {
   language: 'en' | 'fr';
 }
 
-interface Section {
-  title: string;
-  content: string;
-}
-
-interface TermsContent {
-  title?: string;
-  lastUpdated?: string;
-  sections?: Section[];
-  [key: string]: string | Section[] | undefined;
-}
-
 const Terms = ({ language }: TermsProps) => {
-  const [termsContent, setTermsContent] = useState<TermsContent>({});
-
-  useEffect(() => {
-    const fetchContent = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('site_content')
-          .select('*')
-          .eq('key', 'terms_of_service')
-          .maybeSingle();
-        
-        // If no data or error, use default content (already set in state)
-        if (error) {
-          // Only log non-404/406 errors (missing content is expected)
-          if (error.code !== 'PGRST116' && error.message?.includes('406') === false) {
-            console.error('Error fetching terms content:', error);
-          }
-          return;
-        }
-        
-        if (data?.content) {
-          setTermsContent(data.content as TermsContent);
-        }
-      } catch (error) {
-        // Silently use default content if fetch fails
-      }
-    };
-    fetchContent();
-  }, []);
-
-  const defaultContent = {
-    en: {
-      title: "Terms of Service",
-      lastUpdated: "Last updated: January 2025",
-      sections: [
-        {
-          title: "Acceptance of Terms",
-          content: "By accessing or using Andiamo Events platform, you agree to be bound by these Terms of Service, our Privacy Policy, and our Refund & Cancellation Policy. If you do not agree to these terms, please do not use our services."
-        },
-        {
-          title: "Platform Description",
-          content: "Andiamo Events operates as a ticketing and promotion platform connecting event organizers with attendees. We facilitate ticket sales, payment processing, and event management services. We are not the organizer of events listed on our platform unless explicitly stated."
-        },
-        {
-          title: "User Information",
-          content: "You agree to provide accurate, current, and complete information when placing orders. You are responsible for ensuring that the information you provide (name, phone number, email, address) is correct and up-to-date. Providing false or misleading information may result in order cancellation or denial of service."
-        },
-        {
-          title: "Ticket Purchase & Usage",
-          content: "Tickets are available in Standard and VIP categories. Each ticket grants entry for one person to the specified event. Upon purchase, you will receive a unique QR code that must be presented at the event venue. QR codes are non-transferable and can only be scanned once. Attempting to use duplicate or fraudulent tickets will result in denied entry and potential legal action."
-        },
-        {
-          title: "Event Entry Rules",
-          content: "Entry to events is subject to age restrictions as specified for each event. Late entry may be refused at the organizer's discretion. Event organizers and venue staff have the final authority to deny entry for any reason, including but not limited to: violation of dress code, disruptive behavior, intoxication, or failure to meet age requirements. Andiamo Events is not responsible for entry decisions made by organizers or venue staff."
-        },
-        {
-          title: "Ambassador System",
-          content: "Ambassadors act as independent partners facilitating Cash on Delivery (COD) orders. When you place a COD order, it will be assigned to an available ambassador using our automated assignment system. Ambassadors are responsible for confirming and delivering your order. If an ambassador cancels your order, it will be automatically reassigned to another available ambassador. Abuse, fraud, or violation of our policies by ambassadors will result in immediate suspension from our platform."
-        },
-        {
-          title: "Event Changes",
-          content: "Event organizers may change event dates, times, locations, or cancel events. Andiamo Events is not responsible for such changes. In the event of cancellation or significant changes, the organizer is responsible for communicating with ticket holders and determining refund or replacement options. We will facilitate communication but are not liable for organizer decisions."
-        },
-        {
-          title: "Prohibited Activities",
-          content: "You agree not to: resell tickets at prices above face value, create fake reservations or orders, manipulate QR code scanning systems, harass or threaten other users, ambassadors, or staff, use automated systems to purchase tickets, or engage in any fraudulent activity. Violation of these prohibitions will result in immediate account suspension and potential legal action."
-        },
-        {
-          title: "Limitation of Liability",
-          content: "Andiamo Events is not responsible for: incidents, injuries, or damages occurring at event venues, the quality, safety, or conduct of events organized by third parties, decisions made by event organizers or venue staff, technical issues with QR code scanning equipment at venues, or any losses resulting from event cancellations or changes. You attend events at your own risk."
-        },
-        {
-          title: "Termination",
-          content: "We reserve the right to refuse service, cancel orders, or block access to our platform at any time for violation of these Terms, fraudulent activity, or any behavior we deem harmful to our platform or other users. Any pending orders may be canceled if service is terminated."
-        },
-        {
-          title: "Governing Law",
-          content: "These Terms of Service are governed by and construed in accordance with the laws of Tunisia. Any disputes arising from these terms or your use of our platform will be subject to the exclusive jurisdiction of Tunisian courts."
-        },
-        {
-          title: "Contact Us",
-          content: "If you have any questions about these Terms of Service, please contact us at support@andiamoevents.com"
-        }
-      ]
-    },
-    fr: {
-      title: "Conditions d'Utilisation",
-      lastUpdated: "Dernière mise à jour : janvier 2025",
-      sections: [
-        {
-          title: "Acceptation des Conditions",
-          content: "En accédant ou en utilisant la plateforme Andiamo Events, vous acceptez d'être lié par ces Conditions d'Utilisation, notre Politique de Confidentialité et notre Politique de Remboursement et d'Annulation. Si vous n'acceptez pas ces conditions, veuillez ne pas utiliser nos services."
-        },
-        {
-          title: "Description de la Plateforme",
-          content: "Andiamo Events fonctionne comme une plateforme de billetterie et de promotion connectant les organisateurs d'événements aux participants. Nous facilitons les ventes de billets, le traitement des paiements et les services de gestion d'événements. Nous ne sommes pas les organisateurs des événements listés sur notre plateforme sauf indication explicite."
-        },
-        {
-          title: "Informations Utilisateur",
-          content: "Vous acceptez de fournir des informations exactes, actuelles et complètes lors de la passation de commandes. Vous êtes responsable de vous assurer que les informations que vous fournissez (nom, numéro de téléphone, email, adresse) sont correctes et à jour. Fournir de fausses informations ou trompeuses peut entraîner l'annulation de la commande ou le refus du service."
-        },
-        {
-          title: "Achat et Utilisation des Billets",
-          content: "Les billets sont disponibles en catégories Standard et VIP. Chaque billet accorde l'entrée pour une personne à l'événement spécifié. Lors de l'achat, vous recevrez un code QR unique qui doit être présenté au lieu de l'événement. Les codes QR ne sont pas transférables et ne peuvent être scannés qu'une seule fois. Tenter d'utiliser des billets en double ou frauduleux entraînera un refus d'entrée et des poursuites judiciaires potentielles."
-        },
-        {
-          title: "Règles d'Entrée aux Événements",
-          content: "L'entrée aux événements est soumise aux restrictions d'âge spécifiées pour chaque événement. L'entrée tardive peut être refusée à la discrétion de l'organisateur. Les organisateurs d'événements et le personnel du lieu ont l'autorité finale pour refuser l'entrée pour quelque raison que ce soit, y compris mais sans s'y limiter : violation du code vestimentaire, comportement perturbateur, ivresse ou non-respect des exigences d'âge. Andiamo Events n'est pas responsable des décisions d'entrée prises par les organisateurs ou le personnel du lieu."
-        },
-        {
-          title: "Système d'Ambassadeurs",
-          content: "Les ambassadeurs agissent comme des partenaires indépendants facilitant les commandes en paiement à la livraison (COD). Lorsque vous passez une commande COD, elle sera assignée à un ambassadeur disponible en utilisant notre système d'assignation automatisé. Les ambassadeurs sont responsables de confirmer et de livrer votre commande. Si un ambassadeur annule votre commande, elle sera automatiquement réassignée à un autre ambassadeur disponible. L'abus, la fraude ou la violation de nos politiques par les ambassadeurs entraînera une suspension immédiate de notre plateforme."
-        },
-        {
-          title: "Modifications d'Événements",
-          content: "Les organisateurs d'événements peuvent modifier les dates, heures, lieux des événements ou annuler des événements. Andiamo Events n'est pas responsable de ces modifications. En cas d'annulation ou de modifications importantes, l'organisateur est responsable de communiquer avec les détenteurs de billets et de déterminer les options de remboursement ou de remplacement. Nous faciliterons la communication mais ne sommes pas responsables des décisions des organisateurs."
-        },
-        {
-          title: "Activités Interdites",
-          content: "Vous acceptez de ne pas : revendre des billets à des prix supérieurs au prix facial, créer de fausses réservations ou commandes, manipuler les systèmes de scan de codes QR, harceler ou menacer d'autres utilisateurs, ambassadeurs ou personnel, utiliser des systèmes automatisés pour acheter des billets, ou vous engager dans toute activité frauduleuse. La violation de ces interdictions entraînera une suspension immédiate du compte et des poursuites judiciaires potentielles."
-        },
-        {
-          title: "Limitation de Responsabilité",
-          content: "Andiamo Events n'est pas responsable de : incidents, blessures ou dommages survenant dans les lieux d'événements, la qualité, la sécurité ou la conduite des événements organisés par des tiers, les décisions prises par les organisateurs d'événements ou le personnel du lieu, les problèmes techniques avec les équipements de scan de codes QR dans les lieux, ou toute perte résultant d'annulations ou de modifications d'événements. Vous assistez aux événements à vos propres risques."
-        },
-        {
-          title: "Résiliation",
-          content: "Nous nous réservons le droit de refuser le service, d'annuler les commandes ou de bloquer l'accès à notre plateforme à tout moment pour violation de ces Conditions, activité frauduleuse ou tout comportement que nous jugeons nuisible à notre plateforme ou à d'autres utilisateurs. Toute commande en attente peut être annulée si le service est résilié."
-        },
-        {
-          title: "Loi Applicable",
-          content: "Ces Conditions d'Utilisation sont régies par et interprétées conformément aux lois de la Tunisie. Tout litige découlant de ces conditions ou de votre utilisation de notre plateforme sera soumis à la juridiction exclusive des tribunaux tunisiens."
-        },
-        {
-          title: "Nous contacter",
-          content: "Si vous avez des questions concernant ces Conditions d'Utilisation, veuillez nous contacter à support@andiamoevents.com"
-        }
-      ]
-    }
-  };
-
-  const content = termsContent.title ? termsContent : defaultContent[language];
-
   return (
     <div className="pt-16 min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-4">
-            {content.title}
-          </h1>
-          <p className="text-muted-foreground">{content.lastUpdated}</p>
-        </div>
         <div className="prose prose-lg max-w-none">
-          {content.sections?.map((section, index) => (
-            <div key={index} className="mb-8">
-              <h2 className="text-2xl font-semibold text-primary mb-4">{section.title}</h2>
-              <p className="text-foreground/80 leading-relaxed">{section.content}</p>
+          <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-8">
+            📄 PAGE 1 — TERMS OF SERVICE
+          </h1>
+          <p className="text-muted-foreground mb-8">(/terms)</p>
+
+          <div className="mb-12">
+            <h2 className="text-3xl font-semibold text-primary mb-6">🇫🇷 CONDITIONS GÉNÉRALES DE VENTE (CGV)</h2>
+            <p className="text-lg font-semibold mb-4">Andiamo Events</p>
+
+            <div className="space-y-6 text-foreground/80 leading-relaxed">
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">1. Organisation</h3>
+                <p>Les événements proposés sur le site Andiamo Events sont organisés par Born To Lead (BTL), ci-après dénommé « l'Organisateur ».</p>
+                <p>📧 Contact : contact@andiamoevents.com</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">2. Objet</h3>
+                <p>Les présentes Conditions Générales de Vente (CGV) ont pour objet de définir les conditions de vente, de paiement et d'utilisation des billets et services proposés par Andiamo Events via son site web et ses canaux officiels.</p>
+                <p>Toute commande implique l'acceptation pleine, entière et sans réserve des présentes CGV.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">3. Produits et services</h3>
+                <p>Andiamo Events propose principalement :</p>
+                <ul className="list-disc pl-6 space-y-2">
+                  <li>des billets d'accès à des événements culturels, artistiques ou festifs,</li>
+                  <li>des pass ou accès spécifiques selon les événements,</li>
+                  <li>des services liés à l'organisation des événements.</li>
+                </ul>
+                <p>Les informations essentielles (date, lieu, horaires, conditions d'accès) sont précisées pour chaque événement.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">4. Prix</h3>
+                <p>Les prix sont indiqués en dinar tunisien (TND), toutes taxes comprises, sauf indication contraire.</p>
+                <p>L'Organisateur se réserve le droit de modifier les prix à tout moment. Le prix facturé est celui en vigueur au moment de la validation de la commande.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">5. Commande</h3>
+                <p>La commande est considérée comme définitive dès validation du paiement.</p>
+                <p>Le client est responsable de l'exactitude des informations fournies, notamment de l'adresse email utilisée pour la réception du billet électronique.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">6. Paiement</h3>
+                <p>Le paiement s'effectue en ligne via les moyens de paiement proposés sur le site, notamment par l'intermédiaire d'un prestataire de services de paiement agréé.</p>
+                <p>Toute commande non réglée intégralement ne sera ni confirmée ni traitée.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">7. Rôle du prestataire de paiement</h3>
+                <p>Les paiements sont traités par un prestataire de services de paiement tiers, notamment Flouci, agissant exclusivement en qualité d'intermédiaire technique.</p>
+                <p>Le prestataire de paiement n'intervient en aucun cas dans l'organisation, la gestion, la livraison ou le déroulement des événements.</p>
+                <p>Toute réclamation, contestation ou demande de remboursement liée à un événement ou à un billet doit être adressée directement à l'Organisateur.</p>
+                <p>La responsabilité du prestataire de paiement ne saurait être engagée en cas d'annulation, de report, de modification ou de litige lié à l'événement.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">8. Billets électroniques et QR Code (accès obligatoire)</h3>
+                <p>L'accès aux événements Andiamo Events est strictement conditionné à la présentation d'un QR code valide.</p>
+                <p>Après confirmation du paiement, un billet électronique contenant un QR code unique est envoyé par email à l'adresse communiquée lors de la commande.</p>
+                <p>Même en cas de remise d'un billet physique, un QR code est systématiquement envoyé par email et constitue la référence principale et obligatoire pour le contrôle d'accès.</p>
+                <p>Le QR code peut être présenté :</p>
+                <ul className="list-disc pl-6 space-y-2">
+                  <li>sur un support numérique (téléphone, tablette),</li>
+                  <li>ou sous forme imprimée.</li>
+                </ul>
+                <p>⚠️ L'absence de QR code valide, même en possession d'un billet physique, peut entraîner un refus d'accès sans remboursement.</p>
+                <p>Chaque QR code est personnel, unique et valable pour une seule entrée.</p>
+                <p>Toute tentative de duplication, de fraude ou de revente entraînera l'invalidation immédiate du billet.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">11. Accès et comportement</h3>
+                <p>L'Organisateur se réserve le droit de refuser l'accès ou d'exclure toute personne dont le comportement est jugé :</p>
+                <ul className="list-disc pl-6 space-y-2">
+                  <li>dangereux,</li>
+                  <li>inapproprié,</li>
+                  <li>contraire aux règles de sécurité ou au bon déroulement de l'événement.</li>
+                </ul>
+                <p>Toute exclusion se fait sans remboursement.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">12. Responsabilité</h3>
+                <p>L'Organisateur décline toute responsabilité en cas :</p>
+                <ul className="list-disc pl-6 space-y-2">
+                  <li>de perte, vol ou détérioration d'effets personnels,</li>
+                  <li>d'incident causé par le participant,</li>
+                  <li>de force majeure ou de décisions administratives indépendantes de sa volonté.</li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">14. Propriété intellectuelle</h3>
+                <p>L'ensemble des contenus présents sur le site Andiamo Events (textes, visuels, logos, vidéos, concepts) est la propriété exclusive de l'Organisateur.</p>
+                <p>Toute reproduction ou utilisation sans autorisation préalable est strictement interdite.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">15. Droit applicable</h3>
+                <p>Les présentes Conditions Générales de Vente sont soumises au droit tunisien.</p>
+                <p>À défaut de résolution amiable, tout litige sera soumis aux juridictions compétentes en Tunisie.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">16. Acceptation des CGV</h3>
+                <p>La validation de la commande vaut acceptation pleine et entière des présentes Conditions Générales de Vente.</p>
+              </div>
             </div>
-          ))}
-        </div>
-        <div className="mt-12 pt-8 border-t border-border/20 text-center">
-          <a href="/" className="text-primary hover:text-primary/80 underline">
-            {language === 'en' ? 'Return to Home' : "Retour à l'Accueil"}
-          </a>
+          </div>
+
+          <div className="mb-12">
+            <h2 className="text-3xl font-semibold text-primary mb-6">🇬🇧 TERMS OF SERVICE</h2>
+            <p className="text-lg font-semibold mb-4">Andiamo Events</p>
+
+            <div className="space-y-6 text-foreground/80 leading-relaxed">
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">1. Organization</h3>
+                <p>The events offered on the Andiamo Events website are organized by Born To Lead (BTL), hereinafter referred to as "the Organizer".</p>
+                <p>📧 Contact: contact@andiamoevents.com</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">2. Purpose</h3>
+                <p>These General Terms and Conditions of Sale (GTCS) are intended to define the conditions of sale, payment and use of tickets and services offered by Andiamo Events via its website and official channels.</p>
+                <p>Any order implies full, complete and unreserved acceptance of these GTCS.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">3. Products and services</h3>
+                <p>Andiamo Events mainly offers:</p>
+                <ul className="list-disc pl-6 space-y-2">
+                  <li>tickets for access to cultural, artistic or festive events,</li>
+                  <li>passes or specific access according to events,</li>
+                  <li>services related to event organization.</li>
+                </ul>
+                <p>Essential information (date, location, times, access conditions) is specified for each event.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">4. Price</h3>
+                <p>Prices are indicated in Tunisian dinars (TND), all taxes included, unless otherwise stated.</p>
+                <p>The Organizer reserves the right to modify prices at any time. The price charged is that in effect at the time of order validation.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">5. Order</h3>
+                <p>The order is considered final upon payment validation.</p>
+                <p>The customer is responsible for the accuracy of the information provided, in particular the email address used to receive the electronic ticket.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">6. Payment</h3>
+                <p>Payment is made online via the payment methods offered on the site, in particular through an approved payment service provider.</p>
+                <p>Any order not paid in full will not be confirmed or processed.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">7. Role of the payment provider</h3>
+                <p>Payments are processed by a third-party payment service provider, including Flouci, acting exclusively as a technical intermediary.</p>
+                <p>The payment provider does not intervene in any way in the organization, management, delivery or conduct of events.</p>
+                <p>Any complaint, dispute or refund request related to an event or ticket must be addressed directly to the Organizer.</p>
+                <p>The payment provider cannot be held liable in the event of cancellation, postponement, modification or dispute related to the event.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">8. Electronic tickets and QR Code (mandatory access)</h3>
+                <p>Access to Andiamo Events events is strictly conditional on the presentation of a valid QR code.</p>
+                <p>After payment confirmation, an electronic ticket containing a unique QR code is sent by email to the address provided when ordering.</p>
+                <p>Even in the case of delivery of a physical ticket, a QR code is systematically sent by email and constitutes the main and mandatory reference for access control.</p>
+                <p>The QR code can be presented:</p>
+                <ul className="list-disc pl-6 space-y-2">
+                  <li>on a digital medium (phone, tablet),</li>
+                  <li>or in printed form.</li>
+                </ul>
+                <p>⚠️ The absence of a valid QR code, even if in possession of a physical ticket, may result in refusal of access without refund.</p>
+                <p>Each QR code is personal, unique and valid for a single entry.</p>
+                <p>Any attempt at duplication, fraud or resale will result in immediate ticket invalidation.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">11. Access and behavior</h3>
+                <p>The Organizer reserves the right to refuse access or exclude any person whose behavior is deemed:</p>
+                <ul className="list-disc pl-6 space-y-2">
+                  <li>dangerous,</li>
+                  <li>inappropriate,</li>
+                  <li>contrary to safety rules or the proper conduct of the event.</li>
+                </ul>
+                <p>Any exclusion is made without refund.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">12. Liability</h3>
+                <p>The Organizer disclaims all liability in the event of:</p>
+                <ul className="list-disc pl-6 space-y-2">
+                  <li>loss, theft or deterioration of personal effects,</li>
+                  <li>incident caused by the participant,</li>
+                  <li>force majeure or administrative decisions independent of its will.</li>
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">14. Intellectual property</h3>
+                <p>All content on the Andiamo Events website (texts, visuals, logos, videos, concepts) is the exclusive property of the Organizer.</p>
+                <p>Any reproduction or use without prior authorization is strictly prohibited.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">15. Applicable law</h3>
+                <p>These General Terms and Conditions of Sale are subject to Tunisian law.</p>
+                <p>In the absence of an amicable resolution, any dispute will be submitted to the competent courts in Tunisia.</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-primary mb-2">16. Acceptance of GTCS</h3>
+                <p>Order validation constitutes full and complete acceptance of these General Terms and Conditions of Sale.</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-export default Terms; 
+export default Terms;
