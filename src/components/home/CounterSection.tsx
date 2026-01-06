@@ -50,10 +50,10 @@ const CounterSection = ({ language }: CounterSectionProps) => {
     <section id="counter-section" className="py-20 bg-gradient-dark">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <h2 className="text-4xl font-heading font-bold mb-4 text-white">
+          <h2 className="text-4xl font-heading font-black mb-4 text-white uppercase">
             {language === 'en' ? 'Our Impact' : 'Notre Impact'}
           </h2>
-          <p className="text-xl text-white/80">
+          <p className="text-xl text-white/80 uppercase">
             {language === 'en'
               ? 'Join thousands of party-goers across Tunisia'
               : 'Rejoignez des milliers de fêtards à travers la Tunisie'}
