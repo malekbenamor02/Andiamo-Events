@@ -24,6 +24,7 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import ProtectedAdminRoute from "./components/auth/ProtectedAdminRoute";
 import AmbassadorDashboard from "./pages/ambassador/Dashboard";
 import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute";
+import BlockAmbassadorRoute from "./components/auth/BlockAmbassadorRoute";
 
 import AmbassadorApplication from "./pages/ambassador/Application";
 import PassPurchase from "./pages/PassPurchase";
@@ -78,8 +79,16 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
             <Route path="/events" element={<Events language={language} />} />
             <Route path="/gallery/:eventSlug" element={<GalleryEvent language={language} />} />
             <Route path="/event/:eventSlug" element={<UpcomingEvent language={language} />} />
-            <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
-            <Route path="/cod-order" element={<CODOrder language={language} />} />
+            <Route path="/pass-purchase" element={
+              <BlockAmbassadorRoute language={language}>
+                <PassPurchase language={language} />
+              </BlockAmbassadorRoute>
+            } />
+            <Route path="/cod-order" element={
+              <BlockAmbassadorRoute language={language}>
+                <CODOrder language={language} />
+              </BlockAmbassadorRoute>
+            } />
             <Route path="/payment-processing" element={<PaymentProcessing language={language} />} />
     
             <Route path="/about" element={<About language={language} />} />

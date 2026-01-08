@@ -69,6 +69,24 @@ export const API_ROUTES = {
   AMBASSADOR_SALES_ORDERS: '/api/admin/ambassador-sales/orders',
   AMBASSADOR_SALES_LOGS: '/api/admin/ambassador-sales/logs',
   
+  // Order Creation (SECURE SERVER-SIDE)
+  CREATE_ORDER: '/api/orders/create',
+  
+  // Ambassador Actions (SECURE SERVER-SIDE)
+  AMBASSADOR_CONFIRM_CASH: '/api/ambassador/confirm-cash',
+  AMBASSADOR_CANCEL_ORDER: '/api/ambassador/cancel-order',
+  
+  // Admin Actions (SECURE SERVER-SIDE)
+  ADMIN_APPROVE_ORDER: '/api/admin/approve-order',
+  ADMIN_REJECT_ORDER: '/api/admin/reject-order',
+  
+  // Admin Management (SECURE SERVER-SIDE - PHASE 2)
+  ADMIN_SPONSORS: '/api/admin/sponsors',
+  ADMIN_SPONSOR: (id: string) => `/api/admin/sponsors/${id}`,
+  ADMIN_TEAM_MEMBERS: '/api/admin/team-members',
+  ADMIN_TEAM_MEMBER: (id: string) => `/api/admin/team-members/${id}`,
+  ADMIN_ORDER_PAYMENT_STATUS: (id: string) => `/api/admin/orders/${id}/payment-status`,
+  
   // Testing & Diagnostics
   TEST: '/api/test',
   TEST_SUPABASE: '/api/test-supabase',

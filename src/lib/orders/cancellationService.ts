@@ -10,6 +10,11 @@ import { supabase } from '@/integrations/supabase/client';
 
 /**
  * Cancel order by admin
+ * 
+ * ⚠️ SECURITY WARNING: This function directly updates the database
+ * Frontend should use API endpoint: /api/admin/cancel-order
+ * 
+ * @deprecated Use API endpoint instead
  */
 export async function cancelByAdmin(orderId: string, reason: string): Promise<void> {
   // Verify order exists and can be cancelled
@@ -41,6 +46,11 @@ export async function cancelByAdmin(orderId: string, reason: string): Promise<vo
 
 /**
  * Cancel order by ambassador
+ * 
+ * ⚠️ SECURITY WARNING: This function directly updates the database
+ * Frontend should use API endpoint: /api/ambassador/cancel-order
+ * 
+ * @deprecated Use API endpoint instead
  */
 export async function cancelByAmbassador(orderId: string, ambassadorId: string, reason: string): Promise<void> {
   // Verify order exists and belongs to ambassador

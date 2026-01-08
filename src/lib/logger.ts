@@ -33,6 +33,23 @@ interface LogOptions {
 
 /**
  * Log an activity to the site_logs table
+ * 
+ * ⚠️ PHASE 2 SECURITY WARNING: This function creates logs from frontend
+ * Frontend logs can be manipulated and are not trustworthy for security audits
+ * 
+ * @deprecated For security-critical logging, use server-side logging only
+ * This function is kept for non-critical frontend activity tracking only
+ * 
+ * SECURITY RULE: Never use this for:
+ * - Admin actions (use server-side security_audit_logs)
+ * - Order status changes (use server-side order_logs)
+ * - Payment events (use server-side logging)
+ * - Any security-sensitive operations
+ * 
+ * Safe to use for:
+ * - Page view tracking (non-critical)
+ * - UI interaction logging (non-critical)
+ * - Frontend error logging (non-critical, server should also log)
  */
 export const logActivity = async (
   logType: LogType,

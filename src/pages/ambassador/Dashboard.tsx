@@ -534,25 +534,37 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       return;
     }
 
-    try {
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          status: 'PENDING_ADMIN_APPROVAL',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', orderId);
-
-      if (error) throw error;
-
-      // Log the action
-      await supabase.from('order_logs').insert({
-        order_id: orderId,
-        action: 'status_changed',
-        performed_by: ambassador?.id,
-        performed_by_type: 'ambassador',
-        details: { from_status: 'PENDING_CASH', to_status: 'PENDING_ADMIN_APPROVAL' }
+    if (!ambassador?.id) {
+      toast({
+        title: t.error,
+        description: language === 'en' ? 'Ambassador session not found' : 'Session ambassadeur introuvable',
+        variant: "destructive"
       });
+      return;
+    }
+
+    try {
+      // SECURITY: Call secure API endpoint instead of direct database access
+      // Server validates ownership, status, and updates order
+      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiUrl = `${apiBase}/api/ambassador/confirm-cash`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: orderId,
+          ambassadorId: ambassador.id
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || `Failed to confirm cash: ${response.statusText}`);
+      }
 
       toast({
         title: language === 'en' ? 'Cash Confirmed' : 'Paiement Confirmé',
@@ -563,7 +575,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       });
 
       // Refresh orders data
-      fetchData(ambassador?.id || '');
+      fetchData(ambassador.id);
     } catch (error: any) {
       console.error('Error confirming cash:', error);
       const errorMessage = error?.message || error?.error?.message || 'Failed to confirm cash payment.';
@@ -630,35 +642,39 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       return;
     }
 
+    if (!ambassador?.id) {
+      toast({
+        title: t.error,
+        description: language === 'en' ? 'Ambassador session not found' : 'Session ambassadeur introuvable',
+        variant: "destructive"
+      });
+      setIsCancelDialogOpen(false);
+      setCancellationReason('');
+      return;
+    }
+
     try {
-      // Cancel order without reassignment
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({
-          status: 'CANCELLED',
-          cancelled_by: 'ambassador',
-          cancellation_reason: cancellationReason.trim(),
-          cancelled_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+      // SECURITY: Call secure API endpoint instead of direct database access
+      // Server validates ownership, status, and updates order
+      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiUrl = `${apiBase}/api/ambassador/cancel-order`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: selectedOrder.id,
+          ambassadorId: ambassador.id,
+          reason: cancellationReason.trim()
         })
-        .eq('id', selectedOrder.id);
-
-      if (updateError) {
-        throw new Error(updateError.message || 'Failed to update order status');
-      }
-
-      // Log the action (don't fail if logging fails)
-      const { error: logError } = await supabase.from('order_logs').insert({
-        order_id: selectedOrder.id,
-        action: 'cancelled',
-        performed_by: ambassador?.id,
-        performed_by_type: 'ambassador',
-        details: { reason: cancellationReason.trim() }
       });
 
-      if (logError) {
-        console.warn('Failed to log cancellation:', logError);
-        // Don't throw - order is cancelled, logging is secondary
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || `Failed to cancel order: ${response.statusText}`);
       }
 
       toast({

@@ -238,7 +238,18 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     setSelectedPasses(newPasses);
   };
 
-  // Calculate total price
+  // ============================================
+  // PHASE 1 SECURITY FIX: FRONTEND PRICE CALCULATION (DISPLAY ONLY)
+  // ============================================
+  // WARNING: This function is for UI DISPLAY ONLY
+  // - Calculated total is NOT sent to server
+  // - Server recalculates ALL prices from database
+  // - This is only used for:
+  //   1. Displaying total to user before submission
+  //   2. Validating user selected at least one pass
+  // - If user manipulates this, server will still use correct prices
+  // ============================================
+  // Calculate total price (DISPLAY ONLY - NOT sent to server)
   const calculateTotal = (): number => {
     if (!event?.passes) return 0;
     

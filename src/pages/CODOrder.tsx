@@ -9,7 +9,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ArrowLeft, CheckCircle, XCircle, ShoppingCart } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
+import { sanitizeUrl } from '@/lib/url-validator';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
@@ -62,7 +63,7 @@ const CODOrder = ({ language }: CODOrderProps) => {
     required: "This field is required",
     invalidPhone: "Invalid phone number format (8 digits starting with 2, 5, 9, or 4)",
     invalidEmail: "Invalid email format",
-    villeRequired: "Ville is required when city is Sousse"
+    villeRequired: "Ville is required when city is Sousse or Tunis"
   } : {
     title: "Commande Paiement à la Livraison",
     subtitle: "Passez votre commande et payez à la réception",
@@ -88,7 +89,7 @@ const CODOrder = ({ language }: CODOrderProps) => {
     required: "Ce champ est obligatoire",
     invalidPhone: "Format de numéro invalide (8 chiffres commençant par 2, 5, 9 ou 4)",
     invalidEmail: "Format d'email invalide",
-    villeRequired: "Le quartier est requis lorsque la ville est Sousse"
+    villeRequired: "Le quartier est requis lorsque la ville est Sousse ou Tunis"
   };
 
   const validateForm = () => {
@@ -139,67 +140,22 @@ const CODOrder = ({ language }: CODOrderProps) => {
       return;
     }
 
-    setProcessing(true);
-
-    try {
-      // Calculate price (you may want to fetch from a pricing table)
-      const passPrice = formData.pass_type === 'vip' ? 50 : 30; // Example prices
-      const totalPrice = passPrice * formData.quantity;
-
-      // Create the order
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          source: 'platform_cod',
-          user_name: formData.customer_name, // Database uses user_name
-          user_phone: formData.phone, // Database uses user_phone
-          user_email: formData.email || null, // Database uses user_email
-          city: formData.city,
-          ville: formData.ville || null,
-          pass_type: formData.pass_type,
-          quantity: formData.quantity,
-          total_price: totalPrice,
-          payment_method: 'cod', // Use payment_method instead of payment_type
-          status: 'PENDING_ADMIN_APPROVAL' // COD orders always start as PENDING_ADMIN_APPROVAL
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-
-      toast({
-        title: t.success,
-        description: t.successMessage,
-        variant: "default"
-      });
-
-      // Reset form
-      setFormData({
-        customer_name: '',
-        phone: '',
-        email: '',
-        city: '',
-        ville: '',
-        pass_type: 'standard',
-        quantity: 1,
-        termsAccepted: false
-      });
-
-      // Redirect after a delay
-      setTimeout(() => {
-        navigate('/events');
-      }, 2000);
-
-    } catch (error: any) {
-      console.error('Error submitting order:', error);
-      toast({
-        title: t.error,
-        description: error.message || "Failed to submit order. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setProcessing(false);
+    // SECURITY FIX: This legacy page violates server-authoritative architecture
+    // All orders MUST go through /api/orders/create with proper eventId and passIds
+    // Redirect to proper secure order flow (PassPurchase page)
+    toast({
+      title: language === 'en' ? 'Redirecting...' : 'Redirection...',
+      description: language === 'en' 
+        ? 'Please use the secure order flow to place COD orders.' 
+        : 'Veuillez utiliser le flux de commande sécurisé pour passer des commandes COD.',
+      variant: 'default'
+    });
+    
+    // Redirect to PassPurchase with eventId if available
+    if (eventId) {
+      navigate(`/pass-purchase?eventId=${eventId}&paymentMethod=cod`);
+    } else {
+      navigate('/events');
     }
   };
 

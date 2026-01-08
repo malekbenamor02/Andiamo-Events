@@ -120,27 +120,41 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
 
       // Build URLs
       // CRITICAL: Flouci requires HTTPS URLs for success_link and fail_link
-      // Priority: 1. VITE_PUBLIC_URL (manual override), 2. Vercel URL (auto-detected), 3. window.location.origin (if HTTPS)
+      // Priority: 1. VITE_PUBLIC_URL (manual override), 2. Auto-detect production platforms, 3. window.location.origin (if HTTPS)
       let publicUrl = import.meta.env.VITE_PUBLIC_URL;
       
       if (!publicUrl) {
         const origin = window.location.origin;
+        const hostname = window.location.hostname;
         
-        // Check if we're on Vercel (preview or production) - Vercel always provides HTTPS
-        // Vercel URLs look like: https://your-app-abc123.vercel.app
-        if (origin.includes('.vercel.app') || origin.includes('vercel.app')) {
-          // Vercel automatically provides HTTPS URLs
-          publicUrl = origin;
-          console.log('✅ Detected Vercel deployment, using HTTPS URL:', publicUrl);
+        // Check if we're on a production platform that always provides HTTPS
+        const isProductionPlatform = 
+          origin.includes('.vercel.app') || 
+          origin.includes('vercel.app') ||
+          origin.includes('.netlify.app') ||
+          origin.includes('netlify.app') ||
+          origin.includes('.railway.app') ||
+          origin.includes('railway.app') ||
+          origin.includes('.render.com') ||
+          origin.includes('render.com') ||
+          origin.includes('.fly.dev') ||
+          origin.includes('fly.dev') ||
+          hostname.includes('.onrender.com') ||
+          hostname.includes('.herokuapp.com');
+        
+        if (isProductionPlatform) {
+          // Production platforms automatically provide HTTPS URLs
+          publicUrl = origin.startsWith('https://') ? origin : `https://${hostname}${window.location.port ? `:${window.location.port}` : ''}`;
+          console.log('✅ Detected production platform, using HTTPS URL:', publicUrl);
         } else if (origin.startsWith('https://')) {
           // Already HTTPS (production or other HTTPS deployment)
           publicUrl = origin;
           console.log('✅ Using HTTPS origin:', publicUrl);
-        } else if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+        } else if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1') || hostname === 'localhost' || hostname === '127.0.0.1') {
           // Localhost HTTP - Flouci won't accept this
           const errorMsg = language === 'en'
-            ? 'HTTPS URL required for payment callbacks.\n\nFor localhost development:\n1. Use a tunnel service (ngrok, cloudflare tunnel, etc.)\n2. Set VITE_PUBLIC_URL=https://your-tunnel-url in your .env file\n\nExample: VITE_PUBLIC_URL=https://abc123.ngrok.io\n\nFor Vercel preview deployments:\nThe HTTPS URL is automatically detected - no configuration needed!'
-            : 'URL HTTPS requise pour les rappels de paiement.\n\nPour le développement localhost:\n1. Utiliser un service de tunnel (ngrok, cloudflare tunnel, etc.)\n2. Définir VITE_PUBLIC_URL=https://votre-url-tunnel dans votre fichier .env\n\nExemple: VITE_PUBLIC_URL=https://abc123.ngrok.io\n\nPour les déploiements Vercel preview:\nL\'URL HTTPS est automatiquement détectée - aucune configuration nécessaire!';
+            ? '⚠️ HTTPS URL Required for Payment\n\nFlouci payment gateway requires HTTPS URLs for callbacks.\n\n🔧 Quick Fix for Localhost:\n\n1. Install a tunnel service:\n   • ngrok: https://ngrok.com\n   • Cloudflare Tunnel: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/\n\n2. Start your tunnel:\n   ngrok http 3000\n\n3. Copy the HTTPS URL (e.g., https://abc123.ngrok.io)\n\n4. Add to your .env file:\n   VITE_PUBLIC_URL=https://abc123.ngrok.io\n\n5. Restart your dev server\n\n✅ For Production:\nThe HTTPS URL is automatically detected - no configuration needed!'
+            : '⚠️ URL HTTPS Requise pour le Paiement\n\nLa passerelle de paiement Flouci nécessite des URL HTTPS pour les rappels.\n\n🔧 Solution Rapide pour Localhost:\n\n1. Installez un service de tunnel:\n   • ngrok: https://ngrok.com\n   • Cloudflare Tunnel: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/\n\n2. Démarrez votre tunnel:\n   ngrok http 3000\n\n3. Copiez l\'URL HTTPS (ex: https://abc123.ngrok.io)\n\n4. Ajoutez à votre fichier .env:\n   VITE_PUBLIC_URL=https://abc123.ngrok.io\n\n5. Redémarrez votre serveur de développement\n\n✅ Pour la Production:\nL\'URL HTTPS est automatiquement détectée - aucune configuration nécessaire!';
           
           console.error('❌ Flouci requires HTTPS URLs. Current origin:', origin);
           setStatus('error');
@@ -150,15 +164,19 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
           // Non-localhost HTTP - try to convert to HTTPS (may not work)
           publicUrl = origin.replace('http://', 'https://');
           console.warn('⚠️ Converting HTTP to HTTPS. This may not work. Set VITE_PUBLIC_URL for production.');
+        } else {
+          // Fallback: construct HTTPS URL from current location
+          publicUrl = `https://${hostname}${window.location.port ? `:${window.location.port}` : ''}`;
+          console.warn('⚠️ Constructed HTTPS URL from location. Set VITE_PUBLIC_URL for production.');
         }
       }
       
       // Ensure publicUrl is HTTPS (Flouci requirement)
-      if (!publicUrl.startsWith('https://')) {
+      if (!publicUrl || !publicUrl.startsWith('https://')) {
         console.error('❌ Public URL must be HTTPS for Flouci. Current URL:', publicUrl);
         const errorMsg = language === 'en'
-          ? 'Payment configuration error: HTTPS URL required. Please set VITE_PUBLIC_URL=https://your-domain.com in environment variables.'
-          : 'Erreur de configuration du paiement: URL HTTPS requise. Veuillez définir VITE_PUBLIC_URL=https://votre-domaine.com dans les variables d\'environnement.';
+          ? 'Payment Configuration Error\n\nHTTPS URL required for payment callbacks.\n\nPlease set VITE_PUBLIC_URL=https://your-domain.com in your environment variables.\n\nFor localhost development, use a tunnel service (ngrok, cloudflare tunnel) and set VITE_PUBLIC_URL to the tunnel URL.'
+          : 'Erreur de Configuration du Paiement\n\nURL HTTPS requise pour les rappels de paiement.\n\nVeuillez définir VITE_PUBLIC_URL=https://votre-domaine.com dans vos variables d\'environnement.\n\nPour le développement localhost, utilisez un service de tunnel (ngrok, cloudflare tunnel) et définissez VITE_PUBLIC_URL sur l\'URL du tunnel.';
         setStatus('error');
         setErrorMessage(errorMsg);
         return;
@@ -406,25 +424,9 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
       const paymentStatus = verifyData.status;
 
       if (paymentStatus === 'SUCCESS') {
-        
-        // Backend already updates the order, but we can also update via frontend as backup
-        // Check if backend updated it first
-        if (!verifyData.orderUpdated) {
-          try {
-            await updateOrderStatus({
-              orderId: orderId!,
-              status: OrderStatus.PAID,
-              metadata: {
-                payment_gateway_reference: paymentId,
-                payment_response_data: verifyData.result
-              }
-            });
-          } catch (updateError) {
-            console.error('❌ Error updating order from frontend:', updateError);
-            // Don't fail - backend might have updated it
-          }
-        } else {
-        }
+        // SECURITY: Frontend NEVER updates order status
+        // Backend webhook/verification endpoint handles all status updates
+        // If backend didn't update, that's a server issue that needs fixing
 
         // CRITICAL: Ticket generation is handled by backend webhook/verification
         // Frontend should NOT trigger ticket generation - backend does it after verification confirms SUCCESS

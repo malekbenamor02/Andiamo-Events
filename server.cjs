@@ -133,6 +133,32 @@ app.use(cookieParser());
 
 // Security: Request logging middleware for security audit
 // Logs all requests to sensitive endpoints for security auditing
+// ============================================
+// PHASE 2 SECURITY FIX: Enhanced Audit Logging
+// ============================================
+// All IP addresses are normalized (IPv4 + IPv6 canonical form)
+// Comprehensive action tracking with actor identification
+// ============================================
+
+/**
+ * Normalize IP address for consistent logging and rate limiting
+ * Handles IPv4, IPv6, and proxy headers
+ * Uses ipKeyGenerator from express-rate-limit for proper IPv6 normalization
+ */
+const normalizeIP = (req) => {
+  // Use ipKeyGenerator for proper IPv6 normalization
+  try {
+    return ipKeyGenerator(req);
+  } catch (error) {
+    // Fallback if ipKeyGenerator fails (shouldn't happen, but safe)
+    const ip = req.ip || 
+               req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+               req.connection?.remoteAddress ||
+               'unknown';
+    return ip;
+  }
+};
+
 const logSecurityRequest = async (req, res, next) => {
   // Only log in production or if explicitly enabled
   const shouldLog = process.env.NODE_ENV === 'production' || process.env.ENABLE_SECURITY_LOGGING === 'true';
@@ -149,13 +175,23 @@ const logSecurityRequest = async (req, res, next) => {
   
   // Override res.send to capture response
   res.send = function(body) {
-    responseBody = typeof body === 'string' ? body.substring(0, 500) : JSON.stringify(body).substring(0, 500);
+    try {
+      responseBody = typeof body === 'string' ? body.substring(0, 500) : JSON.stringify(body).substring(0, 500);
+    } catch (e) {
+      // If response body contains circular references, just log a summary
+      responseBody = '[Response body contains circular references, not logged]';
+    }
     responseStatus = res.statusCode || 200;
     return originalSend.call(this, body);
   };
   
   res.json = function(body) {
-    responseBody = JSON.stringify(body).substring(0, 500);
+    try {
+      responseBody = JSON.stringify(body).substring(0, 500);
+    } catch (e) {
+      // If response body contains circular references, just log a summary
+      responseBody = '[Response body contains circular references, not logged]';
+    }
     responseStatus = res.statusCode || 200;
     return originalJson.call(this, body);
   };
@@ -170,40 +206,95 @@ const logSecurityRequest = async (req, res, next) => {
       else if (req.path.includes('webhook') || req.path.includes('generate-tickets')) severity = 'medium';
       
       // Sanitize request body (don't log sensitive data)
+      // CRITICAL: Must avoid circular references when serializing
       let sanitizedBody = null;
-      if (req.body) {
-        const bodyCopy = { ...req.body };
-        // Remove sensitive fields
-        if (bodyCopy.password) bodyCopy.password = '[REDACTED]';
-        if (bodyCopy.token) bodyCopy.token = bodyCopy.token.substring(0, 10) + '...';
-        if (bodyCopy.recaptchaToken) bodyCopy.recaptchaToken = '[REDACTED]';
-        sanitizedBody = bodyCopy;
+      if (req.body && typeof req.body === 'object') {
+        try {
+          // Use JSON.stringify/parse to remove circular references
+          const bodyStr = JSON.stringify(req.body);
+          const bodyCopy = JSON.parse(bodyStr);
+          // Remove sensitive fields
+          if (bodyCopy.password) bodyCopy.password = '[REDACTED]';
+          if (bodyCopy.token) bodyCopy.token = typeof bodyCopy.token === 'string' ? bodyCopy.token.substring(0, 10) + '...' : '[REDACTED]';
+          if (bodyCopy.recaptchaToken) bodyCopy.recaptchaToken = '[REDACTED]';
+          sanitizedBody = bodyCopy;
+        } catch (e) {
+          // If body contains circular references or can't be serialized, log a summary
+          sanitizedBody = { _note: 'Request body contains circular references or non-serializable data' };
+        }
+      } else if (req.body) {
+        // Non-object body (string, number, etc.)
+        sanitizedBody = typeof req.body === 'string' ? req.body.substring(0, 200) : req.body;
       }
+      
+      // Sanitize query params (avoid circular references)
+      let sanitizedQuery = null;
+      if (req.query && typeof req.query === 'object') {
+        try {
+          sanitizedQuery = JSON.parse(JSON.stringify(req.query));
+        } catch (e) {
+          sanitizedQuery = { _note: 'Query params contain circular references' };
+        }
+      }
+      
+      // Sanitize headers (only safe, non-circular fields)
+      const safeHeaders = {
+        origin: req.headers.origin || null,
+        referer: req.headers.referer || null,
+        'content-type': req.headers['content-type'] || null
+      };
       
       // Use service role client for security audit logs (bypasses RLS)
       const securityLogClient = supabaseService || supabase;
-      await securityLogClient.from('security_audit_logs').insert({
+      const normalizedIP = normalizeIP(req);
+      
+      // Build log entry with all safe, serializable data
+      const logEntry = {
         event_type: 'api_request',
         endpoint: req.path,
-        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        ip_address: normalizedIP, // PHASE 2: Normalized IP (IPv4 + IPv6 canonical)
         user_agent: req.headers['user-agent'] || 'unknown',
         request_method: req.method,
         request_path: req.path,
         request_body: sanitizedBody,
         response_status: responseStatus,
         details: {
-          query_params: req.query,
-          headers: {
-            origin: req.headers.origin,
-            referer: req.headers.referer,
-            'content-type': req.headers['content-type']
-          }
+          query_params: sanitizedQuery,
+          headers: safeHeaders,
+          response_body: responseBody ? (typeof responseBody === 'string' ? responseBody.substring(0, 500) : '[Non-string response]') : null
         },
         severity: severity
-      });
+      };
+      
+      // Final safety check: Try to serialize the entire log entry before inserting
+      try {
+        JSON.stringify(logEntry);
+        // If serialization succeeds, safe to insert
+        await securityLogClient.from('security_audit_logs').insert(logEntry);
+      } catch (serializeError) {
+        // If even the log entry has circular refs, create a minimal safe version
+        const safeLogEntry = {
+          event_type: 'api_request',
+          endpoint: req.path,
+          ip_address: normalizedIP,
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.path,
+          response_status: responseStatus,
+          details: {
+            _note: 'Log entry contained circular references, minimal log created',
+            endpoint: req.path,
+            method: req.method
+          },
+          severity: severity
+        };
+        await securityLogClient.from('security_audit_logs').insert(safeLogEntry);
+      }
     } catch (logError) {
       // Don't fail the request if logging fails
-      console.error('Failed to log security request:', logError);
+      // Log error but don't include the full error object (might be circular)
+      const errorMsg = logError?.message || String(logError);
+      console.error('Failed to log security request:', errorMsg);
     }
   });
   
@@ -230,7 +321,7 @@ const validateOrigin = (req, res, next) => {
       securityLogClient.from('security_audit_logs').insert({
         event_type: 'request_without_origin',
         endpoint: req.path,
-        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        ip_address: normalizeIP(req), // PHASE 2: Normalized IP
         user_agent: req.headers['user-agent'] || 'unknown',
         request_method: req.method,
         request_path: req.path,
@@ -264,7 +355,7 @@ const validateOrigin = (req, res, next) => {
       securityLogClient.from('security_audit_logs').insert({
         event_type: 'origin_validation_failed',
         endpoint: req.path,
-        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        ip_address: normalizeIP(req), // PHASE 2: Normalized IP
         user_agent: req.headers['user-agent'] || 'unknown',
         request_method: req.method,
         request_path: req.path,
@@ -346,7 +437,7 @@ const checkSuspiciousActivity = async (eventType, details, req) => {
   if (!supabase) return;
   
   try {
-    const ipAddress = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    const ipAddress = normalizeIP(req); // PHASE 2: Normalized IP
     const userAgent = req.headers['user-agent'] || 'unknown';
     
     // Check for suspicious patterns in the last hour
@@ -523,7 +614,7 @@ const qrCodeAccessLimiter = createRateLimiter({
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'rate_limit_exceeded',
           endpoint: '/api/qr-codes/:accessToken',
-          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          ip_address: normalizeIP(req), // PHASE 2: Normalized IP
           user_agent: req.headers['user-agent'] || 'unknown',
           request_method: req.method,
           request_path: req.path,
@@ -542,9 +633,21 @@ const qrCodeAccessLimiter = createRateLimiter({
 });
 
 // Rate limiter for SMS endpoints - prevent spam/abuse
+// ============================================
+// PHASE 2 SECURITY FIX: SMS Rate Limiting with IPv6 Support
+// ============================================
 const smsLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10, // 10 SMS requests per hour per IP
+  keyGenerator: (req) => {
+    // Priority: Use phone number if available, otherwise normalized IP
+    const phone = req.body?.phoneNumber || req.body?.phone;
+    if (phone && typeof phone === 'string' && phone.trim() !== '') {
+      return `sms:phone:${phone.trim()}`;
+    }
+    // Fallback to normalized IP (IPv4 + IPv6 canonical)
+    return ipKeyGenerator(req);
+  },
   message: { error: 'Too many SMS requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -557,7 +660,7 @@ const smsLimiter = createRateLimiter({
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'rate_limit_exceeded',
           endpoint: req.path,
-          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          ip_address: normalizeIP(req), // PHASE 2: Normalized IP
           user_agent: req.headers['user-agent'] || 'unknown',
           request_method: req.method,
           request_path: req.path,
@@ -742,7 +845,7 @@ app.get('/api/track-email', async (req, res) => {
     if (supabase) {
       try {
         const userAgent = req.get('user-agent') || null;
-        const ipAddress = req.ip || req.connection.remoteAddress || null;
+        const ipAddress = normalizeIP(req); // PHASE 2: Normalized IP
 
         await supabase
           .from('email_tracking')
@@ -1070,6 +1173,357 @@ app.post('/api/admin-logout', adminLogoutLimiter, (req, res) => {
   res.json({ success: true });
 });
 
+// ============================================
+// PHASE 2: SECURE ADMIN API ENDPOINTS
+// ============================================
+// All admin operations now go through secure server-side APIs
+// Frontend can no longer directly access database
+// ============================================
+
+// ============================================
+// SPONSORS MANAGEMENT API
+// ============================================
+
+// GET /api/admin/sponsors - List all sponsors
+app.get('/api/admin/sponsors', logSecurityRequest, requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { data: sponsors, error } = await supabase
+      .from('sponsors')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('❌ Error fetching sponsors:', error);
+      return res.status(500).json({ 
+        error: 'Failed to fetch sponsors',
+        details: error.message 
+      });
+    }
+
+    res.json({ success: true, sponsors: sponsors || [] });
+  } catch (error) {
+    console.error('❌ Error in GET /api/admin/sponsors:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
+  }
+});
+
+// POST /api/admin/sponsors - Create new sponsor
+app.post('/api/admin/sponsors', logSecurityRequest, requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { name, logo_url, description, website_url, category } = req.body;
+
+    // SECURITY: Server-side validation
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+      return res.status(400).json({ error: 'Sponsor name is required' });
+    }
+
+    if (category && !['venue', 'brand', 'tech', 'other'].includes(category)) {
+      return res.status(400).json({ 
+        error: 'Invalid category',
+        message: 'Category must be one of: venue, brand, tech, other'
+      });
+    }
+
+    // Validate URL format if provided
+    if (logo_url && typeof logo_url === 'string' && logo_url.trim() !== '') {
+      try {
+        new URL(logo_url);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid logo URL format' });
+      }
+    }
+
+    if (website_url && typeof website_url === 'string' && website_url.trim() !== '') {
+      try {
+        new URL(website_url);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid website URL format' });
+      }
+    }
+
+    // Create sponsor
+    const sponsorData = {
+      name: name.trim(),
+      logo_url: logo_url?.trim() || null,
+      description: description?.trim() || null,
+      website_url: website_url?.trim() || null,
+      category: category || 'other',
+      is_global: true // Always global as per current implementation
+    };
+
+    const { data: sponsor, error: insertError } = await supabase
+      .from('sponsors')
+      .insert(sponsorData)
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('❌ Error creating sponsor:', insertError);
+      return res.status(500).json({ 
+        error: 'Failed to create sponsor',
+        details: insertError.message 
+      });
+    }
+
+    // SECURITY: Log admin action (server-side audit)
+    const adminId = req.admin.id;
+    const adminEmail = req.admin.email;
+    try {
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+        event_type: 'admin_action',
+        endpoint: '/api/admin/sponsors',
+        ip_address: normalizeIP(req), // PHASE 2: Normalized IP
+        user_agent: req.headers['user-agent'] || 'unknown',
+        request_method: 'POST',
+        request_path: '/api/admin/sponsors',
+        details: {
+          action: 'create_sponsor',
+          admin_id: adminId,
+          admin_email: adminEmail,
+          sponsor_id: sponsor.id,
+          sponsor_name: sponsor.name
+        },
+        severity: 'medium'
+      }).catch(err => console.warn('⚠️ Failed to log admin action:', err));
+    } catch (logError) {
+      console.warn('⚠️ Failed to log sponsor creation:', logError);
+    }
+
+    res.status(201).json({ 
+      success: true, 
+      sponsor,
+      message: 'Sponsor created successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error in POST /api/admin/sponsors:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
+  }
+});
+
+// PUT /api/admin/sponsors/:id - Update sponsor
+app.put('/api/admin/sponsors/:id', logSecurityRequest, requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const sponsorId = req.params.id;
+    const { name, logo_url, description, website_url, category } = req.body;
+
+    // Validate sponsor ID
+    if (!sponsorId || typeof sponsorId !== 'string') {
+      return res.status(400).json({ error: 'Invalid sponsor ID' });
+    }
+
+    // SECURITY: Verify sponsor exists
+    const { data: existingSponsor, error: fetchError } = await supabase
+      .from('sponsors')
+      .select('id, name')
+      .eq('id', sponsorId)
+      .single();
+
+    if (fetchError || !existingSponsor) {
+      return res.status(404).json({ error: 'Sponsor not found' });
+    }
+
+    // SECURITY: Server-side validation
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.trim() === '') {
+        return res.status(400).json({ error: 'Sponsor name cannot be empty' });
+      }
+    }
+
+    if (category !== undefined && !['venue', 'brand', 'tech', 'other'].includes(category)) {
+      return res.status(400).json({ 
+        error: 'Invalid category',
+        message: 'Category must be one of: venue, brand, tech, other'
+      });
+    }
+
+    // Validate URL format if provided
+    if (logo_url !== undefined && logo_url !== null && typeof logo_url === 'string' && logo_url.trim() !== '') {
+      try {
+        new URL(logo_url);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid logo URL format' });
+      }
+    }
+
+    if (website_url !== undefined && website_url !== null && typeof website_url === 'string' && website_url.trim() !== '') {
+      try {
+        new URL(website_url);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid website URL format' });
+      }
+    }
+
+    // Build update data (only include provided fields)
+    const updateData = {};
+    if (name !== undefined) updateData.name = name.trim();
+    if (logo_url !== undefined) updateData.logo_url = logo_url?.trim() || null;
+    if (description !== undefined) updateData.description = description?.trim() || null;
+    if (website_url !== undefined) updateData.website_url = website_url?.trim() || null;
+    if (category !== undefined) updateData.category = category;
+
+    const { data: updatedSponsor, error: updateError } = await supabase
+      .from('sponsors')
+      .update(updateData)
+      .eq('id', sponsorId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('❌ Error updating sponsor:', updateError);
+      return res.status(500).json({ 
+        error: 'Failed to update sponsor',
+        details: updateError.message 
+      });
+    }
+
+    // SECURITY: Log admin action (server-side audit)
+    const adminId = req.admin.id;
+    const adminEmail = req.admin.email;
+    try {
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+        event_type: 'admin_action',
+        endpoint: '/api/admin/sponsors/:id',
+        ip_address: normalizeIP(req), // PHASE 2: Normalized IP
+        user_agent: req.headers['user-agent'] || 'unknown',
+        request_method: 'PUT',
+        request_path: `/api/admin/sponsors/${sponsorId}`,
+        details: {
+          action: 'update_sponsor',
+          admin_id: adminId,
+          admin_email: adminEmail,
+          sponsor_id: sponsorId,
+          old_name: existingSponsor.name,
+          new_name: updatedSponsor.name,
+          changes: updateData
+        },
+        severity: 'medium'
+      }).catch(err => console.warn('⚠️ Failed to log admin action:', err));
+    } catch (logError) {
+      console.warn('⚠️ Failed to log sponsor update:', logError);
+    }
+
+    res.json({ 
+      success: true, 
+      sponsor: updatedSponsor,
+      message: 'Sponsor updated successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error in PUT /api/admin/sponsors/:id:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
+  }
+});
+
+// DELETE /api/admin/sponsors/:id - Delete sponsor
+app.delete('/api/admin/sponsors/:id', logSecurityRequest, requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const sponsorId = req.params.id;
+
+    // Validate sponsor ID
+    if (!sponsorId || typeof sponsorId !== 'string') {
+      return res.status(400).json({ error: 'Invalid sponsor ID' });
+    }
+
+    // SECURITY: Verify sponsor exists and get name for audit
+    const { data: existingSponsor, error: fetchError } = await supabase
+      .from('sponsors')
+      .select('id, name')
+      .eq('id', sponsorId)
+      .single();
+
+    if (fetchError || !existingSponsor) {
+      return res.status(404).json({ error: 'Sponsor not found' });
+    }
+
+    // Delete associated event_sponsors first (cascade)
+    const { error: eventSponsorError } = await supabase
+      .from('event_sponsors')
+      .delete()
+      .eq('sponsor_id', sponsorId);
+
+    if (eventSponsorError) {
+      console.error('⚠️ Error deleting event_sponsors:', eventSponsorError);
+      // Continue with sponsor deletion even if event_sponsors deletion fails
+    }
+
+    // Delete sponsor
+    const { error: deleteError } = await supabase
+      .from('sponsors')
+      .delete()
+      .eq('id', sponsorId);
+
+    if (deleteError) {
+      console.error('❌ Error deleting sponsor:', deleteError);
+      return res.status(500).json({ 
+        error: 'Failed to delete sponsor',
+        details: deleteError.message 
+      });
+    }
+
+    // SECURITY: Log admin action (server-side audit)
+    const adminId = req.admin.id;
+    const adminEmail = req.admin.email;
+    try {
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+        event_type: 'admin_action',
+        endpoint: '/api/admin/sponsors/:id',
+        ip_address: normalizeIP(req), // PHASE 2: Normalized IP
+        user_agent: req.headers['user-agent'] || 'unknown',
+        request_method: 'DELETE',
+        request_path: `/api/admin/sponsors/${sponsorId}`,
+        details: {
+          action: 'delete_sponsor',
+          admin_id: adminId,
+          admin_email: adminEmail,
+          sponsor_id: sponsorId,
+          sponsor_name: existingSponsor.name
+        },
+        severity: 'medium'
+      }).catch(err => console.warn('⚠️ Failed to log admin action:', err));
+    } catch (logError) {
+      console.warn('⚠️ Failed to log sponsor deletion:', logError);
+    }
+
+    res.json({ 
+      success: true,
+      message: 'Sponsor deleted successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error in DELETE /api/admin/sponsors/:id:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
+  }
+});
+
 // Admin verify endpoint
 // IMPORTANT: This endpoint does NOT extend or refresh the session
 // The JWT expiration is fixed at 1 hour from login and cannot be changed
@@ -1340,6 +1794,334 @@ function requireAdminAuth(req, res, next) {
     });
   }
 }
+
+// ============================================
+// TEAM MEMBERS MANAGEMENT API
+// ============================================
+
+// GET /api/admin/team-members - List all team members
+app.get('/api/admin/team-members', logSecurityRequest, requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { data: teamMembers, error } = await supabase
+      .from('team_members')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('❌ Error fetching team members:', error);
+      return res.status(500).json({ 
+        error: 'Failed to fetch team members',
+        details: error.message 
+      });
+    }
+
+    res.json({ success: true, teamMembers: teamMembers || [] });
+  } catch (error) {
+    console.error('❌ Error in GET /api/admin/team-members:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
+  }
+});
+
+// POST /api/admin/team-members - Create new team member
+app.post('/api/admin/team-members', logSecurityRequest, requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { name, role, photo_url, bio, social_url } = req.body;
+
+    // SECURITY: Server-side validation
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+      return res.status(400).json({ error: 'Team member name is required' });
+    }
+
+    if (!role || typeof role !== 'string' || role.trim() === '') {
+      return res.status(400).json({ error: 'Team member role is required' });
+    }
+
+    // Validate URL format if provided
+    if (photo_url && typeof photo_url === 'string' && photo_url.trim() !== '') {
+      try {
+        new URL(photo_url);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid photo URL format' });
+      }
+    }
+
+    if (social_url && typeof social_url === 'string' && social_url.trim() !== '') {
+      try {
+        new URL(social_url);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid social URL format' });
+      }
+    }
+
+    // Create team member
+    const teamData = {
+      name: name.trim(),
+      role: role.trim(),
+      photo_url: photo_url?.trim() || null,
+      bio: bio?.trim() || null,
+      social_url: social_url?.trim() || null
+    };
+
+    const { data: teamMember, error: insertError } = await supabase
+      .from('team_members')
+      .insert(teamData)
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('❌ Error creating team member:', insertError);
+      return res.status(500).json({ 
+        error: 'Failed to create team member',
+        details: insertError.message 
+      });
+    }
+
+    // SECURITY: Log admin action (server-side audit)
+    const adminId = req.admin.id;
+    const adminEmail = req.admin.email;
+    try {
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+        event_type: 'admin_action',
+        endpoint: '/api/admin/team-members',
+        ip_address: normalizeIP(req), // PHASE 2: Normalized IP
+        user_agent: req.headers['user-agent'] || 'unknown',
+        request_method: 'POST',
+        request_path: '/api/admin/team-members',
+        details: {
+          action: 'create_team_member',
+          admin_id: adminId,
+          admin_email: adminEmail,
+          team_member_id: teamMember.id,
+          team_member_name: teamMember.name
+        },
+        severity: 'medium'
+      }).catch(err => console.warn('⚠️ Failed to log admin action:', err));
+    } catch (logError) {
+      console.warn('⚠️ Failed to log team member creation:', logError);
+    }
+
+    res.status(201).json({ 
+      success: true, 
+      teamMember,
+      message: 'Team member created successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error in POST /api/admin/team-members:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
+  }
+});
+
+// PUT /api/admin/team-members/:id - Update team member
+app.put('/api/admin/team-members/:id', logSecurityRequest, requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const teamMemberId = req.params.id;
+    const { name, role, photo_url, bio, social_url } = req.body;
+
+    // Validate team member ID
+    if (!teamMemberId || typeof teamMemberId !== 'string') {
+      return res.status(400).json({ error: 'Invalid team member ID' });
+    }
+
+    // SECURITY: Verify team member exists
+    const { data: existingMember, error: fetchError } = await supabase
+      .from('team_members')
+      .select('id, name')
+      .eq('id', teamMemberId)
+      .single();
+
+    if (fetchError || !existingMember) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    // SECURITY: Server-side validation
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.trim() === '') {
+        return res.status(400).json({ error: 'Team member name cannot be empty' });
+      }
+    }
+
+    if (role !== undefined) {
+      if (typeof role !== 'string' || role.trim() === '') {
+        return res.status(400).json({ error: 'Team member role cannot be empty' });
+      }
+    }
+
+    // Validate URL format if provided
+    if (photo_url !== undefined && photo_url !== null && typeof photo_url === 'string' && photo_url.trim() !== '') {
+      try {
+        new URL(photo_url);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid photo URL format' });
+      }
+    }
+
+    if (social_url !== undefined && social_url !== null && typeof social_url === 'string' && social_url.trim() !== '') {
+      try {
+        new URL(social_url);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid social URL format' });
+      }
+    }
+
+    // Build update data (only include provided fields)
+    const updateData = {};
+    if (name !== undefined) updateData.name = name.trim();
+    if (role !== undefined) updateData.role = role.trim();
+    if (photo_url !== undefined) updateData.photo_url = photo_url?.trim() || null;
+    if (bio !== undefined) updateData.bio = bio?.trim() || null;
+    if (social_url !== undefined) updateData.social_url = social_url?.trim() || null;
+
+    const { data: updatedMember, error: updateError } = await supabase
+      .from('team_members')
+      .update(updateData)
+      .eq('id', teamMemberId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('❌ Error updating team member:', updateError);
+      return res.status(500).json({ 
+        error: 'Failed to update team member',
+        details: updateError.message 
+      });
+    }
+
+    // SECURITY: Log admin action (server-side audit)
+    const adminId = req.admin.id;
+    const adminEmail = req.admin.email;
+    try {
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+        event_type: 'admin_action',
+        endpoint: '/api/admin/team-members/:id',
+        ip_address: normalizeIP(req), // PHASE 2: Normalized IP
+        user_agent: req.headers['user-agent'] || 'unknown',
+        request_method: 'PUT',
+        request_path: `/api/admin/team-members/${teamMemberId}`,
+        details: {
+          action: 'update_team_member',
+          admin_id: adminId,
+          admin_email: adminEmail,
+          team_member_id: teamMemberId,
+          old_name: existingMember.name,
+          new_name: updatedMember.name,
+          changes: updateData
+        },
+        severity: 'medium'
+      }).catch(err => console.warn('⚠️ Failed to log admin action:', err));
+    } catch (logError) {
+      console.warn('⚠️ Failed to log team member update:', logError);
+    }
+
+    res.json({ 
+      success: true, 
+      teamMember: updatedMember,
+      message: 'Team member updated successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error in PUT /api/admin/team-members/:id:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
+  }
+});
+
+// DELETE /api/admin/team-members/:id - Delete team member
+app.delete('/api/admin/team-members/:id', logSecurityRequest, requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const teamMemberId = req.params.id;
+
+    // Validate team member ID
+    if (!teamMemberId || typeof teamMemberId !== 'string') {
+      return res.status(400).json({ error: 'Invalid team member ID' });
+    }
+
+    // SECURITY: Verify team member exists and get name for audit
+    const { data: existingMember, error: fetchError } = await supabase
+      .from('team_members')
+      .select('id, name')
+      .eq('id', teamMemberId)
+      .single();
+
+    if (fetchError || !existingMember) {
+      return res.status(404).json({ error: 'Team member not found' });
+    }
+
+    // Delete team member
+    const { error: deleteError } = await supabase
+      .from('team_members')
+      .delete()
+      .eq('id', teamMemberId);
+
+    if (deleteError) {
+      console.error('❌ Error deleting team member:', deleteError);
+      return res.status(500).json({ 
+        error: 'Failed to delete team member',
+        details: deleteError.message 
+      });
+    }
+
+    // SECURITY: Log admin action (server-side audit)
+    const adminId = req.admin.id;
+    const adminEmail = req.admin.email;
+    try {
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+        event_type: 'admin_action',
+        endpoint: '/api/admin/team-members/:id',
+        ip_address: normalizeIP(req), // PHASE 2: Normalized IP
+        user_agent: req.headers['user-agent'] || 'unknown',
+        request_method: 'DELETE',
+        request_path: `/api/admin/team-members/${teamMemberId}`,
+        details: {
+          action: 'delete_team_member',
+          admin_id: adminId,
+          admin_email: adminEmail,
+          team_member_id: teamMemberId,
+          team_member_name: existingMember.name
+        },
+        severity: 'medium'
+      }).catch(err => console.warn('⚠️ Failed to log admin action:', err));
+    } catch (logError) {
+      console.warn('⚠️ Failed to log team member deletion:', logError);
+    }
+
+    res.json({ 
+      success: true,
+      message: 'Team member deleted successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error in DELETE /api/admin/team-members/:id:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
+  }
+});
 
 // Ticket validation endpoint
 app.post('/api/validate-ticket', async (req, res) => {
@@ -1626,6 +2408,51 @@ async function sendSms(phoneNumbers, message, senderId = WINSMS_SENDER) {
 }
 
 // ============================================
+// ORDER ID HELPER: Single Source of Truth
+// ============================================
+// CRITICAL: ONE ORDER = ONE PUBLIC ORDER IDENTIFIER
+// UUID = internal technical identifier (DB, logs, APIs)
+// order_number = public business identifier (SMS, email, support)
+// Never expose UUID to users - always use order_number
+// ============================================
+
+/**
+ * Get public order identifier for customer-facing communications
+ * 
+ * @param {Object} order - Order object with order_number field
+ * @returns {string} Public order ID in format "#123456"
+ * @throws {Error} If order_number is missing (this must never happen)
+ * 
+ * SECURITY RULE:
+ * - UUID should NEVER be exposed to users
+ * - order_number is the ONLY public identifier
+ * - If order_number is missing, this is a critical error
+ */
+function getPublicOrderId(order) {
+  if (!order) {
+    throw new Error('Order object is required');
+  }
+  
+  if (!order.order_number) {
+    // CRITICAL: order_number must exist - this is a business invariant
+    // Do NOT fallback to UUID - this is a system error that must be fixed
+    console.error('🚨 CRITICAL ERROR: order_number is missing for order:', {
+      orderId: order.id,
+      source: order.source,
+      status: order.status,
+      createdAt: order.created_at
+    });
+    throw new Error(
+      `order_number is missing for order ${order.id || 'unknown'}. ` +
+      `This must never happen - order_number should be auto-generated by database. ` +
+      `Check database trigger/function: generate_random_order_number()`
+    );
+  }
+  
+  return `#${order.order_number}`;
+}
+
+// ============================================
 // Helper: Check WinSMS Account Balance
 // ============================================
 async function checkSmsBalance() {
@@ -1854,8 +2681,198 @@ app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
 // All SMS sending now uses sendSms(phoneNumbers, message) with robust logging and JSON responses per WinSMS docs.
 
 // ============================================
-// POST /api/send-order-confirmation-sms - Send SMS to Client
+// INTERNAL SMS HELPERS (Server-Side Only - No Public Endpoints)
 // ============================================
+// These functions are INTERNAL ONLY - called from other endpoints
+// They are NOT exposed as public API endpoints to prevent abuse
+// SMS can only be sent as part of order creation/approval, not directly
+
+async function sendOrderConfirmationSmsInternal(order) {
+  // INTERNAL ONLY - Sends SMS to customer after order creation
+  if (!WINSMS_API_KEY) {
+    console.warn('⚠️ SMS service not configured - skipping SMS');
+    return { success: false, error: 'SMS service not configured' };
+  }
+
+  if (!order.ambassador_id || !order.ambassadors) {
+    console.warn('⚠️ Order does not have ambassador - skipping SMS');
+    return { success: false, error: 'Order does not have ambassador assigned' };
+  }
+
+  try {
+    // Get order access token for QR codes
+    const apiBase = process.env.VITE_API_URL || process.env.API_URL || 'https://andiamoevents.com';
+    let qrCodeUrl = null;
+    
+    if (order.qr_access_token) {
+      qrCodeUrl = `${apiBase}/api/qr-codes/${order.qr_access_token}`;
+    }
+
+    // Format passes for SMS
+    let passesText = '';
+    if (order.order_passes && order.order_passes.length > 0) {
+      passesText = order.order_passes.map(p => 
+        `${p.quantity}× ${p.pass_type} (${p.price} DT)`
+      ).join(' + ');
+    } else if (order.notes) {
+      try {
+        const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+        if (notesData.all_passes && Array.isArray(notesData.all_passes)) {
+          passesText = notesData.all_passes.map((p) => 
+            `${p.quantity}× ${p.passName || p.pass_type} (${p.price} DT)`
+          ).join(' + ');
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+    if (!passesText) {
+      passesText = `${order.quantity}× ${order.pass_type || 'Standard'} (${(order.total_price / order.quantity).toFixed(0)} DT)`;
+    }
+
+    // ============================================
+    // ORDER ID FIX: Use single source of truth
+    // ============================================
+    const publicOrderId = getPublicOrderId(order);
+    const ambassadorName = order.ambassadors.full_name;
+    const ambassadorPhone = order.ambassadors.phone;
+
+    // Build SMS message
+    let message = `Commande confirmée :\n\n`;
+    message += `ID:${publicOrderId} confirmée\n`;
+    message += `Pass: ${passesText} | Total: ${order.total_price} DT\n`;
+    message += `Ambassadeur: ${ambassadorName} – ${ambassadorPhone}\n`;
+    message += `We Create Memories`;
+
+    if (qrCodeUrl) {
+      message += `\n\n🎫 Vos QR Codes:\n${qrCodeUrl}`;
+      message += `\n\n⚠️ Ce lien ne peut être utilisé qu'une seule fois.`;
+    }
+
+    // Send SMS
+    const formattedNumber = formatPhoneNumber(order.user_phone);
+    if (!formattedNumber) {
+      return { success: false, error: `Invalid phone number format: ${order.user_phone}` };
+    }
+
+    const responseData = await sendSms(formattedNumber, message);
+    const isSuccess = responseData.status === 200 &&
+                      responseData.data &&
+                      (responseData.data.code === 'ok' ||
+                       responseData.data.code === '200' ||
+                       (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
+
+    // Log to sms_logs
+    try {
+      await supabase.from('sms_logs').insert({
+        phone_number: order.user_phone,
+        message: message.trim(),
+        status: isSuccess ? 'sent' : 'failed',
+        api_response: JSON.stringify(responseData.data || responseData.raw),
+        sent_at: isSuccess ? new Date().toISOString() : null,
+        error_message: isSuccess ? null : (responseData.data?.message || 'SMS sending failed')
+      });
+    } catch (logErr) {
+      console.warn('⚠️ Failed to log SMS send result:', logErr);
+    }
+
+    return { success: isSuccess, response: responseData };
+  } catch (error) {
+    console.error('❌ Error sending order confirmation SMS (internal):', error);
+    return { success: false, error: error.message || 'Failed to send SMS' };
+  }
+}
+
+async function sendAmbassadorOrderSmsInternal(order) {
+  // INTERNAL ONLY - Sends SMS to ambassador after order creation
+  if (!WINSMS_API_KEY) {
+    console.warn('⚠️ SMS service not configured - skipping SMS');
+    return { success: false, error: 'SMS service not configured' };
+  }
+
+  if (!order.ambassador_id || !order.ambassadors) {
+    console.warn('⚠️ Order does not have ambassador - skipping SMS');
+    return { success: false, error: 'Order does not have ambassador assigned' };
+  }
+
+  try {
+    // Format passes for SMS
+    let passesText = '';
+    if (order.order_passes && order.order_passes.length > 0) {
+      passesText = order.order_passes.map(p => 
+        `${p.quantity}× ${p.pass_type} (${p.price} DT)`
+      ).join(' + ');
+    } else if (order.notes) {
+      try {
+        const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+        if (notesData.all_passes && Array.isArray(notesData.all_passes)) {
+          passesText = notesData.all_passes.map((p) => 
+            `${p.quantity}× ${p.passName || p.pass_type} (${p.price} DT)`
+          ).join(' + ');
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+    if (!passesText) {
+      passesText = `${order.quantity}× ${order.pass_type || 'Standard'} (${(order.total_price / order.quantity).toFixed(0)} DT)`;
+    }
+
+    // ============================================
+    // ORDER ID FIX: Use single source of truth
+    // ============================================
+    const publicOrderId = getPublicOrderId(order);
+
+    // Build SMS message
+    let message = `Nouvelle commande :\n\n`;
+    message += `ID:${publicOrderId}\n`;
+    message += `Client: ${order.user_name} – ${order.user_phone}\n`;
+    message += `Pass: ${passesText} | Total: ${order.total_price} DT\n`;
+    if (order.ville) {
+      message += `Ville: ${order.ville}\n`;
+    }
+    message += `We Create Memories`;
+
+    // Send SMS
+    const formattedNumber = formatPhoneNumber(order.ambassadors.phone);
+    if (!formattedNumber) {
+      return { success: false, error: `Invalid ambassador phone number format: ${order.ambassadors.phone}` };
+    }
+
+    const responseData = await sendSms(formattedNumber, message);
+    const isSuccess = responseData.status === 200 &&
+                      responseData.data &&
+                      (responseData.data.code === 'ok' ||
+                       responseData.data.code === '200' ||
+                       (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
+
+    // Log to sms_logs
+    try {
+      await supabase.from('sms_logs').insert({
+        phone_number: order.ambassadors.phone,
+        message: message.trim(),
+        status: isSuccess ? 'sent' : 'failed',
+        api_response: JSON.stringify(responseData.data || responseData.raw),
+        sent_at: isSuccess ? new Date().toISOString() : null,
+        error_message: isSuccess ? null : (responseData.data?.message || 'SMS sending failed')
+      });
+    } catch (logErr) {
+      console.warn('⚠️ Failed to log SMS send result:', logErr);
+    }
+
+    return { success: isSuccess, response: responseData };
+  } catch (error) {
+    console.error('❌ Error sending ambassador order SMS (internal):', error);
+    return { success: false, error: error.message || 'Failed to send SMS' };
+  }
+}
+
+// ============================================
+// DEPRECATED: POST /api/send-order-confirmation-sms - Send SMS to Client
+// ============================================
+// ⚠️ DEPRECATED: This endpoint is deprecated
+// SMS should be sent internally from /api/orders/create
+// This endpoint is kept for backward compatibility but should be removed
 app.post('/api/send-order-confirmation-sms', logSecurityRequest, smsLimiter, async (req, res) => {
   try {
     if (!supabase) {
@@ -1926,13 +2943,16 @@ app.post('/api/send-order-confirmation-sms', logSecurityRequest, smsLimiter, asy
       }
     }
 
-    const orderNumber = order.order_number ? `#${order.order_number}` : order.id.substring(0, 8).toUpperCase();
+    // ============================================
+    // ORDER ID FIX: Use single source of truth
+    // ============================================
+    const publicOrderId = getPublicOrderId(order);
     const ambassadorName = order.ambassadors.full_name;
     const ambassadorPhone = order.ambassadors.phone;
 
     // Build SMS message - Client order confirmation
     let message = `Commande confirmée :\n\n`;
-    message += `ID:${orderNumber} confirmée\n`;
+    message += `ID:${publicOrderId} confirmée\n`;
     message += `Pass: ${passesText} | Total: ${order.total_price} DT\n`;
     message += `Ambassadeur: ${ambassadorName} – ${ambassadorPhone}\n`;
     message += `We Create Memories`;
@@ -2048,12 +3068,15 @@ app.post('/api/send-ambassador-order-sms', smsLimiter, async (req, res) => {
       }
     }
 
-    const orderNumber = order.order_number ? `#${order.order_number}` : order.id.substring(0, 8).toUpperCase();
+    // ============================================
+    // ORDER ID FIX: Use single source of truth
+    // ============================================
+    const publicOrderId = getPublicOrderId(order);
     const clientName = order.user_name;
     const clientPhone = order.user_phone;
 
     // Build SMS message - Ambassador new order assignment
-    let message = `Nouvelle cmd ${orderNumber}\n`;
+    let message = `Nouvelle cmd ${publicOrderId}\n`;
     message += `Pass: ${passesText} | Total: ${order.total_price} DT\n`;
     message += `Client: ${clientName} – ${clientPhone}`;
 
@@ -2309,23 +3332,33 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
     }
     
     // CRITICAL: Flouci requires HTTPS URLs for callback links (even in development)
-    // Warn if HTTP is used (will likely cause "SMT operation failed" error)
-    if (successLink.startsWith('http://') && !successLink.includes('localhost')) {
-      console.warn('⚠️ WARNING: successLink uses HTTP instead of HTTPS. Flouci requires HTTPS URLs.');
-    }
+    // Check if URLs are HTTPS
+    const isSuccessLinkHttps = successLink.startsWith('https://');
+    const isFailLinkHttps = failLink.startsWith('https://');
     
-    if (failLink.startsWith('http://') && !failLink.includes('localhost')) {
-      console.warn('⚠️ WARNING: failLink uses HTTP instead of HTTPS. Flouci requires HTTPS URLs.');
-    }
-    
-    // For localhost HTTP, provide helpful error message
-    if (successLink.startsWith('http://localhost') || failLink.startsWith('http://localhost')) {
-      console.error('❌ Flouci requires HTTPS URLs even for localhost. Use a tunnel service (ngrok, cloudflare tunnel, etc.)');
-      return res.status(400).json({ 
-        error: 'Flouci requires HTTPS URLs for callback links',
-        message: 'For localhost development, use a tunnel service (ngrok, cloudflare tunnel, etc.) to get an HTTPS URL and set VITE_PUBLIC_URL in your .env file',
-        suggestion: 'Example: Set VITE_PUBLIC_URL=https://abc123.ngrok.io in your .env file'
-      });
+    if (!isSuccessLinkHttps || !isFailLinkHttps) {
+      const isLocalhost = successLink.includes('localhost') || successLink.includes('127.0.0.1') || 
+                          failLink.includes('localhost') || failLink.includes('127.0.0.1');
+      
+      if (isLocalhost) {
+        console.error('❌ Flouci requires HTTPS URLs even for localhost. Use a tunnel service (ngrok, cloudflare tunnel, etc.)');
+        return res.status(400).json({ 
+          error: 'Flouci requires HTTPS URLs for callback links',
+          message: 'For localhost development, use a tunnel service (ngrok, cloudflare tunnel, etc.) to get an HTTPS URL and set VITE_PUBLIC_URL in your .env file',
+          suggestion: 'Example: Set VITE_PUBLIC_URL=https://abc123.ngrok.io in your .env file',
+          currentSuccessLink: successLink.substring(0, 50) + '...',
+          currentFailLink: failLink.substring(0, 50) + '...',
+          help: '1. Install ngrok: https://ngrok.com\n2. Run: ngrok http 3000\n3. Copy HTTPS URL\n4. Add VITE_PUBLIC_URL=https://your-ngrok-url to .env\n5. Restart dev server'
+        });
+      } else {
+        console.warn('⚠️ WARNING: Callback links use HTTP instead of HTTPS. Flouci requires HTTPS URLs.');
+        return res.status(400).json({ 
+          error: 'Flouci requires HTTPS URLs for callback links',
+          message: 'Please set VITE_PUBLIC_URL=https://your-domain.com in your environment variables',
+          currentSuccessLink: successLink.substring(0, 50) + '...',
+          currentFailLink: failLink.substring(0, 50) + '...'
+        });
+      }
     }
 
     if (!supabase) {
@@ -2715,6 +3748,1566 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
       details: errorDetails,
       code: error.code,
       name: error.name
+    });
+  }
+});
+
+// ============================================
+// Rate Limiters for Order Operations
+// ============================================
+const orderCreationLimiter = createRateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5, // 5 orders per minute per IP
+  message: { error: 'Too many order creation attempts. Please wait a moment and try again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false
+});
+
+// ============================================
+// PHASE 2 SECURITY FIX: IPv6 Rate Limiting
+// ============================================
+// CRITICAL: Use ipKeyGenerator helper to normalize IPv6 addresses
+// Prevents IPv6 users from bypassing rate limits by using different representations
+// ============================================
+const { ipKeyGenerator } = require('express-rate-limit');
+
+const orderPerPhoneLimiter = createRateLimiter({
+  windowMs: 24 * 60 * 60 * 1000, // 24 hours
+  max: 3, // 3 orders per day per phone number
+  keyGenerator: (req) => {
+    // Priority 1: Business identifier (phone number) - most reliable
+    const phone = req.body?.customerInfo?.phone || req.body?.customer?.phone;
+    if (phone && typeof phone === 'string' && phone.trim() !== '') {
+      return `phone:${phone.trim()}`;
+    }
+    // Priority 2: Normalized IP (IPv4 + IPv6 canonical form)
+    // ipKeyGenerator normalizes IPv6 addresses to prevent bypass
+    return ipKeyGenerator(req);
+  },
+  message: { error: 'Maximum 3 orders per day per phone number.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const ambassadorActionLimiter = createRateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20, // 20 actions per minute
+  message: { error: 'Too many requests. Please wait a moment.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// ============================================
+// Ambassador Authentication Middleware
+// ============================================
+const requireAmbassadorAuth = async (req, res, next) => {
+  try {
+    const { ambassadorId, ambassadorToken } = req.body;
+    
+    if (!ambassadorId) {
+      return res.status(401).json({ error: 'Ambassador ID required' });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Verify ambassador exists and is approved
+    const { data: ambassador, error } = await supabase
+      .from('ambassadors')
+      .select('id, full_name, phone, status')
+      .eq('id', ambassadorId)
+      .eq('status', 'approved')
+      .single();
+
+    if (error || !ambassador) {
+      return res.status(403).json({ 
+        error: 'Unauthorized',
+        message: 'Invalid ambassador or ambassador not approved'
+      });
+    }
+
+    // Store ambassador in request for use in route handlers
+    req.ambassador = ambassador;
+    next();
+  } catch (error) {
+    console.error('Ambassador auth error:', error);
+    return res.status(500).json({ error: 'Authentication failed' });
+  }
+};
+
+// ============================================
+// POST /api/orders/create - SECURE SERVER-SIDE ORDER CREATION
+// ============================================
+// CRITICAL SECURITY: Never trust the frontend!
+// Frontend sends ONLY: passIds, quantities, customer info, idempotencyKey
+// Server: validates, fetches prices, calculates totals, sends SMS (internal)
+// SMS endpoints are INTERNAL ONLY - no public access
+// ============================================
+// POST /api/orders/create - SECURE SERVER-SIDE ORDER CREATION
+// ============================================
+// NEW SECURE ENDPOINT (replaces /api/create-order)
+app.post('/api/orders/create', logSecurityRequest, orderCreationLimiter, orderPerPhoneLimiter, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const {
+      eventId,
+      passIds, // Array of { passId, quantity } - NO prices, NO names from client
+      customer, // Customer info (renamed from customerInfo for consistency)
+      paymentMethod,
+      ambassadorId,
+      idempotencyKey // UUID to prevent duplicate orders
+    } = req.body;
+
+    // ============================================
+    // PHASE 1 SECURITY FIX: PRICE MANIPULATION PROTECTION
+    // ============================================
+    // CRITICAL: Reject ANY price/total values sent from frontend
+    // Server MUST recalculate all prices from database
+    // This prevents frontend price manipulation attacks
+    // ============================================
+    const forbiddenPriceFields = ['totalPrice', 'total_price', 'price', 'prices', 'total', 'amount', 'calculatedTotal'];
+    const detectedPriceFields = [];
+    
+    // Check request body for forbidden price fields
+    for (const field of forbiddenPriceFields) {
+      if (req.body[field] !== undefined) {
+        detectedPriceFields.push(field);
+      }
+    }
+    
+    // Check passIds array for price fields
+    if (Array.isArray(passIds)) {
+      for (const pass of passIds) {
+        if (pass && typeof pass === 'object') {
+          if (pass.price !== undefined) detectedPriceFields.push('passIds[].price');
+          if (pass.totalPrice !== undefined) detectedPriceFields.push('passIds[].totalPrice');
+          if (pass.passName !== undefined) detectedPriceFields.push('passIds[].passName'); // Also reject names (server fetches)
+        }
+      }
+    }
+    
+    // If any price fields detected, REJECT request and log security event
+    if (detectedPriceFields.length > 0) {
+      const clientIP = normalizeIP(req); // PHASE 2: Normalized IP
+      const userAgent = req.headers['user-agent'] || 'unknown';
+      
+      // Log security violation
+      console.error('🚨 SECURITY VIOLATION: Price manipulation attempt detected', {
+        endpoint: '/api/orders/create',
+        ip: clientIP,
+        userAgent: userAgent,
+        detectedFields: detectedPriceFields,
+        timestamp: new Date().toISOString(),
+        severity: 'HIGH'
+      });
+      
+      // Log to security audit (if available)
+      if (supabase) {
+        try {
+          const securityLogClient = supabaseService || supabase;
+          await securityLogClient.from('security_audit_logs').insert({
+            event_type: 'price_manipulation_attempt',
+            endpoint: '/api/orders/create',
+            ip_address: clientIP,
+            user_agent: userAgent,
+            request_method: 'POST',
+            request_path: '/api/orders/create',
+            details: {
+              detected_price_fields: detectedPriceFields,
+              message: 'Frontend attempted to send price/total values. Server rejects all client-calculated prices.',
+              severity: 'HIGH'
+            },
+            severity: 'high'
+          }).catch(err => console.warn('⚠️ Failed to log security event:', err));
+        } catch (logError) {
+          console.warn('⚠️ Failed to log price manipulation attempt:', logError);
+        }
+      }
+      
+      return res.status(400).json({
+        error: 'Security violation: Price manipulation detected',
+        message: 'Server does not accept price or total values from client. All prices are calculated server-side from database.',
+        detectedFields: detectedPriceFields,
+        securityNote: 'This request has been logged for security review.'
+      });
+    }
+    // ============================================
+    // END PHASE 1 SECURITY FIX
+    // ============================================
+
+    // Use customer or customerInfo (backward compatibility)
+    const customerData = customer || customerInfo;
+    if (!customerData) {
+      return res.status(400).json({ error: 'Customer information is required' });
+    }
+
+    // Normalize customer data (handle both formats)
+    const normalizedCustomer = {
+      full_name: customerData.full_name || customerData.name || '',
+      phone: customerData.phone || '',
+      email: customerData.email || '',
+      city: customerData.city || '',
+      ville: customerData.ville || ''
+    };
+
+    // SECURITY CHECK #1: Idempotency - Prevent duplicate orders
+    if (idempotencyKey) {
+      // Validate idempotency key format (must be UUID)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(idempotencyKey)) {
+        return res.status(400).json({
+          error: 'Invalid idempotency key format',
+          message: 'Idempotency key must be a valid UUID'
+        });
+      }
+
+      // Check if order with this idempotency key already exists
+      const { data: existingOrder } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          order_passes (*)
+        `)
+        .eq('idempotency_key', idempotencyKey)
+        .maybeSingle();
+
+      if (existingOrder) {
+        // Order already exists - return it (idempotent response)
+        return res.status(200).json({
+          success: true,
+          order: existingOrder,
+          message: 'Order already exists (idempotent response)',
+          idempotent: true
+        });
+      }
+    }
+
+    // SECURITY CHECK #2: Block Ambassadors from creating orders
+    // Ambassadors CANNOT create orders - they only receive orders from clients
+    // No need to check ambassadorSession - if they're trying to create, they shouldn't be on this endpoint
+
+    // VALIDATION #1: Required Fields
+    if (!eventId) {
+      return res.status(400).json({ error: 'eventId is required' });
+    }
+
+    if (!passIds || !Array.isArray(passIds) || passIds.length === 0) {
+      return res.status(400).json({ error: 'passIds array is required and must contain at least one pass' });
+    }
+
+    if (!normalizedCustomer.full_name || normalizedCustomer.full_name.trim() === '') {
+      return res.status(400).json({ error: 'Customer full name is required' });
+    }
+
+    if (!normalizedCustomer.phone || normalizedCustomer.phone.trim() === '') {
+      return res.status(400).json({ error: 'Customer phone is required' });
+    }
+
+    if (!normalizedCustomer.city || normalizedCustomer.city.trim() === '') {
+      return res.status(400).json({ error: 'Customer city is required' });
+    }
+
+    if (!paymentMethod) {
+      return res.status(400).json({ error: 'paymentMethod is required' });
+    }
+
+    // SECURITY: Fetch ALL passes for this event from database
+    const { data: eventPasses, error: eventError } = await supabase
+      .from('event_passes')
+      .select('id, name, price, event_id')
+      .eq('event_id', eventId);
+
+    if (eventError) {
+      console.error('❌ Error fetching event passes:', eventError);
+      return res.status(500).json({ 
+        error: 'Failed to validate passes',
+        details: eventError.message 
+      });
+    }
+
+    if (!eventPasses || eventPasses.length === 0) {
+      return res.status(404).json({ error: 'No passes found for this event' });
+    }
+
+    // ============================================
+    // PHASE 1 SECURITY FIX: SERVER-SIDE PRICE CALCULATION
+    // ============================================
+    // CRITICAL: All prices MUST be calculated server-side from database
+    // Frontend sends ONLY: passId and quantity
+    // Server:
+    //   1. Fetches pass from database
+    //   2. Gets price from database (never trusts client)
+    //   3. Calculates: passTotal = dbPrice * quantity
+    //   4. Sums all pass totals = serverCalculatedTotal
+    //   5. Uses serverCalculatedTotal for order (ignores any client value)
+    // ============================================
+    // SECURITY: Validate Each Pass
+    const validatedPasses = [];
+    let serverCalculatedTotal = 0;
+    let serverCalculatedQuantity = 0;
+
+    for (const clientPass of passIds) {
+      // Validate pass ID exists
+      if (!clientPass.passId || typeof clientPass.passId !== 'string' || clientPass.passId.trim() === '') {
+        return res.status(400).json({ 
+          error: `Invalid pass: passId is required and must be a valid string`,
+          invalidPass: clientPass
+        });
+      }
+
+      // SECURITY: Reject test/fake pass IDs
+      const passIdLower = clientPass.passId.toLowerCase();
+      if (passIdLower.includes('test') || passIdLower.includes('fake') || passIdLower.includes('dummy')) {
+        return res.status(400).json({ 
+          error: `Security: Invalid pass ID detected: ${clientPass.passId}. Test/fake passes are not allowed.`,
+          blockedPassId: clientPass.passId
+        });
+      }
+
+      // SECURITY: Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(clientPass.passId)) {
+        return res.status(400).json({ 
+          error: `Security: Invalid pass ID format: ${clientPass.passId}. Pass ID must be a valid UUID.`,
+          invalidPassId: clientPass.passId
+        });
+      }
+
+      // SECURITY: Validate quantity
+      if (!Number.isInteger(clientPass.quantity) || clientPass.quantity <= 0) {
+        return res.status(400).json({ 
+          error: `Invalid quantity for pass ${clientPass.passId}: ${clientPass.quantity}. Must be a positive integer.`
+        });
+      }
+
+      // SECURITY: Find pass in database
+      const validPass = eventPasses.find(p => p.id === clientPass.passId);
+      if (!validPass) {
+        return res.status(400).json({ 
+          error: `Security: Invalid pass ID: ${clientPass.passId}. Pass does not exist for this event.`,
+          invalidPassId: clientPass.passId
+        });
+      }
+
+      // ============================================
+      // PHASE 1 SECURITY FIX: DATABASE PRICE FETCH
+      // ============================================
+      // CRITICAL: Price comes ONLY from database, NEVER from client
+      // If client sent price, it was already rejected above
+      // ============================================
+      // SECURITY: Get price FROM DATABASE (never trust client)
+      const dbPrice = Number(validPass.price);
+      const dbName = validPass.name;
+
+      if (isNaN(dbPrice) || dbPrice <= 0) {
+        console.error('❌ Invalid price in database for pass:', {
+          passId: validPass.id,
+          passName: validPass.name,
+          price: validPass.price,
+          eventId: eventId
+        });
+        return res.status(500).json({ 
+          error: `Invalid price in database for pass ${validPass.id}: ${dbPrice}`,
+          details: 'Database contains invalid price. Please contact administrator.'
+        });
+      }
+
+      // ============================================
+      // PHASE 1 SECURITY FIX: SERVER-SIDE CALCULATION
+      // ============================================
+      // CRITICAL: Calculate price server-side
+      // Formula: passTotal = databasePrice * clientQuantity
+      // Note: Quantity is validated (must be positive integer)
+      // ============================================
+      // SECURITY: Calculate price server-side
+      const passTotal = dbPrice * clientPass.quantity;
+      serverCalculatedTotal += passTotal;
+      serverCalculatedQuantity += clientPass.quantity;
+      
+      // Log calculation for audit (in development only)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('💰 Price calculation:', {
+          passId: validPass.id,
+          passName: dbName,
+          dbPrice: dbPrice,
+          quantity: clientPass.quantity,
+          passTotal: passTotal,
+          runningTotal: serverCalculatedTotal
+        });
+      }
+
+      // Store validated pass data (using DATABASE values)
+      validatedPasses.push({
+        passId: validPass.id,
+        passName: dbName,
+        quantity: clientPass.quantity,
+        price: dbPrice // FROM DATABASE - CRITICAL!
+      });
+    }
+
+    // SECURITY: Validate Ambassador (for COD orders)
+    let validatedAmbassadorId = null;
+    if (paymentMethod === 'ambassador_cash' || paymentMethod === 'cod') {
+      if (!ambassadorId) {
+        return res.status(400).json({ 
+          error: 'Ambassador ID is required for ambassador cash payment' 
+        });
+      }
+
+      const { data: ambassador, error: ambassadorError } = await supabase
+        .from('ambassadors')
+        .select('id, full_name, status')
+        .eq('id', ambassadorId)
+        .eq('status', 'approved')
+        .single();
+
+      if (ambassadorError || !ambassador) {
+        return res.status(400).json({ 
+          error: 'Invalid ambassador. Ambassador must exist and be approved.'
+        });
+      }
+
+      validatedAmbassadorId = ambassador.id;
+    }
+
+    // SECURITY: Validate Event
+    const { data: event, error: eventCheckError } = await supabase
+      .from('events')
+      .select('id, name')
+      .eq('id', eventId)
+      .single();
+
+    if (eventCheckError || !event) {
+      return res.status(404).json({ 
+        error: 'Event not found',
+        eventId: eventId
+      });
+    }
+
+    // SECURITY: Validate Customer Info
+    const phoneRegex = /^[2-9]\d{7}$/;
+    if (!phoneRegex.test(normalizedCustomer.phone.trim())) {
+      return res.status(400).json({ 
+        error: 'Invalid phone number format. Must be 8 digits starting with 2, 4, 5, 6, 7, 8, or 9.'
+      });
+    }
+
+    if (normalizedCustomer.email && normalizedCustomer.email.trim() !== '') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(normalizedCustomer.email.trim())) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+    }
+
+    // SECURITY: Validate City exists in database
+    const { data: city, error: cityError } = await supabase
+      .from('cities')
+      .select('id, name')
+      .eq('name', normalizedCustomer.city.trim())
+      .single();
+
+    if (cityError || !city) {
+      return res.status(400).json({ 
+        error: `Invalid city: ${normalizedCustomer.city}. City must exist in the database.`,
+        invalidCity: normalizedCustomer.city
+      });
+    }
+
+    // SECURITY: Validate City/Ville consistency
+    // If ville is provided, verify it belongs to the city
+    if (normalizedCustomer.ville && normalizedCustomer.ville.trim() !== '') {
+      const { data: ville, error: villeError } = await supabase
+        .from('villes')
+        .select('id, name, city_id')
+        .eq('name', normalizedCustomer.ville.trim())
+        .eq('city_id', city.id)
+        .single();
+
+      if (villeError || !ville) {
+        // Check if ville exists but belongs to different city
+        const { data: villeInOtherCity, error: checkError } = await supabase
+          .from('villes')
+          .select('id, name, city_id, cities(name)')
+          .eq('name', normalizedCustomer.ville.trim())
+          .limit(1)
+          .maybeSingle();
+
+        if (!checkError && villeInOtherCity && villeInOtherCity.cities) {
+          return res.status(400).json({ 
+            error: `Invalid city/ville combination: "${normalizedCustomer.ville}" belongs to "${villeInOtherCity.cities.name}", not "${normalizedCustomer.city}".`,
+            invalidCity: normalizedCustomer.city,
+            invalidVille: normalizedCustomer.ville,
+            correctCity: villeInOtherCity.cities.name
+          });
+        }
+
+        return res.status(400).json({ 
+          error: `Invalid ville: "${normalizedCustomer.ville}" does not exist for city "${normalizedCustomer.city}".`,
+          invalidCity: normalizedCustomer.city,
+          invalidVille: normalizedCustomer.ville
+        });
+      }
+    } else {
+      // SECURITY: Ville is required for certain cities (e.g., Sousse, Tunis)
+      if (normalizedCustomer.city === 'Sousse' || normalizedCustomer.city === 'Tunis') {
+        return res.status(400).json({ error: `Ville (neighborhood) is required when city is ${normalizedCustomer.city}` });
+      }
+    }
+
+    // COD orders are now available in all cities (removed Sousse-only restriction)
+    // The ville validation above ensures that if a ville is provided, it matches the selected city
+
+    // Determine initial status
+    let initialStatus;
+    switch (paymentMethod) {
+      case 'online':
+        initialStatus = 'PENDING_ONLINE';
+        break;
+      case 'external_app':
+        initialStatus = 'PENDING_ONLINE';
+        break;
+      case 'ambassador_cash':
+      case 'cod':
+        initialStatus = 'PENDING_CASH';
+        break;
+      default:
+        return res.status(400).json({ error: `Invalid payment method: ${paymentMethod}` });
+    }
+
+    // ============================================
+    // PHASE 1 SECURITY FIX: ORDER CREATION WITH SERVER-CALCULATED PRICES
+    // ============================================
+    // CRITICAL: Order uses ONLY server-calculated values
+    // - quantity: Sum of all pass quantities (server-calculated)
+    // - total_price: Sum of all pass totals (server-calculated from database prices)
+    // - NO client prices are used or trusted
+    // ============================================
+    // CREATE ORDER (using server-calculated values)
+    // COD orders created by customers through platform use 'platform_cod' source
+    // Ambassadors do NOT create orders - they only receive orders from customers
+    const orderData = {
+      source: (paymentMethod === 'ambassador_cash' || paymentMethod === 'cod') ? 'platform_cod' : 'platform_online',
+      user_name: normalizedCustomer.full_name.trim(),
+      user_phone: normalizedCustomer.phone.trim(),
+      user_email: normalizedCustomer.email?.trim() || null,
+      city: normalizedCustomer.city.trim(),
+      ville: normalizedCustomer.ville?.trim() || null,
+      event_id: eventId,
+      ambassador_id: validatedAmbassadorId,
+      quantity: serverCalculatedQuantity, // Server-calculated (sum of all pass quantities)
+      total_price: serverCalculatedTotal, // Server-calculated - CRITICAL! (sum of all pass totals from database prices)
+      payment_method: paymentMethod,
+      status: initialStatus,
+      assigned_at: validatedAmbassadorId ? new Date().toISOString() : null,
+      idempotency_key: idempotencyKey || null, // Store idempotency key to prevent duplicates
+      notes: JSON.stringify({
+        all_passes: validatedPasses.map(p => ({
+          passId: p.passId,
+          passName: p.passName,
+          quantity: p.quantity,
+          price: p.price // From database
+        })),
+        total_order_price: serverCalculatedTotal, // Server-calculated
+        pass_count: validatedPasses.length
+      })
+    };
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .insert(orderData)
+      .select()
+      .single();
+
+    if (orderError) {
+      console.error('❌ Error creating order:', orderError);
+      return res.status(500).json({ 
+        error: 'Failed to create order',
+        details: orderError.message 
+      });
+    }
+
+    // ============================================
+    // ORDER ID FIX: Verify order_number was generated
+    // ============================================
+    // CRITICAL: order_number MUST exist before any SMS or customer communication
+    // Database should auto-generate via DEFAULT generate_random_order_number()
+    // If missing, this is a critical system error
+    if (!order.order_number) {
+      console.error('🚨 CRITICAL: order_number missing after order creation:', {
+        orderId: order.id,
+        source: order.source,
+        status: order.status
+      });
+      
+      // Try to fetch the order again (in case it was generated but not returned)
+      const { data: refreshedOrder } = await supabase
+        .from('orders')
+        .select('order_number')
+        .eq('id', order.id)
+        .single();
+      
+      if (refreshedOrder?.order_number) {
+        order.order_number = refreshedOrder.order_number;
+        console.log('✅ order_number found on refresh:', order.order_number);
+      } else {
+        // This is a critical error - order_number should be auto-generated
+        console.error('🚨 CRITICAL ERROR: order_number still missing after refresh');
+        // Continue with order creation but log the error
+        // SMS will fail with clear error message if order_number is missing
+      }
+    }
+
+    // Create order_passes entries
+    const orderPassesData = validatedPasses.map(pass => ({
+      order_id: order.id,
+      pass_type: pass.passName, // From database
+      quantity: pass.quantity,
+      price: pass.price // From database - CRITICAL!
+    }));
+
+    const { error: passesError } = await supabase
+      .from('order_passes')
+      .insert(orderPassesData);
+
+    if (passesError) {
+      await supabase.from('orders').delete().eq('id', order.id);
+      console.error('❌ Error creating order passes:', passesError);
+      return res.status(500).json({ 
+        error: 'Failed to create order passes',
+        details: passesError.message 
+      });
+    }
+
+    // ============================================
+    // INTERNAL SMS SENDING (for COD orders only)
+    // ============================================
+    // SMS is sent INTERNALLY only - no public endpoint
+    // Only sent for COD orders with ambassador assigned
+    if ((paymentMethod === 'ambassador_cash' || paymentMethod === 'cod') && validatedAmbassadorId && order.id) {
+      try {
+        // Fetch full order with ambassador details for SMS
+        const { data: fullOrder } = await supabase
+          .from('orders')
+          .select(`
+            *,
+            order_passes (*),
+            ambassadors (
+              id,
+              full_name,
+              phone
+            )
+          `)
+          .eq('id', order.id)
+          .single();
+
+        if (fullOrder && fullOrder.ambassadors) {
+          // ============================================
+          // ORDER ID FIX: Verify order_number before SMS
+          // ============================================
+          // CRITICAL: Do NOT send SMS if order_number is missing
+          // This ensures customers always get consistent order IDs
+          if (!fullOrder.order_number) {
+            console.error('🚨 CRITICAL: Cannot send SMS - order_number is missing for order:', fullOrder.id);
+            // Do NOT send SMS - this is a system error that must be fixed
+            // Log error but don't block order creation
+          } else {
+            // Send SMS to customer (INTERNAL - non-blocking)
+            sendOrderConfirmationSmsInternal(fullOrder).catch(err => {
+              console.error('❌ Failed to send order confirmation SMS (internal):', err);
+            });
+
+            // Send SMS to ambassador (INTERNAL - non-blocking)
+            sendAmbassadorOrderSmsInternal(fullOrder).catch(err => {
+              console.error('❌ Failed to send ambassador order SMS (internal):', err);
+            });
+          }
+        }
+      } catch (smsError) {
+        console.error('❌ Error initiating SMS notifications (internal):', smsError);
+        // Silent failure - don't block order creation
+      }
+    }
+
+    // Log order creation
+    try {
+      await supabase.from('order_logs').insert({
+        order_id: order.id,
+        action: 'created',
+        performed_by: null,
+        performed_by_type: 'customer',
+        details: {
+          status: initialStatus,
+          payment_method: paymentMethod,
+          ambassador_id: validatedAmbassadorId,
+          total_price: serverCalculatedTotal
+        }
+      });
+    } catch (logError) {
+      console.warn('⚠️ Failed to log order creation:', logError);
+    }
+
+    res.status(201).json({
+      success: true,
+      order: order,
+      message: 'Order created successfully',
+      serverCalculatedTotal: serverCalculatedTotal
+    });
+
+  } catch (error) {
+    console.error('❌ Error in create-order endpoint:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// ============================================
+// POST /api/ambassador/confirm-cash - Ambassador Confirms Cash Received
+// ============================================
+// SECURITY: Ambassador can ONLY confirm cash for their own orders
+// Server validates ownership and status before updating
+app.post('/api/ambassador/confirm-cash', logSecurityRequest, ambassadorActionLimiter, requireAmbassadorAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { orderId, idempotencyKey } = req.body;
+    const ambassadorId = req.ambassador.id;
+
+    // ============================================
+    // PHASE 2 SECURITY FIX: Idempotency for Ambassador Actions
+    // ============================================
+    if (idempotencyKey) {
+      const { data: existingLog } = await supabase
+        .from('order_logs')
+        .select('id, details')
+        .eq('order_id', orderId)
+        .eq('action', 'cash_confirmed')
+        .eq('performed_by', ambassadorId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingLog) {
+        const logTime = new Date(existingLog.created_at || 0).getTime();
+        const now = Date.now();
+        const fiveMinutes = 5 * 60 * 1000;
+        
+        if (now - logTime < fiveMinutes) {
+          // Recent confirmation found - return existing result (idempotent)
+          const { data: existingOrder } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('id', orderId)
+            .single();
+          
+          if (existingOrder) {
+            return res.status(200).json({
+              success: true,
+              order: existingOrder,
+              message: 'Cash already confirmed (idempotent response)',
+              idempotent: true
+            });
+          }
+        }
+      }
+    }
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    // Fetch order and verify ownership
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, ambassador_id, status, payment_method')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // SECURITY: Verify ambassador owns this order
+    if (order.ambassador_id !== ambassadorId) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You can only confirm cash for your own orders'
+      });
+    }
+
+    // SECURITY: Verify order is in correct status
+    if (order.status !== 'PENDING_CASH') {
+      return res.status(400).json({
+        error: 'Invalid order status',
+        message: `Order status must be PENDING_CASH to confirm cash. Current status: ${order.status}`
+      });
+    }
+
+    // SECURITY: Verify order is COD order
+    if (order.payment_method !== 'ambassador_cash' && order.payment_method !== 'cod') {
+      return res.status(400).json({
+        error: 'Invalid payment method',
+        message: 'Cash confirmation is only for COD orders'
+      });
+    }
+
+    // Update order status (SERVER-SIDE ONLY)
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: 'PENDING_ADMIN_APPROVAL',
+        accepted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .eq('ambassador_id', ambassadorId)  // Double-check ownership
+      .select()
+      .single();
+
+    if (updateError || !updatedOrder) {
+      console.error('❌ Error updating order status:', updateError);
+      return res.status(500).json({
+        error: 'Failed to confirm cash',
+        details: updateError?.message || 'Order update failed'
+      });
+    }
+
+    // Log action (SERVER-SIDE ONLY)
+    try {
+      await supabase.from('order_logs').insert({
+        order_id: orderId,
+        action: 'cash_confirmed',
+        performed_by: ambassadorId,
+        performed_by_type: 'ambassador',
+        details: {
+          from_status: 'PENDING_CASH',
+          to_status: 'PENDING_ADMIN_APPROVAL',
+          ambassador_id: ambassadorId
+        }
+      });
+    } catch (logError) {
+      console.warn('⚠️ Failed to log cash confirmation:', logError);
+    }
+
+    res.json({
+      success: true,
+      order: updatedOrder,
+      message: 'Cash confirmed successfully. Waiting for admin approval.'
+    });
+
+  } catch (error) {
+    console.error('❌ Error in confirm-cash endpoint:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// ============================================
+// POST /api/ambassador/cancel-order - Ambassador Cancels Order
+// ============================================
+// SECURITY: Ambassador can ONLY cancel their own orders
+// Server validates ownership and status before updating
+app.post('/api/ambassador/cancel-order', logSecurityRequest, ambassadorActionLimiter, requireAmbassadorAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { orderId, reason } = req.body;
+    const ambassadorId = req.ambassador.id;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({ error: 'Cancellation reason is required' });
+    }
+
+    // Fetch order and verify ownership
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, ambassador_id, status, payment_method')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // SECURITY: Verify ambassador owns this order
+    if (order.ambassador_id !== ambassadorId) {
+      return res.status(403).json({
+        error: 'Access Denied',
+        message: 'You can only cancel your own orders'
+      });
+    }
+
+    // SECURITY: Verify order can be cancelled (PENDING_CASH only)
+    if (order.status !== 'PENDING_CASH') {
+      return res.status(400).json({
+        error: 'Invalid order status',
+        message: `Order status must be PENDING_CASH to cancel. Current status: ${order.status}`
+      });
+    }
+
+    // Update order status (SERVER-SIDE ONLY)
+    // CRITICAL: Database constraint only allows 'CANCELLED' (not 'CANCELLED_BY_AMBASSADOR')
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: 'CANCELLED', // Use unified CANCELLED status (matches DB constraint)
+        cancellation_reason: reason.trim(),
+        cancelled_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .eq('ambassador_id', ambassadorId)  // Double-check ownership
+      .select()
+      .single();
+
+    if (updateError || !updatedOrder) {
+      console.error('❌ Error updating order status:', updateError);
+      return res.status(500).json({
+        error: 'Failed to cancel order',
+        details: updateError?.message || 'Order update failed'
+      });
+    }
+
+    // Log action (SERVER-SIDE ONLY)
+    try {
+      await supabase.from('order_logs').insert({
+        order_id: orderId,
+        action: 'cancelled',
+        performed_by: ambassadorId,
+        performed_by_type: 'ambassador',
+        details: {
+          from_status: 'PENDING_CASH',
+          to_status: 'CANCELLED',
+          cancelled_by: 'ambassador',
+          reason: reason.trim(),
+          ambassador_id: ambassadorId
+        }
+      });
+    } catch (logError) {
+      console.warn('⚠️ Failed to log cancellation:', logError);
+    }
+
+    res.json({
+      success: true,
+      order: updatedOrder,
+      message: 'Order cancelled successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error in cancel-order endpoint:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// ============================================
+// POST /api/admin/approve-order - Admin Approves COD Order
+// ============================================
+// SECURITY: Only admin can approve orders
+// Server does ALL: status update, ticket generation, SMS, email, logging
+app.post('/api/admin/approve-order', logSecurityRequest, requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { orderId, idempotencyKey } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    // ============================================
+    // PHASE 2 SECURITY FIX: Idempotency for Admin Actions
+    // ============================================
+    // Prevent duplicate approvals if admin clicks twice
+    // ============================================
+    if (idempotencyKey) {
+      // Check if this approval was already processed
+      const { data: existingLog } = await supabase
+        .from('order_logs')
+        .select('id, details')
+        .eq('order_id', orderId)
+        .eq('action', 'status_changed')
+        .eq('performed_by_type', 'admin')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingLog && existingLog.details) {
+        const details = typeof existingLog.details === 'string' 
+          ? JSON.parse(existingLog.details) 
+          : existingLog.details;
+        
+        // Check if order was already approved recently (within last 5 minutes)
+        if (details.new_status === 'PAID') { // COMPLETED is not in unified system, use PAID
+          const logTime = new Date(existingLog.created_at || 0).getTime();
+          const now = Date.now();
+          const fiveMinutes = 5 * 60 * 1000;
+          
+          if (now - logTime < fiveMinutes) {
+            // Recent approval found - return existing result (idempotent)
+            const { data: existingOrder } = await supabase
+              .from('orders')
+              .select('*')
+              .eq('id', orderId)
+              .single();
+            
+            if (existingOrder) {
+              return res.status(200).json({
+                success: true,
+                order: existingOrder,
+                message: 'Order already approved (idempotent response)',
+                idempotent: true
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Fetch order with relations
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        order_passes (*),
+        ambassadors (
+          id,
+          full_name,
+          phone
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // ============================================
+    // PHASE 2 SECURITY FIX: State Machine Validation
+    // ============================================
+    // SECURITY: Verify order is in correct status
+    if (order.status !== 'PENDING_ADMIN_APPROVAL') {
+      return res.status(400).json({
+        error: 'Invalid order status',
+        message: `Order status must be PENDING_ADMIN_APPROVAL to approve. Current status: ${order.status}`,
+        currentStatus: order.status,
+        requiredStatus: 'PENDING_ADMIN_APPROVAL'
+      });
+    }
+
+    // ============================================
+    // PHASE 2 SECURITY FIX: State Machine Validation
+    // ============================================
+    // Determine correct status based on order source
+    // CRITICAL: Database constraint only allows: PENDING_ONLINE, REDIRECTED, PENDING_CASH, PAID, CANCELLED
+    // For unified system, all approved orders use PAID (not COMPLETED)
+    const targetStatus = 'PAID';
+
+    // Validate state transition
+    const validation = validateStatusTransition(
+      order.status,
+      targetStatus,
+      order.source,
+      order.payment_method
+    );
+
+    if (!validation.valid) {
+      return res.status(400).json({
+        error: 'Invalid status transition',
+        message: validation.error,
+        currentStatus: order.status,
+        requestedStatus: targetStatus
+      });
+    }
+
+    // Update order status (SERVER-SIDE ONLY)
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: targetStatus,
+        payment_status: 'PAID',
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError || !updatedOrder) {
+      console.error('❌ Error updating order status:', updateError);
+      return res.status(500).json({
+        error: 'Failed to approve order',
+        details: updateError?.message || 'Order update failed'
+      });
+    }
+
+    // Generate tickets (INTERNAL - call function directly, not via HTTP)
+    let ticketsGenerated = false;
+    if (order.user_email) {
+      try {
+        // Call internal function directly (more reliable than HTTP fetch)
+        if (typeof generateTicketsAndSendEmail === 'function') {
+          console.log('🚀 Calling generateTicketsAndSendEmail internally for order:', orderId);
+          const result = await generateTicketsAndSendEmail(orderId);
+          ticketsGenerated = result?.success || false;
+          console.log('✅ Ticket generation result:', { success: ticketsGenerated, result });
+        } else {
+          console.error('❌ generateTicketsAndSendEmail function not found!');
+        }
+      } catch (ticketError) {
+        console.error('❌ Error generating tickets:', ticketError);
+        console.error('❌ Error details:', {
+          message: ticketError.message,
+          stack: ticketError.stack
+        });
+        // Silent failure - don't block approval, but log for debugging
+      }
+    } else {
+      console.log('⚠️ Order has no email, skipping ticket generation');
+    }
+
+    // Send completion email (INTERNAL - if order has email)
+    if (order.user_email) {
+      try {
+        const apiBase = process.env.VITE_API_URL || process.env.API_URL || '';
+        const emailApiUrl = `${apiBase}/api/send-order-completion-email`;
+        
+        if (emailApiUrl && emailApiUrl !== '/api/send-order-completion-email') {
+          fetch(emailApiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId })
+          }).catch(err => {
+            console.error('❌ Failed to send completion email:', err);
+            // Silent failure
+          });
+        }
+      } catch (emailError) {
+        console.error('❌ Error sending completion email:', emailError);
+        // Silent failure
+      }
+    }
+
+    // Log action (SERVER-SIDE ONLY)
+    try {
+      await supabase.from('order_logs').insert({
+        order_id: orderId,
+        action: 'approved',
+        performed_by: req.admin.id,
+        performed_by_type: 'admin',
+        details: {
+          from_status: 'PENDING_ADMIN_APPROVAL',
+          to_status: 'PAID',
+          tickets_generated: ticketsGenerated,
+          admin_id: req.admin.id
+        }
+      });
+    } catch (logError) {
+      console.warn('⚠️ Failed to log approval:', logError);
+    }
+
+    res.json({
+      success: true,
+      order: updatedOrder,
+      message: 'Order approved successfully',
+      ticketsGenerated: ticketsGenerated
+    });
+
+  } catch (error) {
+    console.error('❌ Error in approve-order endpoint:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// ============================================
+// POST /api/admin/reject-order - Admin Rejects COD Order
+// ============================================
+// SECURITY: Only admin can reject orders
+// Server validates status and logs action
+// ============================================
+// PHASE 2: STATE MACHINE VALIDATION MIDDLEWARE
+// ============================================
+// Enforces forward-only state transitions for orders
+// Prevents status skipping and invalid transitions
+// ============================================
+
+/**
+ * Validate order status transition
+ * @param {string} currentStatus - Current order status
+ * @param {string} newStatus - Requested new status
+ * @param {string} source - Order source (platform_cod, platform_online, ambassador_manual)
+ * @param {string} paymentMethod - Payment method (cod, online, etc.)
+ * @returns {Object} { valid: boolean, error?: string }
+ */
+const validateStatusTransition = (currentStatus, newStatus, source, paymentMethod) => {
+  // Define valid transitions per order source
+  // CRITICAL: Must match database constraint: PENDING_ONLINE, REDIRECTED, PENDING_CASH, PENDING_ADMIN_APPROVAL, PAID, REJECTED, CANCELLED
+  const validTransitions = {
+    // COD Orders (platform_cod)
+    platform_cod: {
+      'PENDING_CASH': ['PENDING_ADMIN_APPROVAL', 'CANCELLED'],
+      'PENDING_ADMIN_APPROVAL': ['PAID', 'REJECTED', 'CANCELLED'], // PAID (not COMPLETED) - matches DB constraint
+      'PAID': ['CANCELLED'], // Can cancel paid orders (refund)
+      'REJECTED': [], // Final state
+      'CANCELLED': [] // Final state
+    },
+    // Online Orders (platform_online)
+    platform_online: {
+      'PENDING_ONLINE': ['PAID', 'CANCELLED'],
+      'PAID': ['CANCELLED'], // Can cancel paid orders (refund)
+      'CANCELLED': [] // Final state
+    },
+    // Manual Orders (ambassador_manual) - not used for customer orders
+    ambassador_manual: {
+      'PENDING_CASH': ['PENDING_ADMIN_APPROVAL', 'CANCELLED'],
+      'PENDING_ADMIN_APPROVAL': ['PAID', 'COMPLETED', 'REJECTED', 'CANCELLED'],
+      'PAID': ['CANCELLED'],
+      'COMPLETED': ['CANCELLED'],
+      'REJECTED': [],
+      'CANCELLED': []
+    }
+  };
+
+  // Get valid transitions for this order source
+  const sourceTransitions = validTransitions[source] || validTransitions.platform_cod;
+  const allowedNextStatuses = sourceTransitions[currentStatus] || [];
+
+  if (!allowedNextStatuses.includes(newStatus)) {
+    return {
+      valid: false,
+      error: `Invalid status transition: Cannot transition from ${currentStatus} to ${newStatus} for ${source} orders. Valid transitions: ${allowedNextStatuses.join(', ') || 'none (final state)'}`
+    };
+  }
+
+  return { valid: true };
+};
+
+/**
+ * Middleware to validate order status transitions
+ * Must be used before any order status update
+ */
+const validateOrderStatusTransition = async (req, res, next) => {
+  try {
+    const orderId = req.params.id || req.body.orderId;
+    const newStatus = req.body.status || req.body.payment_status;
+
+    if (!orderId || !newStatus) {
+      // Not a status update request, skip validation
+      return next();
+    }
+
+    // Fetch current order state
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, status, payment_status, source, payment_method')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Determine which field is being updated
+    const currentStatus = req.body.status ? order.status : order.payment_status;
+    const validation = validateStatusTransition(
+      currentStatus,
+      newStatus,
+      order.source,
+      order.payment_method
+    );
+
+    if (!validation.valid) {
+      return res.status(400).json({
+        error: 'Invalid status transition',
+        message: validation.error,
+        currentStatus: currentStatus,
+        requestedStatus: newStatus,
+        orderSource: order.source
+      });
+    }
+
+    // Store order in request for use in handler
+    req.currentOrder = order;
+    next();
+  } catch (error) {
+    console.error('❌ Error in validateOrderStatusTransition middleware:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+};
+
+// ============================================
+// ORDER PAYMENT STATUS MANAGEMENT API
+// ============================================
+// CRITICAL: This endpoint enforces state machine rules
+// Payment status transitions must be valid and sequential
+// ============================================
+
+// PUT /api/admin/orders/:id/payment-status - Update order payment status
+app.put('/api/admin/orders/:id/payment-status', logSecurityRequest, requireAdminAuth, validateOrderStatusTransition, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const orderId = req.params.id;
+    const { payment_status } = req.body;
+
+    // Validate order ID
+    if (!orderId || typeof orderId !== 'string') {
+      return res.status(400).json({ error: 'Invalid order ID' });
+    }
+
+    // SECURITY: Validate payment_status
+    const validStatuses = ['PENDING_PAYMENT', 'PAID', 'FAILED', 'REFUNDED'];
+    if (!payment_status || !validStatuses.includes(payment_status)) {
+      return res.status(400).json({ 
+        error: 'Invalid payment status',
+        message: `Payment status must be one of: ${validStatuses.join(', ')}`,
+        provided: payment_status
+      });
+    }
+
+    // SECURITY: Fetch order to verify it exists and get current status
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, payment_status, status, source, payment_method')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // SECURITY: State machine validation - prevent invalid transitions
+    const currentStatus = order.payment_status;
+    const newStatus = payment_status;
+
+    // Define valid transitions
+    const validTransitions = {
+      'PENDING_PAYMENT': ['PAID', 'FAILED'],
+      'PAID': ['REFUNDED'], // Can only refund paid orders
+      'FAILED': ['PENDING_PAYMENT'], // Can retry failed payments
+      'REFUNDED': [] // Final state - cannot transition from refunded
+    };
+
+    // Check if transition is valid
+    if (currentStatus && validTransitions[currentStatus]) {
+      if (!validTransitions[currentStatus].includes(newStatus)) {
+        return res.status(400).json({
+          error: 'Invalid status transition',
+          message: `Cannot transition payment_status from ${currentStatus} to ${newStatus}`,
+          currentStatus: currentStatus,
+          requestedStatus: newStatus,
+          validTransitions: validTransitions[currentStatus]
+        });
+      }
+    }
+
+    // SECURITY: Additional validation based on order source
+    // Online orders should have payment_status, COD orders use status field
+    if (order.source === 'platform_online' && order.payment_method === 'online') {
+      // Online orders can have payment_status changes
+      // This is valid
+    } else if (order.source === 'platform_cod' || order.payment_method === 'cod') {
+      // COD orders should not have payment_status changed directly
+      // They use the status field instead
+      return res.status(400).json({
+        error: 'Invalid operation',
+        message: 'COD orders use the status field, not payment_status. Use /api/admin/approve-order or /api/admin/reject-order instead.',
+        orderSource: order.source,
+        paymentMethod: order.payment_method
+      });
+    }
+
+    // Update payment status (SERVER-SIDE ONLY)
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        payment_status: newStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('❌ Error updating order payment status:', updateError);
+      return res.status(500).json({ 
+        error: 'Failed to update order payment status',
+        details: updateError.message 
+      });
+    }
+
+    // SECURITY: Create order_log entry (SERVER-SIDE ONLY - not from frontend)
+    const adminId = req.admin.id;
+    try {
+      await supabase.from('order_logs').insert({
+        order_id: orderId,
+        action: 'status_changed',
+        performed_by: adminId,
+        performed_by_type: 'admin',
+        details: {
+          field: 'payment_status',
+          old_payment_status: currentStatus,
+          new_payment_status: newStatus,
+          action: `Admin ${req.admin.name || req.admin.email} changed payment status to ${newStatus}`
+        }
+      }).catch(err => console.warn('⚠️ Failed to create order log:', err));
+    } catch (logError) {
+      console.warn('⚠️ Failed to log payment status change:', logError);
+    }
+
+    // SECURITY: Log admin action (server-side audit)
+    const adminEmail = req.admin.email;
+    try {
+      const securityLogClient = supabaseService || supabase;
+      await securityLogClient.from('security_audit_logs').insert({
+        event_type: 'admin_action',
+        endpoint: '/api/admin/orders/:id/payment-status',
+        ip_address: normalizeIP(req), // PHASE 2: Normalized IP
+        user_agent: req.headers['user-agent'] || 'unknown',
+        request_method: 'PUT',
+        request_path: `/api/admin/orders/${orderId}/payment-status`,
+        details: {
+          action: 'update_order_payment_status',
+          admin_id: adminId,
+          admin_email: adminEmail,
+          order_id: orderId,
+          old_payment_status: currentStatus,
+          new_payment_status: newStatus
+        },
+        severity: 'high'
+      }).catch(err => console.warn('⚠️ Failed to log admin action:', err));
+    } catch (logError) {
+      console.warn('⚠️ Failed to log payment status update:', logError);
+    }
+
+    res.json({ 
+      success: true,
+      order: updatedOrder,
+      message: `Order payment status updated to ${newStatus}`
+    });
+  } catch (error) {
+    console.error('❌ Error in PUT /api/admin/orders/:id/payment-status:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
+  }
+});
+
+app.post('/api/admin/reject-order', logSecurityRequest, requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { orderId, reason } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    // Fetch order
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, status')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // SECURITY: Verify order is in correct status
+    if (order.status !== 'PENDING_ADMIN_APPROVAL') {
+      return res.status(400).json({
+        error: 'Invalid order status',
+        message: `Order status must be PENDING_ADMIN_APPROVAL to reject. Current status: ${order.status}`
+      });
+    }
+
+    // Update order status (SERVER-SIDE ONLY)
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
+        status: 'REJECTED',
+        rejection_reason: reason ? reason.trim() : null,
+        rejected_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (updateError || !updatedOrder) {
+      console.error('❌ Error updating order status:', updateError);
+      return res.status(500).json({
+        error: 'Failed to reject order',
+        details: updateError?.message || 'Order update failed'
+      });
+    }
+
+    // Log action (SERVER-SIDE ONLY)
+    try {
+      await supabase.from('order_logs').insert({
+        order_id: orderId,
+        action: 'rejected',
+        performed_by: req.admin.id,
+        performed_by_type: 'admin',
+        details: {
+          from_status: 'PENDING_ADMIN_APPROVAL',
+          to_status: 'REJECTED',
+          reason: reason ? reason.trim() : null,
+          admin_id: req.admin.id
+        }
+      });
+    } catch (logError) {
+      console.warn('⚠️ Failed to log rejection:', logError);
+    }
+
+    res.json({
+      success: true,
+      order: updatedOrder,
+      message: 'Order rejected successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error in reject-order endpoint:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
     });
   }
 });
@@ -3256,7 +5849,7 @@ app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
           const logData = {
             event_type: 'webhook_signature_failed',
             endpoint: '/api/flouci-webhook',
-            ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+            ip_address: normalizeIP(req), // PHASE 2: Normalized IP
             user_agent: req.headers['user-agent'] || 'unknown',
             details: { reason: 'Invalid webhook signature' },
             severity: 'high'
@@ -4923,7 +7516,7 @@ app.get('/api/qr-codes/:accessToken', logSecurityRequest, qrCodeAccessLimiter, a
           ticket_id: null, // Order-level access, not ticket-specific
           order_id: order?.id || null,
           access_token: accessToken,
-          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          ip_address: normalizeIP(req), // PHASE 2: Normalized IP
           user_agent: req.headers['user-agent'] || 'unknown',
           access_result: result,
           error_message: errorMsg
@@ -5378,21 +7971,17 @@ async function generateTicketsAndSendEmail(orderId) {
       userPhone: order.user_phone ? `${order.user_phone.substring(0, 3)}***` : 'NOT SET'
     });
 
-    // Check if order is in the correct status (COMPLETED for COD, PAID for online or ambassador_manual)
-    const isPaidStatus = 
-      (order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED')) ||
-      (order.source === 'platform_online' && order.status === 'PAID') ||
-      (order.source === 'ambassador_manual' && order.status === 'PAID');
+    // ============================================
+    // PHASE 2 SECURITY FIX: Unified Status System
+    // ============================================
+    // Database constraint only allows: PENDING_ONLINE, REDIRECTED, PENDING_CASH, PENDING_ADMIN_APPROVAL, PAID, REJECTED, CANCELLED
+    // All paid orders use 'PAID' status (COMPLETED and MANUAL_COMPLETED are legacy, not in constraint)
+    const isPaidStatus = order.status === 'PAID';
 
     console.log('🔍 Status Check:', {
       source: order.source,
       status: order.status,
-      isPaidStatus: isPaidStatus,
-      checks: {
-        platform_cod_completed: order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED'),
-        platform_online_paid: order.source === 'platform_online' && order.status === 'PAID',
-        ambassador_manual_paid: order.source === 'ambassador_manual' && order.status === 'PAID'
-      }
+      isPaidStatus: isPaidStatus
     });
 
     if (!isPaidStatus) {
@@ -5400,7 +7989,7 @@ async function generateTicketsAndSendEmail(orderId) {
         currentStatus: order.status,
         source: order.source,
         expectedStatuses: {
-          platform_cod: 'COMPLETED or MANUAL_COMPLETED',
+          platform_cod: 'COMPLETED, MANUAL_COMPLETED, or PAID',
           platform_online: 'PAID',
           ambassador_manual: 'PAID'
         }
@@ -6209,11 +8798,15 @@ async function generateTicketsAndSendEmail(orderId) {
     if (order.user_phone && WINSMS_API_KEY) {
       try {
         
-        // Build SMS message with new format
-        const orderIdShort = orderId.substring(0, 8).toUpperCase(); // First 8 characters of order ID (e.g., 98C1E3AC)
+        // ============================================
+        // ORDER ID FIX: Use single source of truth
+        // ============================================
+        // CRITICAL: Use order_number (public ID), NOT UUID substring
+        // UUID should NEVER be exposed to users
+        const publicOrderId = getPublicOrderId(order);
         
         let smsMessage = `Paiement confirmé\n`;
-        smsMessage += `ID: ${orderIdShort} | Total: ${order.total_price} DT\n`;
+        smsMessage += `ID: ${publicOrderId} | Total: ${order.total_price} DT\n`;
         smsMessage += `Merci pour votre achat. Billets envoyés par email.\n`;
         smsMessage += `We Create Memories`;
 
@@ -6419,7 +9012,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       await securityLogClient.from('security_audit_logs').insert({
               event_type: 'captcha_verification_failed',
               endpoint: '/api/generate-tickets-for-order',
-              ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+              ip_address: normalizeIP(req), // PHASE 2: Normalized IP
               user_agent: req.headers['user-agent'] || 'unknown',
               request_method: req.method,
               request_path: req.path,
@@ -6492,7 +9085,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'invalid_order_access',
           endpoint: '/api/generate-tickets-for-order',
-          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          ip_address: normalizeIP(req), // PHASE 2: Normalized IP
           user_agent: req.headers['user-agent'] || 'unknown',
           request_method: req.method,
           request_path: req.path,
@@ -6520,7 +9113,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'unauthorized_ticket_generation',
           endpoint: '/api/generate-tickets-for-order',
-          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          ip_address: normalizeIP(req), // PHASE 2: Normalized IP
           user_agent: req.headers['user-agent'] || 'unknown',
           request_method: req.method,
           request_path: req.path,
@@ -6563,7 +9156,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'duplicate_ticket_generation_attempt',
           endpoint: '/api/generate-tickets-for-order',
-          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          ip_address: normalizeIP(req), // PHASE 2: Normalized IP
           user_agent: req.headers['user-agent'] || 'unknown',
           request_method: req.method,
           request_path: req.path,
@@ -6586,7 +9179,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'invalid_order_access',
           endpoint: '/api/generate-tickets-for-order',
-          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          ip_address: normalizeIP(req), // PHASE 2: Normalized IP
           user_agent: req.headers['user-agent'] || 'unknown',
           request_method: req.method,
           request_path: req.path,
@@ -6604,10 +9197,12 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
 
     // Security: Verify order is in correct status (PAID) before generating tickets
     // Only allow ticket generation for PAID orders (or COMPLETED for COD, or PAID for ambassador_manual)
-    const isPaidStatus = 
-      (order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED')) ||
-      (order.source === 'platform_online' && order.status === 'PAID') ||
-      (order.source === 'ambassador_manual' && order.status === 'PAID');
+    // ============================================
+    // PHASE 2 SECURITY FIX: Unified Status System
+    // ============================================
+    // Database constraint only allows: PENDING_ONLINE, REDIRECTED, PENDING_CASH, PENDING_ADMIN_APPROVAL, PAID, REJECTED, CANCELLED
+    // All paid orders use 'PAID' status (COMPLETED and MANUAL_COMPLETED are legacy, not in constraint)
+    const isPaidStatus = order.status === 'PAID';
 
     if (!isPaidStatus && !isAdminRequest) {
       // Log security event - attempt to generate tickets for unpaid order
@@ -6617,7 +9212,7 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       await securityLogClient.from('security_audit_logs').insert({
           event_type: 'unauthorized_ticket_generation',
           endpoint: '/api/generate-tickets-for-order',
-          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          ip_address: normalizeIP(req), // PHASE 2: Normalized IP
           user_agent: req.headers['user-agent'] || 'unknown',
           request_method: req.method,
           request_path: req.path,

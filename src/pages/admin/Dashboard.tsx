@@ -1897,133 +1897,38 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Update order status to PAID (this will trigger ticket generation)
-      console.log('🔵 Updating order status to PAID...');
-      const { error: updateError } = await (supabase as any)
-        .from('orders')
-        .update({
-          status: 'PAID',
-          approved_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', orderId);
-
-      if (updateError) {
-        console.error('❌ FRONTEND: Error updating order status:', updateError);
-        throw updateError;
-      }
-      console.log('✅ FRONTEND: Order status updated to PAID');
-
-      // Generate tickets and send email with QR codes (only after admin approval)
-      let ticketsGenerated = false;
-      console.log('🔵 Checking if order has email for ticket generation...');
-      console.log('🔵 Email check:', {
-        hasUserEmail: !!order.user_email,
-        userEmail: order.user_email || 'NOT SET'
-      });
+      // SECURITY: Call secure API endpoint instead of direct database access
+      // Server does ALL: status update, ticket generation, email, SMS, logging
+      console.log('🔵 Calling secure API endpoint /api/admin/approve-order...');
+      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiUrl = `${apiBase}/api/admin/approve-order`;
       
-      if (order.user_email) {
-        try {
-          console.log('🔵 Order has email, proceeding with ticket generation...');
-          
-          // Small delay to ensure database is ready
-          console.log('🔵 Waiting 500ms for database to be ready...');
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Generate tickets (this will also send the email with QR codes)
-          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
-          const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
-          
-          console.log('🔵 API Configuration:', {
-            apiBase: apiBase,
-            ticketApiUrl: ticketApiUrl,
-            route: API_ROUTES.GENERATE_TICKETS_FOR_ORDER
-          });
-          
-          if (ticketApiUrl) {
-            console.log('🔵 Calling ticket generation API...');
-            console.log('🔵 Request:', {
-              url: ticketApiUrl,
-              method: 'POST',
-              body: { orderId }
-            });
-            
-            const ticketResponse = await fetch(ticketApiUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ orderId }),
-            });
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies for admin auth
+        body: JSON.stringify({ orderId })
+      });
 
-            console.log('🔵 API Response Status:', ticketResponse.status);
-            const responseData = await ticketResponse.json();
-            console.log('🔵 API Response Data:', responseData);
+      const result = await response.json();
 
-            if (ticketResponse.ok && responseData.success) {
-              ticketsGenerated = true;
-              console.log('✅ FRONTEND: Tickets generated successfully:', {
-                ticketsCount: responseData.ticketsCount,
-                emailSent: responseData.emailSent,
-                emailError: responseData.emailError,
-                smsSent: responseData.smsSent,
-                smsError: responseData.smsError
-              });
-            } else {
-              console.error('❌ FRONTEND: Failed to generate tickets. Status:', ticketResponse.status);
-              console.error('❌ FRONTEND: Error details:', responseData);
-            }
-          } else {
-            console.error('❌ FRONTEND: Invalid ticket API URL');
-          }
-        } catch (ticketError) {
-          console.error('❌ FRONTEND: Error generating tickets:', ticketError);
-          console.error('❌ FRONTEND: Error details:', {
-            message: ticketError.message,
-            stack: ticketError.stack
-          });
-        }
-      } else {
-        console.warn('⚠️ FRONTEND: Order does not have email, skipping ticket generation');
-        console.warn('⚠️ FRONTEND: Order details:', {
-          orderId: order.id,
-          hasUserEmail: false,
-          hasUserPhone: !!order.user_phone
-        });
+      if (!response.ok) {
+        throw new Error(result.error || `Failed to approve order: ${response.statusText}`);
       }
 
-      // Log the approval
-      console.log('🔵 Logging approval to order_logs...');
-      await (supabase as any)
-        .from('order_logs')
-        .insert({
-          order_id: orderId,
-          action: 'approved',
-          performed_by: null,
-          performed_by_type: 'admin',
-          details: { 
-            old_status: 'PENDING_ADMIN_APPROVAL',
-            new_status: 'PAID',
-            tickets_generated: ticketsGenerated,
-            admin_action: true 
-          }
-        });
-      console.log('✅ FRONTEND: Approval logged');
-
-      console.log('🔵 ============================================');
-      console.log('🔵 FRONTEND: Admin Approval Completed');
-      console.log('🔵 ============================================');
-      console.log('📊 Final Status:', {
+      const ticketsGenerated = result.ticketsGenerated || false;
+      console.log('✅ FRONTEND: Order approved successfully:', {
         ticketsGenerated: ticketsGenerated,
         orderId: orderId
       });
-      console.log('🔵 ============================================\n');
 
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
         description: language === 'en' 
-          ? `Order approved and tickets ${ticketsGenerated ? 'sent' : 'generation failed'}`
-          : `Commande approuvée et billets ${ticketsGenerated ? 'envoyés' : 'génération échouée'}`,
+          ? `Order approved successfully${ticketsGenerated ? ' and tickets sent' : ''}`
+          : `Commande approuvée avec succès${ticketsGenerated ? ' et billets envoyés' : ''}`,
         variant: 'default'
       });
       
@@ -2051,124 +1956,38 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   // Approve COD order (changes status from PENDING_ADMIN_APPROVAL to APPROVED)
+  // SECURITY: Uses API endpoint - server handles ALL: validation, status update, tickets, email, SMS, logging
   const handleApproveOrderAsAdmin = async (orderId: string) => {
     try {
-      // Get current order to check if it's a COD order
-      const { data: order, error: fetchError } = await (supabase as any)
-        .from('orders')
-        .select('payment_method, status, source')
-        .eq('id', orderId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      // If it's an ambassador-created COD order, use the special approval function
-      if (order.source === 'ambassador_manual' && order.payment_method === 'ambassador_cash') {
-        return handleApproveCodAmbassadorOrder(orderId);
-      }
-
-      // Only approve COD orders that are pending approval
-      if (order.payment_method !== 'ambassador_cash') {
-        toast({
-          title: language === 'en' ? 'Error' : 'Erreur',
-          description: language === 'en' 
-            ? `This order is not a COD order. Payment method: ${order.payment_method || 'N/A'}`
-            : `Cette commande n'est pas une commande COD. Méthode de paiement: ${order.payment_method || 'N/A'}`,
-          variant: 'destructive'
-        });
-        return;
-      }
+      // SECURITY: Call secure API endpoint - server is the ONLY authority
+      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiUrl = `${apiBase}/api/admin/approve-order`;
       
-      if (order.status !== 'PENDING_ADMIN_APPROVAL') {
-        toast({
-          title: language === 'en' ? 'Error' : 'Erreur',
-          description: language === 'en' 
-            ? `Order status must be PENDING_ADMIN_APPROVAL to approve. Current status: ${order.status || 'N/A'}`
-            : `Le statut de la commande doit être PENDING_ADMIN_APPROVAL pour approuver. Statut actuel: ${order.status || 'N/A'}`,
-          variant: 'destructive'
-        });
-        return;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies for admin auth
+        body: JSON.stringify({ orderId })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || `Failed to approve order: ${response.statusText}`);
       }
 
-      // Get full order details for ticket generation
-      const { data: fullOrder, error: fullOrderError } = await (supabase as any)
-        .from('orders')
-        .select('*')
-        .eq('id', orderId)
-        .single();
-
-      if (fullOrderError) throw fullOrderError;
-
-      // Update order status to PAID (this triggers ticket generation)
-      const { error } = await (supabase as any)
-        .from('orders')
-        .update({
-          status: 'PAID',
-          approved_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', orderId);
-
-      if (error) throw error;
-
-      // Generate tickets and send email with QR codes
-      let ticketsGenerated = false;
-      if (fullOrder.user_email) {
-        try {
-          
-          // Small delay to ensure database is ready
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Generate tickets (this will also send the email with QR codes)
-          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
-          const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
-          
-          if (ticketApiUrl) {
-            const ticketResponse = await fetch(ticketApiUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ orderId }),
-            });
-
-            const responseData = await ticketResponse.json();
-
-            if (ticketResponse.ok && responseData.success) {
-              ticketsGenerated = true;
-            } else {
-              console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
-              console.error('❌ Error details:', responseData);
-            }
-          }
-        } catch (ticketError) {
-          console.error('Error generating tickets:', ticketError);
-        }
-      }
-
-      // Log the approval
-      await (supabase as any)
-        .from('order_logs')
-        .insert({
-          order_id: orderId,
-          action: 'approved',
-          performed_by: null,
-          performed_by_type: 'admin',
-          details: { 
-            old_status: 'PENDING_ADMIN_APPROVAL',
-            new_status: 'PAID',
-            tickets_generated: ticketsGenerated,
-            admin_action: true 
-          }
-        });
+      const ticketsGenerated = result.ticketsGenerated || false;
 
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
         description: language === 'en' 
-          ? `Order approved and tickets ${ticketsGenerated ? 'sent' : 'generation failed'}`
-          : `Commande approuvée et billets ${ticketsGenerated ? 'envoyés' : 'génération échouée'}`,
+          ? `Order approved successfully${ticketsGenerated ? ' and tickets sent' : ''}`
+          : `Commande approuvée avec succès${ticketsGenerated ? ' et billets envoyés' : ''}`,
         variant: 'default'
       });
+      
       fetchAmbassadorSalesData();
       if (selectedOrder?.id === orderId) {
         setIsOrderDetailsOpen(false);
@@ -2229,35 +2048,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      const { error } = await (supabase as any)
-        .from('orders')
-        .update({
-          status: 'REJECTED',
-          rejected_at: new Date().toISOString(),
-          rejection_reason: rejectionReason.trim(),
-          updated_at: new Date().toISOString()
+      // SECURITY: Call secure API endpoint instead of direct database access
+      // Server validates status and does all updates/logging
+      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiUrl = `${apiBase}/api/admin/reject-order`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies for admin auth
+        body: JSON.stringify({
+          orderId: orderId,
+          reason: rejectionReason.trim()
         })
-        .eq('id', orderId);
+      });
 
-      if (error) throw error;
+      const result = await response.json();
 
-      // Log the rejection (NO email or SMS sent)
-      await (supabase as any)
-        .from('order_logs')
-        .insert({
-          order_id: orderId,
-          action: 'rejected',
-          performed_by: null,
-          performed_by_type: 'admin',
-          details: { 
-            old_status: 'PENDING_ADMIN_APPROVAL',
-            new_status: 'REJECTED',
-            rejection_reason: rejectionReason.trim(),
-            email_sent: false,
-            sms_sent: false,
-            admin_action: true 
-          }
-        });
+      if (!response.ok) {
+        throw new Error(result.error || `Failed to reject order: ${response.statusText}`);
+      }
 
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
@@ -2317,49 +2129,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
       
-      if (order.status !== 'PENDING_ADMIN_APPROVAL') {
-        toast({
-          title: language === 'en' ? 'Error' : 'Erreur',
-          description: language === 'en' 
-            ? `Order status must be PENDING_ADMIN_APPROVAL to reject. Current status: ${order.status || 'N/A'}`
-            : `Le statut de la commande doit être PENDING_ADMIN_APPROVAL pour rejeter. Statut actuel: ${order.status || 'N/A'}`,
-          variant: 'destructive'
-        });
-        return;
+      // SECURITY: Call secure API endpoint instead of direct database access
+      // Server validates status and does all updates/logging
+      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiUrl = `${apiBase}/api/admin/reject-order`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies for admin auth
+        body: JSON.stringify({
+          orderId: orderId,
+          reason: rejectionReason || null
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || `Failed to reject order: ${response.statusText}`);
       }
-
-      const updateData: any = {
-        status: 'REJECTED',
-        rejected_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      if (rejectionReason) {
-        updateData.rejection_reason = rejectionReason;
-      }
-
-      const { error } = await (supabase as any)
-        .from('orders')
-        .update(updateData)
-        .eq('id', orderId);
-
-      if (error) throw error;
-
-      // Log the rejection
-      await (supabase as any)
-        .from('order_logs')
-        .insert({
-          order_id: orderId,
-          action: 'rejected',
-          performed_by: null,
-          performed_by_type: 'admin',
-          details: { 
-            old_status: 'PENDING_ADMIN_APPROVAL',
-            new_status: 'REJECTED',
-            rejection_reason: rejectionReason || null,
-            admin_action: true 
-          }
-        });
 
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
@@ -2452,44 +2243,51 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Update online order payment status
   const updateOnlineOrderStatus = async (orderId: string, newStatus: 'PENDING_PAYMENT' | 'PAID' | 'FAILED' | 'REFUNDED') => {
     try {
-      const { error } = await (supabase as any)
-        .from('orders')
-        .update({ payment_status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', orderId);
+      // ============================================
+      // PHASE 2 SECURITY FIX: Use secure API endpoint
+      // ============================================
+      // Server validates state machine and creates audit logs
+      // Frontend no longer directly updates database
+      // ============================================
+      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_ORDER_PAYMENT_STATUS(orderId), apiBase);
+      
+      if (!apiUrl) {
+        throw new Error('Invalid API URL configuration');
+      }
 
-      if (error) throw error;
-
-      // Log the action
-      await (supabase as any).from('order_logs').insert({
-        order_id: orderId,
-        action: 'status_changed',
-        performed_by_type: 'admin',
-        details: {
-          old_payment_status: selectedOnlineOrder?.payment_status,
-          new_payment_status: newStatus,
-          action: `Marked as ${newStatus}`
-        }
+      const response = await fetch(apiUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies for admin auth
+        body: JSON.stringify({ payment_status: newStatus })
       });
 
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update order payment status');
+      }
+
+      // Server creates order_log automatically - no need for frontend to do it
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
-        description: language === 'en' ? `Order status updated to ${newStatus}` : `Statut de la commande mis à jour vers ${newStatus}`,
+        description: language === 'en' ? `Order payment status updated to ${newStatus}` : `Statut de paiement mis à jour vers ${newStatus}`,
         variant: "default",
       });
 
       // Refresh orders
       await fetchOnlineOrders();
-      if (selectedOnlineOrder?.id === orderId) {
-        const updatedOrder = onlineOrders.find(o => o.id === orderId);
-        if (updatedOrder) {
-          setSelectedOnlineOrder({ ...updatedOrder, payment_status: newStatus });
-        }
+      if (selectedOnlineOrder?.id === orderId && result.order) {
+        setSelectedOnlineOrder({ ...selectedOnlineOrder, payment_status: newStatus });
       }
     } catch (error: any) {
-      console.error('Error updating order status:', error);
+      console.error('Error updating order payment status:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to update order status' : 'Échec de la mise à jour du statut'),
+        description: error.message || (language === 'en' ? 'Failed to update order payment status' : 'Échec de la mise à jour du statut de paiement'),
         variant: "destructive",
       });
     }
@@ -7273,55 +7071,104 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
     }
     
+    // ============================================
+    // PHASE 2 SECURITY FIX: Use secure API endpoint
+    // ============================================
+    // Frontend no longer directly accesses database
+    // All operations go through server-side API with validation
+    // ============================================
     const sponsorData = {
       name: editingSponsor.name,
       logo_url,
       description: editingSponsor.description,
       website_url: editingSponsor.website_url,
-      category: editingSponsor.category,
-      is_global: true, // Always global
+      category: editingSponsor.category
     };
-    let error;
+
     try {
-      let affectedRows = 0;
+      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      let response;
+      let result;
+
       if (isNew) {
-        const { data, error: insertError } = await supabase.from('sponsors').insert(sponsorData).select().single();
-        error = insertError;
-        if (data && data.id) {
-          sponsorId = data.id;
-          affectedRows = 1;
+        // Create new sponsor via API
+        const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_SPONSORS, apiBase);
+        if (!apiUrl) {
+          throw new Error('Invalid API URL configuration');
+        }
+
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Include cookies for admin auth
+          body: JSON.stringify(sponsorData)
+        });
+
+        result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to create sponsor');
+        }
+
+        if (result.success && result.sponsor) {
+          sponsorId = result.sponsor.id;
+          // Update local state
+          setSponsors(prev => [...prev, result.sponsor].sort((a, b) => 
+            new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+          ));
         }
       } else {
-        const { data: updateData, error: updateError } = await supabase.from('sponsors').update(sponsorData).eq('id', sponsorId).select();
-        error = updateError;
-        affectedRows = Array.isArray(updateData) ? updateData.length : 0;
+        // Update existing sponsor via API
+        const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_SPONSOR(sponsorId), apiBase);
+        if (!apiUrl) {
+          throw new Error('Invalid API URL configuration');
+        }
+
+        response = await fetch(apiUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Include cookies for admin auth
+          body: JSON.stringify(sponsorData)
+        });
+
+        result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to update sponsor');
+        }
+
+        if (result.success && result.sponsor) {
+          // Update local state
+          setSponsors(prev => prev.map(s => 
+            s.id === sponsorId
+              ? result.sponsor
+              : s
+          ));
+        }
       }
-      // Update local state immediately for instant UI feedback
-      if (isNew && affectedRows > 0) {
-        // Add new sponsor to the list
-        const newSponsor = { ...sponsorData, id: sponsorId, created_at: new Date().toISOString() };
-        setSponsors(prev => [...prev, newSponsor].sort((a, b) => 
-          new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
-        ));
-      } else if (!isNew && affectedRows > 0) {
-        // Update existing sponsor in the list
-        setSponsors(prev => prev.map(s => 
-          s.id === sponsorId
-            ? { ...s, ...sponsorData, updated_at: new Date().toISOString() }
-            : s
-        ));
-      }
-      
-      if ((isNew && affectedRows > 0) || (!isNew && affectedRows > 0)) {
+
+      if (result.success) {
         closeSponsorDialog();
         toast({
           title: language === 'en' ? 'Sponsor saved' : 'Sponsor enregistré',
           description: language === 'en' ? 'Sponsor details updated successfully.' : 'Détails du sponsor mis à jour avec succès.',
         });
       } else {
-        // Refresh from database if update failed
-        const { data: sponsorsData } = await supabase.from('sponsors').select('*').order('created_at', { ascending: true });
-        if (sponsorsData) setSponsors(sponsorsData);
+        // Refresh from API if update failed
+        const fetchUrl = buildFullApiUrl(API_ROUTES.ADMIN_SPONSORS, apiBase);
+        if (fetchUrl) {
+          const fetchResponse = await fetch(fetchUrl, {
+            credentials: 'include'
+          });
+          const fetchResult = await fetchResponse.json();
+          if (fetchResult.success && fetchResult.sponsors) {
+            setSponsors(fetchResult.sponsors);
+          }
+        }
         
         toast({
           title: t.error,
@@ -7329,11 +7176,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           variant: 'destructive',
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Sponsor save error:', err);
       toast({
         title: 'Error',
-        description: 'Failed to save sponsor. Please try again.',
+        description: err.message || (language === 'en' ? 'Failed to save sponsor. Please try again.' : 'Échec de l\'enregistrement du sponsor. Veuillez réessayer.'),
         variant: 'destructive',
       });
     }
@@ -7352,32 +7199,45 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (!sponsorToDelete) return;
     
     try {
-      // Update local state immediately for instant UI feedback
+      // ============================================
+      // PHASE 2 SECURITY FIX: Use secure API endpoint
+      // ============================================
       const sponsorIdToDelete = sponsorToDelete.id;
+      
+      // Update local state immediately for instant UI feedback
       setSponsors(prev => prev.filter(s => s.id !== sponsorIdToDelete));
       
-      // Delete from database
-      const { error: sponsorError } = await supabase
-        .from('sponsors')
-        .delete()
-        .eq('id', sponsorIdToDelete);
+      // Delete via API (server handles cascade to event_sponsors)
+      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_SPONSOR(sponsorIdToDelete), apiBase);
       
-      if (sponsorError) {
-        // Revert UI change on error
-        const { data: allSponsors } = await supabase.from('sponsors').select('*').order('created_at', { ascending: true });
-        if (allSponsors) setSponsors(allSponsors);
-        throw sponsorError;
+      if (!apiUrl) {
+        throw new Error('Invalid API URL configuration');
       }
-      
-      // Delete associated event sponsors
-      const { error: eventSponsorError } = await supabase
-        .from('event_sponsors')
-        .delete()
-        .eq('sponsor_id', sponsorIdToDelete);
-      
-      if (eventSponsorError) {
-        console.error('Error deleting event sponsors:', eventSponsorError);
-        // Don't throw here as the sponsor was already deleted
+
+      const response = await fetch(apiUrl, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include' // Include cookies for admin auth
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        // Revert UI change on error
+        const fetchUrl = buildFullApiUrl(API_ROUTES.ADMIN_SPONSORS, apiBase);
+        if (fetchUrl) {
+          const fetchResponse = await fetch(fetchUrl, {
+            credentials: 'include'
+          });
+          const fetchResult = await fetchResponse.json();
+          if (fetchResult.success && fetchResult.sponsors) {
+            setSponsors(fetchResult.sponsors);
+          }
+        }
+        throw new Error(result.error || 'Failed to delete sponsor');
       }
       
       toast({
@@ -7386,11 +7246,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
       
       closeDeleteDialog();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting sponsor:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to delete sponsor" : "Échec de la suppression du sponsor",
+        description: error.message || (language === 'en' ? "Failed to delete sponsor" : "Échec de la suppression du sponsor"),
         variant: "destructive",
       });
     }
@@ -7746,12 +7606,29 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const rejectedCount = applications.filter(app => app.status === 'rejected').length;
 
   useEffect(() => {
+    // ============================================
+    // PHASE 2 SECURITY FIX: Fetch sponsors via API
+    // ============================================
     const fetchSponsors = async () => {
-      const { data, error } = await supabase
-        .from('sponsors')
-        .select('*')
-        .order('created_at', { ascending: true });
-      if (!error && data) setSponsors(data);
+      try {
+        const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+        const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_SPONSORS, apiBase);
+        if (!apiUrl) {
+          console.error('Invalid API URL configuration');
+          return;
+        }
+
+        const response = await fetch(apiUrl, {
+          credentials: 'include' // Include cookies for admin auth
+        });
+
+        const result = await response.json();
+        if (result.success && result.sponsors) {
+          setSponsors(result.sponsors);
+        }
+      } catch (error) {
+        console.error('Error fetching sponsors:', error);
+      }
     };
     fetchSponsors();
   }, []);
@@ -7760,9 +7637,29 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Fetch team members on mount
   useEffect(() => {
+    // ============================================
+    // PHASE 2 SECURITY FIX: Fetch team members via API
+    // ============================================
     const fetchTeamMembers = async () => {
-      const { data, error } = await supabase.from('team_members').select('*').order('created_at', { ascending: true });
-      if (!error && data) setTeamMembers(data);
+      try {
+        const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+        const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_TEAM_MEMBERS, apiBase);
+        if (!apiUrl) {
+          console.error('Invalid API URL configuration');
+          return;
+        }
+
+        const response = await fetch(apiUrl, {
+          credentials: 'include' // Include cookies for admin auth
+        });
+
+        const result = await response.json();
+        if (result.success && result.teamMembers) {
+          setTeamMembers(result.teamMembers);
+        }
+      } catch (error) {
+        console.error('Error fetching team members:', error);
+      }
     };
     fetchTeamMembers();
   }, []);
@@ -7836,6 +7733,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
   const handleTeamSave = async (e) => {
     e.preventDefault();
+    // ============================================
+    // PHASE 2 SECURITY FIX: Use secure API endpoint
+    // ============================================
     const isNew = !editingTeamMember?.id;
     let teamMemberId = editingTeamMember?.id;
     const teamData = {
@@ -7845,47 +7745,95 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       bio: editingTeamMember.bio || null,
       social_url: editingTeamMember.social_url || null,
     };
-    let error;
+
     try {
-      let affectedRows = 0;
+      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      let response;
+      let result;
+
       if (isNew) {
-        const { data, error: insertError } = await supabase.from('team_members').insert(teamData).select().single();
-        error = insertError;
-        if (data && data.id) {
-          teamMemberId = data.id;
-          affectedRows = 1;
+        // Create new team member via API
+        const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_TEAM_MEMBERS, apiBase);
+        if (!apiUrl) {
+          throw new Error('Invalid API URL configuration');
+        }
+
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Include cookies for admin auth
+          body: JSON.stringify(teamData)
+        });
+
+        result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to create team member');
+        }
+
+        if (result.success && result.teamMember) {
+          teamMemberId = result.teamMember.id;
+          // Update local state
+          setTeamMembers(prev => [...prev, result.teamMember].sort((a, b) => 
+            new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+          ));
         }
       } else {
-        const { data: updateData, error: updateError } = await supabase.from('team_members').update(teamData).eq('id', teamMemberId).select();
-        error = updateError;
-        affectedRows = Array.isArray(updateData) ? updateData.length : 0;
+        // Update existing team member via API
+        const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_TEAM_MEMBER(teamMemberId), apiBase);
+        if (!apiUrl) {
+          throw new Error('Invalid API URL configuration');
+        }
+
+        response = await fetch(apiUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Include cookies for admin auth
+          body: JSON.stringify(teamData)
+        });
+
+        result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to update team member');
+        }
+
+        if (result.success && result.teamMember) {
+          // Update local state
+          setTeamMembers(prev => prev.map(m => 
+            m.id === teamMemberId
+              ? result.teamMember
+              : m
+          ));
+        }
       }
-      // Update local state immediately for instant UI feedback
-      if (isNew && affectedRows > 0) {
-        // Add new team member to the list
-        const newMember = { ...teamData, id: teamMemberId, created_at: new Date().toISOString() };
-        setTeamMembers(prev => [...prev, newMember].sort((a, b) => 
-          new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
-        ));
-      } else if (!isNew && affectedRows > 0) {
-        // Update existing team member in the list
-        setTeamMembers(prev => prev.map(m => 
-          m.id === teamMemberId
-            ? { ...m, ...teamData, updated_at: new Date().toISOString() }
-            : m
-        ));
-      }
-      
-      if ((isNew && affectedRows > 0) || (!isNew && affectedRows > 0)) {
+
+      if (result.success) {
         closeTeamDialog();
         toast({
           title: language === 'en' ? 'Team member saved' : 'Membre enregistré',
           description: language === 'en' ? 'Team member details updated successfully.' : 'Détails du membre mis à jour avec succès.',
         });
       } else {
-        // Refresh from database if update failed
-        const { data: teamDataList } = await supabase.from('team_members').select('*').order('created_at', { ascending: true });
-        if (teamDataList) setTeamMembers(teamDataList);
+        // Refresh from API if update failed
+        const fetchUrl = buildFullApiUrl(API_ROUTES.ADMIN_TEAM_MEMBERS, apiBase);
+        if (fetchUrl) {
+          try {
+            const fetchResponse = await fetch(fetchUrl, {
+              credentials: 'include'
+            });
+            const fetchResult = await fetchResponse.json();
+            if (fetchResult.success && fetchResult.teamMembers) {
+              setTeamMembers(fetchResult.teamMembers);
+            }
+          } catch (fetchErr) {
+            console.error('Failed to refresh team members:', fetchErr);
+          }
+        }
         
         toast({
           title: t.error,
@@ -7893,11 +7841,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           variant: 'destructive',
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Team member save error:', err);
       toast({
         title: 'Error',
-        description: 'Failed to save team member. Please try again.',
+        description: err.message || (language === 'en' ? 'Failed to save team member. Please try again.' : 'Échec de l\'enregistrement du membre. Veuillez réessayer.'),
         variant: 'destructive',
       });
     }
@@ -7906,21 +7854,49 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (!teamMemberToDelete) return;
     
     try {
+      // ============================================
+      // PHASE 2 SECURITY FIX: Use secure API endpoint
+      // ============================================
       const memberIdToDelete = teamMemberToDelete.id;
       
       // Update local state immediately for instant UI feedback
       setTeamMembers(prev => prev.filter(m => m.id !== memberIdToDelete));
       
-      const { error } = await supabase
-        .from('team_members')
-        .delete()
-        .eq('id', memberIdToDelete);
+      // Delete via API
+      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_TEAM_MEMBER(memberIdToDelete), apiBase);
       
-      if (error) {
+      if (!apiUrl) {
+        throw new Error('Invalid API URL configuration');
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include' // Include cookies for admin auth
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
         // Revert UI change on error
-        const { data: allMembers } = await supabase.from('team_members').select('*').order('created_at', { ascending: true });
-        if (allMembers) setTeamMembers(allMembers);
-        throw error;
+        const fetchUrl = buildFullApiUrl(API_ROUTES.ADMIN_TEAM_MEMBERS, apiBase);
+        if (fetchUrl) {
+          try {
+            const fetchResponse = await fetch(fetchUrl, {
+              credentials: 'include'
+            });
+            const fetchResult = await fetchResponse.json();
+            if (fetchResult.success && fetchResult.teamMembers) {
+              setTeamMembers(fetchResult.teamMembers);
+            }
+          } catch (fetchErr) {
+            console.error('Failed to refresh team members:', fetchErr);
+          }
+        }
+        throw new Error(result.error || 'Failed to delete team member');
       }
       
       closeDeleteTeamDialog();
@@ -7928,11 +7904,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Team member deleted' : 'Membre supprimé',
         description: language === 'en' ? 'Team member removed successfully.' : 'Membre supprimé avec succès.',
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete team member error:', err);
       toast({
         title: t.error,
-        description: language === 'en' ? 'Failed to delete team member. Please try again.' : 'Échec de la suppression. Veuillez réessayer.',
+        description: err.message || (language === 'en' ? 'Failed to delete team member. Please try again.' : 'Échec de la suppression. Veuillez réessayer.'),
         variant: 'destructive',
       });
     }

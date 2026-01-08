@@ -31,7 +31,7 @@ export function CustomerInfoForm({
     required: 'This field is required',
     invalidPhone: 'Invalid phone number format',
     invalidEmail: 'Invalid email format',
-    villeRequired: 'Ville is required when city is Sousse',
+    villeRequired: 'Ville is required when city is Sousse or Tunis',
     selectCity: 'Select City',
     selectVille: 'Select Ville'
   } : {
@@ -43,7 +43,7 @@ export function CustomerInfoForm({
     required: 'Ce champ est requis',
     invalidPhone: 'Format de numéro de téléphone invalide',
     invalidEmail: 'Format d\'email invalide',
-    villeRequired: 'La ville est requise lorsque la ville est Sousse',
+    villeRequired: 'Le quartier est requis lorsque la ville est Sousse ou Tunis',
     selectCity: 'Sélectionner la Ville',
     selectVille: 'Sélectionner le Quartier'
   };

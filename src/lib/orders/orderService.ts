@@ -1,157 +1,123 @@
 /**
  * Order Service
  * Handles order CRUD operations and status transitions
+ * 
+ * SECURITY: All order creation now goes through server-side API endpoint
+ * Frontend NEVER directly accesses database for order creation
  */
 
 import { supabase } from '@/integrations/supabase/client';
 import { Order, CreateOrderData, UpdateOrderStatusData, CancelOrderData } from '@/types/orders';
 import { OrderPass } from '@/types/orders';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
+import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
+import { sanitizeUrl } from '@/lib/url-validator';
 
 /**
  * Create a new order
+ * 
+ * SECURITY: This function now calls the server-side API endpoint
+ * All validation happens server-side - frontend only sends request
+ * Server validates passes, calculates prices, and blocks ambassadors
  */
 export async function createOrder(data: CreateOrderData): Promise<Order> {
   const { customerInfo, passes, paymentMethod, ambassadorId, eventId } = data;
   
-  // Calculate totals
-  const totalQuantity = passes.reduce((sum, pass) => sum + pass.quantity, 0);
-  const totalPrice = passes.reduce((sum, pass) => sum + (pass.price * pass.quantity), 0);
-  
-  // Determine initial status based on payment method
-  let initialStatus: OrderStatus;
-  switch (paymentMethod) {
-    case PaymentMethod.ONLINE:
-      initialStatus = OrderStatus.PENDING_ONLINE;
-      break;
-    case PaymentMethod.EXTERNAL_APP:
-      initialStatus = OrderStatus.PENDING_ONLINE;  // Will be updated to REDIRECTED after redirect
-      break;
-    case PaymentMethod.AMBASSADOR_CASH:
-      initialStatus = OrderStatus.PENDING_CASH;
-      if (!ambassadorId) {
-        throw new Error('Ambassador ID is required for ambassador cash payment');
-      }
-      break;
-    default:
-      throw new Error('Invalid payment method');
-  }
-  
-  // Prepare order data
-  const orderData: any = {
-    source: paymentMethod === PaymentMethod.AMBASSADOR_CASH ? 'platform_cod' : 'platform_online',
-    user_name: customerInfo.full_name.trim(),
-    user_phone: customerInfo.phone.trim(),
-    user_email: customerInfo.email.trim() || null,
-    city: customerInfo.city.trim(),
-    ville: customerInfo.ville?.trim() || null,
-    event_id: eventId || null,
-    ambassador_id: ambassadorId || null,
-    quantity: totalQuantity,
-    total_price: totalPrice,
-    payment_method: paymentMethod,
-    status: initialStatus,
-    assigned_at: ambassadorId ? new Date().toISOString() : null,
-    notes: JSON.stringify({
-      all_passes: passes.map(p => ({
-        passId: p.passId,
-        passName: p.passName,
-        quantity: p.quantity,
-        price: p.price
-      })),
-      total_order_price: totalPrice,
-      pass_count: passes.length
-    })
-  };
-  
-  // Create order
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert(orderData)
-    .select()
-    .single();
-  
-  if (orderError) {
-    throw new Error(`Failed to create order: ${orderError.message}`);
-  }
-  
-  // Create order_passes entries
-  const orderPassesData = passes.map(pass => ({
-    order_id: order.id,
-    pass_type: pass.passName,
-    quantity: pass.quantity,
-    price: pass.price
-  }));
-  
-  const { error: passesError } = await supabase
-    .from('order_passes')
-    .insert(orderPassesData);
-  
-  if (passesError) {
-    // Cleanup: delete order if order_passes creation fails
-    await supabase.from('orders').delete().eq('id', order.id);
-    throw new Error(`Failed to create order passes: ${passesError.message}`);
+  // SECURITY: Check if user is logged in as ambassador
+  // Block ambassadors from creating orders
+  const ambassadorSession = localStorage.getItem('ambassadorSession');
+  if (ambassadorSession) {
+    throw new Error(
+      'SECURITY: Ambassadors cannot create orders. You can only receive orders from clients.'
+    );
   }
 
-  // Send SMS notifications for COD orders with ambassador assigned
-  // Automatically enabled for AMBASSADOR_CASH orders
-  if (paymentMethod === PaymentMethod.AMBASSADOR_CASH && ambassadorId) {
-    try {
-      // Send SMS to client (non-blocking - don't fail order creation if SMS fails)
-      // In development, use proxy from vite.config.ts (just '/api')
-      // In production, use full URL from VITE_API_URL
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8081');
-      
-      fetch(`${apiBase}/api/send-order-confirmation-sms`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id })
-      })
-      .then(response => {
-        if (!response.ok) {
-          return response.json().then(err => {
-            console.error('❌ Failed to send order confirmation SMS:', response.status, err);
-            throw new Error(err.error || 'SMS request failed');
-          });
-        }
-        return response.json();
-      })
-      .then(data => {
-      })
-      .catch(err => {
-        console.error('❌ Failed to send order confirmation SMS:', err);
-        // Silent failure - don't block order creation
-      });
+  // SECURITY: Prepare request for SERVER-SIDE API
+  // Frontend sends ONLY: passIds and quantities, idempotencyKey
+  // Server fetches prices, names, calculates totals, and sends SMS (all internal)
+  const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+  const apiUrl = buildFullApiUrl(API_ROUTES.CREATE_ORDER, apiBase) || `${apiBase}/api/orders/create`;
+  
+  if (!apiUrl) {
+    throw new Error('Invalid API URL configuration');
+  }
 
-      // Send SMS to ambassador (non-blocking - don't fail order creation if SMS fails)
-      fetch(`${apiBase}/api/send-ambassador-order-sms`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id })
-      })
-      .then(response => {
-        if (!response.ok) {
-          return response.json().then(err => {
-            console.error('❌ Failed to send ambassador order SMS:', response.status, err);
-            throw new Error(err.error || 'SMS request failed');
-          });
-        }
-        return response.json();
-      })
-      .then(data => {
-      })
-      .catch(err => {
-        console.error('❌ Failed to send ambassador order SMS:', err);
-        // Silent failure - don't block order creation
+  // SECURITY: Generate idempotency key to prevent duplicate orders
+  // If user clicks submit twice, server returns existing order
+  let idempotencyKey: string;
+  try {
+    // Use crypto.randomUUID() if available (browser), otherwise generate UUID
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      idempotencyKey = crypto.randomUUID();
+    } else {
+      // Fallback UUID generation for older browsers
+      idempotencyKey = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
       });
-    } catch (error) {
-      console.error('❌ Error initiating SMS notifications:', error);
-      // Silent failure - don't block order creation
     }
-  } else {
+  } catch (e) {
+    // Fallback if crypto not available
+    idempotencyKey = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
   }
+
+  // ============================================
+  // PHASE 1 SECURITY FIX: FRONTEND PRICE PROTECTION
+  // ============================================
+  // CRITICAL: Frontend MUST NOT send any price/total values
+  // - calculateTotal() in PassPurchase.tsx is for DISPLAY ONLY
+  // - Server recalculates ALL prices from database
+  // - Any price sent from frontend will be REJECTED by server
+  // ============================================
+  // SECURITY: Send minimal data - server will validate everything
+  const requestData = {
+    eventId: eventId || null,
+    passIds: passes.map(p => ({
+      passId: p.passId, // Only send ID
+      quantity: p.quantity // Only send quantity
+      // ⚠️ DO NOT send price or passName - server fetches from database
+      // ⚠️ DO NOT send totalPrice - server calculates from database prices
+      // ⚠️ Frontend calculateTotal() is for UI display only, NOT sent to server
+    })),
+    customer: {
+      name: customerInfo.full_name.trim(),  // Renamed to match server
+      phone: customerInfo.phone.trim(),
+      email: customerInfo.email?.trim() || '',
+      city: customerInfo.city.trim(),
+      ville: customerInfo.ville?.trim() || ''
+    },
+    paymentMethod: paymentMethod,
+    ambassadorId: (paymentMethod === PaymentMethod.AMBASSADOR_CASH && ambassadorId) ? ambassadorId : null,
+    idempotencyKey: idempotencyKey  // Send idempotency key to prevent duplicates
+  };
+
+  // SECURITY: Call server-side API endpoint
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestData)
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || `Failed to create order: ${response.statusText}`);
+  }
+
+  if (!result.success || !result.order) {
+    throw new Error(result.error || 'Failed to create order: Invalid response from server');
+  }
+
+  const order = result.order as Order;
+
+  // SECURITY: SMS is now sent INTERNALLY by server during order creation
+  // Frontend should NOT call SMS endpoints directly
+  // SMS is only sent as part of order creation (internal to server)
   
-  return order as Order;
+  return order;
 }
 
 /**
@@ -195,6 +161,12 @@ export async function getOrderById(orderId: string): Promise<Order | null> {
 
 /**
  * Update order status
+ * 
+ * ⚠️ SECURITY WARNING: This function directly updates the database
+ * It should ONLY be used by server-side code, NEVER by frontend
+ * Frontend should use API endpoints for all status updates
+ * 
+ * @deprecated Use API endpoints instead. This is kept for backward compatibility only.
  */
 export async function updateOrderStatus(data: UpdateOrderStatusData): Promise<Order> {
   const { orderId, status, metadata } = data;
@@ -239,6 +211,14 @@ export async function updateOrderStatus(data: UpdateOrderStatusData): Promise<Or
 
 /**
  * Cancel an order
+ * 
+ * ⚠️ SECURITY WARNING: This function directly updates the database
+ * It should ONLY be used by server-side code, NEVER by frontend
+ * Frontend should use API endpoints:
+ * - /api/ambassador/cancel-order (for ambassadors)
+ * - /api/admin/cancel-order (for admins)
+ * 
+ * @deprecated Use API endpoints instead. This is kept for backward compatibility only.
  */
 export async function cancelOrder(data: CancelOrderData): Promise<Order> {
   const { orderId, cancelledBy, reason, ambassadorId } = data;

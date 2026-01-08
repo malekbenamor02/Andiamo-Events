@@ -50,6 +50,19 @@ export interface EnrichedOrder {
 
 /**
  * Create a COD (Cash on Delivery) order
+ * 
+ * ⚠️ SECURITY WARNING: This function is DEPRECATED and BLOCKED
+ * 
+ * Ambassadors are NOT allowed to create orders manually.
+ * This function will throw an error if called.
+ * 
+ * Order creation should only happen through:
+ * 1. Public order flow (PassPurchase page)
+ * 2. Admin panel (for admin-created orders)
+ * 3. Secure server-side API endpoints (if implemented)
+ * 
+ * @deprecated This function is disabled for security reasons
+ * @throws Error Always throws an error - function is disabled
  */
 export async function createCODOrder(
   passes: SelectedPass[],
@@ -57,61 +70,14 @@ export async function createCODOrder(
   customerInfo: CustomerInfo,
   eventId: string | null
 ): Promise<any> {
-  if (customerInfo.city !== 'Sousse' || !customerInfo.ville.trim()) {
-    throw new Error('COD is only available in Sousse');
-  }
-
-  // Calculate total quantity across all pass types
-  const totalQuantity = passes.reduce((sum, pass) => sum + pass.quantity, 0);
+  // SECURITY FIX: Block this function - ambassadors cannot create orders
+  throw new Error(
+    'SECURITY: Ambassadors are not allowed to create orders manually. ' +
+    'Orders must be created through the public order flow or admin panel.'
+  );
   
-  // Determine primary pass name (first selected pass name, or 'mixed' if multiple types)
-  const primaryPassName = passes.length === 1 ? passes[0].passName : 'mixed';
-
-  // DEPRECATED: This function should not be used - COD orders are now created by ambassadors only
-  // Create ONE order with all pass types stored in notes
-  const orderData: OrderData = {
-    source: 'ambassador_manual', // COD orders must use ambassador_manual source
-    user_name: customerInfo.fullName.trim(),
-    user_phone: customerInfo.phone.trim(),
-    user_email: customerInfo.email.trim() || null,
-    city: customerInfo.city.trim(),
-    ville: customerInfo.ville.trim() || null,
-    event_id: eventId || null,
-    pass_type: primaryPassName,
-    quantity: totalQuantity,
-    total_price: totalPrice,
-    payment_method: 'cod',
-    status: 'PENDING'
-  };
-
-  // Add notes if column exists (optional field)
-  try {
-    orderData.notes = JSON.stringify({
-      all_passes: passes.map(p => ({
-        passId: p.passId,
-        passName: p.passName,
-        quantity: p.quantity,
-        price: p.price
-      })),
-      total_order_price: totalPrice,
-      pass_count: passes.length
-    });
-  } catch (e) {
-    console.warn('Could not add notes to order:', e);
-  }
-
-  const { data: order, error } = await supabase
-    .from('orders')
-    .insert(orderData)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error creating order:', error);
-    throw new Error(error.message || 'Failed to create order');
-  }
-
-  return order;
+  // Original code removed for security reasons
+  // This function was vulnerable and allowed unauthorized order creation
 }
 
 /**
@@ -215,6 +181,11 @@ export async function acceptOrderAsAdmin(orderId: string): Promise<void> {
 
 /**
  * Complete an order as admin
+ * 
+ * ⚠️ SECURITY WARNING: This function directly updates the database
+ * Frontend should use API endpoint: /api/admin/complete-order (if exists)
+ * 
+ * @deprecated Use API endpoint instead
  */
 export async function completeOrderAsAdmin(orderId: string): Promise<void> {
   const { error } = await (supabase as any)
@@ -242,6 +213,11 @@ export async function completeOrderAsAdmin(orderId: string): Promise<void> {
 
 /**
  * Cancel an order as admin
+ * 
+ * ⚠️ SECURITY WARNING: This function directly updates the database
+ * Frontend should use API endpoint: /api/admin/reject-order or /api/admin/cancel-order
+ * 
+ * @deprecated Use API endpoint instead
  */
 export async function cancelOrderAsAdmin(
   orderId: string,

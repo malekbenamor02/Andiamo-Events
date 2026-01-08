@@ -362,22 +362,22 @@ const logEmailDelivery = async (
   emailStatus: 'sent' | 'failed' | 'pending_retry',
   errorMessage?: string
 ): Promise<void> => {
-  try {
-    await supabase.from('email_delivery_logs').insert({
-      order_id: orderId,
-      email_type: 'ticket_delivery',
-      recipient_email: orderData.user_email,
-      recipient_name: orderData.user_name,
-      subject: '✅ Order Confirmation - Your Digital Tickets Are Ready!',
-      status: emailStatus,
-      error_message: errorMessage || null,
-      sent_at: emailStatus === 'sent' ? new Date().toISOString() : null,
-      retry_count: emailStatus === 'pending_retry' ? 1 : 0,
-    });
-  } catch (error) {
-    console.error('Error logging email delivery:', error);
-    // Don't throw - logging failure shouldn't break the process
-  }
+  // ============================================
+  // PHASE 2 SECURITY FIX: Email logging removed from frontend
+  // ============================================
+  // SECURITY: Frontend should NOT create audit logs
+  // Email delivery logs should be created server-side only
+  // This function is called from frontend, so logging is disabled
+  // Server-side ticket generation should log email delivery
+  // ============================================
+  // Logging removed - server should handle email delivery logging
+  // Frontend cannot be trusted to create accurate audit logs
+  console.log('Email delivery status:', {
+    orderId,
+    emailStatus,
+    recipient: orderData.user_email,
+    note: 'Email delivery logging should be done server-side'
+  });
 };
 
 /**
