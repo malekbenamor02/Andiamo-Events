@@ -26,6 +26,9 @@
     },
     "api/phone-subscribe.js": {
       "maxDuration": 30
+    },
+    "api/ambassadors/active.js": {
+      "maxDuration": 30
     }
   }
 }
