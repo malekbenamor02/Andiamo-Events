@@ -7,6 +7,7 @@ import { ExpandableText } from '@/components/ui/expandable-text';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import { isDevelopmentOrPreview } from '@/lib/environment';
 
 // New unified order system components
 import { CustomerInfoForm } from '@/components/orders/CustomerInfoForm';
@@ -160,13 +161,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
   const fetchEvent = async () => {
     try {
-      // Check if we're on localhost (for testing) or production
-      const isLocalhost = typeof window !== 'undefined' && (
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.0.')
-      );
+      // Check if we're in development/preview (localhost or Vercel preview)
+      const isDevOrPreview = isDevelopmentOrPreview();
 
       const { data: eventData, error: eventError } = await supabase
         .from('events')
@@ -176,8 +172,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
       if (eventError) throw eventError;
 
-      // Block test events on production (not localhost)
-      if (!isLocalhost && eventData?.is_test) {
+      // Block test events on production only
+      // Allow test events in development/preview (localhost or Vercel preview)
+      if (!isDevOrPreview && eventData?.is_test) {
         // Redirect to home page or show error
         toast({
           title: t[language].error,
