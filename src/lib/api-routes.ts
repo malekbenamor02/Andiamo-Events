@@ -127,6 +127,31 @@ export const buildApiRoute = (
 };
 
 /**
+ * Get the API base URL for the current environment
+ * - Uses VITE_API_URL if set
+ * - In development: uses localhost:8082 (Vite proxy)
+ * - In production: uses current origin (same domain)
+ */
+export const getApiBaseUrl = (): string => {
+  if (import.meta.env.VITE_API_URL) {
+    return sanitizeUrl(import.meta.env.VITE_API_URL);
+  }
+  
+  // In development, use empty string (Vite proxy) or localhost
+  if (import.meta.env.DEV) {
+    return '';
+  }
+  
+  // In production/preview, use current origin
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  
+  // Fallback (shouldn't happen in browser)
+  return '';
+};
+
+/**
  * Safely builds a full API URL with base URL
  * Validates all parts before constructing the URL
  */
@@ -136,7 +161,7 @@ export const buildFullApiUrl = (
   ...args: any[]
 ): string | null => {
   const routeString = buildApiRoute(route, ...args);
-  const sanitizedBase = baseUrl ? sanitizeUrl(baseUrl) : null;
+  const sanitizedBase = baseUrl ? sanitizeUrl(baseUrl) : getApiBaseUrl();
   
   if (sanitizedBase) {
     return buildApiUrl(routeString, sanitizedBase);

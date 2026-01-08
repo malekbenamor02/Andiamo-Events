@@ -10,7 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Order, CreateOrderData, UpdateOrderStatusData, CancelOrderData } from '@/types/orders';
 import { OrderPass } from '@/types/orders';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
-import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
+import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from '@/lib/api-routes';
 import { sanitizeUrl } from '@/lib/url-validator';
 
 /**
@@ -35,7 +35,7 @@ export async function createOrder(data: CreateOrderData): Promise<Order> {
   // SECURITY: Prepare request for SERVER-SIDE API
   // Frontend sends ONLY: passIds and quantities, idempotencyKey
   // Server fetches prices, names, calculates totals, and sends SMS (all internal)
-  const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+  const apiBase = getApiBaseUrl();
   const apiUrl = buildFullApiUrl(API_ROUTES.CREATE_ORDER, apiBase) || `${apiBase}/api/orders/create`;
   
   if (!apiUrl) {
