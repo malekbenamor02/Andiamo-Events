@@ -59,23 +59,41 @@ self.addEventListener('fetch', (event) => {
   }
   
   // For static assets (images, etc.), try network first, then cache
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Cache successful responses for static assets
-        if (response.status === 200) {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return response;
-      })
-      .catch(() => {
-        // If network fails, try cache
-        return caches.match(event.request);
-      })
-  );
+  // CRITICAL: Only cache GET requests for static assets (images, fonts, etc.)
+  // NEVER cache POST/PUT/DELETE requests or API calls
+  const requestMethod = event.request.method;
+  const isGetRequest = requestMethod === 'GET';
+  const isApiRequest = url.pathname.startsWith('/api/');
+  
+  // Only cache GET requests for static assets (not API, not POST/PUT/DELETE)
+  if (isGetRequest && !isApiRequest) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // Only cache successful GET responses for static assets
+          if (response.status === 200 && response.ok) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              // Double-check: Only cache GET requests (Cache API doesn't support POST/PUT/DELETE)
+              if (event.request.method === 'GET') {
+                cache.put(event.request, responseToCache).catch(err => {
+                  // Silently fail if cache.put fails (e.g., quota exceeded)
+                  console.warn('Service worker cache.put failed (non-critical):', err);
+                });
+              }
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          // If network fails, try cache (only for GET requests)
+          return caches.match(event.request);
+        })
+    );
+  } else {
+    // For POST/PUT/DELETE or API requests, always fetch from network (no caching)
+    event.respondWith(fetch(event.request));
+  }
 });
 
 // Activate event - clear all old caches

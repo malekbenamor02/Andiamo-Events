@@ -41,7 +41,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { apiFetch, handleApiResponse } from "@/lib/api-client";
-import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
+import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
 import { sanitizeUrl } from "@/lib/url-validator";
 import { useQueryClient } from "@tanstack/react-query";
 import { useInvalidateEvents } from "@/hooks/useEvents";
@@ -1745,8 +1745,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           await new Promise(resolve => setTimeout(resolve, 500));
           
           // Generate tickets (this will also send the email with QR codes)
-          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
-          const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
+          const apiBase = getApiBaseUrl();
+          const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase) || `${apiBase}/api/generate-tickets-for-order`;
           
           if (!ticketApiUrl) {
             throw new Error('Invalid API URL configuration');
@@ -1760,15 +1760,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             body: JSON.stringify({ orderId }),
           });
 
-          const responseData = await ticketResponse.json();
-
+          // CRITICAL: Check response.ok BEFORE parsing JSON
           if (!ticketResponse.ok) {
-            console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
-            console.error('❌ Error details:', responseData);
+            let errorMessage = `Failed to generate tickets: ${ticketResponse.statusText}`;
+            try {
+              const responseData = await ticketResponse.json();
+              console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
+              console.error('❌ Error details:', responseData);
+              errorMessage = responseData.error || responseData.message || errorMessage;
+            } catch (jsonError) {
+              console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
+              console.error('❌ Response is not JSON');
+            }
             
             // Fallback to old email system if ticket generation fails
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8082';
-            const emailResponse = await fetch(`${apiUrl}/api/send-order-completion-email`, {
+            const emailApiBase = getApiBaseUrl();
+            const emailResponse = await fetch(`${emailApiBase}/api/send-order-completion-email`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -1777,7 +1784,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             });
 
             if (!emailResponse.ok) {
-              const emailErrorData = await emailResponse.json();
+              let emailErrorData: any = { error: 'Unknown error' };
+              try {
+                emailErrorData = await emailResponse.json();
+              } catch (jsonError) {
+                // Response is not JSON, use status text
+              }
               console.error('❌ Failed to send completion email:', emailErrorData);
               throw new Error('Failed to send email');
             } else {
@@ -1900,7 +1912,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // SECURITY: Call secure API endpoint instead of direct database access
       // Server does ALL: status update, ticket generation, email, SMS, logging
       console.log('🔵 Calling secure API endpoint /api/admin/approve-order...');
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = `${apiBase}/api/admin/approve-order`;
       
       const response = await fetch(apiUrl, {
@@ -1912,10 +1924,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         body: JSON.stringify({ orderId })
       });
 
-      const result = await response.json();
-
+      // CRITICAL: Check response.ok BEFORE parsing JSON
       if (!response.ok) {
-        throw new Error(result.error || `Failed to approve order: ${response.statusText}`);
+        let errorMessage = `Failed to approve order: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          // Response is not JSON, use status text
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Parse JSON only after confirming response is OK
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        throw new Error('Invalid response from server: Response is not valid JSON');
       }
 
       const ticketsGenerated = result.ticketsGenerated || false;
@@ -1960,7 +1986,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const handleApproveOrderAsAdmin = async (orderId: string) => {
     try {
       // SECURITY: Call secure API endpoint - server is the ONLY authority
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = `${apiBase}/api/admin/approve-order`;
       
       const response = await fetch(apiUrl, {
@@ -1972,10 +1998,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         body: JSON.stringify({ orderId })
       });
 
-      const result = await response.json();
-
+      // CRITICAL: Check response.ok BEFORE parsing JSON
       if (!response.ok) {
-        throw new Error(result.error || `Failed to approve order: ${response.statusText}`);
+        let errorMessage = `Failed to approve order: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          // Response is not JSON, use status text
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Parse JSON only after confirming response is OK
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        throw new Error('Invalid response from server: Response is not valid JSON');
       }
 
       const ticketsGenerated = result.ticketsGenerated || false;
@@ -2050,7 +2090,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       // SECURITY: Call secure API endpoint instead of direct database access
       // Server validates status and does all updates/logging
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = `${apiBase}/api/admin/reject-order`;
       
       const response = await fetch(apiUrl, {
@@ -2065,10 +2105,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         })
       });
 
-      const result = await response.json();
-
+      // CRITICAL: Check response.ok BEFORE parsing JSON
       if (!response.ok) {
-        throw new Error(result.error || `Failed to reject order: ${response.statusText}`);
+        let errorMessage = `Failed to reject order: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          // Response is not JSON, use status text
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Parse JSON only after confirming response is OK
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        throw new Error('Invalid response from server: Response is not valid JSON');
       }
 
       toast({
@@ -2131,7 +2185,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       // SECURITY: Call secure API endpoint instead of direct database access
       // Server validates status and does all updates/logging
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = `${apiBase}/api/admin/reject-order`;
       
       const response = await fetch(apiUrl, {
@@ -2146,10 +2200,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         })
       });
 
-      const result = await response.json();
-
+      // CRITICAL: Check response.ok BEFORE parsing JSON
       if (!response.ok) {
-        throw new Error(result.error || `Failed to reject order: ${response.statusText}`);
+        let errorMessage = `Failed to reject order: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          // Response is not JSON, use status text
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Parse JSON only after confirming response is OK
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        throw new Error('Invalid response from server: Response is not valid JSON');
       }
 
       toast({
@@ -2249,7 +2317,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Server validates state machine and creates audit logs
       // Frontend no longer directly updates database
       // ============================================
-      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_ORDER_PAYMENT_STATUS(orderId), apiBase);
       
       if (!apiUrl) {
@@ -2265,10 +2333,25 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         body: JSON.stringify({ payment_status: newStatus })
       });
 
-      const result = await response.json();
-
+      // CRITICAL: Check response.ok BEFORE parsing JSON
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to update order payment status');
+        let errorMessage = 'Failed to update order payment status';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          // Response is not JSON, use status text
+          errorMessage = `${errorMessage}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Parse JSON only after confirming response is OK
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        throw new Error('Invalid response from server: Response is not valid JSON');
       }
 
       // Server creates order_log automatically - no need for frontend to do it
@@ -7086,7 +7169,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     };
 
     try {
-      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       let response;
       let result;
 
@@ -7208,7 +7291,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setSponsors(prev => prev.filter(s => s.id !== sponsorIdToDelete));
       
       // Delete via API (server handles cascade to event_sponsors)
-      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_SPONSOR(sponsorIdToDelete), apiBase);
       
       if (!apiUrl) {
@@ -7611,7 +7694,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     // ============================================
     const fetchSponsors = async () => {
       try {
-        const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+        const apiBase = getApiBaseUrl();
         const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_SPONSORS, apiBase);
         if (!apiUrl) {
           console.error('Invalid API URL configuration');
@@ -7642,7 +7725,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     // ============================================
     const fetchTeamMembers = async () => {
       try {
-        const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+        const apiBase = getApiBaseUrl();
         const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_TEAM_MEMBERS, apiBase);
         if (!apiUrl) {
           console.error('Invalid API URL configuration');
@@ -7747,7 +7830,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     };
 
     try {
-      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       let response;
       let result;
 
@@ -7863,7 +7946,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setTeamMembers(prev => prev.filter(m => m.id !== memberIdToDelete));
       
       // Delete via API
-      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_TEAM_MEMBER(memberIdToDelete), apiBase);
       
       if (!apiUrl) {

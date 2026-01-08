@@ -101,10 +101,35 @@ export async function createOrder(data: CreateOrderData): Promise<Order> {
     body: JSON.stringify(requestData)
   });
 
-  const result = await response.json();
-
+  // CRITICAL: Check response.ok BEFORE parsing JSON
+  // Error responses may not be JSON (could be HTML/text)
   if (!response.ok) {
-    throw new Error(result.error || `Failed to create order: ${response.statusText}`);
+    let errorMessage = `Failed to create order: ${response.statusText}`;
+    try {
+      // Try to parse error response as JSON
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorData.message || errorMessage;
+    } catch (jsonError) {
+      // If response is not JSON, get text response
+      try {
+        const textResponse = await response.text();
+        if (textResponse) {
+          errorMessage = `Server error: ${textResponse.substring(0, 100)}`;
+        }
+      } catch (textError) {
+        // If we can't read response, use status text
+        errorMessage = `Failed to create order: ${response.status} ${response.statusText}`;
+      }
+    }
+    throw new Error(errorMessage);
+  }
+
+  // Parse JSON only after confirming response is OK
+  let result;
+  try {
+    result = await response.json();
+  } catch (jsonError) {
+    throw new Error(`Invalid response from server: Response is not valid JSON`);
   }
 
   if (!result.success || !result.order) {

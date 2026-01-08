@@ -21,7 +21,7 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { format } from "date-fns";
 import { fetchSalesSettings, subscribeToSalesSettings } from "@/lib/salesSettings";
-import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
+import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
 import { sanitizeUrl } from "@/lib/url-validator";
 import { logger } from "@/lib/logger";
 
@@ -546,7 +546,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     try {
       // SECURITY: Call secure API endpoint instead of direct database access
       // Server validates ownership, status, and updates order
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = `${apiBase}/api/ambassador/confirm-cash`;
       
       const response = await fetch(apiUrl, {
@@ -560,10 +560,24 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         })
       });
 
-      const result = await response.json();
-
+      // CRITICAL: Check response.ok BEFORE parsing JSON
       if (!response.ok) {
-        throw new Error(result.error || `Failed to confirm cash: ${response.statusText}`);
+        let errorMessage = `Failed to confirm cash: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          // Response is not JSON, use status text
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Parse JSON only after confirming response is OK
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        throw new Error('Invalid response from server: Response is not valid JSON');
       }
 
       toast({
@@ -656,7 +670,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     try {
       // SECURITY: Call secure API endpoint instead of direct database access
       // Server validates ownership, status, and updates order
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = `${apiBase}/api/ambassador/cancel-order`;
       
       const response = await fetch(apiUrl, {
@@ -671,10 +685,24 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         })
       });
 
-      const result = await response.json();
-
+      // CRITICAL: Check response.ok BEFORE parsing JSON
       if (!response.ok) {
-        throw new Error(result.error || `Failed to cancel order: ${response.statusText}`);
+        let errorMessage = `Failed to cancel order: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch (jsonError) {
+          // Response is not JSON, use status text
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Parse JSON only after confirming response is OK
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        throw new Error('Invalid response from server: Response is not valid JSON');
       }
 
       toast({
@@ -723,8 +751,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     try {
       // If password is being updated, use server-side API for secure hashing
       if (profileForm.password && profileForm.password.trim() !== '') {
-        const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
-        const passwordApiUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_UPDATE_PASSWORD, apiBase);
+        const apiBase = getApiBaseUrl();
+        const passwordApiUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_UPDATE_PASSWORD, apiBase) || `${apiBase}/api/ambassador-update-password`;
         
         if (!passwordApiUrl) {
           throw new Error('Invalid API URL configuration');
@@ -741,10 +769,25 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
           })
         });
 
-        const result = await response.json();
-
+        // CRITICAL: Check response.ok BEFORE parsing JSON
         if (!response.ok) {
-          throw new Error(result.error || 'Failed to update password');
+          let errorMessage = 'Failed to update password';
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } catch (jsonError) {
+            // Response is not JSON, use status text
+            errorMessage = `${errorMessage}: ${response.statusText}`;
+          }
+          throw new Error(errorMessage);
+        }
+
+        // Parse JSON only after confirming response is OK
+        let result;
+        try {
+          result = await response.json();
+        } catch (jsonError) {
+          throw new Error('Invalid response from server: Response is not valid JSON');
         }
 
         toast({
