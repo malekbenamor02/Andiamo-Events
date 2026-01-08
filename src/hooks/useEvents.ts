@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { isDevelopmentOrPreview } from '@/lib/environment';
 
 interface EventPass {
   id?: string;
@@ -41,13 +42,8 @@ export const useEvents = () => {
     queryKey: ['events'],
     queryFn: async () => {
       
-      // Check if we're on localhost (for testing) or production
-      const isLocalhost = typeof window !== 'undefined' && (
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.0.')
-      );
+      // Check if we're in development/preview (localhost or Vercel preview)
+      const isDevOrPreview = isDevelopmentOrPreview();
       
       // Fetch events
       const { data, error } = await supabase
@@ -60,9 +56,9 @@ export const useEvents = () => {
         throw error;
       }
 
-      // Filter out test events if on production (not localhost)
-      // On localhost, show all events including test events for full testing
-      const filteredData = isLocalhost 
+      // Filter out test events if on production
+      // On development/preview (localhost or Vercel preview), show all events including test events
+      const filteredData = isDevOrPreview 
         ? data 
         : (data || []).filter((event: any) => !event.is_test);
 
@@ -116,13 +112,8 @@ export const useFeaturedEvents = () => {
   return useQuery<Event[]>({
     queryKey: ['events', 'featured'],
     queryFn: async () => {
-      // Check if we're on localhost (for testing) or production
-      const isLocalhost = typeof window !== 'undefined' && (
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.0.')
-      );
+      // Check if we're in development/preview (localhost or Vercel preview)
+      const isDevOrPreview = isDevelopmentOrPreview();
       
       const { data, error } = await supabase
         .from('events')
@@ -135,8 +126,9 @@ export const useFeaturedEvents = () => {
         throw error;
       }
 
-      // Filter out test events if on production (not localhost)
-      const filteredData = isLocalhost 
+      // Filter out test events if on production
+      // On development/preview, show all upcoming events including test events
+      const filteredData = isDevOrPreview 
         ? data 
         : (data || []).filter((event: any) => !event.is_test);
 
@@ -163,13 +155,8 @@ export const useEventBySlug = (eventSlug: string | undefined) => {
     queryFn: async () => {
       if (!eventSlug) return null;
 
-      // Check if we're on localhost (for testing) or production
-      const isLocalhost = typeof window !== 'undefined' && (
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.0.')
-      );
+      // Check if we're in development/preview (localhost or Vercel preview)
+      const isDevOrPreview = isDevelopmentOrPreview();
 
       // Fetch all events and find by slug
       const { data, error } = await supabase
@@ -181,8 +168,9 @@ export const useEventBySlug = (eventSlug: string | undefined) => {
         throw error;
       }
 
-      // Filter out test events if on production (not localhost)
-      const filteredData = isLocalhost 
+      // Filter out test events if on production
+      // On development/preview, show all events including test events
+      const filteredData = isDevOrPreview 
         ? data 
         : (data || []).filter((event: any) => !event.is_test);
 

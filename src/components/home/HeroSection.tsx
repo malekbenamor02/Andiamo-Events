@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import TypewriterText from "./TypewriterText";
+import { isDevelopmentOrPreview } from "@/lib/environment";
 
 interface HeroSectionProps {
   language: 'en' | 'fr';
@@ -169,13 +170,8 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
       try {
         const now = new Date().toISOString();
         
-        // Check if we're on localhost (for testing) or production
-        const isLocalhost = typeof window !== 'undefined' && (
-          window.location.hostname === 'localhost' ||
-          window.location.hostname === '127.0.0.1' ||
-          window.location.hostname.startsWith('192.168.') ||
-          window.location.hostname.startsWith('10.0.')
-        );
+        // Check if we're in development/preview (localhost or Vercel preview)
+        const isDevOrPreview = isDevelopmentOrPreview();
         
         // Get all events and filter in JavaScript for more flexibility
         const { data, error } = await supabase
@@ -188,8 +184,9 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
           return;
         }
 
-        // Filter out test events if on production (not localhost)
-        const filteredData = isLocalhost 
+        // Filter out test events if on production
+        // On development/preview, show all events including test events
+        const filteredData = isDevOrPreview 
           ? data 
           : (data || []).filter((event: any) => !event.is_test);
 
