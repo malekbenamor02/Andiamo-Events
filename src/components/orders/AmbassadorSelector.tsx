@@ -70,10 +70,19 @@ export function AmbassadorSelector({
   }
 
   if (error) {
+    // Provide more helpful error messages based on error type
+    const errorMessage = error instanceof Error 
+      ? error.message.includes('Unable to connect') || error.message.includes('connection failed')
+        ? language === 'en' 
+          ? 'Unable to connect to server. Please ensure the backend server is running.'
+          : 'Impossible de se connecter au serveur. Veuillez vous assurer que le serveur backend est en cours d\'exécution.'
+        : error.message
+      : t.error;
+    
     return (
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
-        <AlertDescription>{t.error}</AlertDescription>
+        <AlertDescription>{errorMessage}</AlertDescription>
       </Alert>
     );
   }

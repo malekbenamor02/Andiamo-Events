@@ -168,7 +168,6 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
     const fetchNextEvent = async () => {
       try {
         const now = new Date().toISOString();
-        console.log('🔍 Fetching upcoming events, current time:', now);
         
         // Check if we're on localhost (for testing) or production
         const isLocalhost = typeof window !== 'undefined' && (
@@ -194,7 +193,6 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
           ? data 
           : (data || []).filter((event: any) => !event.is_test);
 
-        console.log('📋 All events fetched:', filteredData?.length || 0, filteredData);
 
         if (filteredData && filteredData.length > 0) {
           // Filter for future events (date >= now) and not cancelled
@@ -205,20 +203,16 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
             return isFuture && notCancelled;
           });
 
-          console.log('🔮 Future events found:', futureEvents.length, futureEvents);
 
           if (futureEvents.length > 0) {
             // Prefer event_type = 'upcoming', otherwise take the first one
             const upcomingEvent = futureEvents.find((e: any) => e.event_type === 'upcoming') || futureEvents[0];
             
-            console.log('✅ Setting next event:', upcomingEvent);
             setNextEvent(upcomingEvent as any);
           } else {
-            console.log('⚠️ No valid future events found');
             setNextEvent(null);
           }
         } else {
-          console.log('⚠️ No events in database');
           setNextEvent(null);
         }
       } catch (error) {

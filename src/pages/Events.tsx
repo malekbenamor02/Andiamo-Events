@@ -142,8 +142,6 @@ const Events = ({ language }: EventsProps) => {
   }, [events]);
   
   useEffect(() => {
-    console.log('🖼️ Gallery events in data:', galleryEventsInData.length);
-    console.log('🖼️ Gallery events details:', galleryEventsInData);
   }, [galleryEventsInData]);
 
   const upcomingEvents = events.filter(event => {
@@ -446,10 +444,7 @@ const Events = ({ language }: EventsProps) => {
   // Debug gallery events - Log when events change (MUST be before any early returns)
   useEffect(() => {
     if (!loading) {
-      console.log('=== GALLERY DEBUG ===');
-      console.log('Total events in state:', events.length);
       const galleryCount = events.filter(e => e.event_type === 'gallery').length;
-      console.log('Gallery events count:', galleryCount);
       const galleryEventsList = events.filter(e => e.event_type === 'gallery').map(e => ({ 
         id: e.id,
         name: e.name, 
@@ -458,9 +453,7 @@ const Events = ({ language }: EventsProps) => {
         hasImages: !!(e.gallery_images && e.gallery_images.length > 0),
         hasVideos: !!(e.gallery_videos && e.gallery_videos.length > 0)
       }));
-      console.log('Gallery events:', galleryEventsList);
       const upcomingCount = events.filter(e => (e.event_type === 'upcoming' || !e.event_type) && e.event_status !== 'cancelled').length;
-      console.log('Upcoming events count:', upcomingCount);
     }
   }, [events, loading]);
 

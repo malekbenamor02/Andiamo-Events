@@ -130,7 +130,6 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
   // Log when event is found
   useEffect(() => {
     if (event) {
-      console.log('✅ Found event:', event.name);
     } else if (!loading && eventSlug) {
       console.error('❌ Event not found for slug:', eventSlug);
     }

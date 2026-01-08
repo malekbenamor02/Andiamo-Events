@@ -72,7 +72,6 @@ export const API_ROUTES = {
   // Testing & Diagnostics
   TEST: '/api/test',
   TEST_SUPABASE: '/api/test-supabase',
-  TEST_EMAIL: '/api/test-email',
   SMS_TEST: '/api/sms-test',
 } as const;
 

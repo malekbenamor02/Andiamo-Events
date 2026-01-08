@@ -16,7 +16,7 @@ const DISMISSAL_DURATION = 4 * 24 * 60 * 60 * 1000; // 4 days in milliseconds
  * - Trigger conditions:
  *   1. Visitor stays on site for 10-20 seconds (random)
  *   2. Visitor scrolls 50% or more of the page
- * - Don't show on: admin login/dashboard, ambassador application/login/dashboard, contact page
+ * - Don't show on: admin login/dashboard, ambassador application/login/dashboard, contact page, purchase pages
  * - Show on all other pages
  */
 export const usePhoneCapture = (pathname: string) => {
@@ -47,7 +47,10 @@ export const usePhoneCapture = (pathname: string) => {
       '/ambassador',
       '/ambassador/auth',
       '/ambassador/dashboard',
-      '/contact'
+      '/contact',
+      '/pass-purchase',
+      '/cod-order',
+      '/payment-processing'
     ];
     
     const isExcluded = excludedPaths.some(path => {

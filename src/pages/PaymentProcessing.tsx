@@ -66,7 +66,6 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
     // If we're returning from Flouci, handle verification in the second useEffect
     // Don't initialize payment again
     if (statusParam === 'success' || statusParam === 'failed') {
-      console.log('🔄 Returning from Flouci, skipping payment initialization');
       // Verification will be handled by the second useEffect
       return;
     }
@@ -120,29 +119,109 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
       }
 
       // Build URLs
-      const baseUrl = window.location.origin;
+      // CRITICAL: Flouci requires HTTPS URLs for success_link and fail_link
+      // Priority: 1. VITE_PUBLIC_URL (manual override), 2. Vercel URL (auto-detected), 3. window.location.origin (if HTTPS)
+      let publicUrl = import.meta.env.VITE_PUBLIC_URL;
+      
+      if (!publicUrl) {
+        const origin = window.location.origin;
+        
+        // Check if we're on Vercel (preview or production) - Vercel always provides HTTPS
+        // Vercel URLs look like: https://your-app-abc123.vercel.app
+        if (origin.includes('.vercel.app') || origin.includes('vercel.app')) {
+          // Vercel automatically provides HTTPS URLs
+          publicUrl = origin;
+          console.log('✅ Detected Vercel deployment, using HTTPS URL:', publicUrl);
+        } else if (origin.startsWith('https://')) {
+          // Already HTTPS (production or other HTTPS deployment)
+          publicUrl = origin;
+          console.log('✅ Using HTTPS origin:', publicUrl);
+        } else if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+          // Localhost HTTP - Flouci won't accept this
+          const errorMsg = language === 'en'
+            ? 'HTTPS URL required for payment callbacks.\n\nFor localhost development:\n1. Use a tunnel service (ngrok, cloudflare tunnel, etc.)\n2. Set VITE_PUBLIC_URL=https://your-tunnel-url in your .env file\n\nExample: VITE_PUBLIC_URL=https://abc123.ngrok.io\n\nFor Vercel preview deployments:\nThe HTTPS URL is automatically detected - no configuration needed!'
+            : 'URL HTTPS requise pour les rappels de paiement.\n\nPour le développement localhost:\n1. Utiliser un service de tunnel (ngrok, cloudflare tunnel, etc.)\n2. Définir VITE_PUBLIC_URL=https://votre-url-tunnel dans votre fichier .env\n\nExemple: VITE_PUBLIC_URL=https://abc123.ngrok.io\n\nPour les déploiements Vercel preview:\nL\'URL HTTPS est automatiquement détectée - aucune configuration nécessaire!';
+          
+          console.error('❌ Flouci requires HTTPS URLs. Current origin:', origin);
+          setStatus('error');
+          setErrorMessage(errorMsg);
+          return;
+        } else if (origin.startsWith('http://')) {
+          // Non-localhost HTTP - try to convert to HTTPS (may not work)
+          publicUrl = origin.replace('http://', 'https://');
+          console.warn('⚠️ Converting HTTP to HTTPS. This may not work. Set VITE_PUBLIC_URL for production.');
+        }
+      }
+      
+      // Ensure publicUrl is HTTPS (Flouci requirement)
+      if (!publicUrl.startsWith('https://')) {
+        console.error('❌ Public URL must be HTTPS for Flouci. Current URL:', publicUrl);
+        const errorMsg = language === 'en'
+          ? 'Payment configuration error: HTTPS URL required. Please set VITE_PUBLIC_URL=https://your-domain.com in environment variables.'
+          : 'Erreur de configuration du paiement: URL HTTPS requise. Veuillez définir VITE_PUBLIC_URL=https://votre-domaine.com dans les variables d\'environnement.';
+        setStatus('error');
+        setErrorMessage(errorMsg);
+        return;
+      }
+      
       const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : '');
-      const successLink = `${baseUrl}/payment-processing?orderId=${orderId}&status=success`;
-      const failLink = `${baseUrl}/payment-processing?orderId=${orderId}&status=failed`;
-      const webhookUrl = `${apiBase || baseUrl}/api/flouci-webhook`;
-
-      // Generate Flouci payment via backend (keeps secret key secure)
-      setStatus('redirecting');
-      const paymentResponse = await fetch(`${apiBase}/api/flouci-generate-payment`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          orderId: orderId!,
-          amount: Number(order.total_price),
-          successLink,
-          failLink,
-          webhookUrl
-        })
+      const successLink = `${publicUrl}/payment-processing?orderId=${orderId}&status=success`;
+      const failLink = `${publicUrl}/payment-processing?orderId=${orderId}&status=failed`;
+      const webhookUrl = `${apiBase || publicUrl}/api/flouci-webhook`;
+      
+      console.log('Using payment callback URLs:', {
+        publicUrl,
+        successLink: successLink.substring(0, 60) + '...',
+        failLink: failLink.substring(0, 60) + '...',
+        isHttps: publicUrl.startsWith('https://')
       });
 
-      const paymentData = await paymentResponse.json();
+      // Generate Flouci payment via backend (keeps secret key secure)
+      // CRITICAL: Only send orderId - backend will fetch order and calculate amount from DB
+      setStatus('redirecting');
+      
+      // Add timeout to prevent hanging requests (45 seconds)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 seconds timeout
+      
+      let paymentResponse;
+      try {
+        paymentResponse = await fetch(`${apiBase}/api/flouci-generate-payment`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            orderId: orderId!,
+            // Amount removed - backend calculates from DB (prevents frontend manipulation)
+            successLink,
+            failLink,
+            webhookUrl
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          throw new Error(language === 'en' 
+            ? 'Payment request timed out. Please check your internet connection and try again.' 
+            : 'La demande de paiement a expiré. Veuillez vérifier votre connexion Internet et réessayer.');
+        }
+        throw fetchError; // Re-throw other errors
+      }
+
+      let paymentData;
+      try {
+        paymentData = await paymentResponse.json();
+      } catch (jsonError) {
+        // If response is not JSON, get text response
+        const textResponse = await paymentResponse.text();
+        console.error('❌ Payment response is not JSON:', textResponse);
+        throw new Error(language === 'en' 
+          ? `Server error (${paymentResponse.status}): ${paymentResponse.statusText || 'Unknown error'}`
+          : `Erreur serveur (${paymentResponse.status}): ${paymentResponse.statusText || 'Erreur inconnue'}`);
+      }
 
       if (!paymentResponse.ok) {
         // Check if order is already paid
@@ -159,8 +238,30 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
         }
 
         // Show more detailed error message
-        const errorMsg = paymentData.error || paymentData.flouciError?.message || paymentData.details?.message || 'Failed to generate payment';
-        console.error('Payment generation error details:', paymentData);
+        let errorMsg = paymentData.error || paymentData.message || paymentData.flouciError?.message || paymentData.details?.message || paymentData.details || `Failed to generate payment (${paymentResponse.status})`;
+        
+        // Handle specific Flouci errors
+        if (paymentResponse.status === 412 || (paymentData.code === 1 && paymentData.flouciError?.error === 'SMT operation failed.')) {
+          // SMT operation failed - usually means configuration issue
+          errorMsg = language === 'en'
+            ? 'Payment configuration error. Please contact support or try again later.'
+            : 'Erreur de configuration du paiement. Veuillez contacter le support ou réessayer plus tard.';
+        } else if (paymentData.code === 1) {
+          // Generic code 1 error
+          errorMsg = language === 'en'
+            ? 'Payment request validation failed. Please check your payment details and try again.'
+            : 'La validation de la demande de paiement a échoué. Veuillez vérifier vos détails de paiement et réessayer.';
+        } else if (paymentData.details?.possibleCauses) {
+          // Use the detailed error from backend if available
+          errorMsg = paymentData.error || errorMsg;
+        }
+        
+        console.error('❌ Payment generation error details:', {
+          status: paymentResponse.status,
+          statusText: paymentResponse.statusText,
+          code: paymentData.code,
+          data: paymentData
+        });
         throw new Error(errorMsg);
       }
 
@@ -170,7 +271,6 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
 
       // If this is a duplicate submission, log it but still redirect
       if (paymentData.isDuplicate) {
-        console.log('⚠️ Duplicate payment generation prevented, using existing payment link');
       }
 
       // Redirect to Flouci payment page
@@ -179,7 +279,34 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
     } catch (error: any) {
       console.error('Payment initialization error:', error);
       setStatus('error');
-      setErrorMessage(error.message || t[language].errorMessage);
+      
+      // Provide user-friendly error messages
+      let errorMsg = error.message || t[language].errorMessage;
+      
+      // Handle network/fetch errors
+      if (error.message?.includes('fetch failed') || error.message?.includes('Failed to fetch') || error.name === 'TypeError') {
+        errorMsg = language === 'en' 
+          ? 'Unable to connect to the payment server. Please check your internet connection and try again. If the problem persists, contact support.'
+          : 'Impossible de se connecter au serveur de paiement. Veuillez vérifier votre connexion Internet et réessayer. Si le problème persiste, contactez le support.';
+      } else if (error.message?.includes('timeout') || error.message?.includes('timed out')) {
+        errorMsg = language === 'en' 
+          ? 'The payment gateway did not respond in time. Please check your internet connection and try again.'
+          : 'La passerelle de paiement n\'a pas répondu à temps. Veuillez vérifier votre connexion Internet et réessayer.';
+      } else if (error.message?.includes('Payment gateway timeout')) {
+        errorMsg = language === 'en' 
+          ? 'The payment service is temporarily unavailable. Please try again in a few moments.'
+          : 'Le service de paiement est temporairement indisponible. Veuillez réessayer dans quelques instants.';
+      } else if (error.message?.includes('Flouci API keys not configured')) {
+        errorMsg = language === 'en' 
+          ? 'Payment service is not configured. Please contact support.'
+          : 'Le service de paiement n\'est pas configuré. Veuillez contacter le support.';
+      } else if (error.message?.includes('500') || error.message?.includes('Internal Server Error')) {
+        errorMsg = language === 'en' 
+          ? 'A server error occurred while processing your payment. Please try again or contact support if the issue persists.'
+          : 'Une erreur serveur s\'est produite lors du traitement de votre paiement. Veuillez réessayer ou contacter le support si le problème persiste.';
+      }
+      
+      setErrorMessage(errorMsg);
     }
   };
 
@@ -190,28 +317,25 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
     const statusParam = searchParams.get('status');
     const paymentId = searchParams.get('payment_id') || searchParams.get('id');
     
-    console.log('🔄 PaymentProcessing verification useEffect - status:', statusParam, 'paymentId:', paymentId, 'orderId:', orderId);
     
-    // Only process if we have a status parameter (returning from Flouci)
+    // CRITICAL: Only process if we have a status parameter (returning from Flouci)
+    // If no status param, we're NOT returning from Flouci - skip verification
     if (!statusParam) {
       return; // Not returning from Flouci, first useEffect will handle initialization
     }
 
-    // If we have status=success, verify payment
-    if (statusParam === 'success') {
-      console.log('✅ Status is success, verifying payment...');
+    // Only verify if we're actually returning from Flouci (have status param)
+    // Always verify payment status with Flouci API, regardless of redirect status
+    // The redirect status can be unreliable, so we need to check the actual payment status
+    if (statusParam === 'success' || statusParam === 'failed') {
+      setStatus('verifying');
+      
       if (paymentId) {
-        console.log('🔍 Verifying payment with paymentId from URL:', paymentId);
         verifyPayment(paymentId);
       } else {
-        // Success but no payment_id - verify via order's payment_gateway_reference
-        console.log('⏳ No paymentId in URL, verifying via order...');
-        setStatus('verifying');
+        // No payment_id in URL - verify via order's payment_gateway_reference
         verifyPaymentByOrder();
       }
-    } else if (statusParam === 'failed') {
-      console.log('❌ Status is failed');
-      setStatus('failed');
     }
   }, [searchParams, orderId]);
 
@@ -221,11 +345,9 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
       setStatus('verifying');
       const order = await getOrderById(orderId!);
       if (order?.payment_gateway_reference) {
-        console.log('📦 Found payment_id in order:', order.payment_gateway_reference);
         verifyPayment(order.payment_gateway_reference);
       } else {
         // No payment reference yet, might still be processing
-        console.log('⏳ No payment_id yet, retrying...');
         setStatus('verifying');
         setTimeout(() => verifyPaymentByOrder(), 2000);
       }
@@ -238,25 +360,43 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
 
   const verifyPayment = async (paymentId: string) => {
     try {
-      console.log('🔍 verifyPayment called with paymentId:', paymentId, 'orderId:', orderId);
       setStatus('verifying');
+      
+      // Clear retry count on new verification attempt
+      if (sessionStorage.getItem(`payment_retry_${orderId}`)) {
+        sessionStorage.removeItem(`payment_retry_${orderId}`);
+      }
 
       const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : '');
-      console.log('🌐 API Base URL:', apiBase || 'default (same origin)');
+
+      // Add timeout to prevent hanging requests (45 seconds)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 seconds timeout
 
       // Verify payment via backend (keeps secret key secure)
-      const verifyResponse = await fetch(`${apiBase}/api/flouci-verify-payment`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ paymentId, orderId: orderId! })
-      });
+      let verifyResponse;
+      try {
+        verifyResponse = await fetch(`${apiBase}/api/flouci-verify-payment`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ paymentId, orderId: orderId! }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          throw new Error(language === 'en' 
+            ? 'Payment verification timed out. Please try again or contact support if the issue persists.' 
+            : 'La vérification du paiement a expiré. Veuillez réessayer ou contacter le support si le problème persiste.');
+        }
+        throw fetchError; // Re-throw other errors
+      }
 
-      console.log('📡 Verification response status:', verifyResponse.status);
 
       const verifyData = await verifyResponse.json();
-      console.log('📦 Verification response data:', verifyData);
 
       if (!verifyResponse.ok || !verifyData.success) {
         console.error('❌ Verification failed:', verifyData);
@@ -264,16 +404,12 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
       }
 
       const paymentStatus = verifyData.status;
-      console.log('💰 Payment status from Flouci:', paymentStatus);
 
       if (paymentStatus === 'SUCCESS') {
-        console.log('✅ Payment verified as SUCCESS!');
-        console.log('📦 Order updated by backend:', verifyData.orderUpdated ? 'Yes' : 'No');
         
         // Backend already updates the order, but we can also update via frontend as backup
         // Check if backend updated it first
         if (!verifyData.orderUpdated) {
-          console.log('⚠️ Backend did not update order, updating from frontend...');
           try {
             await updateOrderStatus({
               orderId: orderId!,
@@ -283,72 +419,16 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
                 payment_response_data: verifyData.result
               }
             });
-            console.log('✅ Order updated from frontend');
           } catch (updateError) {
             console.error('❌ Error updating order from frontend:', updateError);
             // Don't fail - backend might have updated it
           }
         } else {
-          console.log('✅ Order already updated by backend');
         }
 
-        // Trigger ticket generation and email sending (backup to webhook)
-        // Add a small delay to ensure order status is fully updated in database
-        setTimeout(async () => {
-          try {
-            console.log('🎫 Triggering ticket generation for order:', orderId);
-            const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : '');
-            
-            // Get reCAPTCHA token for ticket generation endpoint
-            let recaptchaToken = 'localhost-bypass-token';
-            const isLocalhost = window.location.hostname === 'localhost' || 
-                               window.location.hostname === '127.0.0.1' ||
-                               window.location.hostname.startsWith('192.168.') ||
-                               window.location.hostname.startsWith('10.0.');
-            
-            if (!isLocalhost && window.grecaptcha && RECAPTCHA_SITE_KEY) {
-              try {
-                recaptchaToken = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'generate_tickets' });
-              } catch (recaptchaError) {
-                console.warn('⚠️ reCAPTCHA execution failed, using bypass token:', recaptchaError);
-              }
-            }
-            
-            const ticketResponse = await fetch(`${apiBase}/api/generate-tickets-for-order`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              credentials: 'include', // Include cookies for admin auth
-              body: JSON.stringify({ 
-                orderId: orderId!,
-                recaptchaToken: recaptchaToken
-              }),
-            });
-
-            if (ticketResponse.ok) {
-              const ticketData = await ticketResponse.json();
-              console.log('✅ Tickets generated:', ticketData);
-              if (ticketData.emailSent) {
-                console.log('✅ Email sent successfully');
-              } else {
-                console.warn('⚠️ Email not sent:', ticketData.emailError);
-              }
-              if (ticketData.smsSent) {
-                console.log('✅ SMS sent successfully');
-              } else {
-                console.warn('⚠️ SMS not sent:', ticketData.smsError);
-              }
-            } else {
-              const errorData = await ticketResponse.json().catch(() => ({}));
-              console.warn('⚠️ Ticket generation response not OK:', ticketResponse.status, errorData);
-              // Don't fail the payment success - tickets can be generated manually
-            }
-          } catch (ticketError) {
-            console.error('❌ Error triggering ticket generation:', ticketError);
-            // Don't fail the payment success - tickets can be generated manually
-          }
-        }, 2000); // 2 second delay to ensure order status is updated
+        // CRITICAL: Ticket generation is handled by backend webhook/verification
+        // Frontend should NOT trigger ticket generation - backend does it after verification confirms SUCCESS
+        // This ensures tickets are only generated once, after authoritative verification
 
         setStatus('success');
         toast({
@@ -363,16 +443,51 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
           description: t[language].failedMessage,
           variant: 'destructive'
         });
+      } else if (paymentStatus === 'PENDING') {
+        // PENDING - retry with exponential backoff (max 5 retries)
+        const retryCount = parseInt(sessionStorage.getItem(`payment_retry_${orderId}`) || '0');
+        const MAX_RETRIES = 5;
+        
+        if (retryCount < MAX_RETRIES) {
+          const delay = Math.min(2000 * Math.pow(2, retryCount), 30000); // Exponential backoff, max 30s
+          sessionStorage.setItem(`payment_retry_${orderId}`, String(retryCount + 1));
+          
+          setTimeout(() => {
+            verifyPayment(paymentId);
+          }, delay);
+        } else {
+          // Max retries reached - let webhook finalize
+          setStatus('verifying');
+          setErrorMessage(language === 'en' 
+            ? 'Payment is being processed. You will receive a confirmation email once it\'s completed.'
+            : 'Le paiement est en cours de traitement. Vous recevrez un email de confirmation une fois terminé.');
+          
+          // Clear retry count after showing message
+          setTimeout(() => {
+            sessionStorage.removeItem(`payment_retry_${orderId}`);
+          }, 10000);
+        }
       } else {
-        // PENDING - wait a bit and retry
-        setTimeout(() => {
-          verifyPayment(paymentId);
-        }, 2000);
+        // Unknown status
+        setStatus('error');
+        setErrorMessage(language === 'en' 
+          ? `Unknown payment status: ${paymentStatus}`
+          : `Statut de paiement inconnu: ${paymentStatus}`);
       }
     } catch (error: any) {
       console.error('Payment verification error:', error);
       setStatus('error');
-      setErrorMessage(error.message || t[language].errorMessage);
+      
+      // Provide user-friendly error messages
+      let errorMsg = error.message || t[language].errorMessage;
+      
+      if (error.message?.includes('timeout') || error.message?.includes('timed out')) {
+        errorMsg = language === 'en' 
+          ? 'Payment verification timed out. The payment may still be processing. Please wait a moment and refresh, or contact support if the issue persists.'
+          : 'La vérification du paiement a expiré. Le paiement peut encore être en cours de traitement. Veuillez attendre un moment et actualiser, ou contacter le support si le problème persiste.';
+      }
+      
+      setErrorMessage(errorMsg);
     }
   };
 

@@ -47,7 +47,6 @@ const Auth = ({ language }: AuthProps) => {
                        window.location.hostname.includes('localhost');
     
     if (isLocalhost) {
-      console.log('⚠️  Skipping reCAPTCHA script load on localhost');
       return;
     }
 
@@ -83,7 +82,6 @@ const Auth = ({ language }: AuthProps) => {
     
     if (isLocalhost) {
       // Return a dummy token for localhost development
-      console.log('⚠️  reCAPTCHA bypassed for localhost development');
       return 'localhost-bypass-token';
     }
     

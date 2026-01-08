@@ -324,7 +324,6 @@ if ('serviceWorker' in navigator) {
             // Only reload if user explicitly wants to (they can refresh manually)
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
               // New service worker is ready, but don't auto-reload
-              console.log('New service worker available, but not forcing reload');
             }
           });
         }

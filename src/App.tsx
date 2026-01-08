@@ -16,6 +16,7 @@ import About from "./pages/About";
 import Contact from "./pages/Contact";
 import NotFound from "./pages/NotFound";
 import Terms from "./pages/Terms";
+import RefundPolicy from "./pages/RefundPolicy";
 import ScrollToTop from "./components/layout/ScrollToTop";
 import Auth from "./pages/ambassador/Auth";
 import AdminLogin from "./pages/admin/Login";
@@ -29,7 +30,6 @@ import PassPurchase from "./pages/PassPurchase";
 import CODOrder from "./pages/CODOrder";
 import GalleryEvent from "./pages/GalleryEvent";
 import UpcomingEvent from "./pages/UpcomingEvent";
-import OnlinePayment from "./pages/OnlinePayment";
 import PaymentProcessing from "./pages/PaymentProcessing";
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -80,7 +80,6 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
             <Route path="/event/:eventSlug" element={<UpcomingEvent language={language} />} />
             <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
             <Route path="/cod-order" element={<CODOrder language={language} />} />
-            <Route path="/online-payment" element={<OnlinePayment language={language} />} />
             <Route path="/payment-processing" element={<PaymentProcessing language={language} />} />
     
             <Route path="/about" element={<About language={language} />} />
@@ -100,6 +99,7 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
             } />
             <Route path="/contact" element={<Contact language={language} />} />
             <Route path="/terms" element={<Terms language={language} />} />
+            <Route path="/refund-policy" element={<RefundPolicy language={language} />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <Footer language={language} />

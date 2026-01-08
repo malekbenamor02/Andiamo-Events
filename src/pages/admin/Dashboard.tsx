@@ -604,6 +604,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     status: 'all',
     city: 'all',
     passType: 'all',
+    orderId: '',
     dateFrom: null as Date | null,
     dateTo: null as Date | null
   });
@@ -1634,7 +1635,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const { data, error } = await query;
 
       if (error) throw error;
-      setOnlineOrders(data || []);
+      
+      // Apply client-side filtering for order ID (UUID doesn't support ilike directly)
+      let filteredData = data || [];
+      if (onlineOrderFilters.orderId && onlineOrderFilters.orderId.trim() !== '') {
+        const orderIdSearch = onlineOrderFilters.orderId.trim().toUpperCase();
+        filteredData = filteredData.filter((order: any) => 
+          order.id && order.id.toUpperCase().includes(orderIdSearch)
+        );
+      }
+      
+      setOnlineOrders(filteredData);
     } catch (error: any) {
       console.error('Error fetching online orders:', error);
       toast({
@@ -1678,7 +1689,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const { data, error } = await query;
 
       if (error) throw error;
-      setOnlineOrders(data || []);
+      
+      // Apply client-side filtering for order ID (UUID doesn't support ilike directly)
+      let filteredData = data || [];
+      if (filters.orderId && filters.orderId.trim() !== '') {
+        const orderIdSearch = filters.orderId.trim().toUpperCase();
+        filteredData = filteredData.filter((order: any) => 
+          order.id && order.id.toUpperCase().includes(orderIdSearch)
+        );
+      }
+      
+      setOnlineOrders(filteredData);
     } catch (error: any) {
       console.error('Error fetching online orders:', error);
       toast({
@@ -1719,7 +1740,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Generate tickets and send email with QR codes
       if (order.user_email) {
         try {
-          console.log('🎫 Starting ticket generation for order:', orderId);
           
           // Small delay to ensure database is ready
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -1741,15 +1761,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           });
 
           const responseData = await ticketResponse.json();
-          console.log('📦 Ticket generation response status:', ticketResponse.status);
-          console.log('📦 Ticket generation response data:', responseData);
 
           if (!ticketResponse.ok) {
             console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
             console.error('❌ Error details:', responseData);
             
             // Fallback to old email system if ticket generation fails
-            console.log('📧 Falling back to old email system...');
             const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8082';
             const emailResponse = await fetch(`${apiUrl}/api/send-order-completion-email`, {
               method: 'POST',
@@ -1764,10 +1781,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               console.error('❌ Failed to send completion email:', emailErrorData);
               throw new Error('Failed to send email');
             } else {
-              console.log('✅ Fallback email sent successfully');
             }
           } else {
-            console.log('✅ Tickets generated and email sent successfully:', responseData);
           }
         } catch (error) {
           console.error('❌ Error generating tickets or sending email:', error);
@@ -1826,26 +1841,40 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Approve COD Ambassador order (with email and SMS) - LEGACY FUNCTION
   const handleApproveCodAmbassadorOrder = async (orderId: string) => {
+    console.log('\n🔵 ============================================');
+    console.log('🔵 FRONTEND: Admin Approval Started');
+    console.log('🔵 ============================================');
+    console.log('🔵 Order ID:', orderId);
+    console.log('🔵 Timestamp:', new Date().toISOString());
+    
     try {
       // Get full order details
+      console.log('🔵 Fetching order details...');
       const { data: order, error: fetchError } = await (supabase as any)
         .from('orders')
         .select('*')
         .eq('id', orderId)
         .single();
 
-      if (fetchError) throw fetchError;
+      if (fetchError) {
+        console.error('❌ FRONTEND: Error fetching order:', fetchError);
+        throw fetchError;
+      }
 
-      // Debug: Log order details
-      console.log('Order details:', {
+      console.log('🔵 Order fetched:', {
         id: order.id,
         status: order.status,
         payment_method: order.payment_method,
-        source: order.source
+        source: order.source,
+        hasUserEmail: !!order.user_email,
+        hasUserPhone: !!order.user_phone,
+        userEmail: order.user_email || 'NOT SET',
+        userPhone: order.user_phone ? `${order.user_phone.substring(0, 3)}***` : 'NOT SET'
       });
 
       // Validate order - accept any COD order with PENDING_ADMIN_APPROVAL status
       if (order.payment_method !== 'ambassador_cash') {
+        console.error('❌ FRONTEND: Invalid payment method:', order.payment_method);
         toast({
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
@@ -1857,6 +1886,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
       
       if (order.status !== 'PENDING_ADMIN_APPROVAL') {
+        console.error('❌ FRONTEND: Invalid order status:', order.status);
         toast({
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
@@ -1868,6 +1898,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       // Update order status to PAID (this will trigger ticket generation)
+      console.log('🔵 Updating order status to PAID...');
       const { error: updateError } = await (supabase as any)
         .from('orders')
         .update({
@@ -1877,22 +1908,46 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         })
         .eq('id', orderId);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('❌ FRONTEND: Error updating order status:', updateError);
+        throw updateError;
+      }
+      console.log('✅ FRONTEND: Order status updated to PAID');
 
       // Generate tickets and send email with QR codes (only after admin approval)
       let ticketsGenerated = false;
+      console.log('🔵 Checking if order has email for ticket generation...');
+      console.log('🔵 Email check:', {
+        hasUserEmail: !!order.user_email,
+        userEmail: order.user_email || 'NOT SET'
+      });
+      
       if (order.user_email) {
         try {
-          console.log('🎫 Starting ticket generation for order:', orderId);
+          console.log('🔵 Order has email, proceeding with ticket generation...');
           
           // Small delay to ensure database is ready
+          console.log('🔵 Waiting 500ms for database to be ready...');
           await new Promise(resolve => setTimeout(resolve, 500));
           
           // Generate tickets (this will also send the email with QR codes)
           const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
           const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
           
+          console.log('🔵 API Configuration:', {
+            apiBase: apiBase,
+            ticketApiUrl: ticketApiUrl,
+            route: API_ROUTES.GENERATE_TICKETS_FOR_ORDER
+          });
+          
           if (ticketApiUrl) {
+            console.log('🔵 Calling ticket generation API...');
+            console.log('🔵 Request:', {
+              url: ticketApiUrl,
+              method: 'POST',
+              body: { orderId }
+            });
+            
             const ticketResponse = await fetch(ticketApiUrl, {
               method: 'POST',
               headers: {
@@ -1901,23 +1956,44 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               body: JSON.stringify({ orderId }),
             });
 
+            console.log('🔵 API Response Status:', ticketResponse.status);
             const responseData = await ticketResponse.json();
-            console.log('📦 Ticket generation response status:', ticketResponse.status);
-            console.log('📦 Ticket generation response data:', responseData);
+            console.log('🔵 API Response Data:', responseData);
 
             if (ticketResponse.ok && responseData.success) {
               ticketsGenerated = true;
+              console.log('✅ FRONTEND: Tickets generated successfully:', {
+                ticketsCount: responseData.ticketsCount,
+                emailSent: responseData.emailSent,
+                emailError: responseData.emailError,
+                smsSent: responseData.smsSent,
+                smsError: responseData.smsError
+              });
             } else {
-              console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
-              console.error('❌ Error details:', responseData);
+              console.error('❌ FRONTEND: Failed to generate tickets. Status:', ticketResponse.status);
+              console.error('❌ FRONTEND: Error details:', responseData);
             }
+          } else {
+            console.error('❌ FRONTEND: Invalid ticket API URL');
           }
         } catch (ticketError) {
-          console.error('Error generating tickets:', ticketError);
+          console.error('❌ FRONTEND: Error generating tickets:', ticketError);
+          console.error('❌ FRONTEND: Error details:', {
+            message: ticketError.message,
+            stack: ticketError.stack
+          });
         }
+      } else {
+        console.warn('⚠️ FRONTEND: Order does not have email, skipping ticket generation');
+        console.warn('⚠️ FRONTEND: Order details:', {
+          orderId: order.id,
+          hasUserEmail: false,
+          hasUserPhone: !!order.user_phone
+        });
       }
 
       // Log the approval
+      console.log('🔵 Logging approval to order_logs...');
       await (supabase as any)
         .from('order_logs')
         .insert({
@@ -1932,6 +2008,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             admin_action: true 
           }
         });
+      console.log('✅ FRONTEND: Approval logged');
+
+      console.log('🔵 ============================================');
+      console.log('🔵 FRONTEND: Admin Approval Completed');
+      console.log('🔵 ============================================');
+      console.log('📊 Final Status:', {
+        ticketsGenerated: ticketsGenerated,
+        orderId: orderId
+      });
+      console.log('🔵 ============================================\n');
 
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
@@ -1946,7 +2032,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setIsOrderDetailsOpen(false);
       }
     } catch (error: any) {
-      console.error('Error approving COD ambassador order:', error);
+      console.error('\n❌ ============================================');
+      console.error('❌ FRONTEND: Admin Approval Failed');
+      console.error('❌ ============================================');
+      console.error('❌ Error approving COD ambassador order:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      console.error('❌ ============================================\n');
+      
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description: error.message || (language === 'en' ? 'Failed to approve order' : 'Échec de l\'approbation de la commande'),
@@ -2020,7 +2115,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       let ticketsGenerated = false;
       if (fullOrder.user_email) {
         try {
-          console.log('🎫 Starting ticket generation for order:', orderId);
           
           // Small delay to ensure database is ready
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -2039,8 +2133,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             });
 
             const responseData = await ticketResponse.json();
-            console.log('📦 Ticket generation response status:', ticketResponse.status);
-            console.log('📦 Ticket generation response data:', responseData);
 
             if (ticketResponse.ok && responseData.success) {
               ticketsGenerated = true;
@@ -5200,7 +5292,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             .from('ambassadors')
             .select('id, phone, email, full_name')
             .limit(10);
-          console.log('Available ambassadors (first 10):', allAmbassadors);
         }
         
         toast({
@@ -5214,14 +5305,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
       
-      // Log successful lookup for debugging
-      console.log('✅ Ambassador found for resend email:', {
-        ambassadorId: ambassador.id,
-        phone: ambassador.phone,
-        email: ambassador.email,
-        applicationPhone: application.phone_number
-      });
-
       // Determine the email address to use - prefer application email, fallback to ambassador email
       const emailToUse = application.email || ambassador.email;
       
@@ -12858,7 +12941,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   </CardHeader>
                   <CardContent>
                     {/* Filters */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                       <Select
                         value={onlineOrderFilters.status}
                         onValueChange={(value) => {
@@ -12915,6 +12998,25 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           <SelectItem value="mixed">{language === 'en' ? 'Mixed' : 'Mixte'}</SelectItem>
                         </SelectContent>
                       </Select>
+                      <Input
+                        placeholder={language === 'en' ? 'Order ID (e.g., 98C1E3AC)' : 'ID Commande (ex: 98C1E3AC)'}
+                        value={onlineOrderFilters.orderId}
+                        onChange={(e) => {
+                          const newFilters = { ...onlineOrderFilters, orderId: e.target.value };
+                          setOnlineOrderFilters(newFilters);
+                        }}
+                        onKeyDown={(e) => {
+                          // Search immediately on Enter key
+                          if (e.key === 'Enter') {
+                            fetchOnlineOrdersWithFilters(onlineOrderFilters);
+                          }
+                        }}
+                        onBlur={() => {
+                          // Search when user leaves the input field
+                          fetchOnlineOrdersWithFilters(onlineOrderFilters);
+                        }}
+                        className="font-mono"
+                      />
                       <div className="flex gap-2">
                         <Popover>
                           <PopoverTrigger asChild>

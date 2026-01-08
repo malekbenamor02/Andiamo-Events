@@ -94,17 +94,13 @@ export async function createOrder(data: CreateOrderData): Promise<Order> {
   }
 
   // Send SMS notifications for COD orders with ambassador assigned
-  // TEMPORARILY DISABLED - Set ENABLE_ORDER_SMS=true in .env to re-enable
-  const ENABLE_ORDER_SMS = import.meta.env.VITE_ENABLE_ORDER_SMS === 'true';
-  
-  if (ENABLE_ORDER_SMS && paymentMethod === PaymentMethod.AMBASSADOR_CASH && ambassadorId) {
+  // Automatically enabled for AMBASSADOR_CASH orders
+  if (paymentMethod === PaymentMethod.AMBASSADOR_CASH && ambassadorId) {
     try {
       // Send SMS to client (non-blocking - don't fail order creation if SMS fails)
       // In development, use proxy from vite.config.ts (just '/api')
       // In production, use full URL from VITE_API_URL
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
-      console.log('📱 Sending SMS notifications for order:', order.id, 'Payment method:', paymentMethod, 'Ambassador ID:', ambassadorId);
-      console.log('📱 API Base URL:', apiBase);
+      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8081');
       
       fetch(`${apiBase}/api/send-order-confirmation-sms`, {
         method: 'POST',
@@ -121,7 +117,6 @@ export async function createOrder(data: CreateOrderData): Promise<Order> {
         return response.json();
       })
       .then(data => {
-        console.log('✅ Order confirmation SMS sent successfully:', data);
       })
       .catch(err => {
         console.error('❌ Failed to send order confirmation SMS:', err);
@@ -144,7 +139,6 @@ export async function createOrder(data: CreateOrderData): Promise<Order> {
         return response.json();
       })
       .then(data => {
-        console.log('✅ Ambassador order SMS sent successfully:', data);
       })
       .catch(err => {
         console.error('❌ Failed to send ambassador order SMS:', err);
@@ -155,11 +149,6 @@ export async function createOrder(data: CreateOrderData): Promise<Order> {
       // Silent failure - don't block order creation
     }
   } else {
-    if (!ENABLE_ORDER_SMS) {
-      console.log('⏭️ SMS notifications disabled (set VITE_ENABLE_ORDER_SMS=true to enable)');
-    } else {
-      console.log('⏭️ SMS notifications skipped - Payment method:', paymentMethod, 'Ambassador ID:', ambassadorId);
-    }
   }
   
   return order as Order;

@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { SelectedPass } from '@/types/orders';
 import { Receipt, Ticket } from 'lucide-react';
 import { PaymentMethod } from '@/lib/constants/orderStatuses';
+import { Link } from 'react-router-dom';
 
 interface OrderSummaryProps {
   selectedPasses: SelectedPass[];
@@ -130,9 +131,33 @@ export function OrderSummary({
                   htmlFor="terms"
                   className="text-sm cursor-pointer leading-tight"
                 >
-                  {language === 'en' 
-                    ? 'I accept the Terms of Service and Refund & Cancellation Policy'
-                    : 'J\'accepte les Conditions d\'Utilisation et la Politique de Remboursement et d\'Annulation'}
+                  {language === 'en' ? (
+                    <>
+                      I accept the{' '}
+                      <Link 
+                        to="/terms" 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline underline-offset-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Terms and General Conditions of Sale
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      J'accepte les{' '}
+                      <Link 
+                        to="/terms" 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline underline-offset-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Terms et conditions générales de vente
+                      </Link>
+                    </>
+                  )}
                   {paymentMethod === PaymentMethod.AMBASSADOR_CASH && (
                     <span className="text-primary"> *</span>
                   )}

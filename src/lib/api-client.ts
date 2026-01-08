@@ -57,8 +57,7 @@ export const apiFetch = async (
       // Check if this is an admin endpoint that requires token-based auth
       const isAdminEndpoint = url.includes('/api/admin-') || 
                               url.includes('/api/verify-admin') ||
-                              url.includes('/api/send-email') ||
-                              url.includes('/api/test-email');
+                              url.includes('/api/send-email');
       
       // Only redirect for admin endpoints (token expiration)
       // For ambassador/login endpoints, 401 just means invalid credentials - don't redirect

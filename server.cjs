@@ -28,13 +28,6 @@ if (!process.env.JWT_SECRET) {
 }
 
 // Check email configuration on startup
-console.log('📧 Email Configuration Check:', {
-  EMAIL_HOST: process.env.EMAIL_HOST || 'NOT SET',
-  EMAIL_PORT: process.env.EMAIL_PORT || 'NOT SET (default: 587)',
-  EMAIL_USER: process.env.EMAIL_USER ? `${process.env.EMAIL_USER.substring(0, 3)}***` : 'NOT SET',
-  EMAIL_PASS_SET: !!process.env.EMAIL_PASS,
-  EMAIL_PASS_LENGTH: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0
-});
 
 if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
   console.error('❌ Email configuration is incomplete! Emails will not work.');
@@ -66,14 +59,24 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
 const app = express();
 
 // CORS configuration - allow all origins in development, specific origins in production
-const allowedOrigins = process.env.NODE_ENV === 'production' 
-  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000'])
-  : ['http://localhost:8080', 'http://localhost:3000', 'http://192.168.1.*', 'http://10.0.*', 'http://127.0.0.1:3000', /^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/];
+const isDevelopment = process.env.NODE_ENV !== 'production';
+const allowedOrigins = isDevelopment
+  ? ['http://localhost:8080', 'http://localhost:3000', 'http://localhost:5173', 'http://192.168.1.*', 'http://10.0.*', 'http://127.0.0.1:3000', /^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/, /^http:\/\/192\.168\.\d+\.\d+:\d+$/]
+  : (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000']);
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    // In development, allow all origins (including no origin)
+    if (isDevelopment) {
+      console.log('🌐 CORS: Development mode - allowing origin:', origin || 'no origin');
+      return callback(null, true);
+    }
+    
+    // Allow requests with no origin (like mobile apps or curl requests) in production too
+    if (!origin) {
+      console.log('🌐 CORS: No origin - allowing request');
+      return callback(null, true);
+    }
     
     // Check if origin matches allowed patterns
     const isAllowed = allowedOrigins.some(allowed => {
@@ -93,24 +96,18 @@ app.use(cors({
     });
     
     if (isAllowed) {
+      console.log('🌐 CORS: Origin allowed:', origin);
       callback(null, true);
     } else {
       // On Vercel, allow same-origin requests
       const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_URL;
       if (isVercel && origin && (origin.includes(process.env.VERCEL_URL || '') || origin.includes(process.env.VERCEL_BRANCH_URL || ''))) {
+        console.log('🌐 CORS: Vercel origin allowed:', origin);
         return callback(null, true);
       }
-      // In development, allow all origins
-      if (process.env.NODE_ENV !== 'production') {
-        callback(null, true);
-      } else {
-        // In production, if on Vercel, allow same-origin
-        if (isVercel) {
-          callback(null, true);
-        } else {
-          callback(new Error('Not allowed by CORS'));
-        }
-      }
+      // Production fallback
+      console.error('❌ CORS: Origin not allowed:', origin);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
@@ -312,28 +309,12 @@ function getEmailTransporter() {
   }
   
   // Debug: Log configuration (without exposing password)
-  console.log('📧 Creating email transporter:', {
-    host: host,
-    port: port,
-    user: user ? `${user.substring(0, 3)}***` : 'NOT SET',
-    hasPassword: !!pass,
-    passwordLength: pass ? pass.length : 0
-  });
-  
   // Authentication configuration
   // IMPORTANT: Don't modify the password - use it exactly as provided
   const authConfig = {
     user: user.trim(), // Remove any whitespace - should be full email: support@andiamoevents.com
     pass: pass // Use password exactly as provided (don't trim - might remove needed characters)
   };
-  
-  // Debug: Verify password is read correctly
-  console.log('🔐 Auth config check:', {
-    user: authConfig.user,
-    passLength: authConfig.pass ? authConfig.pass.length : 0,
-    passStartsWith: authConfig.pass ? authConfig.pass.substring(0, 2) : '',
-    passEndsWith: authConfig.pass ? authConfig.pass.substring(authConfig.pass.length - 2) : ''
-  });
   
   // Configuration for mail.routing.net with STARTTLS on port 587
   // IMPORTANT: Port 587 uses STARTTLS, so secure MUST be false
@@ -353,20 +334,6 @@ function getEmailTransporter() {
     }
     // Don't specify authMethod - let nodemailer negotiate with server
   };
-  
-  console.log('📧 Transporter config:', {
-    host: transporterConfig.host,
-    port: transporterConfig.port,
-    secure: transporterConfig.secure,
-    requireTLS: transporterConfig.requireTLS,
-    authMethod: transporterConfig.authMethod,
-    user: authConfig.user ? `${authConfig.user.substring(0, 3)}***` : 'NOT SET',
-    userFull: authConfig.user, // Log full username to verify it's correct
-    passLength: authConfig.pass ? authConfig.pass.length : 0,
-    passContainsSpecialChars: authConfig.pass ? /[^a-zA-Z0-9]/.test(authConfig.pass) : false,
-    passFirstChar: authConfig.pass ? authConfig.pass.substring(0, 1) : '',
-    passLastChar: authConfig.pass ? authConfig.pass.substring(authConfig.pass.length - 1) : ''
-  });
   
   return nodemailer.createTransport(transporterConfig);
 }
@@ -454,13 +421,11 @@ const checkSuspiciousActivity = async (eventType, details, req) => {
               <p><em>This is an automated security alert. Please review the security audit logs.</em></p>
             `
           });
-          console.log('🚨 Security alert email sent to:', ALERT_EMAIL);
         } catch (emailError) {
           console.error('Failed to send security alert email:', emailError);
         }
       }
       
-      console.log(`🚨 SUSPICIOUS ACTIVITY ALERT: ${eventType} - ${eventCount} events from ${ipAddress}`);
     }
   } catch (error) {
     console.error('Error in checkSuspiciousActivity:', error);
@@ -831,12 +796,7 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
     const shouldBypassRecaptcha = recaptchaToken === 'localhost-bypass-token' || !RECAPTCHA_SECRET_KEY;
     
-    if (shouldBypassRecaptcha) {
-      if (!RECAPTCHA_SECRET_KEY) {
-      } else {
-      }
-      // Continue with login without reCAPTCHA verification
-    } else {
+    if (!shouldBypassRecaptcha) {
       // Verify reCAPTCHA for production
       if (!recaptchaToken) {
         return res.status(400).json({ error: 'reCAPTCHA verification required' });
@@ -1611,16 +1571,24 @@ async function sendSms(phoneNumbers, message, senderId = WINSMS_SENDER) {
   // Join multiple numbers with comma (as per WinSMS documentation)
   const toParam = formattedNumbers.join(',');
 
-  // Build URL with query parameters (GET method as per documentation)
+  // Build URL with query parameters (GET method as per WinSMS documentation)
+  // Documentation: https://www.winsmspro.com/sms/sms/api?action=send-sms&api_key=xxx&to=xxx&sms=xxx&from=xxx&response=json
   const queryParams = querystring.stringify({
     action: 'send-sms',
     api_key: WINSMS_API_KEY,
     to: toParam,
     sms: message.trim(),
-    from: senderId
+    from: senderId,
+    response: 'json' // Required by WinSMS API to get JSON response
   });
 
   const url = `https://${WINSMS_API_HOST}${WINSMS_API_PATH}?${queryParams}`;
+  
+  console.log('Sending SMS:', {
+    from: senderId,
+    messageLength: message.trim().length,
+    url: url.replace(WINSMS_API_KEY, '***') // Hide API key in logs
+  });
 
   // Make HTTPS GET request (as per WinSMS documentation)
   return new Promise((resolve, reject) => {
@@ -1640,14 +1608,18 @@ async function sendSms(phoneNumbers, message, senderId = WINSMS_SENDER) {
             raw: data
           });
         } catch (e) {
+          console.error('❌ WinSMS API response parse error:', e.message);
+          console.error('❌ Raw response:', data);
           resolve({
             status: res.statusCode,
             data: data,
-            raw: data
+            raw: data,
+            parseError: e.message
           });
         }
       });
     }).on('error', (e) => {
+      console.error('❌ WinSMS API request error:', e.message);
       reject(new Error(`SMS API request failed: ${e.message}`));
     });
   });
@@ -1661,7 +1633,15 @@ async function checkSmsBalance() {
     throw new Error('SMS service not configured: WINSMS_API_KEY is required');
   }
 
-  const url = `https://${WINSMS_API_HOST}${WINSMS_API_PATH}?action=check-balance&api_key=${WINSMS_API_KEY}`;
+  // Build URL with query parameters (GET method as per WinSMS documentation)
+  // Documentation: https://www.winsmspro.com/sms/sms/api?action=check-balance&api_key=xxx&response=json
+  const queryParams = querystring.stringify({
+    action: 'check-balance',
+    api_key: WINSMS_API_KEY,
+    response: 'json' // Required by WinSMS API to get JSON response
+  });
+  
+  const url = `https://${WINSMS_API_HOST}${WINSMS_API_PATH}?${queryParams}`;
 
   return new Promise((resolve, reject) => {
     https.get(url, (res) => {
@@ -1870,76 +1850,8 @@ app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
   }
 });
 
-// ============================================
-// Helper: Send Single SMS and Log to Database
-// ============================================
-async function sendSingleSms(phoneNumber, message) {
-  if (!supabase) {
-    throw new Error('Supabase not configured');
-  }
-
-  const formattedNumber = formatPhoneNumber(phoneNumber);
-  
-  if (!formattedNumber) {
-    const errorMsg = `Invalid phone number format: ${phoneNumber}`;
-    await supabase.from('sms_logs').insert({
-      phone_number: phoneNumber,
-      message: message.trim(),
-      status: 'failed',
-      error_message: errorMsg
-    });
-    throw new Error(errorMsg);
-  }
-
-  try {
-    // Send SMS using clean helper function
-    const responseData = await sendSms(formattedNumber, message);
-    
-    // Check if response indicates success
-    const isSuccess = responseData.status === 200 && 
-                     responseData.data && 
-                     (responseData.data.code === 'ok' || 
-                      responseData.data.code === '200' ||
-                      (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
-
-    if (isSuccess) {
-      await supabase.from('sms_logs').insert({
-        phone_number: phoneNumber,
-        message: message.trim(),
-        status: 'sent',
-        api_response: JSON.stringify(responseData.data || responseData.raw),
-        sent_at: new Date().toISOString()
-      });
-      
-      return { success: true, response: responseData.data || responseData.raw };
-    } else {
-      const errorMsg = responseData.data?.message || 
-                      (responseData.data?.code ? `Error code ${responseData.data.code}` : 'SMS sending failed');
-      
-      await supabase.from('sms_logs').insert({
-        phone_number: phoneNumber,
-        message: message.trim(),
-        status: 'failed',
-        error_message: errorMsg,
-        api_response: JSON.stringify(responseData.data || responseData.raw)
-      });
-      
-      throw new Error(errorMsg);
-    }
-  } catch (error) {
-    const errorMsg = error.message || 'Unknown error';
-    
-    await supabase.from('sms_logs').insert({
-      phone_number: phoneNumber,
-      message: message.trim(),
-      status: 'failed',
-      error_message: errorMsg,
-      api_response: null
-    });
-
-    throw error;
-  }
-}
+// NOTE: The previous sendSingleSms helper has been removed.
+// All SMS sending now uses sendSms(phoneNumbers, message) with robust logging and JSON responses per WinSMS docs.
 
 // ============================================
 // POST /api/send-order-confirmation-sms - Send SMS to Client
@@ -2014,17 +1926,16 @@ app.post('/api/send-order-confirmation-sms', logSecurityRequest, smsLimiter, asy
       }
     }
 
-    const orderNumber = order.order_number ? `#${order.order_number}` : '';
+    const orderNumber = order.order_number ? `#${order.order_number}` : order.id.substring(0, 8).toUpperCase();
     const ambassadorName = order.ambassadors.full_name;
     const ambassadorPhone = order.ambassadors.phone;
 
-    // Build SMS message in French with QR code URLs
-    let message = `Votre commande ${orderNumber} est confirmée!
-Passes: ${passesText}
-Total: ${order.total_price} DT
-Votre ambassadeur: ${ambassadorName}
-Téléphone: ${ambassadorPhone}
-Il vous contactera bientôt.`;
+    // Build SMS message - Client order confirmation
+    let message = `Commande confirmée :\n\n`;
+    message += `ID:${orderNumber} confirmée\n`;
+    message += `Pass: ${passesText} | Total: ${order.total_price} DT\n`;
+    message += `Ambassadeur: ${ambassadorName} – ${ambassadorPhone}\n`;
+    message += `We Create Memories`;
 
     // Add single QR code URL if available (shows all QR codes)
     if (qrCodeUrl) {
@@ -2032,10 +1943,37 @@ Il vous contactera bientôt.`;
       message += `\n\n⚠️ Ce lien ne peut être utilisé qu'une seule fois.`;
     }
 
-    // Send SMS
-    const smsResult = await sendSingleSms(order.user_phone, message);
+    // Send SMS using unified helper
+    const formattedNumber = formatPhoneNumber(order.user_phone);
+    if (!formattedNumber) {
+      return res.status(400).json({ success: false, error: `Invalid phone number format: ${order.user_phone}` });
+    }
+    const responseData = await sendSms(formattedNumber, message);
+    const isSuccess = responseData.status === 200 &&
+                      responseData.data &&
+                      (responseData.data.code === 'ok' ||
+                       responseData.data.code === '200' ||
+                       (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
 
-    res.json({ success: true, message: 'SMS sent successfully', result: smsResult });
+    // Log to sms_logs
+    try {
+      await supabase.from('sms_logs').insert({
+        phone_number: order.user_phone,
+        message: message.trim(),
+        status: isSuccess ? 'sent' : 'failed',
+        api_response: JSON.stringify(responseData.data || responseData.raw),
+        sent_at: isSuccess ? new Date().toISOString() : null,
+        error_message: isSuccess ? null : (responseData.data?.message || 'SMS sending failed')
+      });
+    } catch (logErr) {
+      console.warn('⚠️ Failed to log SMS send result:', logErr);
+    }
+
+    if (!isSuccess) {
+      return res.status(502).json({ success: false, error: responseData.data?.message || 'Failed to send SMS', result: responseData });
+    }
+
+    res.json({ success: true, message: 'SMS sent successfully', result: responseData });
   } catch (error) {
     console.error('Error sending order confirmation SMS:', error);
     res.status(500).json({
@@ -2110,22 +2048,46 @@ app.post('/api/send-ambassador-order-sms', smsLimiter, async (req, res) => {
       }
     }
 
-    const orderNumber = order.order_number ? `#${order.order_number}` : '';
+    const orderNumber = order.order_number ? `#${order.order_number}` : order.id.substring(0, 8).toUpperCase();
     const clientName = order.user_name;
     const clientPhone = order.user_phone;
 
-    // Build SMS message in French
-    const message = `Nouvelle commande ${orderNumber} qui vous est assignée!
-Passes: ${passesText}
-Total: ${order.total_price} DT
-Client: ${clientName}
-Téléphone: ${clientPhone}
-Veuillez les contacter bientôt.`;
+    // Build SMS message - Ambassador new order assignment
+    let message = `Nouvelle cmd ${orderNumber}\n`;
+    message += `Pass: ${passesText} | Total: ${order.total_price} DT\n`;
+    message += `Client: ${clientName} – ${clientPhone}`;
 
-    // Send SMS to ambassador
-    const smsResult = await sendSingleSms(order.ambassadors.phone, message);
+    // Send SMS to ambassador using unified helper
+    const formattedNumber = formatPhoneNumber(order.ambassadors.phone);
+    if (!formattedNumber) {
+      return res.status(400).json({ success: false, error: `Invalid ambassador phone number: ${order.ambassadors.phone}` });
+    }
+    const responseData = await sendSms(formattedNumber, message);
+    const isSuccess = responseData.status === 200 &&
+                      responseData.data &&
+                      (responseData.data.code === 'ok' ||
+                       responseData.data.code === '200' ||
+                       (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
 
-    res.json({ success: true, message: 'SMS sent successfully', result: smsResult });
+    // Log to sms_logs
+    try {
+      await supabase.from('sms_logs').insert({
+        phone_number: order.ambassadors.phone,
+        message: message.trim(),
+        status: isSuccess ? 'sent' : 'failed',
+        api_response: JSON.stringify(responseData.data || responseData.raw),
+        sent_at: isSuccess ? new Date().toISOString() : null,
+        error_message: isSuccess ? null : (responseData.data?.message || 'SMS sending failed')
+      });
+    } catch (logErr) {
+      console.warn('⚠️ Failed to log SMS send result (ambassador):', logErr);
+    }
+
+    if (!isSuccess) {
+      return res.status(502).json({ success: false, error: responseData.data?.message || 'Failed to send SMS', result: responseData });
+    }
+
+    res.json({ success: true, message: 'SMS sent successfully', result: responseData });
   } catch (error) {
     console.error('Error sending ambassador order SMS:', error);
     res.status(500).json({
@@ -2318,21 +2280,120 @@ app.put('/api/admin/payment-options/:type', requireAdminAuth, async (req, res) =
 // ============================================
 
 // POST /api/flouci-generate-payment - Generate Flouci payment (backend only - keeps secret key secure)
+// CRITICAL: Amount is calculated from DB, NOT trusted from frontend
 app.post('/api/flouci-generate-payment', async (req, res) => {
+  // Get Flouci keys at the start for error handling
+  const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
+  const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
+  
   try {
-    const { orderId, amount, successLink, failLink, webhookUrl } = req.body;
+    const { orderId, successLink, failLink, webhookUrl } = req.body;
 
-    console.log('🔔 Flouci payment generation request:', { orderId, amount, hasSuccessLink: !!successLink, hasFailLink: !!failLink, hasWebhookUrl: !!webhookUrl });
 
-    // Validate required fields
-    if (!orderId || !amount || !successLink || !failLink || !webhookUrl) {
-      console.error('❌ Missing required fields:', { orderId: !!orderId, amount: !!amount, successLink: !!successLink, failLink: !!failLink, webhookUrl: !!webhookUrl });
-      return res.status(400).json({ error: 'Missing required fields' });
+    // Validate required fields (amount removed - will be calculated from DB)
+    // webhookUrl is optional - only used if provided and not localhost
+    if (!orderId || !successLink || !failLink) {
+      console.error('❌ Missing required fields:', { orderId: !!orderId, successLink: !!successLink, failLink: !!failLink, webhookUrl: !!webhookUrl });
+      return res.status(400).json({ error: 'Missing required fields: orderId, successLink, and failLink are required' });
+    }
+    
+    // Validate URLs are absolute (must start with http:// or https://)
+    if (!successLink.startsWith('http://') && !successLink.startsWith('https://')) {
+      console.error('❌ Invalid successLink format (must be absolute URL):', successLink);
+      return res.status(400).json({ error: 'successLink must be an absolute URL (starting with http:// or https://)' });
+    }
+    
+    if (!failLink.startsWith('http://') && !failLink.startsWith('https://')) {
+      console.error('❌ Invalid failLink format (must be absolute URL):', failLink);
+      return res.status(400).json({ error: 'failLink must be an absolute URL (starting with http:// or https://)' });
+    }
+    
+    // CRITICAL: Flouci requires HTTPS URLs for callback links (even in development)
+    // Warn if HTTP is used (will likely cause "SMT operation failed" error)
+    if (successLink.startsWith('http://') && !successLink.includes('localhost')) {
+      console.warn('⚠️ WARNING: successLink uses HTTP instead of HTTPS. Flouci requires HTTPS URLs.');
+    }
+    
+    if (failLink.startsWith('http://') && !failLink.includes('localhost')) {
+      console.warn('⚠️ WARNING: failLink uses HTTP instead of HTTPS. Flouci requires HTTPS URLs.');
+    }
+    
+    // For localhost HTTP, provide helpful error message
+    if (successLink.startsWith('http://localhost') || failLink.startsWith('http://localhost')) {
+      console.error('❌ Flouci requires HTTPS URLs even for localhost. Use a tunnel service (ngrok, cloudflare tunnel, etc.)');
+      return res.status(400).json({ 
+        error: 'Flouci requires HTTPS URLs for callback links',
+        message: 'For localhost development, use a tunnel service (ngrok, cloudflare tunnel, etc.) to get an HTTPS URL and set VITE_PUBLIC_URL in your .env file',
+        suggestion: 'Example: Set VITE_PUBLIC_URL=https://abc123.ngrok.io in your .env file'
+      });
     }
 
-    const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
-    const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
 
+    // CRITICAL: Fetch order from DB and calculate amount from order_passes (authoritative source)
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select(`
+        id,
+        status,
+        payment_gateway_reference,
+        payment_response_data,
+        total_price,
+        order_passes (
+          id,
+          pass_type,
+          quantity,
+          price
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      console.error('❌ Order not found:', orderError);
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Check if order is already paid
+    if (order.status === 'PAID') {
+      return res.status(400).json({ 
+        error: 'Order already paid',
+        message: 'This order has already been paid',
+        alreadyPaid: true
+      });
+    }
+
+    // Check if order is in correct status for payment
+    if (order.status !== 'PENDING_ONLINE') {
+      console.error('❌ Order is not in PENDING_ONLINE status:', order.status);
+      return res.status(400).json({ 
+        error: 'Order is not ready for payment',
+        message: `Order status is ${order.status}. Only PENDING_ONLINE orders can proceed to payment.`
+      });
+    }
+
+    // CRITICAL: Calculate amount from order_passes (authoritative source)
+    // This prevents frontend manipulation
+    let calculatedAmount = 0;
+    if (order.order_passes && order.order_passes.length > 0) {
+      calculatedAmount = order.order_passes.reduce((sum, pass) => {
+        return sum + (Number(pass.price) * Number(pass.quantity));
+      }, 0);
+    } else {
+      // Fallback to total_price if order_passes not available (legacy orders)
+      calculatedAmount = Number(order.total_price) || 0;
+      console.warn('⚠️ No order_passes found, using total_price as fallback');
+    }
+
+    if (calculatedAmount <= 0) {
+      console.error('❌ Invalid calculated amount:', calculatedAmount);
+      return res.status(400).json({ error: 'Invalid order amount. Order has no valid passes.' });
+    }
+
+
+    // Check Flouci API keys (already defined at function start)
     if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
       console.error('❌ Flouci API keys not configured');
       console.error('   FLOUCI_PUBLIC_KEY:', FLOUCI_PUBLIC_KEY ? 'Set' : 'Missing');
@@ -2342,79 +2403,93 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
         message: 'Please add FLOUCI_PUBLIC_KEY and FLOUCI_SECRET_KEY to your .env file'
       });
     }
+    
+    // Trim API keys to remove any accidental whitespace
+    const trimmedPublicKey = FLOUCI_PUBLIC_KEY.trim();
+    const trimmedSecretKey = FLOUCI_SECRET_KEY.trim();
+    
+    // Validate API keys are not empty after trimming
+    if (!trimmedPublicKey || !trimmedSecretKey) {
+      console.error('❌ Flouci API keys are empty after trimming');
+      return res.status(500).json({ 
+        error: 'Flouci API keys are invalid',
+        message: 'FLOUCI_PUBLIC_KEY and FLOUCI_SECRET_KEY must not be empty'
+      });
+    }
+    
+    // Use trimmed keys for the request
+    const FLOUCI_PUBLIC_KEY_CLEAN = trimmedPublicKey;
+    const FLOUCI_SECRET_KEY_CLEAN = trimmedSecretKey;
 
-    // Check if order already has a payment_id (duplicate submission protection)
-    if (supabase) {
-      const { data: existingOrder, error: fetchError } = await supabase
-        .from('orders')
-        .select('payment_gateway_reference, payment_response_data, status')
-        .eq('id', orderId)
-        .single();
+    // IDEMPOTENCY: Check if payment already generated (one active payment per order)
+    if (order.payment_gateway_reference) {
+      
+      // Try to get the payment link from stored response data
+      let paymentLink = null;
+      if (order.payment_response_data?.result?.link) {
+        paymentLink = order.payment_response_data.result.link;
+      } else if (order.payment_response_data?.link) {
+        paymentLink = order.payment_response_data.link;
+      }
 
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        console.error('❌ Error fetching order:', fetchError);
-        // Continue anyway - don't block payment generation
-      } else if (existingOrder) {
-        // Check if order is already paid
-        if (existingOrder.status === 'PAID') {
-          console.log('⚠️ Order already paid, returning existing payment info');
-          return res.status(400).json({ 
-            error: 'Order already paid',
-            message: 'This order has already been paid',
-            alreadyPaid: true
-          });
-        }
-
-        // Check if payment already generated (has payment_id)
-        if (existingOrder.payment_gateway_reference) {
-          console.log('⚠️ Payment already generated for this order:', existingOrder.payment_gateway_reference);
-          
-          // Try to get the payment link from stored response data
-          let paymentLink = null;
-          if (existingOrder.payment_response_data?.result?.link) {
-            paymentLink = existingOrder.payment_response_data.result.link;
-          } else if (existingOrder.payment_response_data?.link) {
-            paymentLink = existingOrder.payment_response_data.link;
-          }
-
-          // If we have the link, return it (don't create duplicate payment)
-          if (paymentLink) {
-            console.log('✅ Returning existing payment link (duplicate submission prevented)');
-            return res.json({ 
-              success: true,
-              payment_id: existingOrder.payment_gateway_reference,
-              link: paymentLink,
-              isDuplicate: true,
-              message: 'Payment already generated for this order'
-            });
-          } else {
-            // Payment ID exists but no link stored - might be from old format
-            // Generate new payment but log the duplicate attempt
-            console.log('⚠️ Payment ID exists but no link found, generating new payment');
-          }
-        }
+      // If we have the link, return it (don't create duplicate payment)
+      if (paymentLink) {
+        return res.json({ 
+          success: true,
+          payment_id: order.payment_gateway_reference,
+          link: paymentLink,
+          isDuplicate: true,
+          message: 'Payment already generated for this order'
+        });
+      } else {
+        // Payment ID exists but no link stored - might be from old format
+        // Generate new payment but log the duplicate attempt
       }
     }
 
     // Convert TND to millimes (Flouci uses millimes: 1 TND = 1000 millimes)
-    const amountInMillimes = Math.round(amount * 1000);
+    const amountInMillimes = Math.round(calculatedAmount * 1000);
     
     // Validate amount
+    // Flouci typically requires minimum 1000 millimes (1 TND)
+    const MIN_AMOUNT_MILLIMES = 1000;
     if (amountInMillimes <= 0) {
-      console.error('❌ Invalid amount:', amount, 'millimes:', amountInMillimes);
+      console.error('❌ Invalid amount:', calculatedAmount, 'TND, millimes:', amountInMillimes);
       return res.status(400).json({ error: 'Invalid payment amount' });
+    }
+    
+    if (amountInMillimes < MIN_AMOUNT_MILLIMES) {
+      console.error('❌ Amount too small:', calculatedAmount, 'TND, millimes:', amountInMillimes, '(minimum:', MIN_AMOUNT_MILLIMES, 'millimes)');
+      return res.status(400).json({ 
+        error: `Payment amount too small. Minimum amount is ${MIN_AMOUNT_MILLIMES / 1000} TND (${MIN_AMOUNT_MILLIMES} millimes)`,
+        calculatedAmount,
+        amountInMillimes,
+        minimumRequired: MIN_AMOUNT_MILLIMES
+      });
     }
 
     // Generate payment with Flouci
-    console.log('📤 Calling Flouci API to generate payment...');
-    
     // Build payment request - webhook is optional but recommended
     // IMPORTANT: success_link and fail_link must be absolute URLs
-    console.log('🔗 Setting redirect URLs:', { 
-      successLink, 
-      failLink,
+    console.log('Validating payment links:', {
       successLinkValid: successLink.startsWith('http'),
-      failLinkValid: failLink.startsWith('http')
+      failLinkValid: failLink.startsWith('http'),
+      successLink: successLink.substring(0, 50) + '...',
+      failLink: failLink.substring(0, 50) + '...'
+    });
+    
+    // Note: API keys are already trimmed above, so we use the cleaned versions
+    // Validate API keys format (should not contain spaces in the middle - only trimmed)
+    if (FLOUCI_PUBLIC_KEY_CLEAN.includes(' ') || FLOUCI_SECRET_KEY_CLEAN.includes(' ')) {
+      console.warn('⚠️ Flouci API keys contain spaces in the middle - this may cause authentication issues');
+    }
+    
+    // Log API key info for debugging (first few chars only for security)
+    console.log('Using Flouci API keys:', {
+      publicKeyPrefix: FLOUCI_PUBLIC_KEY_CLEAN.substring(0, 8) + '...',
+      publicKeyLength: FLOUCI_PUBLIC_KEY_CLEAN.length,
+      secretKeyPrefix: FLOUCI_SECRET_KEY_CLEAN.substring(0, 8) + '...',
+      secretKeyLength: FLOUCI_SECRET_KEY_CLEAN.length
     });
     
     const paymentRequest = {
@@ -2429,27 +2504,49 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
     // Only add webhook if URL is valid (not localhost for production)
     // For localhost, webhook won't work anyway, so we can skip it
     if (webhookUrl && !webhookUrl.includes('localhost') && !webhookUrl.includes('127.0.0.1')) {
-      paymentRequest.webhook = webhookUrl;
-      console.log('📤 Webhook URL included:', webhookUrl.substring(0, 50) + '...');
-    } else {
-      console.log('⚠️ Webhook URL skipped (localhost detected or invalid):', webhookUrl);
+      if (webhookUrl.startsWith('http://') || webhookUrl.startsWith('https://')) {
+        paymentRequest.webhook = webhookUrl;
+      } else {
+        console.warn('⚠️ webhookUrl provided but not absolute URL, skipping:', webhookUrl.substring(0, 50));
+      }
     }
     
-    console.log('📤 Flouci request payload:', { 
-      ...paymentRequest, 
-      webhook: paymentRequest.webhook ? paymentRequest.webhook.substring(0, 50) + '...' : 'Not included',
+    console.log('Creating Flouci payment request:', {
       amount: amountInMillimes,
-      amountTND: amount
+      amountTND: calculatedAmount,
+      hasWebhook: !!paymentRequest.webhook,
+      requestKeys: Object.keys(paymentRequest)
     });
 
-    const response = await fetch('https://developers.flouci.com/api/v2/generate_payment', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
-      },
-      body: JSON.stringify(paymentRequest)
-    });
+    // Add timeout to prevent hanging requests (30 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+
+    let response;
+    try {
+      // Use cleaned/trimmed API keys
+      response = await fetch('https://developers.flouci.com/api/v2/generate_payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY_CLEAN}:${FLOUCI_SECRET_KEY_CLEAN}`
+        },
+        body: JSON.stringify(paymentRequest),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        console.error('❌ Flouci API request timed out after 30 seconds');
+        return res.status(504).json({ 
+          error: 'Payment gateway timeout',
+          message: 'The payment gateway did not respond in time. Please try again.',
+          details: 'Request timed out after 30 seconds'
+        });
+      }
+      throw fetchError; // Re-throw other errors
+    }
 
     let data;
     try {
@@ -2468,9 +2565,7 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
     // Flouci API returns success in data.result.success, not data.success
     const isSuccess = response.ok && data.result?.success === true;
     
-    console.log('📥 Flouci API response:', { 
-      status: response.status, 
-      responseOk: response.ok,
+    console.log('Flouci payment response:', {
       resultSuccess: data.result?.success,
       isSuccess: isSuccess,
       hasResult: !!data.result,
@@ -2485,59 +2580,108 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
         status: response.status,
         statusText: response.statusText,
         data: data,
-        fullResponse: JSON.stringify(data, null, 2)
+        fullResponse: JSON.stringify(data, null, 2),
+        requestAmount: amountInMillimes,
+        requestAmountTND: calculatedAmount
       });
       
       // Provide more detailed error message
       let errorMessage = 'Failed to generate payment';
-      if (data.message) {
+      let errorDetails = {};
+      
+      // Handle specific error codes and statuses
+      if (response.status === 412 || (data.code === 1 && data.result?.error === 'SMT operation failed.')) {
+        // Status 412 Precondition Failed or code 1 with SMT error
+        errorMessage = 'Payment validation failed. Please check your payment configuration.';
+        errorDetails = {
+          possibleCauses: [
+            'Invalid API keys format or values',
+            'Amount below minimum threshold',
+            'Invalid URL format (must be absolute HTTPS URLs)',
+            'Missing required fields in payment request'
+          ],
+          suggestion: 'Please verify your Flouci API keys and ensure URLs are absolute HTTPS URLs',
+          flouciError: data.result?.error || data.result?.details || 'SMT operation failed'
+        };
+        
+        // Log additional diagnostic info
+        console.error('🔍 SMT Error Diagnostics:', {
+          apiKeyFormat: FLOUCI_PUBLIC_KEY_CLEAN ? `${FLOUCI_PUBLIC_KEY_CLEAN.substring(0, 10)}...` : 'MISSING',
+          apiKeyLength: FLOUCI_PUBLIC_KEY_CLEAN?.length || 0,
+          secretKeyFormat: FLOUCI_SECRET_KEY_CLEAN ? `${FLOUCI_SECRET_KEY_CLEAN.substring(0, 10)}...` : 'MISSING',
+          secretKeyLength: FLOUCI_SECRET_KEY_CLEAN?.length || 0,
+          amountInMillimes,
+          amountInTND: calculatedAmount,
+          successLinkIsHttps: successLink.startsWith('https://'),
+          failLinkIsHttps: failLink.startsWith('https://'),
+          hasWebhook: !!paymentRequest.webhook,
+          paymentRequestKeys: Object.keys(paymentRequest)
+        });
+      } else if (data.message) {
         errorMessage = data.message;
       } else if (data.result?.message) {
         errorMessage = data.result.message;
+      } else if (data.result?.error) {
+        errorMessage = data.result.error;
       } else if (data.code !== undefined && data.code !== 0) {
         errorMessage = `Flouci API error (code: ${data.code})`;
       } else if (response.status === 401 || response.status === 403) {
         errorMessage = 'Invalid API keys. Please check your Flouci credentials.';
+        errorDetails = { suggestion: 'Verify FLOUCI_PUBLIC_KEY and FLOUCI_SECRET_KEY in your .env file' };
       } else if (response.status === 400) {
         errorMessage = 'Invalid payment request. Please check your payment details.';
       }
       
-      return res.status(500).json({ 
+      return res.status(response.status >= 400 && response.status < 500 ? response.status : 500).json({ 
         error: errorMessage,
-        details: data,
+        details: { ...errorDetails, ...data },
         status: response.status,
-        flouciError: data.result || data
+        flouciError: data.result || data,
+        code: data.code
       });
     }
 
-    // Update order with payment_id
-    if (supabase && data.result?.payment_id) {
-      console.log('💾 Updating order with payment_id:', data.result.payment_id);
+    // Update order with payment_id and payment_created_at
+    if (data.result?.payment_id) {
+      const paymentCreatedAt = new Date().toISOString();
       const { error: updateError } = await supabase
         .from('orders')
         .update({
           payment_gateway_reference: data.result.payment_id,
           payment_response_data: data,
+          payment_created_at: paymentCreatedAt,
           updated_at: new Date().toISOString()
         })
         .eq('id', orderId);
 
       if (updateError) {
         console.error('❌ Error updating order:', updateError);
+        // Check if it's a unique constraint violation (idempotency protection)
+        if (updateError.code === '23505' || updateError.message?.includes('unique')) {
+          // Fetch existing payment link
+          const { data: existingOrder } = await supabase
+            .from('orders')
+            .select('payment_gateway_reference, payment_response_data')
+            .eq('id', orderId)
+            .single();
+          
+          if (existingOrder?.payment_response_data?.result?.link) {
+            return res.json({ 
+              success: true,
+              payment_id: existingOrder.payment_gateway_reference,
+              link: existingOrder.payment_response_data.result.link,
+              isDuplicate: true,
+              message: 'Payment already exists for this order'
+            });
+          }
+        }
         // Don't fail the request if order update fails - payment was generated successfully
       } else {
-        console.log('✅ Order updated successfully');
       }
     } else {
-      if (!supabase) {
-        console.warn('⚠️ Supabase not initialized - skipping order update');
-      }
-      if (!data.result?.payment_id) {
-        console.warn('⚠️ No payment_id in response - skipping order update');
-      }
+      console.warn('⚠️ No payment_id in response - skipping order update');
     }
 
-    console.log('✅ Payment generated successfully:', { payment_id: data.result?.payment_id, hasLink: !!data.result?.link });
     res.json({ 
       success: true, 
       payment_id: data.result?.payment_id,
@@ -2547,9 +2691,30 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
   } catch (error) {
     console.error('❌ Error generating Flouci payment:', error);
     console.error('   Error stack:', error.stack);
+    console.error('   Error name:', error.name);
+    console.error('   Error code:', error.code);
+    
+    // Provide more specific error messages
+    let errorMessage = error.message || 'Internal server error';
+    let errorDetails = process.env.NODE_ENV === 'development' ? error.stack : undefined;
+    
+    // Check for common error types
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      errorMessage = 'Unable to connect to payment gateway. Please check your internet connection.';
+      errorDetails = `Network error: ${error.message}`;
+    } else if (error.name === 'TypeError' && error.message?.includes('fetch')) {
+      errorMessage = 'Network error while connecting to payment gateway.';
+      errorDetails = error.message;
+    } else if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
+      errorMessage = 'Payment gateway not configured. Please contact administrator.';
+      errorDetails = 'Flouci API keys are missing';
+    }
+    
     res.status(500).json({ 
-      error: error.message || 'Internal server error',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      error: errorMessage,
+      details: errorDetails,
+      code: error.code,
+      name: error.name
     });
   }
 });
@@ -2599,14 +2764,34 @@ app.post('/api/flouci-verify-payment-by-order', async (req, res) => {
       return res.status(500).json({ error: 'Flouci API keys not configured' });
     }
 
-    const response = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${order.payment_gateway_reference}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
-      }
-    });
+    // Add timeout to prevent hanging requests (30 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
 
-    const data = await response.json();
+    let response;
+    let data;
+    try {
+      response = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${order.payment_gateway_reference}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      data = await response.json();
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        console.error('❌ Flouci API verification request timed out after 30 seconds');
+        return res.status(504).json({ 
+          error: 'Payment verification timeout',
+          message: 'The payment gateway did not respond in time. Please try again.',
+          details: 'Request timed out after 30 seconds'
+        });
+      }
+      throw fetchError; // Re-throw other errors
+    }
 
     if (!response.ok) {
       return res.status(500).json({ 
@@ -2645,7 +2830,6 @@ app.post('/api/flouci-verify-payment-by-order', async (req, res) => {
         });
       }
 
-      console.log('✅ Order status updated to PAID via manual verification:', orderId);
       return res.json({ 
         success: true,
         status: paymentStatus,
@@ -2674,7 +2858,6 @@ app.post('/api/flouci-verify-payment-by-order', async (req, res) => {
         });
       }
 
-      console.log(`⚠️ Order payment marked as FAILED (status: ${paymentStatus}):`, orderId);
       return res.json({ 
         success: true,
         status: paymentStatus,
@@ -2715,17 +2898,42 @@ app.post('/api/flouci-verify-payment', async (req, res) => {
       return res.status(500).json({ error: 'Flouci API keys not configured' });
     }
 
-    // Verify payment with Flouci
-    const response = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${paymentId}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
-      }
-    });
+    // Add timeout to prevent hanging requests (30 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
 
-    const data = await response.json();
+    // Verify payment with Flouci
+    let response;
+    let data;
+    try {
+      response = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${paymentId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      data = await response.json();
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        console.error('❌ Flouci API verification request timed out after 30 seconds');
+        return res.status(504).json({ 
+          error: 'Payment verification timeout',
+          message: 'The payment gateway did not respond in time. Please try again.',
+          details: 'Request timed out after 30 seconds'
+        });
+      }
+      throw fetchError; // Re-throw other errors
+    }
 
     if (!response.ok) {
+      console.error('❌ Flouci verification API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: data
+      });
       return res.status(500).json({ 
         error: data.message || 'Failed to verify payment',
         details: data
@@ -2733,94 +2941,168 @@ app.post('/api/flouci-verify-payment', async (req, res) => {
     }
 
     const paymentStatus = data.result?.status;
-
-    // If orderId is provided and payment is successful, update the order status
-    if (orderId && supabase && paymentStatus === 'SUCCESS') {
-      let targetOrderId = orderId;
-      
-      // First, try to find order by payment_gateway_reference (more reliable)
-      const { data: orderByPayment, error: paymentError } = await supabase
+    
+    // Log full verification response for debugging
+    console.log('Flouci payment verification response:', {
+      orderId: orderId || 'not provided',
+      timestamp: new Date().toISOString(),
+      fullResponse: JSON.stringify(data, null, 2)
+    });
+    
+    // CRITICAL: Check if payment was just created (within last 5 seconds)
+    // If so, and status is FAILURE, it might be because payment hasn't been attempted yet
+    if (orderId && supabase && paymentStatus === 'FAILURE') {
+      const { data: orderCheck } = await supabase
         .from('orders')
-        .select('id')
-        .eq('payment_gateway_reference', paymentId)
-        .maybeSingle();
+        .select('payment_created_at, status')
+        .eq('id', orderId)
+        .single();
       
-      // If found by payment_id, use that order ID
-      if (orderByPayment && !paymentError) {
-        targetOrderId = orderByPayment.id;
-        console.log('📦 Found order by payment_id:', targetOrderId);
-      } else {
-        // Use provided orderId and verify it exists
-        const { data: orderById, error: orderError } = await supabase
-          .from('orders')
-          .select('id')
-          .eq('id', orderId)
-          .maybeSingle();
+      if (orderCheck?.payment_created_at) {
+        const createdTime = new Date(orderCheck.payment_created_at).getTime();
+        const now = Date.now();
+        const secondsSinceCreation = (now - createdTime) / 1000;
         
-        if (orderById && !orderError) {
-          console.log('📦 Using provided orderId:', targetOrderId);
-        } else {
-          console.warn('⚠️ Order not found with provided orderId:', orderId);
-          // Still try to update - might work if order exists
+        if (secondsSinceCreation < 10) {
+          console.warn('⚠️ Payment verified within 10 seconds of creation - this might be premature');
+          console.warn('⚠️ Payment status FAILURE might be because user hasn\'t completed payment on Flouci yet');
+          console.warn('⚠️ User should complete payment on Flouci page first, then verification will be accurate');
         }
       }
+    }
 
-      // Update order based on payment status
-      let updateData = {
+    // GOLDEN RULE: Flouci verification API is the source of truth
+    // Order is PAID ONLY if verify_payment(payment_id).status === 'SUCCESS'
+    
+    if (!orderId || !supabase) {
+      // No orderId provided - just return verification result
+      return res.json({ 
+        success: data.success,
+        status: paymentStatus,
+        result: data.result,
+        orderUpdated: false
+      });
+    }
+
+    let targetOrderId = orderId;
+    
+    // First, try to find order by payment_gateway_reference (more reliable)
+    const { data: orderByPayment, error: paymentError } = await supabase
+      .from('orders')
+      .select('id, status')
+      .eq('payment_gateway_reference', paymentId)
+      .maybeSingle();
+    
+    // If found by payment_id, use that order ID
+    if (orderByPayment && !paymentError) {
+      targetOrderId = orderByPayment.id;
+      
+      // IDEMPOTENCY: If order already PAID, return success
+      if (orderByPayment.status === 'PAID') {
+        return res.json({ 
+          success: data.success,
+          status: paymentStatus,
+          result: data.result,
+          orderUpdated: false,
+          orderId: targetOrderId,
+          message: 'Order already processed'
+        });
+      }
+    } else {
+      // Use provided orderId and verify it exists
+      const { data: orderById, error: orderError } = await supabase
+        .from('orders')
+        .select('id, status')
+        .eq('id', orderId)
+        .maybeSingle();
+      
+      if (orderById && !orderError) {
+        
+        // IDEMPOTENCY: If order already PAID, return success
+        if (orderById.status === 'PAID') {
+          return res.json({ 
+            success: data.success,
+            status: paymentStatus,
+            result: data.result,
+            orderUpdated: false,
+            orderId: targetOrderId,
+            message: 'Order already processed'
+          });
+        }
+      } else {
+        console.warn('⚠️ Order not found with provided orderId:', orderId);
+        return res.status(404).json({ 
+          error: 'Order not found',
+          status: paymentStatus,
+          result: data.result
+        });
+      }
+    }
+
+    // Update order based on payment status (only if verification confirms it)
+    if (paymentStatus === 'SUCCESS') {
+      // CRITICAL: Only mark PAID if verification API confirms SUCCESS
+      const updateData = {
+        status: 'PAID',
+        payment_status: 'PAID',
         payment_gateway_reference: paymentId,
         payment_response_data: data.result,
+        completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
-      if (paymentStatus === 'SUCCESS') {
-        updateData.status = 'PAID';
-        updateData.payment_status = 'PAID';
-        updateData.completed_at = new Date().toISOString();
-      } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
-        updateData.status = 'PENDING_ONLINE'; // Keep as pending, admin can review
-        updateData.payment_status = 'FAILED';
-      } else {
-        // PENDING - don't update order status yet
-        console.log('⏳ Payment pending for order:', targetOrderId);
-        return res.status(200).json({ 
-          success: true, 
-          status: paymentStatus,
-          result: data.result,
-          message: 'Payment pending' 
-        });
-      }
-
-      const { error: updateError } = await supabase
+      // Use conditional update to prevent race conditions
+      const { error: updateError, data: updatedData } = await supabase
         .from('orders')
         .update(updateData)
-        .eq('id', targetOrderId);
+        .eq('id', targetOrderId)
+        .eq('status', 'PENDING_ONLINE') // Only update if still PENDING_ONLINE
+        .select('status')
+        .single();
 
       let orderUpdated = false;
       
       if (updateError) {
-        console.error('❌ Error updating order status:', updateError);
-        console.error('❌ Update error details:', JSON.stringify(updateError, null, 2));
-        // Don't fail the verification - payment is verified, just order update failed
-      } else {
-        if (paymentStatus === 'SUCCESS') {
-          console.log('✅ Order status updated to PAID:', targetOrderId);
-        } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
-          console.log(`⚠️ Order payment marked as FAILED (status: ${paymentStatus}):`, targetOrderId);
+        // Check if it's a unique constraint violation (idempotency)
+        if (updateError.code === '23505' || updateError.message?.includes('unique')) {
+        } else {
+          console.error('❌ Error updating order status:', updateError);
         }
+      } else if (updatedData && updatedData.status === 'PAID') {
         orderUpdated = true;
         
-        // Automatically generate tickets if payment is successful
-        if (paymentStatus === 'SUCCESS') {
+        // CRITICAL: Generate tickets and send email/SMS after order is marked PAID
+        // Check if tickets already exist (idempotency)
+        const { data: existingTickets } = await supabase
+          .from('tickets')
+          .select('id')
+          .eq('order_id', targetOrderId)
+          .limit(1);
+
+        if (existingTickets && existingTickets.length > 0) {
+        } else {
+          // Generate tickets and send email/SMS (fire and forget - don't block response)
           process.nextTick(async () => {
             try {
-              console.log('🎫 Auto-generating tickets for verified payment:', targetOrderId);
-              // The generateTicketsAndSendEmail function will be called by the webhook or manually
-              // We don't call it here to avoid duplicate ticket generation
-            } catch (ticketError) {
-              console.error('❌ Error in ticket generation trigger:', ticketError);
+              if (typeof generateTicketsAndSendEmail !== 'function') {
+                console.error('❌ generateTicketsAndSendEmail function not found!');
+                return;
+              }
+              
+              const result = await generateTicketsAndSendEmail(targetOrderId);
+            } catch (error) {
+              console.error('❌ Error generating tickets after payment verification:', error);
+              console.error('❌ Error details:', {
+                message: error.message,
+                stack: error.stack,
+                code: error.code,
+                name: error.name
+              });
             }
           });
         }
+      } else {
+        // Order was not updated (might have been updated by another process)
       }
       
       res.json({ 
@@ -2830,13 +3112,98 @@ app.post('/api/flouci-verify-payment', async (req, res) => {
         orderUpdated: orderUpdated,
         orderId: targetOrderId
       });
-    } else {
-      // Payment not successful or no orderId provided
+    } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
+      // Payment failed - mark as failed but keep status as PENDING_ONLINE (allows retry)
+      
+      // CRITICAL: Check if payment was just created (within last 10 seconds)
+      // If so, FAILURE might mean payment wasn't attempted yet, not that it failed
+      let isPrematureVerification = false;
+      if (supabase) {
+        const { data: orderCheck } = await supabase
+          .from('orders')
+          .select('payment_created_at, status')
+          .eq('id', targetOrderId)
+          .single();
+        
+        if (orderCheck?.payment_created_at) {
+          const createdTime = new Date(orderCheck.payment_created_at).getTime();
+          const now = Date.now();
+          const secondsSinceCreation = (now - createdTime) / 1000;
+          
+          // If verified within 10 seconds of creation, it's likely premature
+          // Only mark as FAILED if payment was actually attempted (has card details)
+          if (secondsSinceCreation < 10) {
+            const hasCardDetails = data.result?.details?.name || data.result?.details?.pan;
+            if (!hasCardDetails) {
+              console.warn('⚠️ Payment verified within 10 seconds of creation with no card details');
+              console.warn('⚠️ This might be premature verification - payment may not have been attempted yet');
+              console.warn('⚠️ Returning PENDING status instead of marking as FAILED');
+              isPrematureVerification = true;
+            }
+          }
+        }
+      }
+      
+      if (isPrematureVerification) {
+        // Don't mark as FAILED if verification is premature
+        // Return PENDING status instead
+        return res.status(200).json({ 
+          success: true, 
+          status: 'PENDING',
+          result: data.result,
+          message: 'Payment verification is premature - user should complete payment on Flouci first'
+        });
+      }
+      
+      console.log('Payment verification details:', {
+        paymentId,
+        status: paymentStatus,
+        amount: data.result?.amount,
+        cardInfo: data.result?.details ? {
+          name: data.result.details.name,
+          pan: data.result.details.pan
+        } : 'N/A'
+      });
+      
+      const updateData = {
+        payment_status: 'FAILED',
+        payment_gateway_reference: paymentId,
+        payment_response_data: data.result,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', targetOrderId);
+
+      if (updateError) {
+        console.error('❌ Error updating order payment status:', updateError);
+      } else {
+      }
+
       res.json({ 
         success: data.success,
         status: paymentStatus,
         result: data.result,
-        orderUpdated: false
+        orderUpdated: true,
+        orderId: targetOrderId
+      });
+    } else if (paymentStatus === 'PENDING') {
+      // PENDING - don't update order status yet, let webhook finalize
+      return res.status(200).json({ 
+        success: true, 
+        status: paymentStatus,
+        result: data.result,
+        message: 'Payment pending - will be finalized by webhook or retry'
+      });
+    } else {
+      // Unknown status
+      return res.status(200).json({ 
+        success: data.success, 
+        status: paymentStatus,
+        result: data.result,
+        message: `Payment status: ${paymentStatus}`
       });
     }
   } catch (error) {
@@ -2905,7 +3272,6 @@ app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
         
         return res.status(401).json({ error: 'Invalid webhook signature' });
       }
-      console.log('✅ Flouci webhook signature verified');
     } else if (FLOUCI_WEBHOOK_SECRET && !webhookSignature) {
       console.warn('⚠️ Flouci webhook secret configured but no signature provided');
     }
@@ -2918,7 +3284,6 @@ app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    console.log('🔔 Flouci webhook received:', { payment_id, status, developer_tracking_id });
 
     // Find order by developer_tracking_id (which is the order ID)
     const { data: order, error: orderError } = await supabase
@@ -2932,6 +3297,16 @@ app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
+    // WEBHOOK REPLAY PROTECTION: If order is already PAID, return success immediately
+    // This prevents duplicate ticket generation and email sending
+    if (order.status === 'PAID') {
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Order already processed',
+        orderStatus: 'PAID'
+      });
+    }
+
     // Verify payment with Flouci API to ensure authenticity
     const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
     const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
@@ -2941,15 +3316,35 @@ app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
       return res.status(500).json({ error: 'Payment gateway not configured' });
     }
 
-    // Verify payment status with Flouci
-    const verifyResponse = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${payment_id}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
-      }
-    });
+    // Add timeout to prevent hanging requests (30 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
 
-    const verifyData = await verifyResponse.json();
+    // Verify payment status with Flouci
+    let verifyResponse;
+    let verifyData;
+    try {
+      verifyResponse = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${payment_id}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      verifyData = await verifyResponse.json();
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        console.error('❌ Flouci API webhook verification request timed out after 30 seconds');
+        return res.status(504).json({ 
+          error: 'Payment verification timeout',
+          message: 'The payment gateway did not respond in time.',
+          details: 'Request timed out after 30 seconds'
+        });
+      }
+      throw fetchError; // Re-throw other errors
+    }
 
     if (!verifyData.success) {
       console.error('❌ Flouci verification failed:', verifyData);
@@ -2958,51 +3353,74 @@ app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
 
     const paymentStatus = verifyData.result?.status;
 
-    // Update order based on payment status
-    let updateData = {
-      payment_gateway_reference: payment_id,
-      payment_response_data: verifyData.result,
-      updated_at: new Date().toISOString()
-    };
-
+    // GOLDEN RULE: Flouci verification API is the source of truth
+    // Only mark order as PAID if verify_payment returns SUCCESS
     if (paymentStatus === 'SUCCESS') {
-      updateData.status = 'PAID';
-      updateData.payment_status = 'PAID';
-      updateData.completed_at = new Date().toISOString();
-      console.log('✅ Payment successful for order:', developer_tracking_id);
-    } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
-      updateData.status = 'PENDING_ONLINE'; // Keep as pending, admin can review
-      updateData.payment_status = 'FAILED';
-      console.log('❌ Payment failed for order:', developer_tracking_id, 'Status:', paymentStatus);
-    } else {
-      // PENDING - don't update order status yet
-      console.log('⏳ Payment pending for order:', developer_tracking_id);
-      return res.status(200).json({ success: true, message: 'Payment pending' });
-    }
+      // Double-check order is not already PAID (idempotency)
+      if (order.status === 'PAID') {
+        return res.status(200).json({ 
+          success: true, 
+          message: 'Order already processed',
+          orderStatus: 'PAID'
+        });
+      }
 
-    // Update order in database
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update(updateData)
-      .eq('id', developer_tracking_id);
+      // Update order to PAID in a transaction
+      const updateData = {
+        status: 'PAID',
+        payment_status: 'PAID',
+        payment_gateway_reference: payment_id,
+        payment_response_data: verifyData.result,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
 
-    if (updateError) {
-      console.error('❌ Error updating order:', updateError);
-      return res.status(500).json({ error: 'Failed to update order' });
-    }
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', developer_tracking_id)
+        .eq('status', 'PENDING_ONLINE'); // Only update if still PENDING_ONLINE (prevents race conditions)
 
-    console.log('✅ Order updated successfully:', developer_tracking_id);
+      if (updateError) {
+        console.error('❌ Error updating order to PAID:', updateError);
+        return res.status(500).json({ error: 'Failed to update order' });
+      }
 
-    // If payment is successful, automatically generate tickets and send email
-    // Note: This is done asynchronously to not block the webhook response
-    if (paymentStatus === 'SUCCESS') {
-      console.log('🎫 Automatically generating tickets for order:', developer_tracking_id);
+      // Check if update actually happened (might have been updated by another process)
+      const { data: updatedOrder } = await supabase
+        .from('orders')
+        .select('status')
+        .eq('id', developer_tracking_id)
+        .single();
+
+      if (updatedOrder?.status !== 'PAID') {
+        return res.status(200).json({ 
+          success: true, 
+          message: 'Order status may have been updated by another process'
+        });
+      }
+
+      // CRITICAL: Only generate tickets and send emails AFTER order is confirmed PAID
+      // This happens in a separate async process to not block webhook response
       
+      // IDEMPOTENCY: Check if tickets already exist before generating
+      const { data: existingTickets } = await supabase
+        .from('tickets')
+        .select('id')
+        .eq('order_id', developer_tracking_id)
+        .limit(1);
+
+      if (existingTickets && existingTickets.length > 0) {
+        return res.status(200).json({ 
+          success: true, 
+          message: 'Webhook processed - tickets already exist'
+        });
+      }
+
       // Call ticket generation function (fire and forget - don't block webhook response)
       // Use process.nextTick to ensure function is available and run after current execution
       process.nextTick(async () => {
         try {
-          console.log('🎫 Starting ticket generation for order:', developer_tracking_id);
           
           // Check if function exists
           if (typeof generateTicketsAndSendEmail !== 'function') {
@@ -3011,8 +3429,6 @@ app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
           }
           
           const result = await generateTicketsAndSendEmail(developer_tracking_id);
-          console.log('✅ Tickets generated and email sent for order:', developer_tracking_id);
-          console.log('✅ Result:', JSON.stringify(result, null, 2));
         } catch (error) {
           console.error('❌ Error generating tickets after payment:', error);
           console.error('❌ Error details:', {
@@ -3024,6 +3440,27 @@ app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
           // Don't fail the webhook - tickets can be generated manually later via admin panel
         }
       });
+    } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
+      // Payment failed - mark as failed but keep status as PENDING_ONLINE (allows retry)
+      const updateData = {
+        payment_status: 'FAILED',
+        payment_gateway_reference: payment_id,
+        payment_response_data: verifyData.result,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', developer_tracking_id);
+
+      if (updateError) {
+        console.error('❌ Error updating order payment status:', updateError);
+      } else {
+      }
+    } else {
+      // PENDING - don't update order status yet, let webhook finalize later
+      return res.status(200).json({ success: true, message: 'Payment pending' });
     }
 
     // Return success response to Flouci
@@ -3055,11 +3492,6 @@ app.get('/api/ambassadors/active', async (req, res) => {
     const normalizedCity = String(city).trim();
     const normalizedVille = ville && String(ville).trim() !== '' ? String(ville).trim() : null;
     
-    console.log('🔍 Fetching active ambassadors:', { 
-      city: normalizedCity, 
-      ville: normalizedVille,
-      hasVille: !!normalizedVille
-    });
     
     let query = supabase
       .from('ambassadors')
@@ -3071,9 +3503,6 @@ app.get('/api/ambassadors/active', async (req, res) => {
     // If ville is NOT provided, show all ambassadors in the city
     if (normalizedVille) {
       query = query.eq('ville', normalizedVille);
-      console.log('  ✓ Filtering by ville:', normalizedVille);
-    } else {
-      console.log('  ✓ No ville filter (showing all ambassadors in city)');
     }
     
     query = query.order('full_name');
@@ -3102,10 +3531,6 @@ app.get('/api/ambassadors/active', async (req, res) => {
       })
     );
 
-    console.log(`  ✅ Found ${ambassadorsWithSocial?.length || 0} ambassador(s)`);
-    if (ambassadorsWithSocial && ambassadorsWithSocial.length > 0) {
-      console.log('  Ambassadors:', ambassadorsWithSocial.map(a => ({ name: a.full_name, city: a.city, ville: a.ville })));
-    }
 
     res.json({ success: true, data: ambassadorsWithSocial || [] });
   } catch (error) {
@@ -3495,7 +3920,6 @@ app.post('/api/ambassador-login', authLimiter, async (req, res) => {
           .from('ambassadors')
           .select('phone, full_name, status')
           .limit(5);
-        console.log('Sample ambassadors in database:', sampleAmbassadors);
       }
       
       return res.status(401).json({ 
@@ -3575,12 +3999,6 @@ app.post('/api/ambassador-login', authLimiter, async (req, res) => {
     }
 
     // Success - return ambassador data (frontend will handle session storage)
-    console.log('✅ /api/ambassador-login: Login successful:', {
-      ambassadorId: ambassador.id,
-      phone: ambassador.phone,
-      name: ambassador.full_name
-    });
-
     res.status(200).json({ 
       success: true, 
       ambassador: {
@@ -4864,25 +5282,39 @@ app.post('/api/generate-qr-code', async (req, res) => {
  * This can be called from webhook or manual endpoint
  */
 async function generateTicketsAndSendEmail(orderId) {
+  console.log('\n🚀 ============================================');
+  console.log('🚀 STARTING TICKET GENERATION AND EMAIL/SMS');
+  console.log('🚀 ============================================');
+  console.log('📋 Order ID:', orderId);
+  console.log('⏰ Timestamp:', new Date().toISOString());
+  
   try {
-    console.log('🎫 generateTicketsAndSendEmail called for order:', orderId);
-    
     if (!supabase) {
+      console.error('❌ Supabase not configured');
       throw new Error('Supabase not configured');
     }
+    console.log('✅ Supabase client available');
     
     // Check email configuration early
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    const hasEmailConfig = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+    console.log('📧 Email Configuration:', {
+      hasEmailUser: !!process.env.EMAIL_USER,
+      hasEmailPass: !!process.env.EMAIL_PASS,
+      emailConfigured: hasEmailConfig
+    });
+    
+    if (!hasEmailConfig) {
       console.warn('⚠️ Email service not configured - EMAIL_USER or EMAIL_PASS not set');
       console.warn('⚠️ Tickets will be generated but email will not be sent');
     } else {
-      console.log('✅ Email service configured');
+      console.log('✅ Email service is configured');
     }
 
     // Use service role client for ALL operations (storage AND database) if available
     const dbClient = supabaseService || supabase;
     const storageClient = supabaseService || supabase;
     
+    console.log('🔑 Supabase Client Type:', supabaseService ? 'Service Role (✅)' : 'Anon Key (⚠️)');
     if (!supabaseService) {
       console.warn('⚠️ Service role key not set - using anon key (may fail due to RLS)');
     }
@@ -4915,7 +5347,7 @@ async function generateTicketsAndSendEmail(orderId) {
         ? (showFullPhone ? orderData.user_phone : `${orderData.user_phone.substring(0, 3)}***`)
         : 'NOT SET';
       
-      console.log('📋 Order data for SMS check:', {
+      console.log('Order details for SMS:', {
         orderId: orderData.id,
         hasUserPhone: !!orderData.user_phone,
         userPhone: phoneDisplay,
@@ -4927,21 +5359,58 @@ async function generateTicketsAndSendEmail(orderId) {
     }
 
     if (orderError || !orderData) {
+      console.error('❌ Order fetch failed:', {
+        orderError: orderError?.message,
+        hasOrderData: !!orderData
+      });
       throw new Error(`Order not found: ${orderError?.message || 'Unknown error'}`);
     }
 
     const order = orderData;
+    console.log('✅ Order fetched successfully:', {
+      orderId: order.id,
+      status: order.status,
+      source: order.source,
+      paymentMethod: order.payment_method,
+      hasUserEmail: !!order.user_email,
+      hasUserPhone: !!order.user_phone,
+      userEmail: order.user_email || 'NOT SET',
+      userPhone: order.user_phone ? `${order.user_phone.substring(0, 3)}***` : 'NOT SET'
+    });
 
-    // Check if order is in the correct status (COMPLETED for COD, PAID for online)
+    // Check if order is in the correct status (COMPLETED for COD, PAID for online or ambassador_manual)
     const isPaidStatus = 
       (order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED')) ||
-      (order.source === 'platform_online' && order.status === 'PAID');
+      (order.source === 'platform_online' && order.status === 'PAID') ||
+      (order.source === 'ambassador_manual' && order.status === 'PAID');
+
+    console.log('🔍 Status Check:', {
+      source: order.source,
+      status: order.status,
+      isPaidStatus: isPaidStatus,
+      checks: {
+        platform_cod_completed: order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED'),
+        platform_online_paid: order.source === 'platform_online' && order.status === 'PAID',
+        ambassador_manual_paid: order.source === 'ambassador_manual' && order.status === 'PAID'
+      }
+    });
 
     if (!isPaidStatus) {
+      console.error('❌ Order status validation failed:', {
+        currentStatus: order.status,
+        source: order.source,
+        expectedStatuses: {
+          platform_cod: 'COMPLETED or MANUAL_COMPLETED',
+          platform_online: 'PAID',
+          ambassador_manual: 'PAID'
+        }
+      });
       throw new Error(`Order is not in a paid status. Current status: ${order.status}, Source: ${order.source}`);
     }
+    console.log('✅ Order status is valid for ticket generation');
 
     // Check if tickets already exist
+    console.log('🔍 Checking for existing tickets...');
     const { data: existingTickets } = await dbClient
       .from('tickets')
       .select('id')
@@ -4949,9 +5418,10 @@ async function generateTicketsAndSendEmail(orderId) {
       .limit(1);
 
     if (existingTickets && existingTickets.length > 0) {
-      console.log('✅ Tickets already exist for order:', orderId);
+      console.log('⚠️ Tickets already exist for this order:', existingTickets.length);
       return { success: true, message: 'Tickets already generated', ticketsCount: existingTickets.length };
     }
+    console.log('✅ No existing tickets found, proceeding with generation');
 
     // Fetch all passes for this order
     let orderPasses = null;
@@ -5139,19 +5609,17 @@ async function generateTicketsAndSendEmail(orderId) {
         }
 
         // Verify transporter configuration
-        console.log('📧 Email configuration:', {
+        console.log('Email transporter configuration:', {
           host: process.env.EMAIL_HOST,
           port: process.env.EMAIL_PORT || '587',
           user: process.env.EMAIL_USER ? `${process.env.EMAIL_USER.substring(0, 3)}***` : 'NOT SET',
           hasPassword: !!process.env.EMAIL_PASS
         });
 
-        console.log('📧 Preparing to send email to:', order.user_email);
         
         // Verify transporter connection (optional, but helpful for debugging)
         try {
           await transporter.verify();
-          console.log('✅ SMTP connection verified');
         } catch (verifyError) {
           console.error('❌ SMTP verification failed:', verifyError.message);
           console.error('❌ SMTP error details:', {
@@ -5630,7 +6098,14 @@ async function generateTicketsAndSendEmail(orderId) {
         `;
 
         // Send email
-        console.log('📤 Sending email via SMTP...');
+        console.log('📤 Attempting to send email...');
+        console.log('📤 Email Details:', {
+          from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+          to: order.user_email,
+          subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+          htmlLength: emailHtml.length
+        });
+        
         const emailResult = await transporter.sendMail({
           from: `Andiamo Events <${process.env.EMAIL_USER}>`,
           to: order.user_email,
@@ -5638,7 +6113,7 @@ async function generateTicketsAndSendEmail(orderId) {
           html: emailHtml
         });
 
-        console.log('✅ Email sent successfully!', {
+        console.log('✅ Email sent successfully:', {
           messageId: emailResult.messageId,
           to: order.user_email,
           accepted: emailResult.accepted,
@@ -5667,11 +6142,13 @@ async function generateTicketsAndSendEmail(orderId) {
           sent_at: new Date().toISOString()
         });
 
-        console.log('✅ Email delivery logged successfully');
         emailSent = true; // Mark email as successfully sent
+        console.log('✅ Email marked as sent successfully');
       } catch (emailErrorCaught) {
         emailError = emailErrorCaught;
         console.error('❌ Error sending confirmation email:', emailErrorCaught);
+        console.error('❌ Email error type:', emailErrorCaught.name);
+        console.error('❌ Email error code:', emailErrorCaught.code);
         console.error('❌ Email error details:', {
           message: emailErrorCaught.message,
           code: emailErrorCaught.code,
@@ -5714,53 +6191,35 @@ async function generateTicketsAndSendEmail(orderId) {
     }
 
     // Send SMS with QR code URLs automatically after payment
+    console.log('\n📱 ============================================');
+    console.log('📱 STARTING SMS SENDING PROCESS');
+    console.log('📱 ============================================');
     let smsSent = false;
     let smsError = null;
     
-    console.log('📱 SMS sending check:', {
+    console.log('📱 SMS Configuration Check:', {
       hasUserPhone: !!order.user_phone,
       userPhone: order.user_phone || 'NOT SET',
+      userPhoneLength: order.user_phone ? order.user_phone.length : 0,
       hasWinsmsKey: !!WINSMS_API_KEY,
+      winsmsKeyLength: WINSMS_API_KEY ? WINSMS_API_KEY.length : 0,
       orderId: orderId
     });
     
     if (order.user_phone && WINSMS_API_KEY) {
       try {
-        console.log('📱 Preparing to send SMS to:', order.user_phone);
         
-        // Get order access token for single URL with all QR codes
-        const { data: orderData, error: orderDataError } = await dbClient
-          .from('orders')
-          .select('qr_access_token')
-          .eq('id', orderId)
-          .single();
-
-        // Build single secure QR code URL (shows all QR codes)
-        const apiBase = process.env.VITE_API_URL || process.env.API_URL || 'https://andiamoevents.com';
-        let qrCodeUrl = null;
+        // Build SMS message with new format
+        const orderIdShort = orderId.substring(0, 8).toUpperCase(); // First 8 characters of order ID (e.g., 98C1E3AC)
         
-        if (orderData && orderData.qr_access_token) {
-          qrCodeUrl = `${apiBase}/api/qr-codes/${orderData.qr_access_token}`;
-        }
-
-        // Build SMS message
-        const eventName = order.events?.name || 'Event';
-        const orderNumber = order.order_number ? `#${order.order_number}` : '';
-        
-        let smsMessage = `Votre commande ${orderNumber} est confirmée!\n`;
-        smsMessage += `Événement: ${eventName}\n`;
-        smsMessage += `Total: ${order.total_price} DT\n`;
-        smsMessage += `Merci pour votre achat!`;
-
-        // Add single QR code URL if available
-        if (qrCodeUrl) {
-          smsMessage += `\n\n🎫 Vos QR Codes:\n${qrCodeUrl}`;
-          smsMessage += `\n\n⚠️ Ce lien ne peut être utilisé qu'une seule fois.`;
-        }
+        let smsMessage = `Paiement confirmé\n`;
+        smsMessage += `ID: ${orderIdShort} | Total: ${order.total_price} DT\n`;
+        smsMessage += `Merci pour votre achat. Billets envoyés par email.\n`;
+        smsMessage += `We Create Memories`;
 
         // Format phone number for logging (sendSingleSms will format it again)
         const formattedPhonePreview = formatPhoneNumber(order.user_phone);
-        console.log('📱 Phone number formatting check:', {
+        console.log('Phone number formatting:', {
           original: order.user_phone,
           willBeFormattedTo: formattedPhonePreview || 'INVALID FORMAT',
           isValid: !!formattedPhonePreview
@@ -5770,13 +6229,57 @@ async function generateTicketsAndSendEmail(orderId) {
           throw new Error(`Invalid phone number format: ${order.user_phone}. Expected 8-digit Tunisian number starting with 2, 4, 5, or 9 (e.g., 27169458)`);
         }
         
-        // Send SMS (sendSingleSms will format the number internally)
-        const smsResult = await sendSingleSms(order.user_phone, smsMessage);
+        // Send SMS using unified helper
+        console.log('📤 Attempting to send SMS...');
+        console.log('📤 SMS Message:', smsMessage);
+        const responseData = await sendSms(order.user_phone, smsMessage);
+        console.log('📤 SMS API Response:', {
+          status: responseData.status,
+          dataCode: responseData.data?.code,
+          dataMessage: responseData.data?.message,
+          rawResponse: JSON.stringify(responseData.data || responseData.raw).substring(0, 200)
+        });
         
-        if (smsResult.success) {
-          console.log('✅ SMS sent successfully to:', formattedPhonePreview, '(original:', order.user_phone + ')');
+        const isSuccess = responseData.status === 200 &&
+                          responseData.data &&
+                          (responseData.data.code === 'ok' ||
+                           responseData.data.code === '200' ||
+                           (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
+        
+        console.log('📤 SMS Send Result:', {
+          isSuccess: isSuccess,
+          statusCode: responseData.status,
+          apiCode: responseData.data?.code
+        });
+        
+        if (isSuccess) {
           smsSent = true;
+          console.log('✅ SMS sent successfully!');
+          // Log success
+          try {
+            await dbClient.from('sms_logs').insert({
+              phone_number: order.user_phone,
+              message: smsMessage.trim(),
+              status: 'sent',
+              api_response: JSON.stringify(responseData.data || responseData.raw),
+              sent_at: new Date().toISOString()
+            });
+          } catch (logErr) {
+            console.warn('⚠️ Failed to log SMS (order) success:', logErr);
+          }
         } else {
+          // Log failure
+          try {
+            await dbClient.from('sms_logs').insert({
+              phone_number: order.user_phone,
+              message: smsMessage.trim(),
+              status: 'failed',
+              error_message: responseData.data?.message || 'SMS sending failed',
+              api_response: JSON.stringify(responseData.data || responseData.raw)
+            });
+          } catch (logErr) {
+            console.warn('⚠️ Failed to log SMS (order) failure:', logErr);
+          }
           throw new Error('SMS sending failed');
         }
       } catch (smsErrorCaught) {
@@ -5798,6 +6301,19 @@ async function generateTicketsAndSendEmail(orderId) {
       }
     }
 
+    console.log('\n✅ ============================================');
+    console.log('✅ TICKET GENERATION COMPLETED');
+    console.log('✅ ============================================');
+    console.log('📊 Final Results:', {
+      success: true,
+      ticketsCount: tickets.length,
+      emailSent: emailSent,
+      emailError: emailError ? emailError.message : null,
+      smsSent: smsSent,
+      smsError: smsError ? smsError.message : null
+    });
+    console.log('✅ ============================================\n');
+    
     return { 
       success: true, 
       message: 'Tickets generated successfully',
@@ -5809,6 +6325,9 @@ async function generateTicketsAndSendEmail(orderId) {
       smsError: smsError ? smsError.message : null // Include error message if SMS failed
     };
   } catch (error) {
+    console.error('\n❌ ============================================');
+    console.error('❌ TICKET GENERATION FAILED');
+    console.error('❌ ============================================');
     console.error('❌ Error generating tickets:', error);
     console.error('❌ Error stack:', error.stack);
     console.error('❌ Error details:', {
@@ -5816,6 +6335,7 @@ async function generateTicketsAndSendEmail(orderId) {
       code: error.code,
       name: error.name
     });
+    console.error('❌ ============================================\n');
     throw error;
   }
 }
@@ -5825,16 +6345,36 @@ async function generateTicketsAndSendEmail(orderId) {
 // POST /api/generate-tickets-for-order - Generate tickets when order reaches PAID status
 // Can be called from frontend (after payment) or admin panel (requires auth)
 app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, async (req, res) => {
+  console.log('\n🌐 ============================================');
+  console.log('🌐 API ENDPOINT: /api/generate-tickets-for-order');
+  console.log('🌐 ============================================');
+  console.log('🌐 Request received:', {
+    orderId: req.body.orderId,
+    hasRecaptchaToken: !!req.body.recaptchaToken,
+    ip: req.ip || req.headers['x-forwarded-for'],
+    userAgent: req.headers['user-agent']?.substring(0, 50),
+    origin: req.headers.origin,
+    referer: req.headers.referer
+  });
+  console.log('🌐 Full request body:', JSON.stringify(req.body, null, 2));
+  
   try {
     const { orderId, recaptchaToken } = req.body;
     
     if (!orderId) {
-      console.error('❌ No orderId provided');
+      console.error('❌ API: No orderId provided in request body');
+      console.error('❌ API: Request body:', req.body);
       return res.status(400).json({ error: 'Order ID is required' });
     }
+    console.log('✅ API: Order ID received:', orderId);
 
     // Check if this is an admin request (has admin cookie)
     const isAdminRequest = req.headers.cookie && req.headers.cookie.includes('adminToken');
+    console.log('🔐 API: Admin request check:', {
+      isAdminRequest: isAdminRequest,
+      hasCookie: !!req.headers.cookie,
+      cookieIncludesAdminToken: req.headers.cookie?.includes('adminToken') || false
+    });
     
     // Security: Require CAPTCHA for non-admin requests (public endpoint)
     if (!isAdminRequest) {
@@ -5900,7 +6440,6 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
           });
         }
         
-        console.log('✅ reCAPTCHA verified for ticket generation');
       }
     }
     
@@ -5914,7 +6453,6 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
         }
       } catch (authError) {
         // If auth middleware fails, continue (might be frontend call)
-        console.log('⚠️ Admin auth check skipped');
       }
     }
 
@@ -5924,11 +6462,25 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
     }
 
     // Security: Verify order exists and check ownership/status
+    console.log('🔍 API: Fetching order from database...');
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select('id, status, payment_status, user_email, user_phone, source, created_at')
       .eq('id', orderId)
       .single();
+    
+    console.log('🔍 API: Order fetch result:', {
+      hasOrder: !!order,
+      orderError: orderError?.message,
+      orderData: order ? {
+        id: order.id,
+        status: order.status,
+        payment_status: order.payment_status,
+        source: order.source,
+        hasUserEmail: !!order.user_email,
+        hasUserPhone: !!order.user_phone
+      } : null
+    });
 
     if (orderError || !order) {
       console.error('❌ Order not found:', orderId);
@@ -6003,7 +6555,6 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
     }
 
     if (existingTickets && existingTickets.length > 0) {
-      console.log('⚠️ Tickets already exist for order:', orderId);
       // Don't block - just log (tickets might need regeneration)
       // But log it for security audit
       try {
@@ -6052,10 +6603,11 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
     }
 
     // Security: Verify order is in correct status (PAID) before generating tickets
-    // Only allow ticket generation for PAID orders (or COMPLETED for COD)
+    // Only allow ticket generation for PAID orders (or COMPLETED for COD, or PAID for ambassador_manual)
     const isPaidStatus = 
       (order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED')) ||
-      (order.source === 'platform_online' && order.status === 'PAID');
+      (order.source === 'platform_online' && order.status === 'PAID') ||
+      (order.source === 'ambassador_manual' && order.status === 'PAID');
 
     if (!isPaidStatus && !isAdminRequest) {
       // Log security event - attempt to generate tickets for unpaid order
@@ -6090,295 +6642,56 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
       });
     }
 
-    console.log('🎫 Generating tickets for order:', orderId, 'Request type:', isAdminRequest ? 'Admin' : 'Frontend');
 
     // Use the shared helper function
+    console.log('\n🚀 API: ============================================');
+    console.log('🚀 API: Calling generateTicketsAndSendEmail function');
+    console.log('🚀 API: ============================================');
+    console.log('🚀 API: Order details before generation:', {
+      orderId: order.id,
+      status: order.status,
+      source: order.source,
+      payment_status: order.payment_status,
+      hasUserEmail: !!order.user_email,
+      hasUserPhone: !!order.user_phone,
+      userEmail: order.user_email || 'NOT SET',
+      userPhone: order.user_phone ? `${order.user_phone.substring(0, 3)}***` : 'NOT SET'
+    });
+    
     const result = await generateTicketsAndSendEmail(orderId);
+    
+    console.log('\n✅ API: ============================================');
+    console.log('✅ API: Ticket generation completed');
+    console.log('✅ API: ============================================');
+    console.log('✅ API: Result:', {
+      success: result.success,
+      ticketsCount: result.ticketsCount,
+      emailSent: result.emailSent,
+      emailError: result.emailError,
+      smsSent: result.smsSent,
+      smsError: result.smsError
+    });
+    console.log('✅ API: ============================================\n');
     
     res.status(200).json(result);
   } catch (error) {
-    console.error('❌ Error generating tickets:', error);
+    console.error('\n❌ API: ============================================');
+    console.error('❌ API: Error generating tickets');
+    console.error('❌ API: ============================================');
+    console.error('❌ API: Error:', error);
+    console.error('❌ API: Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    console.error('❌ API: ============================================\n');
+    
     res.status(500).json({ 
       error: 'Failed to generate tickets', 
       details: error.message 
     });
   }
 });
-
-// Simple test email endpoint (GET for browser, POST for API)
-app.get('/api/test-email-simple', async (req, res) => {
-  res.json({
-    message: 'Email test endpoint - Use POST method to send test email',
-    endpoint: '/api/test-email-simple',
-    method: 'POST',
-    recipient: 'fmalekbenamorf@gmail.com',
-    instructions: 'Send a POST request to this endpoint to test email configuration',
-    config: {
-      EMAIL_HOST: process.env.EMAIL_HOST,
-      EMAIL_PORT: process.env.EMAIL_PORT,
-      EMAIL_USER: process.env.EMAIL_USER ? `${process.env.EMAIL_USER.substring(0, 3)}***` : 'NOT SET',
-      EMAIL_PASS_SET: !!process.env.EMAIL_PASS,
-      EMAIL_PASS_LENGTH: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0,
-      EMAIL_PASS_FIRST_CHAR: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.substring(0, 1) : '',
-      EMAIL_PASS_LAST_CHAR: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.substring(process.env.EMAIL_PASS.length - 1) : ''
-    }
-  });
-});
-
-app.post('/api/test-email-simple', async (req, res) => {
-  try {
-    console.log('🧪 Simple email test endpoint called');
-    
-    // Check email configuration
-    const emailConfig = {
-      EMAIL_HOST: process.env.EMAIL_HOST,
-      EMAIL_PORT: process.env.EMAIL_PORT || '587',
-      EMAIL_USER: process.env.EMAIL_USER,
-      EMAIL_PASS: process.env.EMAIL_PASS ? '***SET***' : 'NOT SET',
-      EMAIL_PASS_LENGTH: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0
-    };
-    
-    console.log('📧 Email configuration:', {
-      ...emailConfig,
-      EMAIL_USER: emailConfig.EMAIL_USER ? `${emailConfig.EMAIL_USER.substring(0, 3)}***` : 'NOT SET'
-    });
-    
-    if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      return res.status(500).json({ 
-        error: 'Email service not configured', 
-        details: 'Missing email configuration',
-        config: emailConfig
-      });
-    }
-
-    const testEmailTo = 'fmalekbenamorf@gmail.com';
-    console.log('📧 Preparing to send test email to:', testEmailTo);
-
-    // Create fresh transporter
-    const testTransporter = getEmailTransporter();
-    
-    // Try to verify connection first - but continue even if it fails
-    console.log('🔍 Verifying SMTP connection...');
-    let verificationPassed = false;
-    try {
-      await testTransporter.verify();
-      console.log('✅ SMTP connection verified successfully');
-      verificationPassed = true;
-    } catch (verifyError) {
-      console.error('❌ SMTP verification failed:', verifyError.message);
-      console.error('❌ Verification error details:', {
-        code: verifyError.code,
-        command: verifyError.command,
-        response: verifyError.response,
-        responseCode: verifyError.responseCode,
-        stack: verifyError.stack
-      });
-      
-      // Some servers fail verification but still allow sending
-      // Continue to try sending anyway
-      console.warn('⚠️ Verification failed, but will attempt to send email anyway...');
-      
-      if (verifyError.code === 'EAUTH') {
-        console.error('💡 Authentication failed. Possible issues:');
-        console.error('   1. Password might need URL encoding');
-        console.error('   2. Server might require different auth method (try LOGIN)');
-        console.error('   3. Account might be locked after failed attempts');
-        console.error('   4. Special characters in password might need escaping');
-      }
-    }
-
-    // Send test email (even if verification failed)
-    console.log('📤 Attempting to send test email...');
-    if (!verificationPassed) {
-      console.warn('⚠️ Sending email despite verification failure (some servers allow this)');
-    }
-    
-    const emailResult = await testTransporter.sendMail({
-      from: `Andiamo Events <${process.env.EMAIL_USER}>`,
-      to: testEmailTo,
-      subject: '🧪 Test Email - Andiamo Events Email Configuration',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Test Email - Andiamo Events</title>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; padding: 20px; }
-            .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-            .header { background: linear-gradient(135deg, #E21836 0%, #c4162f 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
-            .header h1 { margin: 0; font-size: 28px; }
-            .content { padding: 20px 0; }
-            .success-box { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin: 20px 0; }
-            .success-box h3 { color: #155724; margin-top: 0; }
-            .info-box { background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0; }
-            .info-box p { margin: 10px 0; }
-            .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 14px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>✅ Test Email Successful!</h1>
-            </div>
-            <div class="content">
-              <p>Dear User,</p>
-              
-              <div class="success-box">
-                <h3>🎉 Email Configuration Test</h3>
-                <p>This is a test email to verify that your email configuration is working correctly.</p>
-              </div>
-
-              <div class="info-box">
-                <h3>📧 Email Configuration Details:</h3>
-                <p><strong>Email Host:</strong> ${process.env.EMAIL_HOST}</p>
-                <p><strong>Email Port:</strong> ${process.env.EMAIL_PORT || '587'}</p>
-                <p><strong>Email User:</strong> ${process.env.EMAIL_USER}</p>
-                <p><strong>Sent At:</strong> ${new Date().toLocaleString()}</p>
-              </div>
-
-              <p>If you received this email, it means your email service is properly configured and ready to use!</p>
-              
-              <p>Best regards,<br>
-              <strong>The Andiamo Events Team</strong></p>
-            </div>
-            <div class="footer">
-              <p>© 2024 Andiamo Events. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `
-    });
-
-    console.log('✅ Test email sent successfully!', {
-      messageId: emailResult.messageId,
-      to: testEmailTo,
-      accepted: emailResult.accepted,
-      rejected: emailResult.rejected
-    });
-
-    res.status(200).json({ 
-      success: true, 
-      message: 'Test email sent successfully',
-      to: testEmailTo,
-      messageId: emailResult.messageId,
-      accepted: emailResult.accepted,
-      rejected: emailResult.rejected
-    });
-  } catch (error) {
-    console.error('❌ Error sending test email:', error);
-    console.error('❌ Error details:', {
-      message: error.message,
-      code: error.code,
-      command: error.command,
-      response: error.response,
-      responseCode: error.responseCode,
-      stack: error.stack
-    });
-    
-    res.status(500).json({ 
-      error: 'Failed to send test email', 
-      details: error.message,
-      errorCode: error.code,
-      response: error.response,
-      responseCode: error.responseCode
-    });
-  }
-});
-
-// Test email endpoint (admin auth required)
-app.post('/api/test-email', requireAdminAuth, async (req, res) => {
-  try {
-    // Check if email service is configured
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      return res.status(500).json({ 
-        error: 'Email service not configured', 
-        details: 'EMAIL_USER and EMAIL_PASS environment variables are required.'
-      });
-    }
-
-    const { to } = req.body;
-    const testEmailTo = to || 'malekbenamor02@icloud.com';
-
-    const testEmailHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Test Email - Andiamo Events</title>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; padding: 20px; }
-          .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
-          .header h1 { margin: 0; font-size: 28px; }
-          .content { padding: 20px 0; }
-          .success-box { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; padding: 20px; margin: 20px 0; }
-          .success-box h3 { color: #155724; margin-top: 0; }
-          .info-box { background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0; }
-          .info-box p { margin: 10px 0; }
-          .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 14px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>✅ Test Email Successful!</h1>
-          </div>
-          <div class="content">
-            <p>Dear User,</p>
-            
-            <div class="success-box">
-              <h3>🎉 Email Configuration Test</h3>
-              <p>This is a test email to verify that your new professional email configuration is working correctly.</p>
-            </div>
-
-            <div class="info-box">
-              <h3>📧 Email Configuration Details:</h3>
-              <p><strong>Email User:</strong> ${process.env.EMAIL_USER}</p>
-              <p><strong>Email Host:</strong> ${process.env.EMAIL_HOST}</p>
-              <p><strong>Email Port:</strong> ${process.env.EMAIL_PORT || '587'}</p>
-              <p><strong>Sent At:</strong> ${new Date().toLocaleString()}</p>
-            </div>
-
-            <p>If you received this email, it means your email service is properly configured and ready to use!</p>
-            
-            <p>Best regards,<br>
-            <strong>The Andiamo Events Team</strong></p>
-          </div>
-          <div class="footer">
-            <p>© 2024 Andiamo Events. All rights reserved.</p>
-            <p>Tunisia's Premier Nightlife Experience</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-
-    await transporter.sendMail({
-      from: `Andiamo Events <${process.env.EMAIL_USER}>`,
-      to: testEmailTo,
-      subject: '✅ Test Email - Andiamo Events Email Configuration',
-      html: testEmailHtml
-    });
-
-    res.status(200).json({ 
-      success: true, 
-      message: 'Test email sent successfully',
-      to: testEmailTo,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Test email sending failed:', error);
-    res.status(500).json({ 
-      error: 'Failed to send test email', 
-      details: error.message 
-    });
-  }
-});
-
 
 // OG Image endpoint - serves OG image from Supabase Storage
 app.get('/api/og-image', ogImageLimiter, async (req, res) => {
@@ -6456,9 +6769,6 @@ app.get('/api', (req, res) => {
     message: 'Andiamo Events API',
     version: '1.0.0',
     endpoints: {
-      'POST /api/test-email-simple': 'Test email configuration (sends to fmalekbenamorf@gmail.com)',
-      'GET /api/test-email-simple': 'Get info about email test endpoint',
-      'POST /api/test-email': 'Test email (admin auth required)',
       'POST /api/send-email': 'Send email (admin auth required)',
       'GET /api/test': 'Test endpoint',
       'GET /api/sms-test': 'SMS test endpoint'
@@ -6474,7 +6784,6 @@ app.get('/', (req, res) => {
     status: 'running',
     endpoints: {
       '/api': 'API information',
-      '/api/test-email-simple': 'Test email endpoint (GET for info, POST to send)',
       '/api/admin-login': 'Admin login endpoint',
       '/api/verify-admin': 'Verify admin authentication',
       '/api/send-email': 'Send email (admin auth required)'
@@ -6491,7 +6800,7 @@ app.use('/api', (req, res) => {
     details: `The route ${req.path} does not exist`,
     method: req.method,
     path: req.path,
-    hint: 'Try GET /api/test-email-simple for email test endpoint info'
+    hint: 'Check /api for available endpoints'
   });
 });
 
@@ -6555,12 +6864,7 @@ app.use((err, req, res, next) => {
 if (require.main === module) {
   const port = process.env.PORT || 8082;
   const server = app.listen(port, () => {
-    console.log(`🚀 Server running on port ${port}`);
-    console.log('  POST /api/admin-login');
-    console.log('  POST /api/admin-logout');
-    console.log('  GET  /api/verify-admin');
-    console.log('  GET  /api/og-image');
-    console.log('  ... and more');
+    // Server started successfully
   });
 
   server.on('error', (err) => {
@@ -6580,3 +6884,4 @@ if (require.main === module) {
 
 // Export app for use in serverless functions
 module.exports = app;
+

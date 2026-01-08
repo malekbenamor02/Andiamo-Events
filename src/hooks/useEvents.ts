@@ -40,7 +40,6 @@ export const useEvents = () => {
   return useQuery<Event[]>({
     queryKey: ['events'],
     queryFn: async () => {
-      console.log('🔍 Fetching events from Supabase...');
       
       // Check if we're on localhost (for testing) or production
       const isLocalhost = typeof window !== 'undefined' && (
@@ -67,7 +66,6 @@ export const useEvents = () => {
         ? data 
         : (data || []).filter((event: any) => !event.is_test);
 
-      console.log('✅ Events fetched successfully:', filteredData?.length || 0, isLocalhost ? '(including test events)' : '(production - test events hidden)');
 
       // Fetch passes for all events
       const mappedEvents = await Promise.all(

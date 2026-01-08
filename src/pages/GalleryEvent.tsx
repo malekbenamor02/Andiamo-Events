@@ -186,14 +186,11 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
         : (data || []).filter((event: any) => !event.is_test);
 
       // Debug: Log all events and their slugs
-      console.log('🔍 Looking for event with slug:', normalizedSlug);
-      console.log('📋 Found gallery events:', filteredData?.length || 0);
       
       if (filteredData && filteredData.length > 0) {
         filteredData.forEach((e: Event) => {
           const slug = generateSlug(e.name);
           const matches = slug === normalizedSlug;
-          console.log(`  - "${e.name}" -> slug: "${slug}" (match: ${matches})`);
         });
       }
 
@@ -220,7 +217,6 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
         return;
       }
 
-      console.log('✅ Found event:', foundEvent.name);
       setEvent(foundEvent);
     } catch (error) {
       // Suppress browser extension errors

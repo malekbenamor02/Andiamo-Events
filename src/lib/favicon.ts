@@ -180,7 +180,6 @@ export const deleteFavicon = async (
       // 406 = Not Acceptable
       // 404 = Not Found
       if (fetchError.code === 'PGRST116' || fetchError.code === 'P42P01' || fetchError.message?.includes('406') || fetchError.message?.includes('404')) {
-        console.log('Favicon settings not found, nothing to delete');
         return { success: true };
       }
       throw new Error(`Failed to fetch favicon settings: ${fetchError.message || JSON.stringify(fetchError)}`);
@@ -236,7 +235,6 @@ export const fetchFaviconSettings = async (): Promise<FaviconSettings> => {
       // 406 = Not Acceptable (might be RLS or format issue)
       // 404 = Not Found
       if (error.code === 'PGRST116' || error.code === 'P42P01' || error.message?.includes('406') || error.message?.includes('404')) {
-        console.log('Favicon settings not found, returning empty settings');
         return {};
       }
       console.error('Error fetching favicon settings:', sanitizeObject(error));
