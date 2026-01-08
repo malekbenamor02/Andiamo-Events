@@ -182,16 +182,20 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
         return;
       }
       
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : '');
+      // API Base URL: Use VITE_API_URL if set, otherwise use current origin (for Vercel serverless functions)
+      // In development, empty string uses Vite proxy. In production, use same origin if VITE_API_URL not set.
+      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : publicUrl);
       const successLink = `${publicUrl}/payment-processing?orderId=${orderId}&status=success`;
       const failLink = `${publicUrl}/payment-processing?orderId=${orderId}&status=failed`;
       const webhookUrl = `${apiBase || publicUrl}/api/flouci-webhook`;
       
       console.log('Using payment callback URLs:', {
         publicUrl,
+        apiBase: apiBase || '(using Vite proxy)',
         successLink: successLink.substring(0, 60) + '...',
         failLink: failLink.substring(0, 60) + '...',
-        isHttps: publicUrl.startsWith('https://')
+        isHttps: publicUrl.startsWith('https://'),
+        apiUrl: `${apiBase}/api/flouci-generate-payment`
       });
 
       // Generate Flouci payment via backend (keeps secret key secure)
@@ -231,11 +235,27 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
 
       let paymentData;
       try {
-        paymentData = await paymentResponse.json();
-      } catch (jsonError) {
-        // If response is not JSON, get text response
-        const textResponse = await paymentResponse.text();
-        console.error('❌ Payment response is not JSON:', textResponse);
+        const responseText = await paymentResponse.text();
+        if (!responseText) {
+          throw new Error(language === 'en' 
+            ? 'Empty response from server. Please check your backend server is running and accessible.'
+            : 'Réponse vide du serveur. Veuillez vérifier que votre serveur backend est en cours d\'exécution et accessible.');
+        }
+        try {
+          paymentData = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('❌ Payment response is not JSON:', responseText);
+          throw new Error(language === 'en' 
+            ? `Server returned invalid response. Please check your backend server configuration. Error: ${responseText.substring(0, 100)}`
+            : `Le serveur a renvoyé une réponse invalide. Veuillez vérifier la configuration de votre serveur backend. Erreur: ${responseText.substring(0, 100)}`);
+        }
+      } catch (jsonError: any) {
+        // Re-throw if it's already our custom error
+        if (jsonError.message && jsonError.message.includes('Empty response') || jsonError.message.includes('Server returned')) {
+          throw jsonError;
+        }
+        // Otherwise, it's a parsing error
+        console.error('❌ Payment response parsing error:', jsonError);
         throw new Error(language === 'en' 
           ? `Server error (${paymentResponse.status}): ${paymentResponse.statusText || 'Unknown error'}`
           : `Erreur serveur (${paymentResponse.status}): ${paymentResponse.statusText || 'Erreur inconnue'}`);
@@ -302,10 +322,10 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
       let errorMsg = error.message || t[language].errorMessage;
       
       // Handle network/fetch errors
-      if (error.message?.includes('fetch failed') || error.message?.includes('Failed to fetch') || error.name === 'TypeError') {
+      if (error.message?.includes('fetch failed') || error.message?.includes('Failed to fetch') || error.name === 'TypeError' || error.message?.includes('Network Error')) {
         errorMsg = language === 'en' 
-          ? 'Unable to connect to the payment server. Please check your internet connection and try again. If the problem persists, contact support.'
-          : 'Impossible de se connecter au serveur de paiement. Veuillez vérifier votre connexion Internet et réessayer. Si le problème persiste, contactez le support.';
+          ? 'Unable to connect to the payment server. This usually means:\n\n1. The backend server is not running or not accessible\n2. VITE_API_URL is not configured in your deployment environment\n3. CORS is blocking the request\n\nPlease check your backend server configuration and ensure VITE_API_URL is set in your Vercel environment variables.'
+          : 'Impossible de se connecter au serveur de paiement. Cela signifie généralement:\n\n1. Le serveur backend n\'est pas en cours d\'exécution ou n\'est pas accessible\n2. VITE_API_URL n\'est pas configuré dans votre environnement de déploiement\n3. CORS bloque la requête\n\nVeuillez vérifier la configuration de votre serveur backend et assurez-vous que VITE_API_URL est défini dans vos variables d\'environnement Vercel.';
       } else if (error.message?.includes('timeout') || error.message?.includes('timed out')) {
         errorMsg = language === 'en' 
           ? 'The payment gateway did not respond in time. Please check your internet connection and try again.'
@@ -385,7 +405,8 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
         sessionStorage.removeItem(`payment_retry_${orderId}`);
       }
 
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : '');
+      // API Base URL: Use VITE_API_URL if set, otherwise use current origin (for Vercel serverless functions)
+      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : window.location.origin);
 
       // Add timeout to prevent hanging requests (45 seconds)
       const controller = new AbortController();
