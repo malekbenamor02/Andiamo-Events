@@ -1,50 +1,36 @@
-# PowerShell script to get ngrok tunnel URL
-# Run this after starting ngrok
-
-Write-Host "Checking ngrok tunnel status..." -ForegroundColor Cyan
-Write-Host ""
-
-Start-Sleep -Seconds 2
+# Get ngrok HTTPS URL from local API
+# Run this script after starting ngrok: ngrok http 8082
 
 try {
-    $response = Invoke-RestMethod -Uri 'http://127.0.0.1:4040/api/tunnels' -Method Get -ErrorAction Stop
-    
+    $response = Invoke-RestMethod -Uri 'http://127.0.0.1:4040/api/tunnels' -Method Get -TimeoutSec 3 -ErrorAction Stop
     $httpsTunnel = $response.tunnels | Where-Object { $_.proto -eq 'https' } | Select-Object -First 1
     
     if ($httpsTunnel) {
-        Write-Host "========================================" -ForegroundColor Green
-        Write-Host "  NGROK TUNNEL ACTIVE" -ForegroundColor Green
-        Write-Host "========================================" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "HTTPS URL:" -ForegroundColor Yellow
+        Write-Host ''
+        Write-Host '========================================' -ForegroundColor Green
+        Write-Host '  NGROK TUNNEL IS RUNNING!' -ForegroundColor Green
+        Write-Host '========================================' -ForegroundColor Green
+        Write-Host ''
+        Write-Host 'YOUR HTTPS URL:' -ForegroundColor Yellow
         Write-Host $httpsTunnel.public_url -ForegroundColor White -BackgroundColor DarkGreen
-        Write-Host ""
-        Write-Host "========================================" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "NEXT STEPS:" -ForegroundColor Cyan
-        Write-Host "1. Copy the HTTPS URL above"
-        Write-Host "2. Go to Vercel Dashboard → Settings → Environment Variables"
-        Write-Host "3. Add: VITE_API_URL = " -NoNewline
-        Write-Host $httpsTunnel.public_url -ForegroundColor White
-        Write-Host "4. Redeploy preview"
-        Write-Host ""
+        Write-Host ''
+        Write-Host 'Set this in Vercel as: VITE_API_URL' -ForegroundColor Cyan
+        Write-Host ''
+        Write-Host '========================================' -ForegroundColor Green
+        Write-Host ''
+        
+        # Copy to clipboard
+        Set-Clipboard -Value $httpsTunnel.public_url
+        Write-Host '✅ URL copied to clipboard!' -ForegroundColor Green
+        Write-Host ''
     } else {
-        Write-Host "No HTTPS tunnel found. Make sure ngrok is running." -ForegroundColor Red
+        Write-Host 'No HTTPS tunnel found. Make sure ngrok is running: ngrok http 8082' -ForegroundColor Yellow
     }
 } catch {
-    Write-Host "========================================" -ForegroundColor Red
-    Write-Host "  NGROK NOT RUNNING" -ForegroundColor Red
-    Write-Host "========================================" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Please start ngrok first:" -ForegroundColor Yellow
-    Write-Host "  ngrok http 8082" -ForegroundColor White
-    Write-Host ""
-    Write-Host "Or use the helper script:" -ForegroundColor Yellow
-    Write-Host "  start-ngrok-tunnel.bat" -ForegroundColor White
-    Write-Host ""
-    Write-Host "Then run this script again to get the URL." -ForegroundColor Yellow
+    Write-Host 'Error: Could not connect to ngrok API (port 4040)' -ForegroundColor Red
+    Write-Host ''
+    Write-Host 'Make sure:' -ForegroundColor Yellow
+    Write-Host '  1. ngrok is running: ngrok http 8082' -ForegroundColor White
+    Write-Host '  2. Or visit: http://127.0.0.1:4040 in your browser' -ForegroundColor White
+    Write-Host ''
 }
-
-Write-Host ""
-Write-Host "Press any key to exit..."
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
