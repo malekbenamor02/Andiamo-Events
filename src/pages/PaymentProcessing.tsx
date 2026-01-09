@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getOrderById, updateOrderStatus } from '@/lib/orders/orderService';
 import { OrderStatus } from '@/lib/constants/orderStatuses';
 import PaymentSuccess from '@/components/payment/PaymentSuccess';
+import { getApiBaseUrl } from '@/lib/api-routes';
 // Payment generation and verification now handled via backend API
 
 interface PaymentProcessingProps {
@@ -182,9 +183,15 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
         return;
       }
       
-      // API Base URL: Use VITE_API_URL if set, otherwise use current origin (for Vercel serverless functions)
-      // In development, empty string uses Vite proxy. In production, use same origin if VITE_API_URL not set.
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : publicUrl);
+      // ============================================
+      // API BASE URL RESOLUTION (Vercel Preview Fix)
+      // ============================================
+      // CRITICAL: On Vercel Preview/Production, reject ngrok URLs
+      // getApiBaseUrl() automatically handles this:
+      // - If VITE_API_URL is ngrok/localhost on Vercel → use same origin
+      // - If VITE_API_URL is valid → use it
+      // - If VITE_API_URL not set → use same origin (Vercel) or empty string (dev)
+      const apiBase = getApiBaseUrl();
       const successLink = `${publicUrl}/payment-processing?orderId=${orderId}`;
       const failLink = `${publicUrl}/payment-processing?orderId=${orderId}`;
       
@@ -414,8 +421,11 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
         sessionStorage.removeItem(`payment_retry_${orderId}`);
       }
 
-      // API Base URL: Use VITE_API_URL if set, otherwise use current origin (for Vercel serverless functions)
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : window.location.origin);
+      // ============================================
+      // API BASE URL RESOLUTION (Vercel Preview Fix)
+      // ============================================
+      // Use getApiBaseUrl() to ensure ngrok URLs are rejected on Vercel deployments
+      const apiBase = getApiBaseUrl();
 
       // Add timeout to prevent hanging requests (45 seconds)
       const controller = new AbortController();

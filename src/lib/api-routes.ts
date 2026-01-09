@@ -133,21 +133,43 @@ export const buildApiRoute = (
 
 /**
  * Get the API base URL for the current environment
- * - Uses VITE_API_URL if set
- * - In development: uses localhost:8082 (Vite proxy)
- * - In production: uses current origin (same domain)
+ * - Uses VITE_API_URL if set AND it's not ngrok/localhost
+ * - In development: uses empty string (Vite proxy) if VITE_API_URL not set
+ * - In production/preview: uses current origin (same domain)
+ * 
+ * CRITICAL: On Vercel Preview/Production, NEVER use ngrok or localhost URLs
  */
 export const getApiBaseUrl = (): string => {
-  if (import.meta.env.VITE_API_URL) {
-    return sanitizeUrl(import.meta.env.VITE_API_URL);
+  const viteApiUrl = import.meta.env.VITE_API_URL;
+  
+  // Check if we're on Vercel Preview or Production
+  const isVercelDeployment = typeof window !== 'undefined' && 
+    (window.location.hostname.includes('.vercel.app') || 
+     window.location.hostname.includes('vercel.app'));
+  
+  // If VITE_API_URL is set, validate it's not ngrok/localhost on Vercel
+  if (viteApiUrl) {
+    const sanitizedUrl = sanitizeUrl(viteApiUrl);
+    const isNgrok = sanitizedUrl.includes('ngrok') || sanitizedUrl.includes('ngrok-free.dev');
+    const isLocalhost = sanitizedUrl.includes('localhost') || sanitizedUrl.includes('127.0.0.1');
+    
+    // CRITICAL: On Vercel deployments, reject ngrok/localhost URLs
+    if (isVercelDeployment && (isNgrok || isLocalhost)) {
+      console.warn('⚠️ VITE_API_URL contains ngrok/localhost on Vercel deployment - using same origin instead');
+      // Use same origin for Vercel Preview/Production
+      return typeof window !== 'undefined' ? window.location.origin : '';
+    }
+    
+    // Use VITE_API_URL if it's valid (not ngrok/localhost on Vercel)
+    return sanitizedUrl;
   }
   
-  // In development, use empty string (Vite proxy) or localhost
+  // In development, use empty string (Vite proxy)
   if (import.meta.env.DEV) {
     return '';
   }
   
-  // In production/preview, use current origin
+  // In production/preview (Vercel), use current origin (same domain)
   if (typeof window !== 'undefined') {
     return window.location.origin;
   }
