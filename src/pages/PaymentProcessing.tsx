@@ -187,7 +187,9 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
       const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : publicUrl);
       const successLink = `${publicUrl}/payment-processing?orderId=${orderId}&status=success`;
       const failLink = `${publicUrl}/payment-processing?orderId=${orderId}&status=failed`;
-      const webhookUrl = `${apiBase || publicUrl}/api/flouci-webhook`;
+      // CRITICAL: Webhook URL must use the backend URL (ngrok) not the frontend URL (Vercel)
+      // This ensures Flouci can reach the webhook endpoint
+      const webhookUrl = apiBase ? `${apiBase}/api/flouci-webhook` : undefined;
       
       console.log('Using payment callback URLs:', {
         publicUrl,

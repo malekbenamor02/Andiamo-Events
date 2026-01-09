@@ -58,6 +58,10 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
 
 const app = express();
 
+// CRITICAL: Trust proxy - requests come through ngrok which sets X-Forwarded-For headers
+// This is required for express-rate-limit to work correctly with ngrok
+app.set('trust proxy', true);
+
 // CORS configuration - allow all origins in development, specific origins in production
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
@@ -3551,12 +3555,20 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
     };
     
     // Only add webhook if URL is valid (not localhost for production)
-    // For localhost, webhook won't work anyway, so we can skip it
+    // CRITICAL: Webhook URL must be the backend URL (ngrok) not frontend URL (Vercel)
+    // Flouci needs to reach the backend webhook endpoint directly
     if (webhookUrl && !webhookUrl.includes('localhost') && !webhookUrl.includes('127.0.0.1')) {
       if (webhookUrl.startsWith('http://') || webhookUrl.startsWith('https://')) {
         paymentRequest.webhook = webhookUrl;
+        console.log('✅ Webhook URL set:', webhookUrl.substring(0, 80) + '...');
       } else {
         console.warn('⚠️ webhookUrl provided but not absolute URL, skipping:', webhookUrl.substring(0, 50));
+      }
+    } else {
+      if (webhookUrl) {
+        console.warn('⚠️ Webhook URL contains localhost, skipping webhook (Flouci requires publicly accessible URL)');
+      } else {
+        console.warn('⚠️ No webhook URL provided - webhook notifications will not be received automatically');
       }
     }
     
@@ -3564,6 +3576,7 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
       amount: amountInMillimes,
       amountTND: calculatedAmount,
       hasWebhook: !!paymentRequest.webhook,
+      webhookUrl: paymentRequest.webhook ? paymentRequest.webhook.substring(0, 80) + '...' : 'none',
       requestKeys: Object.keys(paymentRequest)
     });
 
