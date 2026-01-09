@@ -174,9 +174,10 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true,
+  credentials: true, // CRITICAL: Must be true for cookies to work
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'], // Add Cookie header
+  exposedHeaders: ['Set-Cookie'] // Expose Set-Cookie header
 }));
 // Middleware to capture raw body for webhook signature verification
 app.use('/api/flouci-webhook', bodyParser.raw({ type: 'application/json' }), (req, res, next) => {
@@ -1083,7 +1084,8 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     const cookieOptions = {
       httpOnly: true, // Prevents JavaScript access - security feature
       secure: isProduction, // Use secure cookies in production (HTTPS)
-      sameSite: 'lax', // More permissive for cross-site requests
+      sameSite: 'none', // Required for cross-origin requests (Vercel preview to ngrok)
+      secure: true, // Required when sameSite is 'none' (HTTPS only)
       path: '/', // Ensure cookie is available for all paths
       maxAge: 60 * 60 * 1000 // 1 hour (matches JWT expiration) - fixed expiration, cannot be extended
     };
@@ -1783,8 +1785,23 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
 // The JWT contains a 1-hour expiration that cannot be extended
 function requireAdminAuth(req, res, next) {
   try {
-    const token = req.cookies?.adminToken;
+    // Try multiple ways to get the token (cookie parser, manual parsing)
+    let token = req.cookies?.adminToken;
+    
+    // Fallback: Parse cookie header manually if cookie parser didn't work
+    if (!token && req.headers.cookie) {
+      const cookieMatch = req.headers.cookie.match(/adminToken=([^;]+)/);
+      token = cookieMatch ? cookieMatch[1] : null;
+    }
+    
     if (!token) {
+      console.error('❌ requireAdminAuth: No token found', {
+        hasCookies: !!req.cookies,
+        cookieKeys: req.cookies ? Object.keys(req.cookies) : [],
+        hasCookieHeader: !!req.headers.cookie,
+        cookieHeader: req.headers.cookie ? req.headers.cookie.substring(0, 100) : 'none',
+        path: req.path
+      });
       return res.status(401).json({ 
         error: 'Not authenticated', 
         reason: 'No token provided',
