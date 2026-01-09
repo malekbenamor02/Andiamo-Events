@@ -311,6 +311,7 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
 
       // If this is a duplicate submission, log it but still redirect
       if (paymentData.isDuplicate) {
+        console.log('⚠️ Duplicate payment submission detected, redirecting anyway');
       }
 
       // Redirect to Flouci payment page
