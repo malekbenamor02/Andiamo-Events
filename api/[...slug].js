@@ -29,14 +29,30 @@ const handler = serverless(app, {
 });
 
 // Export as default handler for Vercel serverless function
-// The slug parameter is available in req.query.slug but we don't need it
-// because serverless-http forwards the full original request path to Express
+// CRITICAL: Reconstruct the full request path from slug parameter
+// Vercel's catch-all route provides path segments in req.query.slug
+// We need to reconstruct the full path for Express routing to work correctly
 export default async (req, res) => {
   try {
-    // Execute the serverless handler
-    // This will forward the request to Express with the original path intact
-    // e.g., /api/orders/create will be routed to Express as /api/orders/create
-    return await handler(req, res);
+    // Get the slug parameter (array of path segments)
+    const slug = req.query.slug || [];
+    
+    // Reconstruct the full API path
+    // e.g., slug = ['orders', 'create'] -> '/api/orders/create'
+    const pathSegments = Array.isArray(slug) ? slug : [slug];
+    const reconstructedPath = `/api/${pathSegments.join('/')}`;
+    
+    // Preserve the original request properties but update the path
+    // This ensures Express receives the correct route path
+    const modifiedReq = {
+      ...req,
+      url: reconstructedPath + (req.url?.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''),
+      path: reconstructedPath,
+      originalUrl: reconstructedPath + (req.url?.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''),
+    };
+    
+    // Execute the serverless handler with the modified request
+    return await handler(modifiedReq, res);
   } catch (error) {
     console.error('Catch-all API handler error:', error);
     if (!res.headersSent) {
