@@ -1912,19 +1912,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // SECURITY: Call secure API endpoint instead of direct database access
       // Server does ALL: status update, ticket generation, email, SMS, logging
       console.log('🔵 Calling secure API endpoint /api/admin/approve-order...');
-      const apiBase = getApiBaseUrl();
-      // Build URL safely - ensure /api prefix is always present
-      let apiUrl: string;
-      if (apiBase) {
-        // Remove trailing slash from apiBase if present
-        const cleanBase = apiBase.replace(/\/$/, '');
-        apiUrl = `${cleanBase}/api/admin/approve-order`;
-      } else {
-        // Empty base means use relative URL (Vite proxy or same origin)
-        apiUrl = '/api/admin/approve-order';
+      // Use API_ROUTES constant to ensure correct path
+      const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_APPROVE_ORDER);
+      
+      if (!apiUrl) {
+        throw new Error('Failed to build API URL');
       }
       
-      console.log('🔵 Approving COD order:', { orderId, apiUrl, apiBase });
+      console.log('🔵 Approving COD order:', { orderId, apiUrl });
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -1997,13 +1992,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const handleApproveOrderAsAdmin = async (orderId: string) => {
     try {
       // SECURITY: Call secure API endpoint - server is the ONLY authority
-      const apiBase = getApiBaseUrl();
-      // Ensure we always have /api in the path
-      const apiUrl = apiBase 
-        ? `${apiBase}/api/admin/approve-order`
-        : '/api/admin/approve-order';
+      // Use API_ROUTES constant to ensure correct path
+      const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_APPROVE_ORDER);
       
-      console.log('🔵 Approving order:', { orderId, apiUrl, apiBase });
+      if (!apiUrl) {
+        throw new Error('Failed to build API URL');
+      }
+      
+      console.log('🔵 Approving order:', { orderId, apiUrl });
       
       const response = await fetch(apiUrl, {
         method: 'POST',
