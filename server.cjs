@@ -106,9 +106,8 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 // PREVIEW-ONLY: Environment Detection
 // ============================================
 // Detect preview environment for mocking external APIs
-const isPreview = process.env.VERCEL_ENV === 'preview' || 
-                  process.env.VITE_API_URL?.includes('ngrok-free.dev') ||
-                  process.env.VITE_API_URL?.includes('ngrok.io');
+// Note: VITE_API_URL is frontend-only, so we detect preview in the payment handler
+// based on actual request parameters (webhookUrl) which contain ngrok URLs in preview
 
 // Vercel preview domain patterns (both development and production should allow these)
 const vercelPreviewPatterns = [
@@ -3645,8 +3644,14 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
     // ============================================
     // In preview, don't call real Flouci API (unstable domains cause 412 errors)
     // Instead, return mock payment response to allow UI testing
-    if (isPreview) {
+    // Detect preview by checking webhookUrl for ngrok domains (preview indicator)
+    const isPreviewEnvironment = process.env.VERCEL_ENV === 'preview' ||
+                                  (webhookUrl && (webhookUrl.includes('ngrok-free.dev') || webhookUrl.includes('ngrok.io'))) ||
+                                  (successLink && (successLink.includes('vercel.app') && successLink.includes('preview')));
+    
+    if (isPreviewEnvironment) {
       console.log('🔧 PREVIEW MODE: Mocking Flouci payment (not calling real API)');
+      console.log('   Preview detected via:', webhookUrl?.includes('ngrok') ? 'ngrok URL' : process.env.VERCEL_ENV === 'preview' ? 'VERCEL_ENV' : 'Vercel preview domain');
       console.log('   Real Flouci API will be called in production');
       
       // Generate mock payment_id (format similar to Flouci)
