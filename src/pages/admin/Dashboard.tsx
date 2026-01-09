@@ -1913,8 +1913,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Server does ALL: status update, ticket generation, email, SMS, logging
       console.log('🔵 Calling secure API endpoint /api/admin/approve-order...');
       const apiBase = getApiBaseUrl();
-      const apiUrl = `${apiBase}/api/admin/approve-order`;
+      // Build URL safely - ensure /api prefix is always present
+      let apiUrl: string;
+      if (apiBase) {
+        // Remove trailing slash from apiBase if present
+        const cleanBase = apiBase.replace(/\/$/, '');
+        apiUrl = `${cleanBase}/api/admin/approve-order`;
+      } else {
+        // Empty base means use relative URL (Vite proxy or same origin)
+        apiUrl = '/api/admin/approve-order';
+      }
       
+      console.log('🔵 Approving COD order:', { orderId, apiUrl, apiBase });
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -1987,7 +1998,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       // SECURITY: Call secure API endpoint - server is the ONLY authority
       const apiBase = getApiBaseUrl();
-      const apiUrl = `${apiBase}/api/admin/approve-order`;
+      // Ensure we always have /api in the path
+      const apiUrl = apiBase 
+        ? `${apiBase}/api/admin/approve-order`
+        : '/api/admin/approve-order';
+      
+      console.log('🔵 Approving order:', { orderId, apiUrl, apiBase });
       
       const response = await fetch(apiUrl, {
         method: 'POST',
