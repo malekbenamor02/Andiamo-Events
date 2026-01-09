@@ -185,11 +185,8 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
       // API Base URL: Use VITE_API_URL if set, otherwise use current origin (for Vercel serverless functions)
       // In development, empty string uses Vite proxy. In production, use same origin if VITE_API_URL not set.
       const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : publicUrl);
-      const successLink = `${publicUrl}/payment-processing?orderId=${orderId}&status=success`;
-      const failLink = `${publicUrl}/payment-processing?orderId=${orderId}&status=failed`;
-      // CRITICAL: Webhook URL must use the backend URL (ngrok) not the frontend URL (Vercel)
-      // This ensures Flouci can reach the webhook endpoint
-      const webhookUrl = apiBase ? `${apiBase}/api/flouci-webhook` : undefined;
+      const successLink = `${publicUrl}/payment-processing?orderId=${orderId}`;
+      const failLink = `${publicUrl}/payment-processing?orderId=${orderId}`;
       
       console.log('Using payment callback URLs:', {
         publicUrl,
@@ -197,11 +194,15 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
         successLink: successLink.substring(0, 60) + '...',
         failLink: failLink.substring(0, 60) + '...',
         isHttps: publicUrl.startsWith('https://'),
-        apiUrl: `${apiBase}/api/flouci-generate-payment`
+        apiUrl: `${apiBase}/api/flouci/generate`
       });
 
-      // Generate Flouci payment via backend (keeps secret key secure)
-      // CRITICAL: Only send orderId - backend will fetch order and calculate amount from DB
+      // ============================================
+      // NEW CLEAN IMPLEMENTATION: Generate Flouci Payment
+      // ============================================
+      // Frontend sends ONLY: orderId, successLink, failLink
+      // Backend: Fetches order, calculates amount from DB, calls Flouci API
+      // Frontend NEVER sends amount - backend is authoritative
       setStatus('redirecting');
       
       // Add timeout to prevent hanging requests (45 seconds)
@@ -210,17 +211,17 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
       
       let paymentResponse;
       try {
-        paymentResponse = await fetch(`${apiBase}/api/flouci-generate-payment`, {
+        paymentResponse = await fetch(`${apiBase}/api/flouci/generate`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             orderId: orderId!,
-            // Amount removed - backend calculates from DB (prevents frontend manipulation)
             successLink,
-            failLink,
-            webhookUrl
+            failLink
+            // NOTE: Amount is NOT sent - backend calculates from database
+            // NOTE: Webhook URL is built by backend from API base URL
           }),
           signal: controller.signal
         });
@@ -352,52 +353,57 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
   };
 
   useEffect(() => {
-    // This useEffect handles verification when returning from Flouci
+    // ============================================
+    // NEW CLEAN IMPLEMENTATION: Handle redirect from Flouci
+    // ============================================
+    // Frontend: Redirect is UX only - verification happens on backend
+    // If returning from Flouci, verify payment status
     if (!orderId) return;
     
-    const statusParam = searchParams.get('status');
+    // Check if we're returning from Flouci (user was redirected back)
+    // Redirect parameters are NOT trusted - backend verification is authoritative
     const paymentId = searchParams.get('payment_id') || searchParams.get('id');
     
+    // If payment_id in URL, we're returning from Flouci - verify payment
+    if (paymentId) {
+      setStatus('verifying');
+      verifyPayment(paymentId);
+      return;
+    }
+
+    // If no payment_id, check if order has payment_gateway_reference (payment was generated)
+    // This handles cases where Flouci redirect doesn't include payment_id
+    const checkAndVerify = async () => {
+      try {
+        const order = await getOrderById(orderId!);
+        
+        // If order is already paid, show success
+        if (order?.status === OrderStatus.PAID) {
+          setStatus('success');
+          return;
+        }
+        
+        // If order has payment_id but no status param, verify using payment_id
+        if (order?.payment_gateway_reference) {
+          setStatus('verifying');
+          verifyPayment(order.payment_gateway_reference);
+        } else {
+          // Order doesn't have payment_id yet - might still be processing
+          // Check again after delay
+          setTimeout(() => {
+            checkAndVerify();
+          }, 2000);
+        }
+      } catch (error) {
+        console.error('❌ Error checking order for verification:', error);
+        setStatus('error');
+        setErrorMessage(language === 'en' ? 'Failed to verify payment' : 'Échec de la vérification du paiement');
+      }
+    };
     
-    // CRITICAL: Only process if we have a status parameter (returning from Flouci)
-    // If no status param, we're NOT returning from Flouci - skip verification
-    if (!statusParam) {
-      return; // Not returning from Flouci, first useEffect will handle initialization
-    }
-
-    // Only verify if we're actually returning from Flouci (have status param)
-    // Always verify payment status with Flouci API, regardless of redirect status
-    // The redirect status can be unreliable, so we need to check the actual payment status
-    if (statusParam === 'success' || statusParam === 'failed') {
-      setStatus('verifying');
-      
-      if (paymentId) {
-        verifyPayment(paymentId);
-      } else {
-        // No payment_id in URL - verify via order's payment_gateway_reference
-        verifyPaymentByOrder();
-      }
-    }
+    // Only check if we don't have payment_id (might be returning from Flouci without it in URL)
+    checkAndVerify();
   }, [searchParams, orderId]);
-
-  // Verify payment by order (if payment_id not in URL)
-  const verifyPaymentByOrder = async () => {
-    try {
-      setStatus('verifying');
-      const order = await getOrderById(orderId!);
-      if (order?.payment_gateway_reference) {
-        verifyPayment(order.payment_gateway_reference);
-      } else {
-        // No payment reference yet, might still be processing
-        setStatus('verifying');
-        setTimeout(() => verifyPaymentByOrder(), 2000);
-      }
-    } catch (error) {
-      console.error('❌ Error verifying payment by order:', error);
-      setStatus('error');
-      setErrorMessage(language === 'en' ? 'Failed to verify payment' : 'Échec de la vérification du paiement');
-    }
-  };
 
   const verifyPayment = async (paymentId: string) => {
     try {
@@ -415,10 +421,14 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 seconds timeout
 
-      // Verify payment via backend (keeps secret key secure)
+      // ============================================
+      // NEW CLEAN IMPLEMENTATION: Verify Payment
+      // ============================================
+      // Frontend calls verify endpoint - backend calls Flouci API (ONLY source of truth)
+      // Frontend NEVER decides payment status - backend verification is authoritative
       let verifyResponse;
       try {
-        verifyResponse = await fetch(`${apiBase}/api/flouci-verify-payment`, {
+        verifyResponse = await fetch(`${apiBase}/api/flouci/verify`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -473,15 +483,14 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
 
       const paymentStatus = verifyData.status;
 
+      // ============================================
+      // NEW CLEAN IMPLEMENTATION: Display status only
+      // ============================================
+      // Frontend NEVER updates order status - backend verification endpoint handles it
+      // Frontend NEVER generates tickets - backend does it after verified payment
+      // Frontend just displays the status returned by backend
+      
       if (paymentStatus === 'SUCCESS') {
-        // SECURITY: Frontend NEVER updates order status
-        // Backend webhook/verification endpoint handles all status updates
-        // If backend didn't update, that's a server issue that needs fixing
-
-        // CRITICAL: Ticket generation is handled by backend webhook/verification
-        // Frontend should NOT trigger ticket generation - backend does it after verification confirms SUCCESS
-        // This ensures tickets are only generated once, after authoritative verification
-
         setStatus('success');
         toast({
           title: t[language].success,
@@ -497,6 +506,7 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
         });
       } else if (paymentStatus === 'PENDING') {
         // PENDING - retry with exponential backoff (max 5 retries)
+        // Webhook will also handle this, but frontend retry provides better UX
         const retryCount = parseInt(sessionStorage.getItem(`payment_retry_${orderId}`) || '0');
         const MAX_RETRIES = 5;
         

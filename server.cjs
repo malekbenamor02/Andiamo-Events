@@ -179,8 +179,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'], // Add Cookie header
   exposedHeaders: ['Set-Cookie'] // Expose Set-Cookie header
 }));
-// Middleware to capture raw body for webhook signature verification
-app.use('/api/flouci-webhook', bodyParser.raw({ type: 'application/json' }), (req, res, next) => {
+// Middleware to capture raw body for Flouci webhook signature verification
+app.use('/api/flouci/webhook', bodyParser.raw({ type: 'application/json' }), (req, res, next) => {
   // Store raw body for signature verification
   req.rawBody = req.body;
   // Parse JSON body for use in route handler
@@ -3408,78 +3408,65 @@ app.put('/api/admin/payment-options/:type', requireAdminAuth, async (req, res) =
 });
 
 // ============================================
-// Flouci Payment API Endpoints
+// FLOUCI PAYMENT API ENDPOINTS - CLEAN IMPLEMENTATION
+// ============================================
+// SECURE, BACKEND-AUTHORITATIVE FLOUCI INTEGRATION
+// 
+// CRITICAL SECURITY RULES:
+// - Amount calculated from database (NOT from frontend)
+// - Flouci verify_payment() API is the ONLY source of truth
+// - Redirect status is NOT trusted
+// - Webhook payload is NOT trusted alone
+// - Frontend has ZERO authority over payment status
+// - Tickets generated ONLY after verified payment
+// - Email + SMS sent ONLY after tickets generated
 // ============================================
 
-// POST /api/flouci-generate-payment - Generate Flouci payment (backend only - keeps secret key secure)
-// CRITICAL: Amount is calculated from DB, NOT trusted from frontend
-app.post('/api/flouci-generate-payment', async (req, res) => {
-  // Get Flouci keys at the start for error handling
+const FLOUCI_API_BASE = 'https://developers.flouci.com/api/v2';
+
+// ============================================
+// POST /api/flouci/generate - Generate Flouci Payment
+// ============================================
+// Backend-authoritative payment generation
+// Frontend sends ONLY: orderId, successLink, failLink
+// Backend: Fetches order, calculates amount from DB, calls Flouci API
+app.post('/api/flouci/generate', async (req, res) => {
   const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
   const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
-  
+
   try {
-    const { orderId, successLink, failLink, webhookUrl } = req.body;
+    const { orderId, successLink, failLink } = req.body;
 
+    // Validate required fields
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
 
-    // Validate required fields (amount removed - will be calculated from DB)
-    // webhookUrl is optional - only used if provided and not localhost
-    if (!orderId || !successLink || !failLink) {
-      console.error('❌ Missing required fields:', { orderId: !!orderId, successLink: !!successLink, failLink: !!failLink, webhookUrl: !!webhookUrl });
-      return res.status(400).json({ error: 'Missing required fields: orderId, successLink, and failLink are required' });
+    if (!successLink || !failLink) {
+      return res.status(400).json({ error: 'successLink and failLink are required' });
     }
-    
-    // Validate URLs are absolute (must start with http:// or https://)
-    if (!successLink.startsWith('http://') && !successLink.startsWith('https://')) {
-      console.error('❌ Invalid successLink format (must be absolute URL):', successLink);
-      return res.status(400).json({ error: 'successLink must be an absolute URL (starting with http:// or https://)' });
-    }
-    
-    if (!failLink.startsWith('http://') && !failLink.startsWith('https://')) {
-      console.error('❌ Invalid failLink format (must be absolute URL):', failLink);
-      return res.status(400).json({ error: 'failLink must be an absolute URL (starting with http:// or https://)' });
-    }
-    
-    // CRITICAL: Flouci requires HTTPS URLs for callback links (even in development)
-    // Check if URLs are HTTPS
-    const isSuccessLinkHttps = successLink.startsWith('https://');
-    const isFailLinkHttps = failLink.startsWith('https://');
-    
-    if (!isSuccessLinkHttps || !isFailLinkHttps) {
-      const isLocalhost = successLink.includes('localhost') || successLink.includes('127.0.0.1') || 
-                          failLink.includes('localhost') || failLink.includes('127.0.0.1');
-      
-      if (isLocalhost) {
-        console.error('❌ Flouci requires HTTPS URLs even for localhost. Use a tunnel service (ngrok, cloudflare tunnel, etc.)');
-        return res.status(400).json({ 
-          error: 'Flouci requires HTTPS URLs for callback links',
-          message: 'For localhost development, use a tunnel service (ngrok, cloudflare tunnel, etc.) to get an HTTPS URL and set VITE_PUBLIC_URL in your .env file',
-          suggestion: 'Example: Set VITE_PUBLIC_URL=https://abc123.ngrok.io in your .env file',
-          currentSuccessLink: successLink.substring(0, 50) + '...',
-          currentFailLink: failLink.substring(0, 50) + '...',
-          help: '1. Install ngrok: https://ngrok.com\n2. Run: ngrok http 3000\n3. Copy HTTPS URL\n4. Add VITE_PUBLIC_URL=https://your-ngrok-url to .env\n5. Restart dev server'
-        });
-      } else {
-        console.warn('⚠️ WARNING: Callback links use HTTP instead of HTTPS. Flouci requires HTTPS URLs.');
-        return res.status(400).json({ 
-          error: 'Flouci requires HTTPS URLs for callback links',
-          message: 'Please set VITE_PUBLIC_URL=https://your-domain.com in your environment variables',
-          currentSuccessLink: successLink.substring(0, 50) + '...',
-          currentFailLink: failLink.substring(0, 50) + '...'
-        });
-      }
+
+    // Validate URLs are absolute HTTPS
+    if (!successLink.startsWith('https://') || !failLink.startsWith('https://')) {
+      return res.status(400).json({
+        error: 'URLs must be HTTPS',
+        message: 'Flouci requires HTTPS URLs for callback links'
+      });
     }
 
     if (!supabase) {
       return res.status(500).json({ error: 'Database not configured' });
     }
 
-    // CRITICAL: Fetch order from DB and calculate amount from order_passes (authoritative source)
+    // ============================================
+    // STEP 1: Fetch order from database
+    // ============================================
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select(`
         id,
         status,
+        payment_status,
         payment_gateway_reference,
         payment_response_data,
         total_price,
@@ -3498,75 +3485,20 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    // Check if order is already paid
-    if (order.status === 'PAID') {
-      return res.status(400).json({ 
-        error: 'Order already paid',
-        message: 'This order has already been paid',
-        alreadyPaid: true
-      });
-    }
-
-    // Check if order is in correct status for payment
+    // ============================================
+    // STEP 2: Validate order status
+    // ============================================
     if (order.status !== 'PENDING_ONLINE') {
-      console.error('❌ Order is not in PENDING_ONLINE status:', order.status);
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Order is not ready for payment',
         message: `Order status is ${order.status}. Only PENDING_ONLINE orders can proceed to payment.`
       });
     }
 
-    // CRITICAL: Calculate amount from order_passes (authoritative source)
-    // This prevents frontend manipulation
-    let calculatedAmount = 0;
-    if (order.order_passes && order.order_passes.length > 0) {
-      calculatedAmount = order.order_passes.reduce((sum, pass) => {
-        return sum + (Number(pass.price) * Number(pass.quantity));
-      }, 0);
-    } else {
-      // Fallback to total_price if order_passes not available (legacy orders)
-      calculatedAmount = Number(order.total_price) || 0;
-      console.warn('⚠️ No order_passes found, using total_price as fallback');
-    }
-
-    if (calculatedAmount <= 0) {
-      console.error('❌ Invalid calculated amount:', calculatedAmount);
-      return res.status(400).json({ error: 'Invalid order amount. Order has no valid passes.' });
-    }
-
-
-    // Check Flouci API keys (already defined at function start)
-    if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
-      console.error('❌ Flouci API keys not configured');
-      console.error('   FLOUCI_PUBLIC_KEY:', FLOUCI_PUBLIC_KEY ? 'Set' : 'Missing');
-      console.error('   FLOUCI_SECRET_KEY:', FLOUCI_SECRET_KEY ? 'Set' : 'Missing');
-      return res.status(500).json({ 
-        error: 'Flouci API keys not configured',
-        message: 'Please add FLOUCI_PUBLIC_KEY and FLOUCI_SECRET_KEY to your .env file'
-      });
-    }
-    
-    // Trim API keys to remove any accidental whitespace
-    const trimmedPublicKey = FLOUCI_PUBLIC_KEY.trim();
-    const trimmedSecretKey = FLOUCI_SECRET_KEY.trim();
-    
-    // Validate API keys are not empty after trimming
-    if (!trimmedPublicKey || !trimmedSecretKey) {
-      console.error('❌ Flouci API keys are empty after trimming');
-      return res.status(500).json({ 
-        error: 'Flouci API keys are invalid',
-        message: 'FLOUCI_PUBLIC_KEY and FLOUCI_SECRET_KEY must not be empty'
-      });
-    }
-    
-    // Use trimmed keys for the request
-    const FLOUCI_PUBLIC_KEY_CLEAN = trimmedPublicKey;
-    const FLOUCI_SECRET_KEY_CLEAN = trimmedSecretKey;
-
-    // IDEMPOTENCY: Check if payment already generated (one active payment per order)
+    // ============================================
+    // STEP 3: IDEMPOTENCY - Check if payment already generated
+    // ============================================
     if (order.payment_gateway_reference) {
-      
-      // Try to get the payment link from stored response data
       let paymentLink = null;
       if (order.payment_response_data?.result?.link) {
         paymentLink = order.payment_response_data.result.link;
@@ -3574,218 +3506,110 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
         paymentLink = order.payment_response_data.link;
       }
 
-      // If we have the link, return it (don't create duplicate payment)
       if (paymentLink) {
-        return res.json({ 
+        return res.json({
           success: true,
-          payment_id: order.payment_gateway_reference,
+          orderId: order.id,
+          paymentId: order.payment_gateway_reference,
           link: paymentLink,
           isDuplicate: true,
           message: 'Payment already generated for this order'
         });
-      } else {
-        // Payment ID exists but no link stored - might be from old format
-        // Generate new payment but log the duplicate attempt
       }
     }
 
-    // Convert TND to millimes (Flouci uses millimes: 1 TND = 1000 millimes)
-    const amountInMillimes = Math.round(calculatedAmount * 1000);
-    
-    // Validate amount
-    // Flouci typically requires minimum 1000 millimes (1 TND)
-    const MIN_AMOUNT_MILLIMES = 1000;
-    if (amountInMillimes <= 0) {
-      console.error('❌ Invalid amount:', calculatedAmount, 'TND, millimes:', amountInMillimes);
-      return res.status(400).json({ error: 'Invalid payment amount' });
+    // ============================================
+    // STEP 4: Calculate amount from database (AUTHORITATIVE)
+    // ============================================
+    let calculatedAmount = 0;
+    if (order.order_passes && order.order_passes.length > 0) {
+      calculatedAmount = order.order_passes.reduce((sum, pass) => {
+        return sum + (Number(pass.price) * Number(pass.quantity));
+      }, 0);
+    } else {
+      calculatedAmount = Number(order.total_price) || 0;
+      console.warn('⚠️ No order_passes found, using total_price as fallback');
     }
-    
-    if (amountInMillimes < MIN_AMOUNT_MILLIMES) {
-      console.error('❌ Amount too small:', calculatedAmount, 'TND, millimes:', amountInMillimes, '(minimum:', MIN_AMOUNT_MILLIMES, 'millimes)');
-      return res.status(400).json({ 
-        error: `Payment amount too small. Minimum amount is ${MIN_AMOUNT_MILLIMES / 1000} TND (${MIN_AMOUNT_MILLIMES} millimes)`,
-        calculatedAmount,
-        amountInMillimes,
-        minimumRequired: MIN_AMOUNT_MILLIMES
+
+    if (calculatedAmount <= 0) {
+      return res.status(400).json({ error: 'Invalid order amount. Order has no valid passes.' });
+    }
+
+    // ============================================
+    // STEP 5: Validate Flouci API keys
+    // ============================================
+    if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
+      return res.status(500).json({
+        error: 'Flouci API keys not configured',
+        message: 'Please add FLOUCI_PUBLIC_KEY and FLOUCI_SECRET_KEY to your environment variables'
       });
     }
 
-    // Generate payment with Flouci
-    // Build payment request - webhook is optional but recommended
-    // IMPORTANT: success_link and fail_link must be absolute URLs
-    console.log('Validating payment links:', {
-      successLinkValid: successLink.startsWith('http'),
-      failLinkValid: failLink.startsWith('http'),
-      successLink: successLink.substring(0, 50) + '...',
-      failLink: failLink.substring(0, 50) + '...'
-    });
-    
-    // Note: API keys are already trimmed above, so we use the cleaned versions
-    // Validate API keys format (should not contain spaces in the middle - only trimmed)
-    if (FLOUCI_PUBLIC_KEY_CLEAN.includes(' ') || FLOUCI_SECRET_KEY_CLEAN.includes(' ')) {
-      console.warn('⚠️ Flouci API keys contain spaces in the middle - this may cause authentication issues');
+    const trimmedPublicKey = FLOUCI_PUBLIC_KEY.trim();
+    const trimmedSecretKey = FLOUCI_SECRET_KEY.trim();
+
+    if (!trimmedPublicKey || !trimmedSecretKey) {
+      return res.status(500).json({
+        error: 'Flouci API keys are invalid',
+        message: 'FLOUCI_PUBLIC_KEY and FLOUCI_SECRET_KEY must not be empty'
+      });
     }
-    
-    // Log API key info for debugging (first few chars only for security)
-    console.log('Using Flouci API keys:', {
-      publicKeyPrefix: FLOUCI_PUBLIC_KEY_CLEAN.substring(0, 8) + '...',
-      publicKeyLength: FLOUCI_PUBLIC_KEY_CLEAN.length,
-      secretKeyPrefix: FLOUCI_SECRET_KEY_CLEAN.substring(0, 8) + '...',
-      secretKeyLength: FLOUCI_SECRET_KEY_CLEAN.length
-    });
-    
+
+    // ============================================
+    // STEP 6: Convert TND to millimes (1 TND = 1000 millimes)
+    // ============================================
+    const amountInMillimes = Math.round(calculatedAmount * 1000);
+    const MIN_AMOUNT_MILLIMES = 1000; // 1 TND minimum
+
+    if (amountInMillimes < MIN_AMOUNT_MILLIMES) {
+      return res.status(400).json({
+        error: `Payment amount too small. Minimum amount is ${MIN_AMOUNT_MILLIMES / 1000} TND`,
+        calculatedAmount,
+        amountInMillimes
+      });
+    }
+
+    // ============================================
+    // STEP 7: Build webhook URL
+    // ============================================
+    // CRITICAL: Use API_URL or API_BASE_URL (backend env vars)
+    // VITE_* variables are frontend-only and NOT available in Node.js
+    const apiBase = process.env.API_BASE_URL || process.env.API_URL || '';
+    const webhookUrl = apiBase ? `${apiBase}/api/flouci/webhook` : undefined;
+
+    // ============================================
+    // STEP 8: Build Flouci payment request
+    // ============================================
     const paymentRequest = {
       amount: amountInMillimes,
       success_link: successLink,
       fail_link: failLink,
-      developer_tracking_id: orderId,
+      developer_tracking_id: orderId, // Use orderId as tracking ID
       session_timeout_secs: 1800, // 30 minutes
       accept_card: true
     };
-    
-    // Only add webhook if URL is valid (not localhost for production)
-    // CRITICAL: Webhook URL must be the backend URL (ngrok) not frontend URL (Vercel)
-    // Flouci needs to reach the backend webhook endpoint directly
-    // NOTE: ngrok-free.dev may block webhook requests due to browser warning page
-    // If webhook causes SMT error, we'll retry without webhook
-    let useWebhook = false;
+
+    // Add webhook if URL is valid and not localhost
     if (webhookUrl && !webhookUrl.includes('localhost') && !webhookUrl.includes('127.0.0.1')) {
-      if (webhookUrl.startsWith('http://') || webhookUrl.startsWith('https://')) {
-        // Check if using ngrok-free.dev - this may cause SMT errors due to browser warning
-        const isNgrokFree = webhookUrl.includes('ngrok-free.dev');
-        if (isNgrokFree) {
-          console.warn('⚠️ Using ngrok-free.dev - webhook may fail due to browser warning page');
-          console.warn('   Consider upgrading to paid ngrok or using cloudflared tunnel for production');
-          // Try with webhook anyway, but log the warning
-          useWebhook = true;
-        } else {
-          useWebhook = true;
-        }
-        if (useWebhook) {
-          paymentRequest.webhook = webhookUrl;
-          console.log('✅ Webhook URL set:', webhookUrl.substring(0, 80) + '...');
-        }
-      } else {
-        console.warn('⚠️ webhookUrl provided but not absolute URL, skipping:', webhookUrl.substring(0, 50));
-      }
-    } else {
-      if (webhookUrl) {
-        console.warn('⚠️ Webhook URL contains localhost, skipping webhook (Flouci requires publicly accessible URL)');
-      } else {
-        console.warn('⚠️ No webhook URL provided - webhook notifications will not be received automatically');
+      if (webhookUrl.startsWith('https://')) {
+        paymentRequest.webhook = webhookUrl;
+        console.log('✅ Webhook URL set:', webhookUrl.substring(0, 80) + '...');
       }
     }
-    
-    console.log('Creating Flouci payment request:', {
-      amount: amountInMillimes,
-      amountTND: calculatedAmount,
-      hasWebhook: !!paymentRequest.webhook,
-      webhookUrl: paymentRequest.webhook ? paymentRequest.webhook.substring(0, 80) + '...' : 'none',
-      requestKeys: Object.keys(paymentRequest)
-    });
 
     // ============================================
-    // PREVIEW-ONLY: Mock Flouci Payment
+    // STEP 9: Call Flouci API
     // ============================================
-    // In preview, don't call real Flouci API (unstable domains cause 412 errors)
-    // Instead, return mock payment response to allow UI testing
-    // Detect preview by checking multiple indicators
-    const hasNgrokWebhook = webhookUrl && (webhookUrl.includes('ngrok-free.dev') || webhookUrl.includes('ngrok.io'));
-    const hasVercelPreviewLink = successLink && successLink.includes('vercel.app') && (successLink.includes('preview') || successLink.includes('git-'));
-    const isVercelPreview = process.env.VERCEL_ENV === 'preview';
-    const requestOrigin = req.headers.origin || req.headers.referer || '';
-    const hasVercelPreviewOrigin = requestOrigin.includes('vercel.app') && (requestOrigin.includes('preview') || requestOrigin.includes('git-'));
-    const requestHost = req.headers.host || '';
-    const hasNgrokHost = requestHost.includes('ngrok-free.dev') || requestHost.includes('ngrok.io');
-    
-    const isPreviewEnvironment = isVercelPreview || hasNgrokWebhook || hasVercelPreviewLink || hasVercelPreviewOrigin || hasNgrokHost;
-    
-    // Debug logging to help diagnose preview detection
-    console.log('🔍 Preview Detection Check:', {
-      isVercelPreview,
-      hasNgrokWebhook,
-      hasVercelPreviewLink,
-      hasVercelPreviewOrigin,
-      hasNgrokHost,
-      webhookUrl: webhookUrl ? webhookUrl.substring(0, 60) + '...' : 'undefined',
-      successLink: successLink ? successLink.substring(0, 60) + '...' : 'undefined',
-      requestOrigin: requestOrigin ? requestOrigin.substring(0, 60) + '...' : 'undefined',
-      requestHost: requestHost ? requestHost.substring(0, 60) + '...' : 'undefined',
-      isPreviewEnvironment
-    });
-    
-    if (isPreviewEnvironment) {
-      console.log('🔧 PREVIEW MODE: Mocking Flouci payment (not calling real API)');
-      const detectionMethod = isVercelPreview ? 'VERCEL_ENV' :
-                             hasNgrokHost ? 'ngrok URL in request host' :
-                             hasNgrokWebhook ? 'ngrok URL in webhook' :
-                             hasVercelPreviewLink ? 'Vercel preview in successLink' :
-                             hasVercelPreviewOrigin ? 'Vercel preview in origin' : 'unknown';
-      console.log('   Preview detected via:', detectionMethod);
-      console.log('   Real Flouci API will be called in production');
-      
-      // Generate mock payment_id (format similar to Flouci)
-      const mockPaymentId = `preview_${orderId}_${Date.now()}`;
-      // Use the actual successLink for mock payment (redirects to payment processing page)
-      // Add paymentId parameter so PaymentProcessing page can handle it
-      // In preview mode, this simulates a successful payment redirect
-      const separator = successLink.includes('?') ? '&' : '?';
-      const mockPaymentLink = `${successLink}${separator}paymentId=${mockPaymentId}&preview=true&mock=true`;
-      
-      // Mock response matching Flouci API format
-      const mockResponse = {
-        result: {
-          success: true,
-          payment_id: mockPaymentId,
-          link: mockPaymentLink,
-          status: 'PENDING'
-        },
-        name: 'developers',
-        code: 0,
-        version: 'v2'
-      };
-      
-      // Update order with mock payment info (for testing flow)
-      const updateData = {
-        payment_gateway_reference: mockPaymentId,
-        payment_response_data: mockResponse,
-        payment_created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', orderId);
-      
-      if (updateError) {
-        console.error('❌ Failed to update order with mock payment:', updateError);
-      }
-      
-      // Return mock response
-      return res.json({
-        success: true,
-        payment_id: mockPaymentId,
-        link: mockPaymentLink,
-        isDuplicate: false,
-        isPreview: true,
-        message: 'PREVIEW MODE: Mock payment created. Real payment will work in production.'
-      });
-    }
-
-    // PRODUCTION: Continue with real Flouci API call
-    // Add timeout to prevent hanging requests (30 seconds)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds
 
     let response;
     try {
-      // Use cleaned/trimmed API keys
-      response = await fetch('https://developers.flouci.com/api/v2/generate_payment', {
+      response = await fetch(`${FLOUCI_API_BASE}/generate_payment`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY_CLEAN}:${FLOUCI_SECRET_KEY_CLEAN}`
+          'Authorization': `Bearer ${trimmedPublicKey}:${trimmedSecretKey}`
         },
         body: JSON.stringify(paymentRequest),
         signal: controller.signal
@@ -3794,14 +3618,12 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
     } catch (fetchError) {
       clearTimeout(timeoutId);
       if (fetchError.name === 'AbortError') {
-        console.error('❌ Flouci API request timed out after 30 seconds');
-        return res.status(504).json({ 
+        return res.status(504).json({
           error: 'Payment gateway timeout',
-          message: 'The payment gateway did not respond in time. Please try again.',
-          details: 'Request timed out after 30 seconds'
+          message: 'The payment gateway did not respond in time. Please try again.'
         });
       }
-      throw fetchError; // Re-throw other errors
+      throw fetchError;
     }
 
     let data;
@@ -3810,235 +3632,583 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
     } catch (parseError) {
       console.error('❌ Failed to parse Flouci response:', parseError);
       const textResponse = await response.text();
-      console.error('   Raw response:', textResponse);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Invalid response from Flouci API',
-        details: textResponse,
-        status: response.status
+        details: textResponse.substring(0, 200)
       });
     }
 
-    // Flouci API returns success in data.result.success, not data.success
     const isSuccess = response.ok && data.result?.success === true;
-    
-    console.log('Flouci payment response:', {
-      resultSuccess: data.result?.success,
-      isSuccess: isSuccess,
-      hasResult: !!data.result,
-      hasLink: !!data.result?.link,
-      hasPaymentId: !!data.result?.payment_id,
-      message: data.message || data.result?.message,
-      code: data.code
-    });
 
     if (!isSuccess) {
       console.error('❌ Flouci payment generation failed:', {
         status: response.status,
-        statusText: response.statusText,
-        data: data,
-        fullResponse: JSON.stringify(data, null, 2),
-        requestAmount: amountInMillimes,
-        requestAmountTND: calculatedAmount
+        data: data
       });
-      
-      // Provide more detailed error message
-      let errorMessage = 'Failed to generate payment';
-      let errorDetails = {};
-      
-      // Handle specific error codes and statuses
-      if (response.status === 412 || (data.code === 1 && data.result?.error === 'SMT operation failed.')) {
-        // Status 412 Precondition Failed or code 1 with SMT error
-        const isNgrokFreeWithWebhook = useWebhook && webhookUrl && webhookUrl.includes('ngrok-free.dev');
-        
-        // If using ngrok-free.dev with webhook, the SMT error is likely due to browser warning page
-        // Retry without webhook as a workaround
-        if (isNgrokFreeWithWebhook && paymentRequest.webhook) {
-          console.warn('⚠️ SMT error with ngrok-free.dev webhook - retrying without webhook...');
-          console.warn('   Note: ngrok-free.dev requires browser visit to bypass warning, blocking webhooks');
-          
-          // Remove webhook and retry once
-          const retryRequest = { ...paymentRequest };
-          delete retryRequest.webhook;
-          
-          try {
-            const retryResponse = await fetch('https://developers.flouci.com/api/v2/generate_payment', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY_CLEAN}:${FLOUCI_SECRET_KEY_CLEAN}`
-              },
-              body: JSON.stringify(retryRequest),
-              signal: controller.signal
-            });
-            
-            const retryData = await retryResponse.json();
-            const retrySuccess = retryResponse.ok && retryData.result?.success === true;
-            
-            if (retrySuccess) {
-              console.log('✅ Payment created successfully without webhook (ngrok-free.dev workaround)');
-              console.warn('⚠️ Webhook disabled - payment status will need manual verification');
-              
-              // Update order with payment info
-              const updateData = {
-                payment_gateway_reference: retryData.result?.payment_id || null,
-                payment_response_data: retryData
-              };
-              
-              if (retryData.result?.payment_id) {
-                const { error: updateError } = await supabase
-                  .from('orders')
-                  .update(updateData)
-                  .eq('id', orderId);
-                
-                if (updateError) {
-                  console.error('❌ Failed to update order with payment ID:', updateError);
-                }
-              }
-              
-              return res.json({
-                success: true,
-                payment_id: retryData.result?.payment_id,
-                link: retryData.result?.link,
-                isDuplicate: false,
-                webhookDisabled: true,
-                message: 'Payment created without webhook due to ngrok-free.dev limitations. Manual verification required.'
-              });
-            } else {
-              console.error('❌ Retry without webhook also failed:', retryData);
-            }
-          } catch (retryError) {
-            console.error('❌ Error during retry without webhook:', retryError);
-          }
-        }
-        
-        errorMessage = 'Payment validation failed. Please check your payment configuration.';
-        errorDetails = {
-          possibleCauses: [
-            'Invalid API keys format or values',
-            'Amount below minimum threshold',
-            'Invalid URL format (must be absolute HTTPS URLs)',
-            'Missing required fields in payment request',
-            ...(isNgrokFreeWithWebhook ? ['ngrok-free.dev browser warning page blocking webhook'] : [])
-          ],
-          suggestion: isNgrokFreeWithWebhook 
-            ? 'Consider upgrading to paid ngrok or using cloudflared tunnel for production. Payment will work without webhook, but manual verification required.'
-            : 'Please verify your Flouci API keys and ensure URLs are absolute HTTPS URLs',
-          flouciError: data.result?.error || data.result?.details || 'SMT operation failed'
-        };
-        
-        // Log additional diagnostic info
-        console.error('🔍 SMT Error Diagnostics:', {
-          apiKeyFormat: FLOUCI_PUBLIC_KEY_CLEAN ? `${FLOUCI_PUBLIC_KEY_CLEAN.substring(0, 10)}...` : 'MISSING',
-          apiKeyLength: FLOUCI_PUBLIC_KEY_CLEAN?.length || 0,
-          secretKeyFormat: FLOUCI_SECRET_KEY_CLEAN ? `${FLOUCI_SECRET_KEY_CLEAN.substring(0, 10)}...` : 'MISSING',
-          secretKeyLength: FLOUCI_SECRET_KEY_CLEAN?.length || 0,
-          amountInMillimes,
-          amountInTND: calculatedAmount,
-          successLinkIsHttps: successLink.startsWith('https://'),
-          failLinkIsHttps: failLink.startsWith('https://'),
-          hasWebhook: !!paymentRequest.webhook,
-          webhookUrl: paymentRequest.webhook ? paymentRequest.webhook.substring(0, 80) + '...' : 'none',
-          isNgrokFree: webhookUrl?.includes('ngrok-free.dev'),
-          paymentRequestKeys: Object.keys(paymentRequest)
-        });
-      } else if (data.message) {
-        errorMessage = data.message;
-      } else if (data.result?.message) {
-        errorMessage = data.result.message;
-      } else if (data.result?.error) {
-        errorMessage = data.result.error;
-      } else if (data.code !== undefined && data.code !== 0) {
-        errorMessage = `Flouci API error (code: ${data.code})`;
-      } else if (response.status === 401 || response.status === 403) {
-        errorMessage = 'Invalid API keys. Please check your Flouci credentials.';
-        errorDetails = { suggestion: 'Verify FLOUCI_PUBLIC_KEY and FLOUCI_SECRET_KEY in your .env file' };
-      } else if (response.status === 400) {
-        errorMessage = 'Invalid payment request. Please check your payment details.';
-      }
-      
-      return res.status(response.status >= 400 && response.status < 500 ? response.status : 500).json({ 
-        error: errorMessage,
-        details: { ...errorDetails, ...data },
-        status: response.status,
-        flouciError: data.result || data,
-        code: data.code
+      return res.status(response.status >= 400 && response.status < 500 ? response.status : 500).json({
+        error: data.message || data.result?.message || 'Failed to generate payment',
+        details: data
       });
     }
 
-    // Update order with payment_id and payment_created_at
+    // ============================================
+    // STEP 10: Save payment_id and response to database
+    // ============================================
     if (data.result?.payment_id) {
-      const paymentCreatedAt = new Date().toISOString();
+      const updateData = {
+        payment_gateway_reference: data.result.payment_id,
+        payment_response_data: data,
+        payment_created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
       const { error: updateError } = await supabase
         .from('orders')
-        .update({
-          payment_gateway_reference: data.result.payment_id,
-          payment_response_data: data,
-          payment_created_at: paymentCreatedAt,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', orderId);
 
       if (updateError) {
-        console.error('❌ Error updating order:', updateError);
-        // Check if it's a unique constraint violation (idempotency protection)
-        if (updateError.code === '23505' || updateError.message?.includes('unique')) {
-          // Fetch existing payment link
-          const { data: existingOrder } = await supabase
-            .from('orders')
-            .select('payment_gateway_reference, payment_response_data')
-            .eq('id', orderId)
-            .single();
-          
-          if (existingOrder?.payment_response_data?.result?.link) {
-            return res.json({ 
-              success: true,
-              payment_id: existingOrder.payment_gateway_reference,
-              link: existingOrder.payment_response_data.result.link,
-              isDuplicate: true,
-              message: 'Payment already exists for this order'
-            });
-          }
-        }
-        // Don't fail the request if order update fails - payment was generated successfully
-      } else {
+        console.error('❌ Error updating order with payment ID:', updateError);
+        // Don't fail the request - payment was generated successfully
       }
-    } else {
-      console.warn('⚠️ No payment_id in response - skipping order update');
     }
 
-    res.json({ 
-      success: true, 
-      payment_id: data.result?.payment_id,
+    // ============================================
+    // STEP 11: Return checkout URL to frontend
+    // ============================================
+    return res.json({
+      success: true,
+      orderId: order.id,
+      paymentId: data.result?.payment_id,
       link: data.result?.link,
       isDuplicate: false
     });
+
   } catch (error) {
     console.error('❌ Error generating Flouci payment:', error);
-    console.error('   Error stack:', error.stack);
-    console.error('   Error name:', error.name);
-    console.error('   Error code:', error.code);
-    
-    // Provide more specific error messages
-    let errorMessage = error.message || 'Internal server error';
-    let errorDetails = process.env.NODE_ENV === 'development' ? error.stack : undefined;
-    
-    // Check for common error types
-    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-      errorMessage = 'Unable to connect to payment gateway. Please check your internet connection.';
-      errorDetails = `Network error: ${error.message}`;
-    } else if (error.name === 'TypeError' && error.message?.includes('fetch')) {
-      errorMessage = 'Network error while connecting to payment gateway.';
-      errorDetails = error.message;
-    } else if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
-      errorMessage = 'Payment gateway not configured. Please contact administrator.';
-      errorDetails = 'Flouci API keys are missing';
+    return res.status(500).json({
+      error: error.message || 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// ============================================
+// POST /api/flouci/verify - Verify Payment (ONLY SOURCE OF TRUTH)
+// ============================================
+// CRITICAL: Flouci verification API is the ONLY authority
+// Order becomes PAID ONLY if verify_payment().status === "SUCCESS"
+// Redirect status is NOT trusted
+app.post('/api/flouci/verify', async (req, res) => {
+  const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
+  const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
+
+  try {
+    const { paymentId, orderId } = req.body;
+
+    if (!paymentId) {
+      return res.status(400).json({ error: 'Payment ID is required' });
     }
-    
-    res.status(500).json({ 
-      error: errorMessage,
-      details: errorDetails,
-      code: error.code,
-      name: error.name
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // ============================================
+    // STEP 1: Find order by payment_id or orderId
+    // ============================================
+    let targetOrderId = orderId;
+    let order = null;
+
+    if (paymentId) {
+      const { data: orderByPayment, error: paymentError } = await supabase
+        .from('orders')
+        .select('id, status, payment_status, payment_gateway_reference')
+        .eq('payment_gateway_reference', paymentId)
+        .maybeSingle();
+
+      if (orderByPayment && !paymentError) {
+        targetOrderId = orderByPayment.id;
+        order = orderByPayment;
+      }
+    }
+
+    if (!order && targetOrderId) {
+      const { data: orderById, error: orderError } = await supabase
+        .from('orders')
+        .select('id, status, payment_status, payment_gateway_reference')
+        .eq('id', targetOrderId)
+        .maybeSingle();
+
+      if (orderById && !orderError) {
+        order = orderById;
+      }
+    }
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // ============================================
+    // STEP 2: IDEMPOTENCY - If already PAID, return success
+    // ============================================
+    if (order.status === 'PAID') {
+      return res.json({
+        success: true,
+        status: 'SUCCESS',
+        orderId: order.id,
+        orderUpdated: false,
+        message: 'Order already processed'
+      });
+    }
+
+    // ============================================
+    // STEP 3: Validate Flouci API keys
+    // ============================================
+    if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
+      return res.status(500).json({ error: 'Flouci API keys not configured' });
+    }
+
+    const trimmedPublicKey = FLOUCI_PUBLIC_KEY.trim();
+    const trimmedSecretKey = FLOUCI_SECRET_KEY.trim();
+
+    // ============================================
+    // STEP 4: Call Flouci verification API (ONLY SOURCE OF TRUTH)
+    // ============================================
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds
+
+    let verifyResponse;
+    let verifyData;
+    try {
+      verifyResponse = await fetch(`${FLOUCI_API_BASE}/verify_payment/${paymentId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${trimmedPublicKey}:${trimmedSecretKey}`
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      verifyData = await verifyResponse.json();
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        return res.status(504).json({
+          error: 'Payment verification timeout',
+          message: 'The payment gateway did not respond in time. Please try again.'
+        });
+      }
+      throw fetchError;
+    }
+
+    if (!verifyResponse.ok) {
+      return res.status(500).json({
+        error: verifyData.message || 'Failed to verify payment',
+        details: verifyData
+      });
+    }
+
+    const paymentStatus = verifyData.result?.status;
+
+    // ============================================
+    // STEP 5: Process based on verification result
+    // ============================================
+    if (paymentStatus === 'SUCCESS') {
+      // ============================================
+      // SUCCESS: Mark order PAID (conditional update for race condition protection)
+      // ============================================
+      const updateData = {
+        status: 'PAID',
+        payment_status: 'PAID',
+        payment_gateway_reference: paymentId,
+        payment_response_data: verifyData.result,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // Use conditional update: only update if still PENDING_ONLINE
+      const { error: updateError, data: updatedOrder } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', targetOrderId)
+        .eq('status', 'PENDING_ONLINE') // Race condition protection
+        .select('status')
+        .single();
+
+      let orderUpdated = false;
+
+      if (updateError) {
+        if (updateError.code === 'PGRST116') {
+          // No rows updated - order was already updated by another process
+          const { data: currentOrder } = await supabase
+            .from('orders')
+            .select('status')
+            .eq('id', targetOrderId)
+            .single();
+
+          if (currentOrder?.status === 'PAID') {
+            orderUpdated = true;
+          }
+        } else {
+          console.error('❌ Error updating order status:', updateError);
+        }
+      } else if (updatedOrder && updatedOrder.status === 'PAID') {
+        orderUpdated = true;
+      }
+
+      // ============================================
+      // STEP 6: Generate tickets and send email/SMS if order was just marked PAID
+      // ============================================
+      if (orderUpdated) {
+        // IDEMPOTENCY: Check if tickets already exist
+        const { data: existingTickets } = await supabase
+          .from('tickets')
+          .select('id')
+          .eq('order_id', targetOrderId)
+          .limit(1);
+
+        if (!existingTickets || existingTickets.length === 0) {
+          // Generate tickets and send email/SMS (async - don't block response)
+          process.nextTick(async () => {
+            try {
+              if (typeof generateTicketsAndSendEmail === 'function') {
+                await generateTicketsAndSendEmail(targetOrderId);
+                console.log('✅ Tickets generated and email/SMS sent for order:', targetOrderId);
+              } else {
+                console.error('❌ generateTicketsAndSendEmail function not found!');
+              }
+            } catch (error) {
+              console.error('❌ Error generating tickets after payment verification:', error);
+              // Don't fail the verification - tickets can be generated manually later
+            }
+          });
+        }
+      }
+
+      return res.json({
+        success: true,
+        status: paymentStatus,
+        orderId: targetOrderId,
+        orderUpdated: orderUpdated,
+        result: verifyData.result
+      });
+
+    } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
+      // ============================================
+      // FAILED/EXPIRED: Mark payment_status = FAILED, keep status as PENDING_ONLINE
+      // ============================================
+      const updateData = {
+        payment_status: 'FAILED',
+        payment_gateway_reference: paymentId,
+        payment_response_data: verifyData.result,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', targetOrderId);
+
+      if (updateError) {
+        console.error('❌ Error updating order payment status:', updateError);
+      }
+
+      return res.json({
+        success: true,
+        status: paymentStatus,
+        orderId: targetOrderId,
+        orderUpdated: true,
+        message: `Payment ${paymentStatus.toLowerCase()}. Order remains PENDING_ONLINE for retry.`
+      });
+
+    } else if (paymentStatus === 'PENDING') {
+      // ============================================
+      // PENDING: Don't update order, allow retry
+      // ============================================
+      return res.json({
+        success: true,
+        status: paymentStatus,
+        orderId: targetOrderId,
+        orderUpdated: false,
+        message: 'Payment pending - will be finalized by webhook or retry'
+      });
+
+    } else {
+      // Unknown status
+      return res.json({
+        success: true,
+        status: paymentStatus,
+        orderId: targetOrderId,
+        orderUpdated: false,
+        message: `Payment status: ${paymentStatus}`
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error verifying Flouci payment:', error);
+    return res.status(500).json({
+      error: error.message || 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// ============================================
+// POST /api/flouci/webhook - Webhook Handler (Idempotent)
+// ============================================
+// CRITICAL: Webhook payload is NEVER trusted alone
+// MUST verify payment with Flouci API
+// Parallel path with redirect verification
+app.post('/api/flouci/webhook', logSecurityRequest, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // ============================================
+    // STEP 1: Verify webhook signature (optional security layer)
+    // ============================================
+    const FLOUCI_WEBHOOK_SECRET = process.env.FLOUCI_WEBHOOK_SECRET;
+    if (FLOUCI_WEBHOOK_SECRET) {
+      const webhookSignature = req.headers['x-flouci-signature'] || req.headers['x-signature'];
+      
+      if (webhookSignature) {
+        const rawBody = req.rawBody ? req.rawBody.toString() : JSON.stringify(req.body);
+        const expectedSignature = crypto
+          .createHmac('sha256', FLOUCI_WEBHOOK_SECRET)
+          .update(rawBody)
+          .digest('hex');
+        
+        const receivedSig = webhookSignature.replace(/^sha256=/, '');
+        const signatureMatch = receivedSig.length === expectedSignature.length && 
+          crypto.timingSafeEqual(
+            Buffer.from(receivedSig),
+            Buffer.from(expectedSignature)
+          );
+        
+        if (!signatureMatch) {
+          console.error('❌ Flouci webhook: Invalid signature');
+          return res.status(401).json({ error: 'Invalid webhook signature' });
+        }
+      }
+    }
+
+    // Parse body (if not already parsed)
+    let bodyData = req.body;
+    if (Buffer.isBuffer(req.body)) {
+      try {
+        bodyData = JSON.parse(req.body.toString());
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid JSON in webhook body' });
+      }
+    }
+
+    // ============================================
+    // STEP 2: Extract webhook data
+    // ============================================
+    const { payment_id, status, developer_tracking_id } = bodyData;
+
+    if (!payment_id || !status || !developer_tracking_id) {
+      console.error('❌ Flouci webhook: Missing required fields', bodyData);
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const orderId = developer_tracking_id;
+
+    // ============================================
+    // STEP 3: Find order by developer_tracking_id (orderId)
+    // ============================================
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('id, status, payment_status, payment_gateway_reference')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      console.error('❌ Order not found for Flouci webhook:', orderId);
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // ============================================
+    // STEP 4: IDEMPOTENCY - If order already PAID, return 200 immediately
+    // ============================================
+    if (order.status === 'PAID') {
+      return res.status(200).json({
+        success: true,
+        message: 'Order already processed',
+        orderStatus: 'PAID'
+      });
+    }
+
+    // ============================================
+    // STEP 5: Verify payment with Flouci API (ONLY SOURCE OF TRUTH)
+    // ============================================
+    // CRITICAL: Webhook payload is NOT trusted - must verify with API
+    const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
+    const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
+
+    if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
+      console.error('❌ Flouci API keys not configured');
+      return res.status(500).json({ error: 'Payment gateway not configured' });
+    }
+
+    const trimmedPublicKey = FLOUCI_PUBLIC_KEY.trim();
+    const trimmedSecretKey = FLOUCI_SECRET_KEY.trim();
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds
+
+    let verifyResponse;
+    let verifyData;
+    try {
+      verifyResponse = await fetch(`${FLOUCI_API_BASE}/verify_payment/${payment_id}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${trimmedPublicKey}:${trimmedSecretKey}`
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      verifyData = await verifyResponse.json();
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        console.error('❌ Flouci API webhook verification request timed out');
+        return res.status(504).json({
+          error: 'Payment verification timeout',
+          message: 'The payment gateway did not respond in time.'
+        });
+      }
+      throw fetchError;
+    }
+
+    if (!verifyResponse.ok || !verifyData.success) {
+      console.error('❌ Flouci verification failed:', verifyData);
+      return res.status(400).json({ error: 'Payment verification failed' });
+    }
+
+    const paymentStatus = verifyData.result?.status;
+
+    // ============================================
+    // STEP 6: Process based on verification result
+    // ============================================
+    if (paymentStatus === 'SUCCESS') {
+      // ============================================
+      // SUCCESS: Mark order PAID (conditional update for idempotency)
+      // ============================================
+      const updateData = {
+        status: 'PAID',
+        payment_status: 'PAID',
+        payment_gateway_reference: payment_id,
+        payment_response_data: verifyData.result,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // Use conditional update: only update if still PENDING_ONLINE
+      const { error: updateError, data: updatedOrder } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', orderId)
+        .eq('status', 'PENDING_ONLINE') // Race condition protection
+        .select('status')
+        .single();
+
+      let orderWasUpdated = false;
+
+      if (!updateError && updatedOrder && updatedOrder.status === 'PAID') {
+        orderWasUpdated = true;
+      } else if (updateError && updateError.code === 'PGRST116') {
+        // No rows updated - order was already updated by another process
+        const { data: currentOrder } = await supabase
+          .from('orders')
+          .select('status')
+          .eq('id', orderId)
+          .single();
+
+        if (currentOrder?.status === 'PAID') {
+          orderWasUpdated = true;
+        }
+      }
+
+      // ============================================
+      // STEP 7: Generate tickets and send email/SMS if order was just marked PAID
+      // ============================================
+      if (orderWasUpdated) {
+        // IDEMPOTENCY: Check if tickets already exist
+        const { data: existingTickets } = await supabase
+          .from('tickets')
+          .select('id')
+          .eq('order_id', orderId)
+          .limit(1);
+
+        if (!existingTickets || existingTickets.length === 0) {
+          // Generate tickets and send email/SMS (async - don't block webhook response)
+          process.nextTick(async () => {
+            try {
+              if (typeof generateTicketsAndSendEmail === 'function') {
+                await generateTicketsAndSendEmail(orderId);
+                console.log('✅ Tickets generated and email/SMS sent via webhook for order:', orderId);
+              } else {
+                console.error('❌ generateTicketsAndSendEmail function not found!');
+              }
+            } catch (error) {
+              console.error('❌ Error generating tickets after webhook payment verification:', error);
+              // Don't fail webhook - tickets can be generated manually later
+            }
+          });
+        } else {
+          console.log('✅ Tickets already exist for order:', orderId);
+        }
+      }
+
+      // Always return 200 to Flouci quickly
+      return res.status(200).json({
+        success: true,
+        message: 'Webhook processed successfully',
+        orderUpdated: orderWasUpdated
+      });
+
+    } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
+      // ============================================
+      // FAILED/EXPIRED: Mark payment_status = FAILED, keep status as PENDING_ONLINE
+      // ============================================
+      const updateData = {
+        payment_status: 'FAILED',
+        payment_gateway_reference: payment_id,
+        payment_response_data: verifyData.result,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', orderId);
+
+      if (updateError) {
+        console.error('❌ Error updating order payment status:', updateError);
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Payment ${paymentStatus.toLowerCase()}. Order remains PENDING_ONLINE for retry.`
+      });
+
+    } else {
+      // PENDING or other status - don't update order yet
+      return res.status(200).json({
+        success: true,
+        message: 'Payment pending - will be finalized later'
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error processing Flouci webhook:', error);
+    // Always return 200 to Flouci (even on error) to prevent retries of invalid requests
+    return res.status(200).json({
+      success: false,
+      error: 'Webhook processing error',
+      message: error.message
     });
   }
 });
@@ -4581,6 +4751,11 @@ app.post('/api/orders/create', logSecurityRequest, orderCreationLimiter, orderPe
     // CREATE ORDER (using server-calculated values)
     // COD orders created by customers through platform use 'platform_cod' source
     // Ambassadors do NOT create orders - they only receive orders from customers
+    // Set payment_status for online orders
+    const paymentStatus = (paymentMethod === 'online' || paymentMethod === 'external_app') 
+      ? 'PENDING_PAYMENT' 
+      : null;
+
     const orderData = {
       source: (paymentMethod === 'ambassador_cash' || paymentMethod === 'cod') ? 'platform_cod' : 'platform_online',
       user_name: normalizedCustomer.full_name.trim(),
@@ -4594,6 +4769,7 @@ app.post('/api/orders/create', logSecurityRequest, orderCreationLimiter, orderPe
       total_price: serverCalculatedTotal, // Server-calculated - CRITICAL! (sum of all pass totals from database prices)
       payment_method: paymentMethod,
       status: initialStatus,
+      payment_status: paymentStatus, // PENDING_PAYMENT for online orders, NULL for COD
       assigned_at: validatedAmbassadorId ? new Date().toISOString() : null,
       idempotency_key: idempotencyKey || null, // Store idempotency key to prevent duplicates
       notes: JSON.stringify({
@@ -5603,845 +5779,9 @@ app.post('/api/admin/reject-order', logSecurityRequest, requireAdminAuth, async 
   }
 });
 
-// POST /api/flouci-verify-payment-by-order - Verify payment by orderId (manual verification)
-app.post('/api/flouci-verify-payment-by-order', async (req, res) => {
-  try {
-    const { orderId } = req.body;
-
-    if (!orderId) {
-      return res.status(400).json({ error: 'Order ID is required' });
-    }
-
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase not configured' });
-    }
-
-    // Get order with payment_id
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .select('id, payment_gateway_reference, status')
-      .eq('id', orderId)
-      .single();
-
-    if (orderError || !order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    if (!order.payment_gateway_reference) {
-      return res.status(400).json({ error: 'Order does not have a payment ID' });
-    }
-
-    if (order.status === 'PAID') {
-      return res.json({ 
-        success: true, 
-        status: 'SUCCESS', 
-        message: 'Order is already paid',
-        orderUpdated: true
-      });
-    }
-
-    // ============================================
-    // PREVIEW-ONLY: Mock Payment Verification
-    // ============================================
-    // Check if this is a preview payment (starts with "preview_")
-    const isPreviewPayment = order.payment_gateway_reference.startsWith('preview_');
-    const requestHost = req.headers.host || '';
-    const hasNgrokHost = requestHost.includes('ngrok-free.dev') || requestHost.includes('ngrok.io');
-    const isPreviewEnvironment = process.env.VERCEL_ENV === 'preview' || hasNgrokHost;
-    
-    if (isPreviewPayment || isPreviewEnvironment) {
-      console.log('🔧 PREVIEW MODE: Mocking payment verification (not calling real Flouci API)');
-      console.log('   Preview payment ID:', order.payment_gateway_reference);
-      
-      // In preview, mark payment as successful without calling Flouci
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({
-          status: 'PAID',
-          payment_status: 'PAID',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', orderId);
-      
-      if (updateError) {
-        console.error('❌ Failed to update order status in preview:', updateError);
-        return res.status(500).json({ error: 'Failed to update order status' });
-      }
-      
-      return res.json({
-        success: true,
-        status: 'SUCCESS',
-        result: {
-          status: 'SUCCESS',
-          payment_id: order.payment_gateway_reference
-        },
-        orderUpdated: true,
-        isPreview: true,
-        message: 'PREVIEW MODE: Payment verified (mocked). Real verification will work in production.'
-      });
-    }
-
-    // PRODUCTION: Verify payment using the payment_id from order
-    const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
-    const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
-
-    if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
-      return res.status(500).json({ error: 'Flouci API keys not configured' });
-    }
-
-    // Add timeout to prevent hanging requests (30 seconds)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
-
-    let response;
-    let data;
-    try {
-      response = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${order.payment_gateway_reference}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
-        },
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      data = await response.json();
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      if (fetchError.name === 'AbortError') {
-        console.error('❌ Flouci API verification request timed out after 30 seconds');
-        return res.status(504).json({ 
-          error: 'Payment verification timeout',
-          message: 'The payment gateway did not respond in time. Please try again.',
-          details: 'Request timed out after 30 seconds'
-        });
-      }
-      throw fetchError; // Re-throw other errors
-    }
-
-    if (!response.ok) {
-      return res.status(500).json({ 
-        error: data.message || 'Failed to verify payment',
-        details: data
-      });
-    }
-
-    const paymentStatus = data.result?.status;
-
-    // Update order based on payment status
-    let updateData = {
-      payment_response_data: data.result,
-      updated_at: new Date().toISOString()
-    };
-
-    if (paymentStatus === 'SUCCESS') {
-      // Payment successful - mark as PAID
-      updateData.status = 'PAID';
-      updateData.payment_status = 'PAID';
-      updateData.completed_at = new Date().toISOString();
-      
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', orderId);
-
-      if (updateError) {
-        console.error('❌ Error updating order status:', updateError);
-        return res.status(500).json({ 
-          success: true,
-          status: paymentStatus,
-          result: data.result,
-          orderUpdated: false,
-          error: 'Payment verified but order update failed'
-        });
-      }
-
-      return res.json({ 
-        success: true,
-        status: paymentStatus,
-        result: data.result,
-        orderUpdated: true,
-        orderId: orderId
-      });
-    } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
-      // Payment failed - mark as failed but keep status as PENDING_ONLINE for admin review
-      updateData.status = 'PENDING_ONLINE'; // Keep as pending, admin can review
-      updateData.payment_status = 'FAILED';
-      
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', orderId);
-
-      if (updateError) {
-        console.error('❌ Error updating order status:', updateError);
-        return res.json({ 
-          success: true,
-          status: paymentStatus,
-          result: data.result,
-          orderUpdated: false,
-          error: 'Payment verified but order update failed'
-        });
-      }
-
-      return res.json({ 
-        success: true,
-        status: paymentStatus,
-        result: data.result,
-        orderUpdated: true,
-        orderId: orderId,
-        message: `Payment ${paymentStatus.toLowerCase()}. Order status updated to reflect failure.`
-      });
-    }
-
-    // PENDING or other status - don't update order yet
-    res.json({ 
-      success: data.success,
-      status: paymentStatus,
-      result: data.result,
-      orderUpdated: false,
-      message: `Payment status is ${paymentStatus}. Order will be updated when payment completes.`
-    });
-  } catch (error) {
-    console.error('Error verifying payment by order:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
-  }
-});
-
-// POST /api/flouci-verify-payment - Verify Flouci payment status and update order
-app.post('/api/flouci-verify-payment', async (req, res) => {
-  try {
-    const { paymentId, orderId } = req.body;
-
-    if (!paymentId) {
-      return res.status(400).json({ error: 'Payment ID is required' });
-    }
-
-    // ============================================
-    // PREVIEW-ONLY: Mock Payment Verification
-    // ============================================
-    // Check if this is a preview payment (starts with "preview_")
-    const isPreviewPayment = paymentId.startsWith('preview_');
-    const requestHost = req.headers.host || '';
-    const hasNgrokHost = requestHost.includes('ngrok-free.dev') || requestHost.includes('ngrok.io');
-    const isPreviewEnvironment = process.env.VERCEL_ENV === 'preview' || hasNgrokHost;
-    
-    if (isPreviewPayment || isPreviewEnvironment) {
-      console.log('🔧 PREVIEW MODE: Mocking payment verification (not calling real Flouci API)');
-      console.log('   Preview payment ID:', paymentId);
-      
-      if (!supabase) {
-        return res.status(500).json({ error: 'Supabase not configured' });
-      }
-      
-      // In preview, mark payment as successful without calling Flouci
-      if (orderId) {
-        const { error: updateError } = await supabase
-          .from('orders')
-          .update({
-            status: 'PAID',
-            payment_status: 'PAID',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', orderId);
-        
-        if (updateError) {
-          console.error('❌ Failed to update order status in preview:', updateError);
-        }
-      }
-      
-      return res.json({
-        success: true,
-        status: 'SUCCESS',
-        result: {
-          status: 'SUCCESS',
-          payment_id: paymentId
-        },
-        orderUpdated: !!orderId,
-        isPreview: true,
-        message: 'PREVIEW MODE: Payment verified (mocked). Real verification will work in production.'
-      });
-    }
-
-    // PRODUCTION: Verify payment with Flouci
-    const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
-    const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
-
-    if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
-      return res.status(500).json({ error: 'Flouci API keys not configured' });
-    }
-
-    // Add timeout to prevent hanging requests (30 seconds)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
-
-    // Verify payment with Flouci
-    let response;
-    let data;
-    try {
-      response = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${paymentId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
-        },
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      data = await response.json();
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      if (fetchError.name === 'AbortError') {
-        console.error('❌ Flouci API verification request timed out after 30 seconds');
-        return res.status(504).json({ 
-          error: 'Payment verification timeout',
-          message: 'The payment gateway did not respond in time. Please try again.',
-          details: 'Request timed out after 30 seconds'
-        });
-      }
-      throw fetchError; // Re-throw other errors
-    }
-
-    if (!response.ok) {
-      console.error('❌ Flouci verification API error:', {
-        status: response.status,
-        statusText: response.statusText,
-        data: data
-      });
-      return res.status(500).json({ 
-        error: data.message || 'Failed to verify payment',
-        details: data
-      });
-    }
-
-    const paymentStatus = data.result?.status;
-    
-    // Log full verification response for debugging
-    console.log('Flouci payment verification response:', {
-      orderId: orderId || 'not provided',
-      timestamp: new Date().toISOString(),
-      fullResponse: JSON.stringify(data, null, 2)
-    });
-    
-    // CRITICAL: Check if payment was just created (within last 5 seconds)
-    // If so, and status is FAILURE, it might be because payment hasn't been attempted yet
-    if (orderId && supabase && paymentStatus === 'FAILURE') {
-      const { data: orderCheck } = await supabase
-        .from('orders')
-        .select('payment_created_at, status')
-        .eq('id', orderId)
-        .single();
-      
-      if (orderCheck?.payment_created_at) {
-        const createdTime = new Date(orderCheck.payment_created_at).getTime();
-        const now = Date.now();
-        const secondsSinceCreation = (now - createdTime) / 1000;
-        
-        if (secondsSinceCreation < 10) {
-          console.warn('⚠️ Payment verified within 10 seconds of creation - this might be premature');
-          console.warn('⚠️ Payment status FAILURE might be because user hasn\'t completed payment on Flouci yet');
-          console.warn('⚠️ User should complete payment on Flouci page first, then verification will be accurate');
-        }
-      }
-    }
-
-    // GOLDEN RULE: Flouci verification API is the source of truth
-    // Order is PAID ONLY if verify_payment(payment_id).status === 'SUCCESS'
-    
-    if (!orderId || !supabase) {
-      // No orderId provided - just return verification result
-      return res.json({ 
-        success: data.success,
-        status: paymentStatus,
-        result: data.result,
-        orderUpdated: false
-      });
-    }
-
-    let targetOrderId = orderId;
-    
-    // First, try to find order by payment_gateway_reference (more reliable)
-    const { data: orderByPayment, error: paymentError } = await supabase
-      .from('orders')
-      .select('id, status')
-      .eq('payment_gateway_reference', paymentId)
-      .maybeSingle();
-    
-    // If found by payment_id, use that order ID
-    if (orderByPayment && !paymentError) {
-      targetOrderId = orderByPayment.id;
-      
-      // IDEMPOTENCY: If order already PAID, return success
-      if (orderByPayment.status === 'PAID') {
-        return res.json({ 
-          success: data.success,
-          status: paymentStatus,
-          result: data.result,
-          orderUpdated: false,
-          orderId: targetOrderId,
-          message: 'Order already processed'
-        });
-      }
-    } else {
-      // Use provided orderId and verify it exists
-      const { data: orderById, error: orderError } = await supabase
-        .from('orders')
-        .select('id, status')
-        .eq('id', orderId)
-        .maybeSingle();
-      
-      if (orderById && !orderError) {
-        
-        // IDEMPOTENCY: If order already PAID, return success
-        if (orderById.status === 'PAID') {
-          return res.json({ 
-            success: data.success,
-            status: paymentStatus,
-            result: data.result,
-            orderUpdated: false,
-            orderId: targetOrderId,
-            message: 'Order already processed'
-          });
-        }
-      } else {
-        console.warn('⚠️ Order not found with provided orderId:', orderId);
-        return res.status(404).json({ 
-          error: 'Order not found',
-          status: paymentStatus,
-          result: data.result
-        });
-      }
-    }
-
-    // Update order based on payment status (only if verification confirms it)
-    if (paymentStatus === 'SUCCESS') {
-      // CRITICAL: Only mark PAID if verification API confirms SUCCESS
-      const updateData = {
-        status: 'PAID',
-        payment_status: 'PAID',
-        payment_gateway_reference: paymentId,
-        payment_response_data: data.result,
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      // Use conditional update to prevent race conditions
-      const { error: updateError, data: updatedData } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', targetOrderId)
-        .eq('status', 'PENDING_ONLINE') // Only update if still PENDING_ONLINE
-        .select('status')
-        .single();
-
-      let orderUpdated = false;
-      
-      if (updateError) {
-        // Check if it's a unique constraint violation (idempotency)
-        if (updateError.code === '23505' || updateError.message?.includes('unique')) {
-        } else {
-          console.error('❌ Error updating order status:', updateError);
-        }
-      } else if (updatedData && updatedData.status === 'PAID') {
-        orderUpdated = true;
-        
-        // CRITICAL: Generate tickets and send email/SMS after order is marked PAID
-        // Check if tickets already exist (idempotency)
-        const { data: existingTickets } = await supabase
-          .from('tickets')
-          .select('id')
-          .eq('order_id', targetOrderId)
-          .limit(1);
-
-        if (existingTickets && existingTickets.length > 0) {
-        } else {
-          // Generate tickets and send email/SMS (fire and forget - don't block response)
-          process.nextTick(async () => {
-            try {
-              if (typeof generateTicketsAndSendEmail !== 'function') {
-                console.error('❌ generateTicketsAndSendEmail function not found!');
-                return;
-              }
-              
-              const result = await generateTicketsAndSendEmail(targetOrderId);
-            } catch (error) {
-              console.error('❌ Error generating tickets after payment verification:', error);
-              console.error('❌ Error details:', {
-                message: error.message,
-                stack: error.stack,
-                code: error.code,
-                name: error.name
-              });
-            }
-          });
-        }
-      } else {
-        // Order was not updated (might have been updated by another process)
-      }
-      
-      res.json({ 
-        success: data.success,
-        status: paymentStatus,
-        result: data.result,
-        orderUpdated: orderUpdated,
-        orderId: targetOrderId
-      });
-    } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
-      // Payment failed - mark as failed but keep status as PENDING_ONLINE (allows retry)
-      
-      // CRITICAL: Check if payment was just created (within last 10 seconds)
-      // If so, FAILURE might mean payment wasn't attempted yet, not that it failed
-      let isPrematureVerification = false;
-      if (supabase) {
-        const { data: orderCheck } = await supabase
-          .from('orders')
-          .select('payment_created_at, status')
-          .eq('id', targetOrderId)
-          .single();
-        
-        if (orderCheck?.payment_created_at) {
-          const createdTime = new Date(orderCheck.payment_created_at).getTime();
-          const now = Date.now();
-          const secondsSinceCreation = (now - createdTime) / 1000;
-          
-          // If verified within 10 seconds of creation, it's likely premature
-          // Only mark as FAILED if payment was actually attempted (has card details)
-          if (secondsSinceCreation < 10) {
-            const hasCardDetails = data.result?.details?.name || data.result?.details?.pan;
-            if (!hasCardDetails) {
-              console.warn('⚠️ Payment verified within 10 seconds of creation with no card details');
-              console.warn('⚠️ This might be premature verification - payment may not have been attempted yet');
-              console.warn('⚠️ Returning PENDING status instead of marking as FAILED');
-              isPrematureVerification = true;
-            }
-          }
-        }
-      }
-      
-      if (isPrematureVerification) {
-        // Don't mark as FAILED if verification is premature
-        // Return PENDING status instead
-        return res.status(200).json({ 
-          success: true, 
-          status: 'PENDING',
-          result: data.result,
-          message: 'Payment verification is premature - user should complete payment on Flouci first'
-        });
-      }
-      
-      console.log('Payment verification details:', {
-        paymentId,
-        status: paymentStatus,
-        amount: data.result?.amount,
-        cardInfo: data.result?.details ? {
-          name: data.result.details.name,
-          pan: data.result.details.pan
-        } : 'N/A'
-      });
-      
-      const updateData = {
-        payment_status: 'FAILED',
-        payment_gateway_reference: paymentId,
-        payment_response_data: data.result,
-        updated_at: new Date().toISOString()
-      };
-
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', targetOrderId);
-
-      if (updateError) {
-        console.error('❌ Error updating order payment status:', updateError);
-      } else {
-      }
-
-      res.json({ 
-        success: data.success,
-        status: paymentStatus,
-        result: data.result,
-        orderUpdated: true,
-        orderId: targetOrderId
-      });
-    } else if (paymentStatus === 'PENDING') {
-      // PENDING - don't update order status yet, let webhook finalize
-      return res.status(200).json({ 
-        success: true, 
-        status: paymentStatus,
-        result: data.result,
-        message: 'Payment pending - will be finalized by webhook or retry'
-      });
-    } else {
-      // Unknown status
-      return res.status(200).json({ 
-        success: data.success, 
-        status: paymentStatus,
-        result: data.result,
-        message: `Payment status: ${paymentStatus}`
-      });
-    }
-  } catch (error) {
-    console.error('Error verifying Flouci payment:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
-  }
-});
-
 // ============================================
 // Flouci Payment Webhook
 // ============================================
-
-// POST /api/flouci-webhook - Handle Flouci payment webhook notifications
-app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
-  try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase not configured' });
-    }
-
-    // Security: Verify webhook signature if configured
-    const FLOUCI_WEBHOOK_SECRET = process.env.FLOUCI_WEBHOOK_SECRET;
-    const webhookSignature = req.headers['x-flouci-signature'] || req.headers['x-signature'];
-    
-    if (FLOUCI_WEBHOOK_SECRET && webhookSignature) {
-      // Get raw body for signature verification (captured by middleware)
-      const rawBody = req.rawBody ? req.rawBody.toString() : JSON.stringify(req.body);
-      const expectedSignature = crypto
-        .createHmac('sha256', FLOUCI_WEBHOOK_SECRET)
-        .update(rawBody)
-        .digest('hex');
-      
-      // Use constant-time comparison to prevent timing attacks
-      // Handle case where signature might be in different format
-      const receivedSig = webhookSignature.replace(/^sha256=/, ''); // Remove prefix if present
-      const signatureMatch = receivedSig.length === expectedSignature.length && 
-        crypto.timingSafeEqual(
-          Buffer.from(receivedSig),
-          Buffer.from(expectedSignature)
-        );
-      
-      if (!signatureMatch) {
-        console.error('❌ Flouci webhook: Invalid signature', {
-          received: webhookSignature.substring(0, 10) + '...',
-          expected: expectedSignature.substring(0, 10) + '...',
-          ip: req.ip || req.headers['x-forwarded-for']
-        });
-        
-        // Log security event
-        try {
-          const logData = {
-            event_type: 'webhook_signature_failed',
-            endpoint: '/api/flouci-webhook',
-            ip_address: normalizeIP(req), // PHASE 2: Normalized IP
-            user_agent: req.headers['user-agent'] || 'unknown',
-            details: { reason: 'Invalid webhook signature' },
-            severity: 'high'
-          };
-          // Use service role client for security audit logs (bypasses RLS)
-          const securityLogClient = supabaseService || supabase;
-          await securityLogClient.from('security_audit_logs').insert(logData);
-          // Check for suspicious activity
-          await checkSuspiciousActivity('webhook_signature_failed', logData.details, req);
-        } catch (logError) {
-          console.error('Failed to log security event:', logError);
-        }
-        
-        return res.status(401).json({ error: 'Invalid webhook signature' });
-      }
-    } else if (FLOUCI_WEBHOOK_SECRET && !webhookSignature) {
-      console.warn('⚠️ Flouci webhook secret configured but no signature provided');
-    }
-
-    const { payment_id, status, developer_tracking_id } = req.body;
-
-    // Validate required fields
-    if (!payment_id || !status || !developer_tracking_id) {
-      console.error('Flouci webhook: Missing required fields', req.body);
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-
-    // Find order by developer_tracking_id (which is the order ID)
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('id', developer_tracking_id)
-      .single();
-
-    if (orderError || !order) {
-      console.error('❌ Order not found for Flouci webhook:', developer_tracking_id);
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    // WEBHOOK REPLAY PROTECTION: If order is already PAID, return success immediately
-    // This prevents duplicate ticket generation and email sending
-    if (order.status === 'PAID') {
-      return res.status(200).json({ 
-        success: true, 
-        message: 'Order already processed',
-        orderStatus: 'PAID'
-      });
-    }
-
-    // Verify payment with Flouci API to ensure authenticity
-    const FLOUCI_PUBLIC_KEY = process.env.FLOUCI_PUBLIC_KEY;
-    const FLOUCI_SECRET_KEY = process.env.FLOUCI_SECRET_KEY;
-
-    if (!FLOUCI_PUBLIC_KEY || !FLOUCI_SECRET_KEY) {
-      console.error('❌ Flouci API keys not configured');
-      return res.status(500).json({ error: 'Payment gateway not configured' });
-    }
-
-    // Add timeout to prevent hanging requests (30 seconds)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
-
-    // Verify payment status with Flouci
-    let verifyResponse;
-    let verifyData;
-    try {
-      verifyResponse = await fetch(`https://developers.flouci.com/api/v2/verify_payment/${payment_id}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY}:${FLOUCI_SECRET_KEY}`
-        },
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      verifyData = await verifyResponse.json();
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      if (fetchError.name === 'AbortError') {
-        console.error('❌ Flouci API webhook verification request timed out after 30 seconds');
-        return res.status(504).json({ 
-          error: 'Payment verification timeout',
-          message: 'The payment gateway did not respond in time.',
-          details: 'Request timed out after 30 seconds'
-        });
-      }
-      throw fetchError; // Re-throw other errors
-    }
-
-    if (!verifyData.success) {
-      console.error('❌ Flouci verification failed:', verifyData);
-      return res.status(400).json({ error: 'Payment verification failed' });
-    }
-
-    const paymentStatus = verifyData.result?.status;
-
-    // GOLDEN RULE: Flouci verification API is the source of truth
-    // Only mark order as PAID if verify_payment returns SUCCESS
-    if (paymentStatus === 'SUCCESS') {
-      // Double-check order is not already PAID (idempotency)
-      if (order.status === 'PAID') {
-        return res.status(200).json({ 
-          success: true, 
-          message: 'Order already processed',
-          orderStatus: 'PAID'
-        });
-      }
-
-      // Update order to PAID in a transaction
-      const updateData = {
-        status: 'PAID',
-        payment_status: 'PAID',
-        payment_gateway_reference: payment_id,
-        payment_response_data: verifyData.result,
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', developer_tracking_id)
-        .eq('status', 'PENDING_ONLINE'); // Only update if still PENDING_ONLINE (prevents race conditions)
-
-      if (updateError) {
-        console.error('❌ Error updating order to PAID:', updateError);
-        return res.status(500).json({ error: 'Failed to update order' });
-      }
-
-      // Check if update actually happened (might have been updated by another process)
-      const { data: updatedOrder } = await supabase
-        .from('orders')
-        .select('status')
-        .eq('id', developer_tracking_id)
-        .single();
-
-      if (updatedOrder?.status !== 'PAID') {
-        return res.status(200).json({ 
-          success: true, 
-          message: 'Order status may have been updated by another process'
-        });
-      }
-
-      // CRITICAL: Only generate tickets and send emails AFTER order is confirmed PAID
-      // This happens in a separate async process to not block webhook response
-      
-      // IDEMPOTENCY: Check if tickets already exist before generating
-      const { data: existingTickets } = await supabase
-        .from('tickets')
-        .select('id')
-        .eq('order_id', developer_tracking_id)
-        .limit(1);
-
-      if (existingTickets && existingTickets.length > 0) {
-        return res.status(200).json({ 
-          success: true, 
-          message: 'Webhook processed - tickets already exist'
-        });
-      }
-
-      // Call ticket generation function (fire and forget - don't block webhook response)
-      // Use process.nextTick to ensure function is available and run after current execution
-      process.nextTick(async () => {
-        try {
-          
-          // Check if function exists
-          if (typeof generateTicketsAndSendEmail !== 'function') {
-            console.error('❌ generateTicketsAndSendEmail function not found!');
-            return;
-          }
-          
-          const result = await generateTicketsAndSendEmail(developer_tracking_id);
-        } catch (error) {
-          console.error('❌ Error generating tickets after payment:', error);
-          console.error('❌ Error details:', {
-            message: error.message,
-            stack: error.stack,
-            code: error.code,
-            name: error.name
-          });
-          // Don't fail the webhook - tickets can be generated manually later via admin panel
-        }
-      });
-    } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
-      // Payment failed - mark as failed but keep status as PENDING_ONLINE (allows retry)
-      const updateData = {
-        payment_status: 'FAILED',
-        payment_gateway_reference: payment_id,
-        payment_response_data: verifyData.result,
-        updated_at: new Date().toISOString()
-      };
-
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', developer_tracking_id);
-
-      if (updateError) {
-        console.error('❌ Error updating order payment status:', updateError);
-      } else {
-      }
-    } else {
-      // PENDING - don't update order status yet, let webhook finalize later
-      return res.status(200).json({ success: true, message: 'Payment pending' });
-    }
-
-    // Return success response to Flouci
-    res.status(200).json({ success: true, message: 'Webhook processed' });
-  } catch (error) {
-    console.error('❌ Error processing Flouci webhook:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
-  }
-});
 
 // ============================================
 // Active Ambassadors Endpoint

@@ -64,6 +64,11 @@ export const API_ROUTES = {
   // Active Ambassadors
   ACTIVE_AMBASSADORS: '/api/ambassadors/active',
   
+  // Flouci Payment (Clean Implementation)
+  FLOUCI_GENERATE: '/api/flouci/generate',
+  FLOUCI_VERIFY: '/api/flouci/verify',
+  FLOUCI_WEBHOOK: '/api/flouci/webhook',
+  
   // Ambassador Sales
   AMBASSADOR_SALES_OVERVIEW: '/api/admin/ambassador-sales/overview',
   AMBASSADOR_SALES_ORDERS: '/api/admin/ambassador-sales/orders',
