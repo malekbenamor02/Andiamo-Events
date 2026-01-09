@@ -959,10 +959,22 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Email and password required' });
     }
 
-    // Bypass reCAPTCHA verification for localhost development
+    // Bypass reCAPTCHA verification for localhost development and preview mode
     // Also allow bypass if RECAPTCHA_SECRET_KEY is not set (for testing)
     const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
-    const shouldBypassRecaptcha = recaptchaToken === 'localhost-bypass-token' || !RECAPTCHA_SECRET_KEY;
+    
+    // Detect preview mode (Vercel preview or ngrok)
+    const isPreviewMode = process.env.VERCEL_ENV === 'preview' || 
+                          req.headers.host?.includes('ngrok') ||
+                          req.headers.origin?.includes('vercel.app');
+    
+    const shouldBypassRecaptcha = recaptchaToken === 'localhost-bypass-token' || 
+                                  !RECAPTCHA_SECRET_KEY ||
+                                  isPreviewMode;
+    
+    if (isPreviewMode) {
+      console.log('🔧 PREVIEW MODE: Bypassing reCAPTCHA verification');
+    }
     
     if (!shouldBypassRecaptcha) {
       // Verify reCAPTCHA for production
