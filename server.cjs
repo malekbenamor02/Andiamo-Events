@@ -59,8 +59,10 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
 const app = express();
 
 // CRITICAL: Trust proxy - requests come through ngrok which sets X-Forwarded-For headers
+// Trust only the first proxy (ngrok) to prevent bypassing rate limits
 // This is required for express-rate-limit to work correctly with ngrok
-app.set('trust proxy', true);
+// Setting to 1 trusts only the first proxy hop (ngrok), not all proxies
+app.set('trust proxy', 1);
 
 // CORS configuration - allow all origins in development, specific origins in production
 const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -3557,10 +3559,25 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
     // Only add webhook if URL is valid (not localhost for production)
     // CRITICAL: Webhook URL must be the backend URL (ngrok) not frontend URL (Vercel)
     // Flouci needs to reach the backend webhook endpoint directly
+    // NOTE: ngrok-free.dev may block webhook requests due to browser warning page
+    // If webhook causes SMT error, we'll retry without webhook
+    let useWebhook = false;
     if (webhookUrl && !webhookUrl.includes('localhost') && !webhookUrl.includes('127.0.0.1')) {
       if (webhookUrl.startsWith('http://') || webhookUrl.startsWith('https://')) {
-        paymentRequest.webhook = webhookUrl;
-        console.log('✅ Webhook URL set:', webhookUrl.substring(0, 80) + '...');
+        // Check if using ngrok-free.dev - this may cause SMT errors due to browser warning
+        const isNgrokFree = webhookUrl.includes('ngrok-free.dev');
+        if (isNgrokFree) {
+          console.warn('⚠️ Using ngrok-free.dev - webhook may fail due to browser warning page');
+          console.warn('   Consider upgrading to paid ngrok or using cloudflared tunnel for production');
+          // Try with webhook anyway, but log the warning
+          useWebhook = true;
+        } else {
+          useWebhook = true;
+        }
+        if (useWebhook) {
+          paymentRequest.webhook = webhookUrl;
+          console.log('✅ Webhook URL set:', webhookUrl.substring(0, 80) + '...');
+        }
       } else {
         console.warn('⚠️ webhookUrl provided but not absolute URL, skipping:', webhookUrl.substring(0, 50));
       }
@@ -3654,15 +3671,81 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
       // Handle specific error codes and statuses
       if (response.status === 412 || (data.code === 1 && data.result?.error === 'SMT operation failed.')) {
         // Status 412 Precondition Failed or code 1 with SMT error
+        const isNgrokFreeWithWebhook = useWebhook && webhookUrl && webhookUrl.includes('ngrok-free.dev');
+        
+        // If using ngrok-free.dev with webhook, the SMT error is likely due to browser warning page
+        // Retry without webhook as a workaround
+        if (isNgrokFreeWithWebhook && paymentRequest.webhook) {
+          console.warn('⚠️ SMT error with ngrok-free.dev webhook - retrying without webhook...');
+          console.warn('   Note: ngrok-free.dev requires browser visit to bypass warning, blocking webhooks');
+          
+          // Remove webhook and retry once
+          const retryRequest = { ...paymentRequest };
+          delete retryRequest.webhook;
+          
+          try {
+            const retryResponse = await fetch('https://developers.flouci.com/api/v2/generate_payment', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${FLOUCI_PUBLIC_KEY_CLEAN}:${FLOUCI_SECRET_KEY_CLEAN}`
+              },
+              body: JSON.stringify(retryRequest),
+              signal: controller.signal
+            });
+            
+            const retryData = await retryResponse.json();
+            const retrySuccess = retryResponse.ok && retryData.result?.success === true;
+            
+            if (retrySuccess) {
+              console.log('✅ Payment created successfully without webhook (ngrok-free.dev workaround)');
+              console.warn('⚠️ Webhook disabled - payment status will need manual verification');
+              
+              // Update order with payment info
+              const updateData = {
+                payment_gateway_reference: retryData.result?.payment_id || null,
+                payment_response_data: retryData
+              };
+              
+              if (retryData.result?.payment_id) {
+                const { error: updateError } = await supabase
+                  .from('orders')
+                  .update(updateData)
+                  .eq('id', orderId);
+                
+                if (updateError) {
+                  console.error('❌ Failed to update order with payment ID:', updateError);
+                }
+              }
+              
+              return res.json({
+                success: true,
+                payment_id: retryData.result?.payment_id,
+                link: retryData.result?.link,
+                isDuplicate: false,
+                webhookDisabled: true,
+                message: 'Payment created without webhook due to ngrok-free.dev limitations. Manual verification required.'
+              });
+            } else {
+              console.error('❌ Retry without webhook also failed:', retryData);
+            }
+          } catch (retryError) {
+            console.error('❌ Error during retry without webhook:', retryError);
+          }
+        }
+        
         errorMessage = 'Payment validation failed. Please check your payment configuration.';
         errorDetails = {
           possibleCauses: [
             'Invalid API keys format or values',
             'Amount below minimum threshold',
             'Invalid URL format (must be absolute HTTPS URLs)',
-            'Missing required fields in payment request'
+            'Missing required fields in payment request',
+            ...(isNgrokFreeWithWebhook ? ['ngrok-free.dev browser warning page blocking webhook'] : [])
           ],
-          suggestion: 'Please verify your Flouci API keys and ensure URLs are absolute HTTPS URLs',
+          suggestion: isNgrokFreeWithWebhook 
+            ? 'Consider upgrading to paid ngrok or using cloudflared tunnel for production. Payment will work without webhook, but manual verification required.'
+            : 'Please verify your Flouci API keys and ensure URLs are absolute HTTPS URLs',
           flouciError: data.result?.error || data.result?.details || 'SMT operation failed'
         };
         
@@ -3677,6 +3760,8 @@ app.post('/api/flouci-generate-payment', async (req, res) => {
           successLinkIsHttps: successLink.startsWith('https://'),
           failLinkIsHttps: failLink.startsWith('https://'),
           hasWebhook: !!paymentRequest.webhook,
+          webhookUrl: paymentRequest.webhook ? paymentRequest.webhook.substring(0, 80) + '...' : 'none',
+          isNgrokFree: webhookUrl?.includes('ngrok-free.dev'),
           paymentRequestKeys: Object.keys(paymentRequest)
         });
       } else if (data.message) {
