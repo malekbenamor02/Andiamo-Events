@@ -1082,9 +1082,9 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     // The timer does NOT restart on any activity
     const isProduction = process.env.NODE_ENV === 'production';
     // Check if we're using HTTPS (ngrok or production)
-    const isHttps = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' || 
+    const isHttps = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ||
                     req.headers.host?.includes('ngrok') || isProduction;
-    
+
     const cookieOptions = {
       httpOnly: true, // Prevents JavaScript access - security feature
       secure: isHttps, // Use secure cookies when HTTPS is available (required for sameSite: 'none')
@@ -1092,13 +1092,26 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
       path: '/', // Ensure cookie is available for all paths
       maxAge: 60 * 60 * 1000 // 1 hour (matches JWT expiration) - fixed expiration, cannot be extended
     };
-    
+
     // Only set domain in production or if explicitly configured
     // Don't set domain for localhost - it breaks cookie setting
     if (isProduction && process.env.COOKIE_DOMAIN) {
       cookieOptions.domain = process.env.COOKIE_DOMAIN;
     }
-    
+
+    // Debug logging for cookie settings
+    console.log('🍪 Setting adminToken cookie:', {
+      isHttps,
+      secure: cookieOptions.secure,
+      sameSite: cookieOptions.sameSite,
+      path: cookieOptions.path,
+      hasDomain: !!cookieOptions.domain,
+      origin: req.headers.origin,
+      host: req.headers.host,
+      protocol: req.protocol,
+      xForwardedProto: req.headers['x-forwarded-proto']
+    });
+
     res.cookie('adminToken', token, cookieOptions);
     // Return admin info for logging purposes
     res.json({ 

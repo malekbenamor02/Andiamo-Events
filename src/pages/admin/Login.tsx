@@ -9,7 +9,7 @@ import { Eye, EyeOff, Lock, User, Mail, ArrowLeft, Sparkles, AlertCircle, Settin
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { logger } from "@/lib/logger";
-import { API_ROUTES } from "@/lib/api-routes";
+import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
 
 interface AdminLoginProps {
   language: 'en' | 'fr';
@@ -143,9 +143,16 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         recaptchaToken
       };
       
-      const loginEndpoint = API_ROUTES.ADMIN_LOGIN;
+      // Use buildFullApiUrl to ensure we call the backend server (ngrok), not Vercel serverless function
+      const loginEndpoint = buildFullApiUrl(API_ROUTES.ADMIN_LOGIN);
       
-      // Call the Vercel API route for admin login
+      if (!loginEndpoint) {
+        throw new Error('Failed to build login API URL');
+      }
+      
+      console.log('🔵 Admin login endpoint:', loginEndpoint);
+      
+      // Call the backend server for admin login (not Vercel serverless function)
       const response = await fetch(loginEndpoint, {
         method: 'POST',
         headers: {
