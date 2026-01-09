@@ -60,21 +60,37 @@ const app = express();
 
 // CORS configuration - allow all origins in development, specific origins in production
 const isDevelopment = process.env.NODE_ENV !== 'production';
+
+// Vercel preview domain patterns (both development and production should allow these)
+const vercelPreviewPatterns = [
+  /^https:\/\/.*\.vercel\.app$/,
+  /^https:\/\/.*-.*\.vercel\.app$/,
+  /^https:\/\/.*-projects\.vercel\.app$/,
+  /^https:\/\/.*-git-.*-.*\.vercel\.app$/
+];
+
 const allowedOrigins = isDevelopment
-  ? ['http://localhost:8080', 'http://localhost:3000', 'http://localhost:5173', 'http://192.168.1.*', 'http://10.0.*', 'http://127.0.0.1:3000', /^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/, /^http:\/\/192\.168\.\d+\.\d+:\d+$/]
-  : (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000']);
+  ? ['http://localhost:8080', 'http://localhost:3000', 'http://localhost:5173', 'http://192.168.1.*', 'http://10.0.*', 'http://127.0.0.1:3000', /^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/, /^http:\/\/192\.168\.\d+\.\d+:\d+$/, ...vercelPreviewPatterns]
+  : (process.env.ALLOWED_ORIGINS ? [...process.env.ALLOWED_ORIGINS.split(','), ...vercelPreviewPatterns] : ['http://localhost:3000', ...vercelPreviewPatterns]);
 
 app.use(cors({
   origin: (origin, callback) => {
-    // In development, allow all origins (including no origin)
-    if (isDevelopment) {
-      console.log('🌐 CORS: Development mode - allowing origin:', origin || 'no origin');
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      console.log('🌐 CORS: No origin - allowing request');
       return callback(null, true);
     }
     
-    // Allow requests with no origin (like mobile apps or curl requests) in production too
-    if (!origin) {
-      console.log('🌐 CORS: No origin - allowing request');
+    // Always allow Vercel preview domains (even in production when running locally)
+    const isVercelPreview = vercelPreviewPatterns.some(pattern => pattern.test(origin));
+    if (isVercelPreview) {
+      console.log('🌐 CORS: Vercel preview domain allowed:', origin);
+      return callback(null, true);
+    }
+    
+    // In development, allow all origins
+    if (isDevelopment) {
+      console.log('🌐 CORS: Development mode - allowing origin:', origin);
       return callback(null, true);
     }
     
