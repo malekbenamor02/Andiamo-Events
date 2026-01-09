@@ -42,17 +42,18 @@ export default async (req, res) => {
     const pathSegments = Array.isArray(slug) ? slug : [slug];
     const reconstructedPath = `/api/${pathSegments.join('/')}`;
     
-    // Preserve the original request properties but update the path
-    // This ensures Express receives the correct route path
-    const modifiedReq = {
-      ...req,
-      url: reconstructedPath + (req.url?.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''),
-      path: reconstructedPath,
-      originalUrl: reconstructedPath + (req.url?.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''),
-    };
+    // Preserve query string if present
+    const queryString = req.url?.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+    const fullPath = reconstructedPath + queryString;
     
-    // Execute the serverless handler with the modified request
-    return await handler(modifiedReq, res);
+    // Modify the request object in place (serverless-http reads from req.url)
+    // This ensures Express receives the correct route path
+    req.url = fullPath;
+    req.path = reconstructedPath;
+    req.originalUrl = fullPath;
+    
+    // Execute the serverless handler
+    return await handler(req, res);
   } catch (error) {
     console.error('Catch-all API handler error:', error);
     if (!res.headersSent) {
