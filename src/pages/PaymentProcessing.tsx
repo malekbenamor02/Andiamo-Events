@@ -438,11 +438,37 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
       }
 
 
-      const verifyData = await verifyResponse.json();
+      let verifyData;
+      try {
+        const responseText = await verifyResponse.text();
+        if (!responseText) {
+          throw new Error(language === 'en' 
+            ? 'Empty response from server. Please check your backend server is running and accessible.'
+            : 'Réponse vide du serveur. Veuillez vérifier que votre serveur backend est en cours d\'exécution et accessible.');
+        }
+        try {
+          verifyData = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('❌ Payment verification response is not JSON:', responseText);
+          throw new Error(language === 'en' 
+            ? `Server returned invalid response. Please check your backend server configuration. Error: ${responseText.substring(0, 100)}`
+            : `Le serveur a renvoyé une réponse invalide. Veuillez vérifier la configuration de votre serveur backend. Erreur: ${responseText.substring(0, 100)}`);
+        }
+      } catch (jsonError: any) {
+        // Re-throw if it's already our custom error
+        if (jsonError.message && (jsonError.message.includes('Empty response') || jsonError.message.includes('Server returned'))) {
+          throw jsonError;
+        }
+        // Otherwise, it's a parsing error
+        console.error('❌ Payment verification response parsing error:', jsonError);
+        throw new Error(language === 'en' 
+          ? `Server error (${verifyResponse.status}): ${verifyResponse.statusText || 'Unknown error'}`
+          : `Erreur serveur (${verifyResponse.status}): ${verifyResponse.statusText || 'Erreur inconnue'}`);
+      }
 
       if (!verifyResponse.ok || !verifyData.success) {
         console.error('❌ Verification failed:', verifyData);
-        throw new Error(verifyData.error || 'Payment verification failed');
+        throw new Error(verifyData.error || verifyData.message || 'Payment verification failed');
       }
 
       const paymentStatus = verifyData.status;
