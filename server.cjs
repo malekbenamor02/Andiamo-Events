@@ -1081,11 +1081,14 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     // - Opening multiple tabs
     // The timer does NOT restart on any activity
     const isProduction = process.env.NODE_ENV === 'production';
+    // Check if we're using HTTPS (ngrok or production)
+    const isHttps = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' || 
+                    req.headers.host?.includes('ngrok') || isProduction;
+    
     const cookieOptions = {
       httpOnly: true, // Prevents JavaScript access - security feature
-      secure: isProduction, // Use secure cookies in production (HTTPS)
-      sameSite: 'none', // Required for cross-origin requests (Vercel preview to ngrok)
-      secure: true, // Required when sameSite is 'none' (HTTPS only)
+      secure: isHttps, // Use secure cookies when HTTPS is available (required for sameSite: 'none')
+      sameSite: isHttps ? 'none' : 'lax', // 'none' for cross-origin (requires HTTPS), 'lax' for same-origin
       path: '/', // Ensure cookie is available for all paths
       maxAge: 60 * 60 * 1000 // 1 hour (matches JWT expiration) - fixed expiration, cannot be extended
     };

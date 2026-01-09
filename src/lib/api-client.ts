@@ -56,6 +56,7 @@ export const apiFetch = async (
     if (response.status === 401) {
       // Check if this is an admin endpoint that requires token-based auth
       const isAdminEndpoint = url.includes('/api/admin-') || 
+                              url.includes('/api/admin/') ||
                               url.includes('/api/verify-admin') ||
                               url.includes('/api/send-email');
       
