@@ -30,16 +30,7 @@
     "api/ambassadors/active.js": {
       "maxDuration": 30
     },
-    "api/orders/create.js": {
-      "maxDuration": 60
-    },
-    "api/flouci/generate.js": {
-      "maxDuration": 60
-    },
-    "api/flouci/verify.js": {
-      "maxDuration": 60
-    },
-    "api/flouci/webhook.js": {
+    "api/[...slug].js": {
       "maxDuration": 60
     }
   }
