@@ -3202,6 +3202,14 @@ app.post('/api/flouci-verify-payment', async (req, res) => {
         } : 'N/A'
       });
       
+      // CRITICAL: Release stock since payment failed
+      try {
+        await releaseOrderStock(targetOrderId, `Payment ${paymentStatus.toLowerCase()}`);
+      } catch (stockError) {
+        console.error('❌ Error releasing stock on payment failure:', stockError);
+        // Continue even if stock release fails - log and continue
+      }
+
       const updateData = {
         payment_status: 'FAILED',
         payment_gateway_reference: paymentId,
@@ -3479,6 +3487,14 @@ app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
       });
     } else if (paymentStatus === 'FAILURE' || paymentStatus === 'EXPIRED') {
       // Payment failed - mark as failed but keep status as PENDING_ONLINE (allows retry)
+      // CRITICAL: Release stock since payment failed
+      try {
+        await releaseOrderStock(developer_tracking_id, `Payment ${paymentStatus.toLowerCase()}`);
+      } catch (stockError) {
+        console.error('❌ Error releasing stock on payment failure:', stockError);
+        // Don't fail webhook if stock release fails - log and continue
+      }
+
       const updateData = {
         payment_status: 'FAILED',
         payment_gateway_reference: payment_id,
@@ -3505,6 +3521,658 @@ app.post('/api/flouci-webhook', logSecurityRequest, async (req, res) => {
   } catch (error) {
     console.error('❌ Error processing Flouci webhook:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// ============================================
+// PHASE 3: ORDER CANCELLATION ENDPOINTS (with stock release)
+// ============================================
+
+// POST /api/ambassador/cancel-order - Cancel order by ambassador
+app.post('/api/ambassador/cancel-order', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId, ambassadorId, reason } = req.body;
+
+    if (!orderId || !ambassadorId || !reason) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'orderId, ambassadorId, and reason are required'
+      });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // Verify order exists and belongs to ambassador
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .select('id, ambassador_id, status')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (order.ambassador_id !== ambassadorId) {
+      return res.status(403).json({ error: 'Order does not belong to this ambassador' });
+    }
+
+    if (order.status === 'CANCELLED_BY_AMBASSADOR' || order.status === 'COMPLETED' || order.status === 'PAID') {
+      return res.status(400).json({
+        error: 'Order cannot be cancelled',
+        details: `Order status is ${order.status}`
+      });
+    }
+
+    // Update order status
+    const { error: updateError } = await dbClient
+      .from('orders')
+      .update({
+        status: 'CANCELLED_BY_AMBASSADOR',
+        cancelled_by: 'ambassador',
+        cancellation_reason: reason.trim(),
+        cancelled_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId);
+
+    if (updateError) {
+      return res.status(500).json({
+        error: 'Failed to cancel order',
+        details: updateError.message
+      });
+    }
+
+    // CRITICAL: Release stock
+    try {
+      await releaseOrderStock(orderId, `Cancelled by ambassador: ${reason.trim()}`);
+    } catch (stockError) {
+      console.error('❌ Error releasing stock on ambassador cancel:', stockError);
+      // Log but don't fail - order is cancelled, stock release is important but non-blocking
+    }
+
+    // Log cancellation
+    try {
+      await dbClient.from('order_logs').insert({
+        order_id: orderId,
+        action: 'cancelled',
+        performed_by: ambassadorId,
+        performed_by_type: 'ambassador',
+        details: { reason: reason.trim(), cancelled_by: 'ambassador' }
+      });
+    } catch (logError) {
+      console.warn('Failed to log cancellation (non-fatal):', logError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Order cancelled successfully'
+    });
+
+  } catch (error) {
+    console.error('Error in /api/ambassador/cancel-order:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// POST /api/admin/cancel-order - Cancel order by admin
+app.post('/api/admin/cancel-order', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId, reason } = req.body;
+    const adminId = req.admin?.id;
+
+    if (!orderId || !reason) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'orderId and reason are required'
+      });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // Verify order exists
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .select('id, status, payment_status')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Determine cancellation status based on current status
+    let cancelStatus;
+    if (order.status === 'PAID' || order.payment_status === 'PAID') {
+      cancelStatus = 'REFUNDED';  // Paid orders become REFUNDED
+    } else {
+      cancelStatus = 'CANCELLED_BY_AMBASSADOR';  // Pending orders become CANCELLED
+    }
+
+    // Update order status
+    const updateData = {
+      status: cancelStatus,
+      payment_status: cancelStatus === 'REFUNDED' ? 'REFUNDED' : order.payment_status,
+      cancelled_by: 'admin',
+      cancellation_reason: reason.trim(),
+      cancelled_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const { error: updateError } = await dbClient
+      .from('orders')
+      .update(updateData)
+      .eq('id', orderId);
+
+    if (updateError) {
+      return res.status(500).json({
+        error: 'Failed to cancel order',
+        details: updateError.message
+      });
+    }
+
+    // CRITICAL: Release stock (for both CANCELLED and REFUNDED)
+    try {
+      await releaseOrderStock(orderId, `Cancelled/Refunded by admin: ${reason.trim()}`);
+    } catch (stockError) {
+      console.error('❌ Error releasing stock on admin cancel:', stockError);
+      // Log but don't fail
+    }
+
+    // Log cancellation
+    try {
+      await dbClient.from('order_logs').insert({
+        order_id: orderId,
+        action: cancelStatus === 'REFUNDED' ? 'admin_refunded' : 'cancelled',
+        performed_by: adminId,
+        performed_by_type: 'admin',
+        details: {
+          reason: reason.trim(),
+          cancelled_by: 'admin',
+          previous_status: order.status,
+          new_status: cancelStatus
+        }
+      });
+    } catch (logError) {
+      console.warn('Failed to log cancellation (non-fatal):', logError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Order ${cancelStatus === 'REFUNDED' ? 'refunded' : 'cancelled'} successfully`,
+      newStatus: cancelStatus
+    });
+
+  } catch (error) {
+    console.error('Error in /api/admin/cancel-order:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// POST /api/admin/reject-order - Reject COD order (admin reject pending order)
+app.post('/api/admin/reject-order', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId, reason } = req.body;
+    const adminId = req.admin?.id;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // Verify order exists and is in valid status for rejection
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .select('id, status, payment_method')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (order.status !== 'PENDING_ADMIN_APPROVAL' && order.status !== 'PENDING_CASH') {
+      return res.status(400).json({
+        error: 'Order cannot be rejected',
+        details: `Order status must be PENDING_ADMIN_APPROVAL or PENDING_CASH, current: ${order.status}`
+      });
+    }
+
+    // Update order status
+    const updateData = {
+      status: 'REJECTED',
+      rejected_at: new Date().toISOString(),
+      rejection_reason: reason || null,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error: updateError } = await dbClient
+      .from('orders')
+      .update(updateData)
+      .eq('id', orderId);
+
+    if (updateError) {
+      return res.status(500).json({
+        error: 'Failed to reject order',
+        details: updateError.message
+      });
+    }
+
+    // CRITICAL: Release stock
+    try {
+      await releaseOrderStock(orderId, `Rejected by admin: ${reason || 'No reason provided'}`);
+    } catch (stockError) {
+      console.error('❌ Error releasing stock on admin reject:', stockError);
+    }
+
+    // Log rejection
+    try {
+      await dbClient.from('order_logs').insert({
+        order_id: orderId,
+        action: 'rejected',
+        performed_by: adminId,
+        performed_by_type: 'admin',
+        details: {
+          old_status: order.status,
+          new_status: 'REJECTED',
+          rejection_reason: reason || null,
+          admin_action: true
+        }
+      });
+    } catch (logError) {
+      console.warn('Failed to log rejection (non-fatal):', logError);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Order rejected successfully'
+    });
+
+  } catch (error) {
+    console.error('Error in /api/admin/reject-order:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// ============================================
+// PHASE 4: PUBLIC PASSES ENDPOINT (with stock info)
+// ============================================
+
+// GET /api/passes/:eventId - Get active passes for an event with stock information
+app.get('/api/passes/:eventId', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { eventId } = req.params;
+
+    if (!eventId) {
+      return res.status(400).json({ error: 'Event ID is required' });
+    }
+
+    // Fetch only active passes with stock information
+    const { data: passes, error: passesError } = await supabase
+      .from('event_passes')
+      .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version')
+      .eq('event_id', eventId)
+      .eq('is_active', true)  // Only active passes
+      .order('is_primary', { ascending: false })
+      .order('price', { ascending: true })
+      .order('release_version', { ascending: false });
+
+    if (passesError) {
+      console.error('Error fetching passes:', passesError);
+      return res.status(500).json({
+        error: 'Failed to fetch passes',
+        details: passesError.message
+      });
+    }
+
+    // Calculate stock information for each pass
+    const passesWithStock = (passes || []).map(pass => {
+      const isUnlimited = pass.max_quantity === null;
+      const remainingQuantity = isUnlimited ? null : (pass.max_quantity - pass.sold_quantity);
+      const isSoldOut = !isUnlimited && remainingQuantity <= 0;
+
+      return {
+        id: pass.id,
+        name: pass.name,
+        price: parseFloat(pass.price),
+        description: pass.description || '',
+        is_primary: pass.is_primary || false,
+        is_active: pass.is_active,
+        release_version: pass.release_version || 1,
+        // Stock information
+        max_quantity: pass.max_quantity,
+        sold_quantity: pass.sold_quantity || 0,
+        remaining_quantity: remainingQuantity,
+        is_unlimited: isUnlimited,
+        is_sold_out: isSoldOut
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      passes: passesWithStock
+    });
+
+  } catch (error) {
+    console.error('Error in /api/passes/:eventId:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// ============================================
+// PHASE 4: ADMIN STOCK MANAGEMENT ENDPOINTS
+// ============================================
+
+// GET /api/admin/passes/:eventId - Get all passes (including inactive) with stock info
+app.get('/api/admin/passes/:eventId', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { eventId } = req.params;
+
+    if (!eventId) {
+      return res.status(400).json({ error: 'Event ID is required' });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // Fetch ALL passes (including inactive) with stock information
+    const { data: passes, error: passesError } = await dbClient
+      .from('event_passes')
+      .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version, created_at, updated_at')
+      .eq('event_id', eventId)
+      .order('release_version', { ascending: false })
+      .order('is_primary', { ascending: false })
+      .order('price', { ascending: true });
+
+    if (passesError) {
+      console.error('Error fetching passes:', passesError);
+      return res.status(500).json({
+        error: 'Failed to fetch passes',
+        details: passesError.message
+      });
+    }
+
+    // Calculate stock information for each pass
+    const passesWithStock = (passes || []).map(pass => {
+      const isUnlimited = pass.max_quantity === null;
+      const remainingQuantity = isUnlimited ? null : (pass.max_quantity - pass.sold_quantity);
+
+      return {
+        id: pass.id,
+        name: pass.name,
+        price: parseFloat(pass.price),
+        description: pass.description || '',
+        is_primary: pass.is_primary || false,
+        is_active: pass.is_active,
+        release_version: pass.release_version || 1,
+        // Stock information
+        max_quantity: pass.max_quantity,
+        sold_quantity: pass.sold_quantity || 0,
+        remaining_quantity: remainingQuantity,
+        is_unlimited: isUnlimited,
+        created_at: pass.created_at,
+        updated_at: pass.updated_at
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      passes: passesWithStock
+    });
+
+  } catch (error) {
+    console.error('Error in /api/admin/passes/:eventId:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// POST /api/admin/passes/:id/stock - Update pass stock (max_quantity)
+app.post('/api/admin/passes/:id/stock', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { id } = req.params;
+    const { max_quantity } = req.body;
+    const adminId = req.admin?.id;
+    const adminEmail = req.admin?.email;
+
+    if (max_quantity !== null && max_quantity !== undefined && (typeof max_quantity !== 'number' || max_quantity < 0)) {
+      return res.status(400).json({
+        error: 'Invalid max_quantity',
+        details: 'max_quantity must be null (unlimited) or a non-negative integer'
+      });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // Fetch current pass state (for audit log)
+    const { data: currentPass, error: fetchError } = await dbClient
+      .from('event_passes')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !currentPass) {
+      return res.status(404).json({ error: 'Pass not found' });
+    }
+
+    // Validation: Cannot decrease max_quantity below sold_quantity
+    const newMaxQuantity = max_quantity === null || max_quantity === undefined ? null : parseInt(max_quantity);
+    if (newMaxQuantity !== null && newMaxQuantity < currentPass.sold_quantity) {
+      return res.status(400).json({
+        error: 'Invalid stock reduction',
+        details: `Cannot set max_quantity (${newMaxQuantity}) below sold_quantity (${currentPass.sold_quantity})`
+      });
+    }
+
+    // Update max_quantity
+    const { data: updatedPass, error: updateError } = await dbClient
+      .from('event_passes')
+      .update({
+        max_quantity: newMaxQuantity,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating pass stock:', updateError);
+      return res.status(500).json({
+        error: 'Failed to update pass stock',
+        details: updateError.message
+      });
+    }
+
+    // Log admin action to security_audit_logs
+    try {
+      await dbClient.from('security_audit_logs').insert({
+        event_type: 'admin_stock_update',
+        user_id: adminId,
+        endpoint: '/api/admin/passes/:id/stock',
+        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        user_agent: req.headers['user-agent'] || 'unknown',
+        details: {
+          pass_id: id,
+          event_id: currentPass.event_id,
+          action: 'UPDATE_STOCK',
+          before: {
+            max_quantity: currentPass.max_quantity,
+            sold_quantity: currentPass.sold_quantity,
+            is_active: currentPass.is_active,
+            release_version: currentPass.release_version,
+            name: currentPass.name,
+            price: currentPass.price
+          },
+          after: {
+            max_quantity: updatedPass.max_quantity,
+            sold_quantity: updatedPass.sold_quantity,
+            is_active: updatedPass.is_active,
+            release_version: updatedPass.release_version,
+            name: updatedPass.name,
+            price: updatedPass.price
+          },
+          admin_email: adminEmail
+        },
+        severity: 'medium'
+      });
+    } catch (logError) {
+      console.warn('Failed to log stock update (non-fatal):', logError);
+    }
+
+    res.status(200).json({
+      success: true,
+      pass: {
+        ...updatedPass,
+        remaining_quantity: updatedPass.max_quantity === null ? null : (updatedPass.max_quantity - updatedPass.sold_quantity),
+        is_unlimited: updatedPass.max_quantity === null
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in /api/admin/passes/:id/stock:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// POST /api/admin/passes/:id/activate - Activate/deactivate pass
+app.post('/api/admin/passes/:id/activate', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { id } = req.params;
+    const { is_active } = req.body;
+    const adminId = req.admin?.id;
+    const adminEmail = req.admin?.email;
+
+    if (typeof is_active !== 'boolean') {
+      return res.status(400).json({
+        error: 'Invalid is_active',
+        details: 'is_active must be a boolean'
+      });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // Fetch current pass state (for audit log)
+    const { data: currentPass, error: fetchError } = await dbClient
+      .from('event_passes')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !currentPass) {
+      return res.status(404).json({ error: 'Pass not found' });
+    }
+
+    // Update is_active
+    const { data: updatedPass, error: updateError } = await dbClient
+      .from('event_passes')
+      .update({
+        is_active: is_active,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating pass activation:', updateError);
+      return res.status(500).json({
+        error: 'Failed to update pass activation',
+        details: updateError.message
+      });
+    }
+
+    // Log admin action
+    try {
+      await dbClient.from('security_audit_logs').insert({
+        event_type: 'admin_pass_activation',
+        user_id: adminId,
+        endpoint: '/api/admin/passes/:id/activate',
+        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        user_agent: req.headers['user-agent'] || 'unknown',
+        details: {
+          pass_id: id,
+          event_id: currentPass.event_id,
+          action: 'ACTIVATE_PASS',
+          before: {
+            max_quantity: currentPass.max_quantity,
+            sold_quantity: currentPass.sold_quantity,
+            is_active: currentPass.is_active,
+            release_version: currentPass.release_version,
+            name: currentPass.name,
+            price: currentPass.price
+          },
+          after: {
+            max_quantity: updatedPass.max_quantity,
+            sold_quantity: updatedPass.sold_quantity,
+            is_active: updatedPass.is_active,
+            release_version: updatedPass.release_version,
+            name: updatedPass.name,
+            price: updatedPass.price
+          },
+          admin_email: adminEmail
+        },
+        severity: 'medium'
+      });
+    } catch (logError) {
+      console.warn('Failed to log pass activation (non-fatal):', logError);
+    }
+
+    res.status(200).json({
+      success: true,
+      pass: updatedPass
+    });
+
+  } catch (error) {
+    console.error('Error in /api/admin/passes/:id/activate:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
   }
 });
 
@@ -8106,6 +8774,594 @@ app.get('/api', (req, res) => {
   });
 });
 
+// ============================================
+// STOCK SYSTEM - Shared Stock Release Function
+// ============================================
+// Single source of truth for stock release
+// Idempotent - uses stock_released flag to prevent double-release
+async function releaseOrderStock(orderId, reason) {
+  if (!supabase) {
+    throw new Error('Supabase not configured');
+  }
+
+  const dbClient = supabaseService || supabase;
+
+  // Step 1: Atomically check and set stock_released flag
+  // This prevents double-release from webhook retries, admin double-clicks, or race conditions
+  const { data: orderUpdate, error: updateError } = await dbClient
+    .from('orders')
+    .update({ stock_released: true })
+    .eq('id', orderId)
+    .eq('stock_released', false)  // Only update if NOT already released
+    .select('id, status')
+    .single();
+
+  // If update failed or no rows updated, stock was already released or order doesn't exist
+  if (updateError || !orderUpdate) {
+    if (updateError && updateError.code !== 'PGRST116') {
+      console.error('Error updating stock_released flag:', updateError);
+      throw new Error(`Failed to release stock: ${updateError.message}`);
+    }
+    // Order already has stock_released = true or doesn't exist
+    // This is OK - idempotent operation
+    return { released: false, message: 'Stock already released or order not found' };
+  }
+
+  // Step 2: Fetch order_passes with pass_id
+  const { data: orderPasses, error: passesError } = await dbClient
+    .from('order_passes')
+    .select('pass_id, quantity')
+    .eq('order_id', orderId)
+    .not('pass_id', 'is', null);  // Only passes with pass_id
+
+  if (passesError) {
+    console.error('Error fetching order_passes:', passesError);
+    throw new Error(`Failed to fetch order passes: ${passesError.message}`);
+  }
+
+  if (!orderPasses || orderPasses.length === 0) {
+    // No passes with pass_id - might be old order (backward compatible)
+    console.warn(`Order ${orderId} has no order_passes with pass_id - cannot release stock`);
+    return { released: false, message: 'No passes with pass_id found (old order format)' };
+  }
+
+  // Step 3: Decrement sold_quantity for each pass
+  // Use atomic UPDATE to prevent negative stock
+  let releasedCount = 0;
+  for (const orderPass of orderPasses) {
+    if (!orderPass.pass_id) continue;
+
+    // Fetch current sold_quantity first
+    const { data: currentPass, error: fetchError } = await dbClient
+      .from('event_passes')
+      .select('sold_quantity')
+      .eq('id', orderPass.pass_id)
+      .single();
+
+    if (fetchError || !currentPass) {
+      console.error(`Error fetching pass ${orderPass.pass_id} for stock release:`, fetchError);
+      continue;
+    }
+
+    // Decrement stock atomically
+    const newSoldQuantity = Math.max(0, currentPass.sold_quantity - orderPass.quantity);
+    const { error: updateError } = await dbClient
+      .from('event_passes')
+      .update({ sold_quantity: newSoldQuantity })
+      .eq('id', orderPass.pass_id)
+      .eq('sold_quantity', currentPass.sold_quantity);  // Ensure no one else updated it
+
+    if (updateError) {
+      console.error(`Error releasing stock for pass ${orderPass.pass_id}:`, updateError);
+      // Continue with other passes even if one fails
+      continue;
+    }
+
+    releasedCount++;
+  }
+
+  // Step 4: Log stock release action
+  try {
+    await dbClient.from('order_logs').insert({
+      order_id: orderId,
+      action: 'stock_released',
+      performed_by: null,
+      performed_by_type: 'system',
+      details: {
+        reason: reason,
+        passes_released: releasedCount,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (logError) {
+    console.warn('Failed to log stock release (non-fatal):', logError);
+  }
+
+  return {
+    released: true,
+    passesReleased: releasedCount,
+    message: `Stock released for ${releasedCount} pass(es)`
+  };
+}
+
+// ============================================
+// PHASE 1: SERVER-SIDE ORDER CREATION
+// ============================================
+// POST /api/orders/create
+// Server-side order creation with atomic stock reservation
+// REPLACES frontend direct Supabase inserts
+app.post('/api/orders/create', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const {
+      customerInfo,
+      passes,
+      paymentMethod,
+      ambassadorId,
+      eventId
+    } = req.body;
+
+    // Validate required fields
+    if (!customerInfo || !passes || !paymentMethod) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'customerInfo, passes, and paymentMethod are required'
+      });
+    }
+
+    if (!Array.isArray(passes) || passes.length === 0) {
+      return res.status(400).json({
+        error: 'Invalid passes',
+        details: 'passes must be a non-empty array'
+      });
+    }
+
+    // Validate customer info
+    if (!customerInfo.full_name || !customerInfo.phone || !customerInfo.email || !customerInfo.city) {
+      return res.status(400).json({
+        error: 'Missing customer information',
+        details: 'full_name, phone, email, and city are required'
+      });
+    }
+
+    // Validate payment method
+    const validPaymentMethods = ['online', 'external_app', 'ambassador_cash'];
+    if (!validPaymentMethods.includes(paymentMethod)) {
+      return res.status(400).json({
+        error: 'Invalid payment method',
+        details: `Payment method must be one of: ${validPaymentMethods.join(', ')}`
+      });
+    }
+
+    // Validate ambassador for ambassador_cash
+    if (paymentMethod === 'ambassador_cash' && !ambassadorId) {
+      return res.status(400).json({
+        error: 'Ambassador ID required',
+        details: 'ambassadorId is required for ambassador_cash payment method'
+      });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // STEP 1: Validate all passes exist and are active
+    const passIds = passes.map(p => p.passId);
+    const { data: eventPasses, error: passesError } = await dbClient
+      .from('event_passes')
+      .select('id, name, price, is_active, max_quantity, sold_quantity')
+      .in('id', passIds);
+
+    if (passesError) {
+      console.error('Error fetching passes:', passesError);
+      return res.status(500).json({
+        error: 'Failed to validate passes',
+        details: passesError.message
+      });
+    }
+
+    if (!eventPasses || eventPasses.length !== passIds.length) {
+      return res.status(400).json({
+        error: 'Invalid passes',
+        details: 'One or more passes not found'
+      });
+    }
+
+    // Create pass lookup map
+    const passMap = new Map();
+    eventPasses.forEach(p => passMap.set(p.id, p));
+
+    // STEP 2: Validate each pass and check stock availability
+    const validatedPasses = [];
+    for (const pass of passes) {
+      const eventPass = passMap.get(pass.passId);
+      
+      if (!eventPass) {
+        return res.status(400).json({
+          error: 'Invalid pass',
+          details: `Pass ${pass.passId} not found`
+        });
+      }
+
+      // Check if pass is active
+      if (!eventPass.is_active) {
+        return res.status(400).json({
+          error: 'Pass not available',
+          details: `Pass "${eventPass.name}" is no longer available for purchase`
+        });
+      }
+
+      // Validate price (server is authority for pricing)
+      if (parseFloat(eventPass.price) !== parseFloat(pass.price)) {
+        console.warn(`Price mismatch for pass ${pass.passId}: client=${pass.price}, server=${eventPass.price}`);
+        // Use server price
+        pass.price = parseFloat(eventPass.price);
+      }
+
+      // Check stock availability
+      if (eventPass.max_quantity !== null) {
+        const remaining = eventPass.max_quantity - eventPass.sold_quantity;
+        if (remaining < pass.quantity) {
+          return res.status(400).json({
+            error: 'Insufficient stock',
+            details: `Only ${remaining} ${eventPass.name} pass(es) available, requested ${pass.quantity}`
+          });
+        }
+      }
+
+      validatedPasses.push({
+        ...pass,
+        eventPass: eventPass
+      });
+    }
+
+    // STEP 3: Atomically reserve stock for ALL passes (all-or-nothing)
+    // Use sequential atomic UPDATEs - if ANY fails, we rollback by not creating order
+    const stockReservations = [];
+    for (const validatedPass of validatedPasses) {
+      const { id, max_quantity, sold_quantity } = validatedPass.eventPass;
+
+      // If unlimited stock, skip reservation
+      if (max_quantity === null) {
+        stockReservations.push({ passId: id, reserved: true, unlimited: true });
+        continue;
+      }
+
+      // Atomic stock reservation
+      // First re-fetch current stock to check availability (prevents stale reads)
+      const { data: currentPass, error: fetchError } = await dbClient
+        .from('event_passes')
+        .select('sold_quantity, max_quantity, is_active')
+        .eq('id', id)
+        .single();
+
+      if (fetchError || !currentPass) {
+        // Rollback already reserved stock
+        for (const reservation of stockReservations) {
+          if (!reservation.unlimited && reservation.reserved) {
+            const prevPass = validatedPasses.find(p => p.passId === reservation.passId);
+            if (prevPass) {
+              // Fetch current sold_quantity and decrement
+              const { data: currentStock } = await dbClient
+                .from('event_passes')
+                .select('sold_quantity')
+                .eq('id', reservation.passId)
+                .single();
+              if (currentStock) {
+                await dbClient
+                  .from('event_passes')
+                  .update({ sold_quantity: Math.max(0, currentStock.sold_quantity - prevPass.quantity) })
+                  .eq('id', reservation.passId);
+              }
+            }
+          }
+        }
+        return res.status(400).json({
+          error: 'Pass not found',
+          details: `Pass with ID ${id} not found`
+        });
+      }
+
+      // Check stock availability with current values
+      if (!currentPass.is_active) {
+        // Rollback
+        for (const reservation of stockReservations) {
+          if (!reservation.unlimited && reservation.reserved) {
+            const prevPass = validatedPasses.find(p => p.passId === reservation.passId);
+            if (prevPass) {
+              const { data: currentStock } = await dbClient
+                .from('event_passes')
+                .select('sold_quantity')
+                .eq('id', reservation.passId)
+                .single();
+              if (currentStock) {
+                await dbClient
+                  .from('event_passes')
+                  .update({ sold_quantity: Math.max(0, currentStock.sold_quantity - prevPass.quantity) })
+                  .eq('id', reservation.passId);
+              }
+            }
+          }
+        }
+        return res.status(400).json({
+          error: 'Pass not available',
+          details: `Pass "${validatedPass.eventPass.name}" is no longer active`
+        });
+      }
+
+      if (currentPass.max_quantity !== null) {
+        const newSoldQuantity = currentPass.sold_quantity + validatedPass.quantity;
+        if (newSoldQuantity > currentPass.max_quantity) {
+          // Rollback
+          for (const reservation of stockReservations) {
+            if (!reservation.unlimited && reservation.reserved) {
+              const prevPass = validatedPasses.find(p => p.passId === reservation.passId);
+              if (prevPass) {
+                const { data: currentStock } = await dbClient
+                  .from('event_passes')
+                  .select('sold_quantity')
+                  .eq('id', reservation.passId)
+                  .single();
+                if (currentStock) {
+                  await dbClient
+                    .from('event_passes')
+                    .update({ sold_quantity: Math.max(0, currentStock.sold_quantity - prevPass.quantity) })
+                    .eq('id', reservation.passId);
+                }
+              }
+            }
+          }
+          const remaining = currentPass.max_quantity - currentPass.sold_quantity;
+          return res.status(400).json({
+            error: 'Insufficient stock',
+            details: `Only ${remaining} ${validatedPass.eventPass.name} pass(es) available, requested ${validatedPass.quantity}`
+          });
+        }
+      }
+
+      // Atomic UPDATE - only succeeds if conditions still met
+      const { data: updatedPass, error: reserveError } = await dbClient
+        .from('event_passes')
+        .update({
+          sold_quantity: currentPass.sold_quantity + validatedPass.quantity
+        })
+        .eq('id', id)
+        .eq('is_active', true)
+        .eq('sold_quantity', currentPass.sold_quantity)  // Ensure no one else updated it
+        .select('id, sold_quantity')
+        .single();
+
+      if (reserveError || !updatedPass) {
+        // Stock reservation failed - need to release already reserved stock
+        console.error(`Stock reservation failed for pass ${id}:`, reserveError);
+        
+        // Release any already reserved stock
+        for (const reservation of stockReservations) {
+          if (!reservation.unlimited && reservation.reserved) {
+            const pass = validatedPasses.find(p => p.passId === reservation.passId);
+            if (pass) {
+              const { data: currentStock } = await dbClient
+                .from('event_passes')
+                .select('sold_quantity')
+                .eq('id', reservation.passId)
+                .single();
+              if (currentStock) {
+                await dbClient
+                  .from('event_passes')
+                  .update({ sold_quantity: Math.max(0, currentStock.sold_quantity - pass.quantity) })
+                  .eq('id', reservation.passId);
+              }
+            }
+          }
+        }
+
+        return res.status(400).json({
+          error: 'Stock reservation failed',
+          details: `Insufficient stock for "${validatedPass.eventPass.name}" or pass is no longer active`
+        });
+      }
+
+      stockReservations.push({ passId: id, reserved: true, unlimited: false });
+    }
+
+    // STEP 4: Calculate totals (server-side authority)
+    const totalQuantity = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
+    const totalPrice = validatedPasses.reduce((sum, p) => sum + (parseFloat(p.price) * p.quantity), 0);
+
+    // STEP 5: Determine initial status
+    let initialStatus;
+    switch (paymentMethod) {
+      case 'online':
+      case 'external_app':
+        initialStatus = 'PENDING_ONLINE';
+        break;
+      case 'ambassador_cash':
+        initialStatus = 'PENDING_CASH';
+        break;
+      default:
+        // Rollback stock reservations
+        for (const reservation of stockReservations) {
+          if (!reservation.unlimited) {
+            const pass = validatedPasses.find(p => p.passId === reservation.passId);
+            if (pass) {
+              const { data: currentStock } = await dbClient
+                .from('event_passes')
+                .select('sold_quantity')
+                .eq('id', reservation.passId)
+                .single();
+              if (currentStock) {
+                await dbClient
+                  .from('event_passes')
+                  .update({ sold_quantity: Math.max(0, currentStock.sold_quantity - pass.quantity) })
+                  .eq('id', reservation.passId);
+              }
+            }
+          }
+        }
+        return res.status(400).json({
+          error: 'Invalid payment method',
+          details: `Unknown payment method: ${paymentMethod}`
+        });
+    }
+
+    // STEP 6: Create order
+    const orderData = {
+      source: paymentMethod === 'ambassador_cash' ? 'platform_cod' : 'platform_online',
+      user_name: customerInfo.full_name.trim(),
+      user_phone: customerInfo.phone.trim(),
+      user_email: customerInfo.email.trim() || null,
+      city: customerInfo.city.trim(),
+      ville: customerInfo.ville?.trim() || null,
+      event_id: eventId || null,
+      ambassador_id: ambassadorId || null,
+      quantity: totalQuantity,
+      total_price: totalPrice,
+      payment_method: paymentMethod,
+      status: initialStatus,
+      stock_released: false,  // Stock is reserved, not released
+      assigned_at: ambassadorId ? new Date().toISOString() : null,
+      notes: JSON.stringify({
+        all_passes: validatedPasses.map(p => ({
+          passId: p.passId,
+          passName: p.passName,
+          quantity: p.quantity,
+          price: p.price
+        })),
+        total_order_price: totalPrice,
+        pass_count: validatedPasses.length
+      })
+    };
+
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .insert(orderData)
+      .select()
+      .single();
+
+    if (orderError) {
+      // Rollback stock reservations
+      console.error('Order creation failed, rolling back stock:', orderError);
+      for (const reservation of stockReservations) {
+        if (!reservation.unlimited) {
+          const pass = validatedPasses.find(p => p.passId === reservation.passId);
+          if (pass) {
+            const { data: currentStock } = await dbClient
+              .from('event_passes')
+              .select('sold_quantity')
+              .eq('id', reservation.passId)
+              .single();
+            if (currentStock) {
+              await dbClient
+                .from('event_passes')
+                .update({ sold_quantity: Math.max(0, currentStock.sold_quantity - pass.quantity) })
+                .eq('id', reservation.passId);
+            }
+          }
+        }
+      }
+      return res.status(500).json({
+        error: 'Failed to create order',
+        details: orderError.message
+      });
+    }
+
+    // STEP 7: Create order_passes WITH pass_id (REQUIRED)
+    const orderPassesData = validatedPasses.map(pass => ({
+      order_id: order.id,
+      pass_id: pass.passId,  // REQUIRED for stock release
+      pass_type: pass.passName,  // Historical display
+      quantity: pass.quantity,
+      price: parseFloat(pass.price)
+    }));
+
+    const { error: passesInsertError } = await dbClient
+      .from('order_passes')
+      .insert(orderPassesData);
+
+    if (passesInsertError) {
+        // Rollback: delete order and release stock
+        console.error('Order passes creation failed, rolling back:', passesInsertError);
+        await dbClient.from('orders').delete().eq('id', order.id);
+        for (const reservation of stockReservations) {
+          if (!reservation.unlimited) {
+            const pass = validatedPasses.find(p => p.passId === reservation.passId);
+            if (pass) {
+              const { data: currentStock } = await dbClient
+                .from('event_passes')
+                .select('sold_quantity')
+                .eq('id', reservation.passId)
+                .single();
+              if (currentStock) {
+                await dbClient
+                  .from('event_passes')
+                  .update({ sold_quantity: Math.max(0, currentStock.sold_quantity - pass.quantity) })
+                  .eq('id', reservation.passId);
+              }
+            }
+          }
+        }
+      return res.status(500).json({
+        error: 'Failed to create order passes',
+        details: passesInsertError.message
+      });
+    }
+
+    // STEP 8: Send SMS notifications for COD orders (non-blocking)
+    if (paymentMethod === 'ambassador_cash' && ambassadorId) {
+      // Fire and forget - don't block response
+      setImmediate(async () => {
+        try {
+          const apiBase = process.env.API_URL || 'http://localhost:8082';
+          await fetch(`${apiBase}/api/send-order-confirmation-sms`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: order.id })
+          });
+          await fetch(`${apiBase}/api/send-ambassador-order-sms`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: order.id })
+          });
+        } catch (smsError) {
+          console.error('Failed to send SMS notifications (non-fatal):', smsError);
+        }
+      });
+    }
+
+    // STEP 9: Return created order with order_passes
+    const { data: createdOrder, error: fetchError } = await dbClient
+      .from('orders')
+      .select(`
+        *,
+        order_passes (*)
+      `)
+      .eq('id', order.id)
+      .single();
+
+    if (fetchError) {
+      console.warn('Failed to fetch created order with relations:', fetchError);
+      // Return order without relations
+      return res.status(201).json({
+        success: true,
+        order: order
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      order: createdOrder
+    });
+
+  } catch (error) {
+    console.error('Error in /api/orders/create:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
@@ -8116,7 +9372,8 @@ app.get('/', (req, res) => {
       '/api': 'API information',
       '/api/admin-login': 'Admin login endpoint',
       '/api/verify-admin': 'Verify admin authentication',
-      '/api/send-email': 'Send email (admin auth required)'
+      '/api/send-email': 'Send email (admin auth required)',
+      '/api/orders/create': 'Create order (server-side with stock validation)'
     }
   });
 });

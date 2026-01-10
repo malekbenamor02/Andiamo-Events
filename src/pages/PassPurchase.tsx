@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, MapPin, Users, ArrowLeft, CheckCircle, XCircle } from 'lucide-react';
+import { Calendar, MapPin, Users, ArrowLeft, CheckCircle, XCircle, Lock } from 'lucide-react';
 import { ExpandableText } from '@/components/ui/expandable-text';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,6 +26,12 @@ interface EventPass {
   price: number;
   description?: string;
   is_primary: boolean;
+  // Stock information
+  max_quantity?: number | null;
+  sold_quantity?: number;
+  remaining_quantity?: number | null;
+  is_unlimited?: boolean;
+  is_sold_out?: boolean;
 }
 
 interface Event {
@@ -190,23 +196,30 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         return;
       }
 
-      const { data: passesData, error: passesError } = await supabase
-        .from('event_passes')
-        .select('*')
-        .eq('event_id', eventId)
-        .order('is_primary', { ascending: false })
-        .order('price', { ascending: true });
-
-      if (passesError && passesError.code !== 'PGRST116') {
-        console.error('Error fetching passes:', passesError);
+      // Fetch passes from server endpoint (includes stock information)
+      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+      const passesResponse = await fetch(`${apiBase}/api/passes/${eventId}`);
+      
+      if (!passesResponse.ok) {
+        throw new Error('Failed to fetch passes');
       }
 
-      const passes = (passesData || []).map((p: any) => ({
+      const passesResult = await passesResponse.json();
+      const passesData = passesResult.passes || [];
+
+      // Map passes with stock information
+      const passes = passesData.map((p: any) => ({
         id: p.id,
         name: p.name || '',
         price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
         description: p.description || '',
-        is_primary: p.is_primary || false
+        is_primary: p.is_primary || false,
+        // Stock information
+        max_quantity: p.max_quantity,
+        sold_quantity: p.sold_quantity || 0,
+        remaining_quantity: p.remaining_quantity,
+        is_unlimited: p.is_unlimited || false,
+        is_sold_out: p.is_sold_out || false
       }));
 
       setEvent({
@@ -227,9 +240,30 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     }
   };
 
-  // Update pass quantity
+  // Update pass quantity (respects stock limits)
   const updatePassQuantity = (passId: string, quantity: number) => {
-    const clampedQuantity = Math.max(0, Math.min(10, quantity));
+    const pass = event?.passes?.find(p => p.id === passId);
+    if (!pass) return;
+
+    // Check if pass is sold out
+    if (pass.is_sold_out) {
+      toast({
+        title: t[language].error,
+        description: language === 'en' 
+          ? `"${pass.name}" is sold out` 
+          : `"${pass.name}" est épuisé`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Determine max quantity based on stock
+    let maxAllowed = 10; // Default max
+    if (!pass.is_unlimited && pass.remaining_quantity !== null) {
+      maxAllowed = Math.min(10, pass.remaining_quantity);
+    }
+
+    const clampedQuantity = Math.max(0, Math.min(maxAllowed, quantity));
     const newPasses = { ...selectedPasses };
     
     if (clampedQuantity === 0) {
@@ -590,46 +624,98 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                 <CardContent>
                   {event.passes && event.passes.length > 0 ? (
                     <div className={`${event.passes.length === 1 ? 'flex justify-center' : 'grid grid-cols-1 md:grid-cols-2'} gap-4`}>
-                      {event.passes.map((pass) => {
+                      {event.passes.map((pass: any) => {
                         const quantity = selectedPasses[pass.id] || 0;
+                        const isSoldOut = pass.is_sold_out || false;
+                        const isUnlimited = pass.is_unlimited || false;
+                        const remainingQuantity = pass.remaining_quantity;
+                        const maxAllowed = isUnlimited ? 10 : Math.min(10, remainingQuantity || 0);
+                        const isLowStock = !isSoldOut && !isUnlimited && remainingQuantity !== null && remainingQuantity <= 5;
+                        
                         return (
                           <div 
                             key={pass.id}
-                            className={`border rounded-lg p-4 space-y-4 ${
+                            className={`border rounded-lg p-4 space-y-4 transition-all duration-200 ${
                               event.passes!.length === 1 ? 'w-full max-w-md' : ''
+                            } ${
+                              isSoldOut 
+                                ? 'opacity-45 grayscale-[0.3] pointer-events-none cursor-not-allowed blur-[0.5px]' 
+                                : 'hover:border-primary/50'
                             }`}
                           >
                             <div>
-                              <h3 className="text-lg font-semibold mb-1">{pass.name}</h3>
-                              <p className="text-2xl font-bold text-primary">{pass.price} TND</p>
+                              <div className="flex items-center justify-between mb-1">
+                                <h3 className={`text-lg font-semibold ${isSoldOut ? 'text-muted-foreground' : ''}`}>
+                                  {pass.name}
+                                </h3>
+                                {isSoldOut && (
+                                  <span className="px-3 py-1.5 text-sm font-bold uppercase bg-red-600 text-white rounded-md shadow-lg border-2 border-red-700 flex items-center gap-1.5">
+                                    <Lock className="w-3.5 h-3.5" />
+                                    {language === 'en' ? 'SOLD OUT' : 'ÉPUISÉ'}
+                                  </span>
+                                )}
+                                {!isSoldOut && isUnlimited && (
+                                  <span className="px-2 py-1 text-xs font-semibold bg-green-500 text-white rounded">
+                                    {language === 'en' ? 'UNLIMITED' : 'ILLIMITÉ'}
+                                  </span>
+                                )}
+                              </div>
+                              <p className={`text-2xl font-bold ${isSoldOut ? 'text-muted-foreground' : 'text-primary'}`}>
+                                {pass.price} TND
+                              </p>
                               {pass.description && (
-                                <p className="text-sm text-muted-foreground mt-1">{pass.description}</p>
+                                <p className={`text-sm mt-1 ${isSoldOut ? 'text-muted-foreground/70' : 'text-muted-foreground'}`}>
+                                  {pass.description}
+                                </p>
+                              )}
+                              {/* Stock warning - ONLY show when stock is low (≤ 5) */}
+                              {isLowStock && (
+                                <p className="text-sm text-orange-500 font-semibold mt-2 flex items-center gap-1">
+                                  <span>⚠️</span>
+                                  <span>
+                                    {language === 'en' 
+                                      ? `Only ${remainingQuantity} left!` 
+                                      : `Il ne reste que ${remainingQuantity}!`}
+                                  </span>
+                                </p>
                               )}
                             </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm">{t[language].quantity}</span>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => updatePassQuantity(pass.id, quantity - 1)}
-                                >
-                                  -
-                                </Button>
-                                <span className="w-12 text-center font-semibold">
-                                  {quantity}
-                                </span>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => updatePassQuantity(pass.id, quantity + 1)}
-                                >
-                                  +
-                                </Button>
+                            
+                            {/* Quantity controls - HIDE completely for sold-out passes */}
+                            {!isSoldOut ? (
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm">{t[language].quantity}</span>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={quantity <= 0}
+                                    onClick={() => updatePassQuantity(pass.id, quantity - 1)}
+                                  >
+                                    -
+                                  </Button>
+                                  <span className="w-12 text-center font-semibold">
+                                    {quantity}
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={quantity >= maxAllowed}
+                                    onClick={() => updatePassQuantity(pass.id, quantity + 1)}
+                                  >
+                                    +
+                                  </Button>
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              <div className="flex items-center justify-center py-2">
+                                <span className="text-sm font-medium text-muted-foreground uppercase">
+                                  {language === 'en' ? 'Unavailable' : 'Indisponible'}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         );
                       })}

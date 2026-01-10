@@ -10,148 +10,50 @@ import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
 
 /**
  * Create a new order
+ * CRITICAL: Routes to server-side endpoint for stock validation and atomic reservation
  */
 export async function createOrder(data: CreateOrderData): Promise<Order> {
   const { customerInfo, passes, paymentMethod, ambassadorId, eventId } = data;
   
-  // Calculate totals
-  const totalQuantity = passes.reduce((sum, pass) => sum + pass.quantity, 0);
-  const totalPrice = passes.reduce((sum, pass) => sum + (pass.price * pass.quantity), 0);
-  
-  // Determine initial status based on payment method
-  let initialStatus: OrderStatus;
-  switch (paymentMethod) {
-    case PaymentMethod.ONLINE:
-      initialStatus = OrderStatus.PENDING_ONLINE;
-      break;
-    case PaymentMethod.EXTERNAL_APP:
-      initialStatus = OrderStatus.PENDING_ONLINE;  // Will be updated to REDIRECTED after redirect
-      break;
-    case PaymentMethod.AMBASSADOR_CASH:
-      initialStatus = OrderStatus.PENDING_CASH;
-      if (!ambassadorId) {
-        throw new Error('Ambassador ID is required for ambassador cash payment');
-      }
-      break;
-    default:
-      throw new Error('Invalid payment method');
+  // Validate required fields
+  if (!customerInfo || !passes || !paymentMethod) {
+    throw new Error('Missing required fields: customerInfo, passes, and paymentMethod are required');
   }
+
+  if (!Array.isArray(passes) || passes.length === 0) {
+    throw new Error('At least one pass is required');
+  }
+
+  // Call server-side order creation endpoint
+  // Server handles: stock validation, atomic reservation, order creation, order_passes creation
+  const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
   
-  // Prepare order data
-  const orderData: any = {
-    source: paymentMethod === PaymentMethod.AMBASSADOR_CASH ? 'platform_cod' : 'platform_online',
-    user_name: customerInfo.full_name.trim(),
-    user_phone: customerInfo.phone.trim(),
-    user_email: customerInfo.email.trim() || null,
-    city: customerInfo.city.trim(),
-    ville: customerInfo.ville?.trim() || null,
-    event_id: eventId || null,
-    ambassador_id: ambassadorId || null,
-    quantity: totalQuantity,
-    total_price: totalPrice,
-    payment_method: paymentMethod,
-    status: initialStatus,
-    assigned_at: ambassadorId ? new Date().toISOString() : null,
-    notes: JSON.stringify({
-      all_passes: passes.map(p => ({
-        passId: p.passId,
-        passName: p.passName,
-        quantity: p.quantity,
-        price: p.price
-      })),
-      total_order_price: totalPrice,
-      pass_count: passes.length
+  const response = await fetch(`${apiBase}/api/orders/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      customerInfo,
+      passes,
+      paymentMethod,
+      ambassadorId,
+      eventId
     })
-  };
-  
-  // Create order
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert(orderData)
-    .select()
-    .single();
-  
-  if (orderError) {
-    throw new Error(`Failed to create order: ${orderError.message}`);
-  }
-  
-  // Create order_passes entries
-  const orderPassesData = passes.map(pass => ({
-    order_id: order.id,
-    pass_type: pass.passName,
-    quantity: pass.quantity,
-    price: pass.price
-  }));
-  
-  const { error: passesError } = await supabase
-    .from('order_passes')
-    .insert(orderPassesData);
-  
-  if (passesError) {
-    // Cleanup: delete order if order_passes creation fails
-    await supabase.from('orders').delete().eq('id', order.id);
-    throw new Error(`Failed to create order passes: ${passesError.message}`);
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || result.details || 'Failed to create order');
   }
 
-  // Send SMS notifications for COD orders with ambassador assigned
-  // Automatically enabled for AMBASSADOR_CASH orders
-  if (paymentMethod === PaymentMethod.AMBASSADOR_CASH && ambassadorId) {
-    try {
-      // Send SMS to client (non-blocking - don't fail order creation if SMS fails)
-      // In development, use proxy from vite.config.ts (just '/api')
-      // In production, use full URL from VITE_API_URL
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8081');
-      
-      fetch(`${apiBase}/api/send-order-confirmation-sms`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id })
-      })
-      .then(response => {
-        if (!response.ok) {
-          return response.json().then(err => {
-            console.error('❌ Failed to send order confirmation SMS:', response.status, err);
-            throw new Error(err.error || 'SMS request failed');
-          });
-        }
-        return response.json();
-      })
-      .then(data => {
-      })
-      .catch(err => {
-        console.error('❌ Failed to send order confirmation SMS:', err);
-        // Silent failure - don't block order creation
-      });
-
-      // Send SMS to ambassador (non-blocking - don't fail order creation if SMS fails)
-      fetch(`${apiBase}/api/send-ambassador-order-sms`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id })
-      })
-      .then(response => {
-        if (!response.ok) {
-          return response.json().then(err => {
-            console.error('❌ Failed to send ambassador order SMS:', response.status, err);
-            throw new Error(err.error || 'SMS request failed');
-          });
-        }
-        return response.json();
-      })
-      .then(data => {
-      })
-      .catch(err => {
-        console.error('❌ Failed to send ambassador order SMS:', err);
-        // Silent failure - don't block order creation
-      });
-    } catch (error) {
-      console.error('❌ Error initiating SMS notifications:', error);
-      // Silent failure - don't block order creation
-    }
-  } else {
+  if (!result.success || !result.order) {
+    throw new Error('Invalid response from server');
   }
-  
-  return order as Order;
+
+  // Return created order (server returns order with order_passes)
+  return result.order as Order;
 }
 
 /**

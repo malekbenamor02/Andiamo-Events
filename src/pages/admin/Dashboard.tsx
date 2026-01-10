@@ -76,6 +76,13 @@ interface EventPass {
   price: number;
   description: string;
   is_primary: boolean;
+  // Stock management fields
+  max_quantity?: number | null;
+  sold_quantity?: number;
+  remaining_quantity?: number | null;
+  is_unlimited?: boolean;
+  is_active?: boolean;
+  is_sold_out?: boolean;
 }
 
 interface Event {
@@ -196,6 +203,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [ambassadorToDelete, setAmbassadorToDelete] = useState<Ambassador | null>(null);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
+  const [isPassManagementDialogOpen, setIsPassManagementDialogOpen] = useState(false);
+  const [eventForPassManagement, setEventForPassManagement] = useState<Event | null>(null);
+  const [passesForManagement, setPassesForManagement] = useState<EventPass[]>([]);
+  const [isPassManagementLoading, setIsPassManagementLoading] = useState(false);
+  const [newPassForm, setNewPassForm] = useState<{ name: string; price: number; description: string; is_primary: boolean } | null>(null);
   const [isAmbassadorDialogOpen, setIsAmbassadorDialogOpen] = useState(false);
   const [isAmbassadorInfoDialogOpen, setIsAmbassadorInfoDialogOpen] = useState(false);
   
@@ -4484,12 +4496,48 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           return;
         }
         
+        // Fetch passes with stock info from admin API
+        try {
+          const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+          const passesResponse = await fetch(`${apiBase}/api/admin/passes/${editingEvent.id}`, {
+            credentials: 'include'
+          });
+          
+          if (passesResponse.ok) {
+            const passesResult = await passesResponse.json();
+            const passesWithStock = (passesResult.passes || []).map((p: any) => ({
+              id: p.id,
+              name: p.name || '',
+              price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+              description: p.description || '',
+              is_primary: p.is_primary || false,
+              max_quantity: p.max_quantity,
+              sold_quantity: p.sold_quantity || 0,
+              remaining_quantity: p.remaining_quantity,
+              is_unlimited: p.is_unlimited || false,
+              is_active: p.is_active !== undefined ? p.is_active : true,
+              is_sold_out: p.is_sold_out || false
+            }));
+            setEditingEvent(prev => prev ? { ...prev, passes: passesWithStock } : null);
+            return;
+          }
+        } catch (apiError) {
+          console.warn('Failed to fetch passes with stock from API, falling back to direct query:', apiError);
+        }
+        
+        // Fallback to direct query if API fails
         const mappedPasses = (passesData || []).map((p: any) => ({
           id: p.id,
           name: p.name || '',
           price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
           description: p.description || '',
-          is_primary: p.is_primary || false
+          is_primary: p.is_primary || false,
+          max_quantity: p.max_quantity ?? null,
+          sold_quantity: p.sold_quantity || 0,
+          remaining_quantity: p.max_quantity === null ? null : (p.max_quantity - (p.sold_quantity || 0)),
+          is_unlimited: p.max_quantity === null,
+          is_active: p.is_active !== undefined ? p.is_active : true,
+          is_sold_out: p.max_quantity !== null && (p.max_quantity - (p.sold_quantity || 0)) <= 0
         }));
         
         setEditingEvent(prev => prev ? { ...prev, passes: mappedPasses } : null);
@@ -5963,125 +6011,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
         return;
       }
-      // Validate passes before saving
-      const passes = event.passes || [];
-      
-      // Ensure at least one pass exists
-      if (passes.length === 0) {
-        toast({
-          title: t.error,
-          description: language === 'en' 
-            ? 'At least one pass (Standard) is required' 
-            : 'Au moins un pass (Standard) est requis',
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Validate passes with strict rules
-      if (!passes || passes.length === 0) {
-        toast({
-          title: language === 'en' ? "Validation Error" : "Erreur de validation",
-          description: language === 'en' 
-            ? "At least one pass is required. You cannot publish an event without passes." 
-            : "Au moins un pass est requis. Vous ne pouvez pas publier un événement sans passes.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Count primary passes
-      const primaryPassCount = passes.filter(p => p.is_primary).length;
-      if (primaryPassCount === 0) {
-        toast({
-          title: language === 'en' ? "Validation Error" : "Erreur de validation",
-          description: language === 'en' 
-            ? "Exactly one primary pass is required. Please mark one pass as primary." 
-            : "Exactement un pass principal est requis. Veuillez marquer un pass comme principal.",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (primaryPassCount > 1) {
-        toast({
-          title: language === 'en' ? "Validation Error" : "Erreur de validation",
-          description: language === 'en' 
-            ? "Only one primary pass is allowed. Please ensure exactly one pass is marked as primary." 
-            : "Un seul pass principal est autorisé. Veuillez vous assurer qu'exactement un pass est marqué comme principal.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Validate each pass - collect all errors
-      const errors: Record<number, {name?: string; price?: string; description?: string}> = {};
-      const passNames = new Set<string>();
-      let hasErrors = false;
-
-      for (let i = 0; i < passes.length; i++) {
-        const pass = passes[i];
-        const passErrors: {name?: string; price?: string; description?: string} = {};
-
-        // Check required fields - Name
-        if (!pass.name || pass.name.trim() === '') {
-          passErrors.name = language === 'en' 
-            ? 'Pass name is required' 
-            : 'Le nom du pass est requis';
-          hasErrors = true;
-        }
-
-        // Check for unique names (case-insensitive) - only if name is provided
-        if (pass.name && pass.name.trim() !== '') {
-          const normalizedName = pass.name.trim().toLowerCase();
-          if (passNames.has(normalizedName)) {
-            passErrors.name = language === 'en' 
-              ? `Duplicate pass name. Pass names must be unique.` 
-              : `Nom de pass dupliqué. Les noms de passes doivent être uniques.`;
-            hasErrors = true;
-          } else {
-            passNames.add(normalizedName);
-          }
-        }
-
-        // Check required fields - Price MUST be > 0
-        if (pass.price === undefined || pass.price === null || isNaN(pass.price) || pass.price <= 0) {
-          passErrors.price = language === 'en' 
-            ? 'Price is required and must be greater than 0 TND' 
-            : 'Le prix est requis et doit être supérieur à 0 TND';
-          hasErrors = true;
-        }
-
-        // Description is optional, but if provided, it should not be empty
-        if (pass.description !== undefined && pass.description !== null && pass.description.trim() === '') {
-          // Allow empty description, but if it's explicitly set to empty string, that's fine
-          // Only validate if it's a required field (which it's not according to requirements)
-        }
-
-        if (Object.keys(passErrors).length > 0) {
-          errors[i] = passErrors;
-        }
-      }
-
-      // Set validation errors and prevent save if there are errors
-      setPassValidationErrors(errors);
-      
-      if (hasErrors) {
-        // Don't show toast - errors are displayed inline in the dialog
-        // Scroll to first error if needed
-        setTimeout(() => {
-          const firstErrorField = document.querySelector('.border-red-500');
-          if (firstErrorField) {
-            firstErrorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, 100);
-        return; // Don't close dialog, just return
-      }
-
-      // Clear errors if validation passes
-      setPassValidationErrors({});
-
-      // Passes are ready to save - no transformation needed
-      const updatedPasses = passes;
+      // Pass management is now handled separately via Pass Stock Management dialog
+      // No pass validation or saving needed here - passes are managed independently
 
       let posterUrl = event.poster_url;
 
@@ -6178,46 +6109,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         if (error) throw error;
 
-        // Update passes: delete existing and insert new ones
-        // First, delete all existing passes for this event
-        const { error: deleteError } = await supabase
-          .from('event_passes')
-          .delete()
-          .eq('event_id', event.id);
-
-        if (deleteError && deleteError.code !== 'PGRST116' && deleteError.message !== 'relation "public.event_passes" does not exist') {
-          throw deleteError;
-        }
-
-        // Insert updated passes
-        if (updatedPasses.length > 0) {
-          const passesToInsert = updatedPasses.map(p => {
-            // Ensure price is a valid number > 0 (NUMERIC(10, 2) in database)
-            const price = typeof p.price === 'number' 
-              ? Number(p.price.toFixed(2))
-              : Number(parseFloat(String(p.price)).toFixed(2));
-            
-            if (price <= 0) {
-              throw new Error(`Invalid price for pass "${p.name}": price must be > 0`);
-            }
-            
-            return {
-              event_id: event.id,
-              name: p.name.trim(),
-              price: price,
-              description: p.description || '',
-              is_primary: p.is_primary || false
-            };
-          });
-
-          const { error: insertError } = await supabase
-            .from('event_passes')
-            .insert(passesToInsert);
-
-          if (insertError) {
-            throw insertError;
-          }
-        }
+        // Pass management is now handled separately via Pass Stock Management dialog
+        // Passes are no longer saved from the event edit dialog
       } else {
         // Create new event
         const { data: newEventData, error } = await supabase
@@ -6243,35 +6136,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         eventId = newEventData.id;
 
-        // Insert passes for the new event
-        if (updatedPasses.length > 0) {
-          const passesToInsert = updatedPasses.map(p => {
-            // Ensure price is a valid number > 0 (NUMERIC(10, 2) in database)
-            const price = typeof p.price === 'number' 
-              ? Number(p.price.toFixed(2))
-              : Number(parseFloat(String(p.price)).toFixed(2));
-            
-            if (price <= 0) {
-              throw new Error(`Invalid price for pass "${p.name}": price must be > 0`);
-            }
-            
-            return {
-              event_id: eventId,
-              name: p.name.trim(),
-              price: price,
-              description: p.description || '',
-              is_primary: p.is_primary || false
-            };
-          });
-
-          const { error: insertError } = await supabase
-            .from('event_passes')
-            .insert(passesToInsert);
-
-          if (insertError) {
-            throw insertError;
-          }
-        }
+        // Pass management is now handled separately via Pass Stock Management dialog
+        // Admins should create passes using the "Pass Stock" button after creating the event
       }
 
       toast({
@@ -6288,7 +6154,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 ...e, 
                 ...event, 
                 poster_url: posterUrl, 
-                passes: updatedPasses, 
+                // Keep existing passes (not modified in edit dialog)
                 gallery_images: finalGalleryImages,
                 gallery_videos: finalGalleryVideos,
                 instagram_link: event.instagram_link,
@@ -6297,11 +6163,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             : e
         ));
       } else {
-        // For new events, use the data returned from database and add passes/gallery
+        // For new events, use the data returned from database and add gallery
         const newEvent: Event = {
           ...newEventData,
           instagram_link: newEventData.whatsapp_link || event.instagram_link, // Map from database whatsapp_link to UI instagram_link
-          passes: updatedPasses,
+          passes: [], // Passes will be created via Pass Stock Management dialog
           gallery_images: finalGalleryImages,
           gallery_videos: finalGalleryVideos,
         };
@@ -9407,340 +9273,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </p>
                           )}
                         </div>
-                        {/* Pass Management Section - All Passes Always Visible */}
-                        <div className="space-y-4 border-t pt-6">
-                          {/* Error Summary Banner - Show if there are validation errors */}
-                          {Object.keys(passValidationErrors).length > 0 && (
-                            <Alert variant="destructive" className="mb-4 animate-in slide-in-from-top-4">
-                              <XCircle className="h-4 w-4" />
-                              <AlertDescription>
-                                <div className="font-semibold mb-2">
-                                  {language === 'en' ? 'Please fix the following errors before saving:' : 'Veuillez corriger les erreurs suivantes avant d\'enregistrer :'}
-                                </div>
-                                <ul className="list-disc list-inside space-y-1 text-sm">
-                                  {Object.entries(passValidationErrors).map(([index, errors]) => {
-                                    const pass = editingEvent?.passes?.[parseInt(index)];
-                                    const passName = pass?.name || (language === 'en' ? `Pass #${parseInt(index) + 1}` : `Pass #${parseInt(index) + 1}`);
-                                    return Object.entries(errors).map(([field, message]) => (
-                                      <li key={`${index}-${field}`}>
-                                        <strong>{passName}</strong> - {field === 'name' 
-                                          ? (language === 'en' ? 'Name: ' : 'Nom : ') 
-                                          : field === 'price' 
-                                          ? (language === 'en' ? 'Price: ' : 'Prix : ')
-                                          : (language === 'en' ? 'Description: ' : 'Description : ')}
-                                        {message}
-                                      </li>
-                                    ));
-                                  })}
-                                </ul>
-                              </AlertDescription>
-                            </Alert>
-                          )}
-                          
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <Label className="text-lg font-semibold">
-                                {language === 'en' ? 'Pass Management' : 'Gestion des Passes'}
-                              </Label>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                {language === 'en' 
-                                  ? 'All passes are displayed below. At least one pass is required. Exactly one pass must be marked as primary.' 
-                                  : 'Tous les passes sont affichés ci-dessous. Au moins un pass est requis. Exactement un pass doit être marqué comme principal.'}
-                              </p>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                // Check for duplicate names before adding
-                                const existingNames = (editingEvent?.passes || []).map(p => p.name.trim().toLowerCase());
-                                const newPass: EventPass = {
-                                  name: '',
-                                  price: 0,
-                                  description: '',
-                                  is_primary: false
-                                };
-                                setEditingEvent(prev => ({
-                                  ...prev,
-                                  passes: [...(prev?.passes || []), newPass]
-                                }));
-                              }}
-                              className="flex items-center gap-2"
-                            >
-                              <Plus className="w-4 h-4" />
-                              {language === 'en' ? 'Add New Pass' : 'Ajouter un Pass'}
-                            </Button>
-                          </div>
-                          
-                          {/* Display ALL passes - Primary first, then by price */}
-                          <div className="space-y-4">
-                            {(() => {
-                              const passes = editingEvent?.passes || [];
-                              
-                              if (passes.length === 0) {
-                                return (
-                                  <div className="text-sm text-muted-foreground p-4 bg-muted/50 rounded-lg">
-                                    {language === 'en' 
-                                      ? 'No passes found. Add at least one pass to publish this event.' 
-                                      : 'Aucun pass trouvé. Ajoutez au moins un pass pour publier cet événement.'}
-                                  </div>
-                                );
-                              }
-                              
-                              // Sort: Primary first, then others by price, but keep track of original indices
-                              const passesWithIndex = passes.map((pass, idx) => ({ pass, originalIndex: idx }));
-                              const sortedPassesWithIndex = [...passesWithIndex].sort((a, b) => {
-                                if (a.pass.is_primary && !b.pass.is_primary) return -1;
-                                if (!a.pass.is_primary && b.pass.is_primary) return 1;
-                                // If both primary or both non-primary, sort by price
-                                const priceA = typeof a.pass.price === 'number' ? a.pass.price : parseFloat(String(a.pass.price)) || 0;
-                                const priceB = typeof b.pass.price === 'number' ? b.pass.price : parseFloat(String(b.pass.price)) || 0;
-                                return priceA - priceB;
-                              });
-
-                              return sortedPassesWithIndex.map(({ pass, originalIndex }) => {
-                                const isPrimary = pass.is_primary;
-                                
-                                return (
-                                  <Card 
-                                    key={originalIndex} 
-                                    className={`${isPrimary ? 'border-2 border-primary/50 bg-primary/5 shadow-md' : 'border border-border'}`}
-                                  >
-                                    <CardContent className="p-5">
-                                      {/* Header with Badge and Delete */}
-                                      <div className="flex items-start justify-between mb-4">
-                                        <div className="flex items-center gap-3">
-                                          {isPrimary && (
-                                            <Badge variant="default" className="text-xs font-semibold">
-                                              {language === 'en' ? 'PRIMARY PASS' : 'PASS PRINCIPAL'}
-                                            </Badge>
-                                          )}
-                                          {!isPrimary && (
-                                            <Badge variant="outline" className="text-xs">
-                                              {language === 'en' ? 'Pass' : 'Pass'}
-                                            </Badge>
-                                          )}
-                                          <div className="flex flex-col">
-                                            <span className="text-sm font-semibold text-foreground">
-                                              {pass.name || (language === 'en' ? 'New Pass' : 'Nouveau Pass')}
-                                            </span>
-                                            {pass.price !== undefined && pass.price !== null && (
-                                              <span className="text-lg font-bold text-primary">
-                                                {typeof pass.price === 'number' ? pass.price.toFixed(2) : parseFloat(String(pass.price)).toFixed(2)} TND
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => {
-                                            const updatedPasses = editingEvent.passes?.filter((_, i) => i !== originalIndex) || [];
-                                            setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
-                                          }}
-                                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                            title={language === 'en' ? 'Remove this pass' : 'Supprimer ce pass'}
-                                          >
-                                            <X className="w-4 h-4" />
-                                          </Button>
-                                      </div>
-                                      
-                                      {/* Pass Details - Always Visible */}
-                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {/* Pass Name */}
-                                        <div>
-                                          <Label htmlFor={`pass-name-${originalIndex}`} className="flex items-center gap-2">
-                                            {language === 'en' ? 'Pass Name' : 'Nom du Pass'} *
-                                          </Label>
-                                          <Input
-                                            id={`pass-name-${originalIndex}`}
-                                            value={pass.name}
-                                            onChange={(e) => {
-                                              const newName = e.target.value;
-                                              // Clear error for this field when user types
-                                              if (passValidationErrors[originalIndex]?.name) {
-                                                const newErrors = { ...passValidationErrors };
-                                                delete newErrors[originalIndex]?.name;
-                                                if (Object.keys(newErrors[originalIndex] || {}).length === 0) {
-                                                  delete newErrors[originalIndex];
-                                                }
-                                                setPassValidationErrors(newErrors);
-                                              }
-                                              
-                                              // Check for duplicates (case-insensitive)
-                                              const existingNames = editingEvent.passes
-                                                ?.filter((p, i) => i !== originalIndex)
-                                                .map(p => p.name.trim().toLowerCase()) || [];
-                                              
-                                              if (existingNames.includes(newName.trim().toLowerCase()) && newName.trim() !== '') {
-                                                setPassValidationErrors(prev => ({
-                                                  ...prev,
-                                                  [originalIndex]: {
-                                                    ...prev[originalIndex],
-                                                    name: language === 'en' 
-                                                      ? `A pass with the name "${newName}" already exists.` 
-                                                      : `Un pass avec le nom "${newName}" existe déjà.`
-                                                  }
-                                                }));
-                                                return;
-                                              }
-                                              
-                                              const updatedPasses = [...(editingEvent.passes || [])];
-                                              updatedPasses[originalIndex] = { ...pass, name: newName };
-                                              setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
-                                            }}
-                                            placeholder={language === 'en' ? 'e.g., VIP, Early Bird, Standard' : 'ex: VIP, Early Bird, Standard'}
-                                            className={passValidationErrors[originalIndex]?.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
-                                            required
-                                          />
-                                          {passValidationErrors[originalIndex]?.name && (
-                                            <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                                              <XCircle className="w-3 h-3" />
-                                              {passValidationErrors[originalIndex].name}
-                                            </p>
-                                          )}
-                                        </div>
-                                        
-                                        {/* Price - Always Editable */}
-                                        <div>
-                                          <Label htmlFor={`pass-price-${originalIndex}`}>
-                                            {language === 'en' ? 'Price (TND)' : 'Prix (TND)'} *
-                                          </Label>
-                                          <Input
-                                            id={`pass-price-${originalIndex}`}
-                                            type="number"
-                                            min="1"
-                                            step="0.01"
-                                            value={pass.price !== undefined && pass.price !== null ? pass.price : ''}
-                                            onChange={(e) => {
-                                              const value = e.target.value;
-                                              // Allow empty input while typing
-                                              if (value === '') {
-                                                const updatedPasses = [...(editingEvent.passes || [])];
-                                                updatedPasses[originalIndex] = { ...pass, price: undefined };
-                                                setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
-                                                return;
-                                              }
-                                              
-                                              const numValue = parseFloat(value);
-                                              
-                                              // Clear error for this field when user types valid value
-                                              if (passValidationErrors[originalIndex]?.price && !isNaN(numValue) && numValue > 0) {
-                                                const newErrors = { ...passValidationErrors };
-                                                delete newErrors[originalIndex]?.price;
-                                                if (Object.keys(newErrors[originalIndex] || {}).length === 0) {
-                                                  delete newErrors[originalIndex];
-                                                }
-                                                setPassValidationErrors(newErrors);
-                                              }
-                                              
-                                              if (isNaN(numValue) || numValue <= 0) {
-                                                return;
-                                              }
-                                              
-                                              const updatedPasses = [...(editingEvent.passes || [])];
-                                              updatedPasses[originalIndex] = { ...pass, price: numValue };
-                                              setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
-                                            }}
-                                            placeholder="0.00"
-                                            required
-                                            className={`font-semibold ${passValidationErrors[originalIndex]?.price ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
-                                          />
-                                          {passValidationErrors[originalIndex]?.price && (
-                                            <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                                              <XCircle className="w-3 h-3" />
-                                              {passValidationErrors[originalIndex].price}
-                                            </p>
-                                          )}
-                                          {!passValidationErrors[originalIndex]?.price && (
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                              {language === 'en' ? 'Must be > 0 TND' : 'Doit être > 0 TND'}
-                                            </p>
-                                          )}
-                                        </div>
-                                        
-                                        {/* Description - Optional */}
-                                        <div className="md:col-span-1">
-                                          <Label htmlFor={`pass-description-${originalIndex}`}>
-                                            {language === 'en' ? 'Description' : 'Description'}
-                                          </Label>
-                                          <Textarea
-                                            id={`pass-description-${originalIndex}`}
-                                            value={pass.description || ''}
-                                            onChange={(e) => {
-                                              // Clear error for this field when user types
-                                              if (passValidationErrors[originalIndex]?.description) {
-                                                const newErrors = { ...passValidationErrors };
-                                                delete newErrors[originalIndex]?.description;
-                                                if (Object.keys(newErrors[originalIndex] || {}).length === 0) {
-                                                  delete newErrors[originalIndex];
-                                                }
-                                                setPassValidationErrors(newErrors);
-                                              }
-                                              
-                                              const updatedPasses = [...(editingEvent.passes || [])];
-                                              updatedPasses[originalIndex] = { ...pass, description: e.target.value };
-                                              setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
-                                            }}
-                                            placeholder={language === 'en' 
-                                              ? 'What does this pass include? (optional)' 
-                                              : 'Que comprend ce pass ? (optionnel)'}
-                                            rows={3}
-                                            className={passValidationErrors[originalIndex]?.description ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
-                                          />
-                                          {passValidationErrors[originalIndex]?.description && (
-                                            <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                                              <XCircle className="w-3 h-3" />
-                                              {passValidationErrors[originalIndex].description}
-                                            </p>
-                                          )}
-                                        </div>
-                                      </div>
-                                      
-                                      {/* Primary Pass Checkbox */}
-                                      <div className="mt-4 flex items-center space-x-2">
-                                        <input
-                                          type="checkbox"
-                                          id={`pass-primary-${originalIndex}`}
-                                          checked={pass.is_primary || false}
-                                          onChange={(e) => {
-                                            const isPrimary = e.target.checked;
-                                            // If setting this pass as primary, unset all others
-                                            const updatedPasses = (editingEvent.passes || []).map((p, i) => ({
-                                              ...p,
-                                              is_primary: i === originalIndex ? isPrimary : false
-                                            }));
-                                            setEditingEvent(prev => ({ ...prev, passes: updatedPasses }));
-                                          }}
-                                          className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
-                                        />
-                                        <Label htmlFor={`pass-primary-${originalIndex}`} className="text-sm font-medium cursor-pointer">
-                                          {language === 'en' 
-                                            ? 'Mark as primary pass (selected by default on frontend)' 
-                                            : 'Marquer comme pass principal (sélectionné par défaut sur le frontend)'}
-                                        </Label>
-                                      </div>
-                                      
-                                      {/* Info Message for Primary */}
-                                      {isPrimary && (
-                                        <div className="mt-2 p-3 bg-primary/10 border border-primary/20 rounded-lg">
-                                          <p className="text-xs text-foreground flex items-center gap-2">
-                                            <Info className="w-4 h-4 text-primary" />
-                                            {language === 'en' 
-                                              ? 'This is the primary pass. It will be selected by default on the event page.' 
-                                              : 'Ceci est le pass principal. Il sera sélectionné par défaut sur la page de l\'événement.'}
-                                          </p>
-                                        </div>
-                                      )}
-                                    </CardContent>
-                                  </Card>
-                                );
-                              });
-                            })()}
-                          </div>
-                        </div>
                         <div>
                           <Label htmlFor="eventType">{t.eventType}</Label>
                           <Select value={editingEvent?.event_type || 'upcoming'} onValueChange={(value: 'upcoming' | 'gallery') => setEditingEvent(prev => ({ ...prev, event_type: value }))}>
@@ -9993,6 +9525,594 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       </div>
                     </DialogContent>
                   </Dialog>
+                  
+                  {/* Pass Management Dialog */}
+                  <Dialog open={isPassManagementDialogOpen} onOpenChange={setIsPassManagementDialogOpen}>
+                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                      <DialogHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <DialogTitle className="flex items-center gap-2">
+                              <Package className="w-5 h-5" />
+                              {language === 'en' ? 'Pass Stock Management' : 'Gestion des Stocks de Passes'}
+                            </DialogTitle>
+                            {eventForPassManagement && (
+                              <p className="text-sm text-muted-foreground mt-2">
+                                {eventForPassManagement.name} • {new Date(eventForPassManagement.date).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => {
+                              setNewPassForm({
+                                name: '',
+                                price: 0,
+                                description: '',
+                                is_primary: passesForManagement.length === 0 || !passesForManagement.some(p => p.is_primary)
+                              });
+                            }}
+                          >
+                            <Plus className="w-4 h-4 mr-2" />
+                            {language === 'en' ? 'Add Pass' : 'Ajouter Pass'}
+                          </Button>
+                        </div>
+                      </DialogHeader>
+                      <div className="space-y-4 mt-4">
+                        {/* New Pass Form */}
+                        {newPassForm !== null && (
+                          <Card className="border-primary/50 bg-primary/5">
+                            <CardContent className="p-5 space-y-4">
+                              <div className="flex items-center justify-between mb-4">
+                                <h4 className="text-lg font-semibold">{language === 'en' ? 'Add New Pass' : 'Ajouter un Nouveau Pass'}</h4>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setNewPassForm(null)}
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <Label>{language === 'en' ? 'Pass Name' : 'Nom du Pass'} *</Label>
+                                  <Input
+                                    value={newPassForm.name}
+                                    onChange={(e) => setNewPassForm({ ...newPassForm, name: e.target.value })}
+                                    placeholder={language === 'en' ? 'e.g., VIP, Standard' : 'ex: VIP, Standard'}
+                                  />
+                                </div>
+                                <div>
+                                  <Label>{language === 'en' ? 'Price (TND)' : 'Prix (TND)'} *</Label>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={newPassForm.price || ''}
+                                    onChange={(e) => setNewPassForm({ ...newPassForm, price: parseFloat(e.target.value) || 0 })}
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <Label>{language === 'en' ? 'Description' : 'Description'}</Label>
+                                <Textarea
+                                  value={newPassForm.description}
+                                  onChange={(e) => setNewPassForm({ ...newPassForm, description: e.target.value })}
+                                  placeholder={language === 'en' ? 'Optional description' : 'Description optionnelle'}
+                                  rows={2}
+                                />
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <input
+                                  type="checkbox"
+                                  checked={newPassForm.is_primary}
+                                  onChange={(e) => {
+                                    const isPrimary = e.target.checked;
+                                    setNewPassForm({ ...newPassForm, is_primary: isPrimary });
+                                  }}
+                                  className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                />
+                                <Label className="text-sm font-medium cursor-pointer">
+                                  {language === 'en' ? 'Mark as primary pass' : 'Marquer comme pass principal'}
+                                </Label>
+                              </div>
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="outline"
+                                  onClick={() => setNewPassForm(null)}
+                                >
+                                  {language === 'en' ? 'Cancel' : 'Annuler'}
+                                </Button>
+                                <Button
+                                  onClick={async () => {
+                                    if (!eventForPassManagement?.id) return;
+                                    if (!newPassForm.name.trim()) {
+                                      toast({
+                                        title: t.error,
+                                        description: language === 'en' ? 'Pass name is required' : 'Le nom du pass est requis',
+                                        variant: "destructive",
+                                      });
+                                      return;
+                                    }
+                                    if (!newPassForm.price || newPassForm.price <= 0) {
+                                      toast({
+                                        title: t.error,
+                                        description: language === 'en' ? 'Price must be greater than 0' : 'Le prix doit être supérieur à 0',
+                                        variant: "destructive",
+                                      });
+                                      return;
+                                    }
+
+                                    try {
+                                      // If setting as primary, unset all other primary passes first
+                                      if (newPassForm.is_primary) {
+                                        const passesToUpdate = passesForManagement
+                                          .filter(p => p.id && p.is_primary)
+                                          .map(p => p.id);
+                                        
+                                        for (const passId of passesToUpdate) {
+                                          await supabase
+                                            .from('event_passes')
+                                            .update({ is_primary: false })
+                                            .eq('id', passId);
+                                        }
+                                      }
+
+                                      // Insert new pass
+                                      const { data: newPass, error: insertError } = await supabase
+                                        .from('event_passes')
+                                        .insert({
+                                          event_id: eventForPassManagement.id,
+                                          name: newPassForm.name.trim(),
+                                          price: Number(newPassForm.price.toFixed(2)),
+                                          description: newPassForm.description || '',
+                                          is_primary: newPassForm.is_primary
+                                        })
+                                        .select()
+                                        .single();
+
+                                      if (insertError) throw insertError;
+
+                                      // Refresh passes list
+                                      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                      const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventForPassManagement.id}`, {
+                                        credentials: 'include'
+                                      });
+                                      
+                                      if (passesResponse.ok) {
+                                        const passesResult = await passesResponse.json();
+                                        const passesWithStock = (passesResult.passes || []).map((p: any) => ({
+                                          id: p.id,
+                                          name: p.name || '',
+                                          price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+                                          description: p.description || '',
+                                          is_primary: p.is_primary || false,
+                                          max_quantity: p.max_quantity,
+                                          sold_quantity: p.sold_quantity || 0,
+                                          remaining_quantity: p.remaining_quantity,
+                                          is_unlimited: p.is_unlimited || false,
+                                          is_active: p.is_active !== undefined ? p.is_active : true,
+                                          is_sold_out: p.is_sold_out || false
+                                        }));
+                                        setPassesForManagement(passesWithStock);
+                                      }
+
+                                      setNewPassForm(null);
+                                      toast({
+                                        title: t.success || (language === 'en' ? 'Success' : 'Succès'),
+                                        description: language === 'en' ? 'Pass created successfully' : 'Pass créé avec succès',
+                                      });
+                                    } catch (error: any) {
+                                      toast({
+                                        title: t.error,
+                                        description: error.message || (language === 'en' ? 'Failed to create pass' : 'Échec de la création du pass'),
+                                        variant: "destructive",
+                                      });
+                                    }
+                                  }}
+                                >
+                                  <Save className="w-4 h-4 mr-2" />
+                                  {language === 'en' ? 'Create Pass' : 'Créer Pass'}
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+                        {isPassManagementLoading ? (
+                          <div className="text-center py-8">
+                            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+                            <p className="text-muted-foreground">{language === 'en' ? 'Loading passes...' : 'Chargement des passes...'}</p>
+                          </div>
+                        ) : passesForManagement.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                            <p>{language === 'en' ? 'No passes found for this event' : 'Aucun pass trouvé pour cet événement'}</p>
+                          </div>
+                        ) : (
+                          passesForManagement.map((pass, index) => (
+                            <Card key={pass.id || index} className="border-border">
+                              <CardContent className="p-5 space-y-4">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-3 mb-2">
+                                      {pass.is_primary && (
+                                        <Badge variant="default" className="text-xs">
+                                          {language === 'en' ? 'PRIMARY' : 'PRINCIPAL'}
+                                        </Badge>
+                                      )}
+                                      <h4 className="text-lg font-semibold">{pass.name}</h4>
+                                      <span className="text-lg font-bold text-primary">{pass.price.toFixed(2)} TND</span>
+                                    </div>
+                                    {pass.description && (
+                                      <p className="text-sm text-muted-foreground mb-3">{pass.description}</p>
+                                    )}
+                                  </div>
+                                  {pass.id && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={async () => {
+                                        if (!pass.id || !eventForPassManagement?.id) return;
+                                        
+                                        // Check if pass has sold tickets
+                                        if (pass.sold_quantity && pass.sold_quantity > 0) {
+                                          toast({
+                                            title: t.error,
+                                            description: language === 'en' 
+                                              ? `Cannot delete pass "${pass.name}" - ${pass.sold_quantity} ticket(s) already sold. Deactivate it instead.`
+                                              : `Impossible de supprimer le pass "${pass.name}" - ${pass.sold_quantity} billet(s) déjà vendu(s). Désactivez-le plutôt.`,
+                                            variant: "destructive",
+                                          });
+                                          return;
+                                        }
+                                        
+                                        // Confirm deletion
+                                        if (!confirm(
+                                          language === 'en' 
+                                            ? `Are you sure you want to delete "${pass.name}"? This action cannot be undone.`
+                                            : `Êtes-vous sûr de vouloir supprimer "${pass.name}" ? Cette action est irréversible.`
+                                        )) {
+                                          return;
+                                        }
+                                        
+                                        try {
+                                          // Delete pass from database
+                                          const { error: deleteError } = await supabase
+                                            .from('event_passes')
+                                            .delete()
+                                            .eq('id', pass.id);
+                                          
+                                          if (deleteError) throw deleteError;
+                                          
+                                          // Refresh passes list
+                                          const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                          const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventForPassManagement.id}`, {
+                                            credentials: 'include'
+                                          });
+                                          
+                                          if (passesResponse.ok) {
+                                            const passesResult = await passesResponse.json();
+                                            const passesWithStock = (passesResult.passes || []).map((p: any) => ({
+                                              id: p.id,
+                                              name: p.name || '',
+                                              price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+                                              description: p.description || '',
+                                              is_primary: p.is_primary || false,
+                                              max_quantity: p.max_quantity,
+                                              sold_quantity: p.sold_quantity || 0,
+                                              remaining_quantity: p.remaining_quantity,
+                                              is_unlimited: p.is_unlimited || false,
+                                              is_active: p.is_active !== undefined ? p.is_active : true,
+                                              is_sold_out: p.is_sold_out || false
+                                            }));
+                                            setPassesForManagement(passesWithStock);
+                                          }
+                                          
+                                          toast({
+                                            title: t.success || (language === 'en' ? 'Success' : 'Succès'),
+                                            description: language === 'en' ? 'Pass deleted successfully' : 'Pass supprimé avec succès',
+                                          });
+                                        } catch (error: any) {
+                                          toast({
+                                            title: t.error,
+                                            description: error.message || (language === 'en' ? 'Failed to delete pass' : 'Échec de la suppression du pass'),
+                                            variant: "destructive",
+                                          });
+                                        }
+                                      }}
+                                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                                
+                                {/* Stock Display */}
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-3 bg-muted/30 rounded-lg">
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground">
+                                      {language === 'en' ? 'Sold' : 'Vendus'}
+                                    </Label>
+                                    <p className="text-lg font-bold">{pass.sold_quantity || 0}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground">
+                                      {language === 'en' ? 'Remaining' : 'Restants'}
+                                    </Label>
+                                    <p className="text-lg font-bold text-primary">
+                                      {pass.is_unlimited 
+                                        ? (language === 'en' ? 'Unlimited' : 'Illimité')
+                                        : (pass.remaining_quantity ?? 0)}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground">
+                                      {language === 'en' ? 'Status' : 'Statut'}
+                                    </Label>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      {pass.is_sold_out && (
+                                        <Badge variant="destructive" className="text-xs">
+                                          {language === 'en' ? 'Sold Out' : 'Épuisé'}
+                                        </Badge>
+                                      )}
+                                      {pass.is_unlimited && (
+                                        <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
+                                          {language === 'en' ? 'Unlimited' : 'Illimité'}
+                                        </Badge>
+                                      )}
+                                      {!pass.is_active && (
+                                        <Badge variant="secondary" className="text-xs">
+                                          {language === 'en' ? 'Inactive' : 'Inactif'}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Stock Limit Control */}
+                                <div className="space-y-4">
+                                  <div className="flex items-center space-x-2">
+                                    <Switch
+                                      id={`pm-unlimited-${pass.id}-${index}`}
+                                      checked={pass.is_unlimited || false}
+                                      disabled={!pass.id}
+                                      onCheckedChange={async (checked) => {
+                                        if (!pass.id) return;
+                                        
+                                        try {
+                                          const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                          const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/stock`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            credentials: 'include',
+                                            body: JSON.stringify({ max_quantity: checked ? null : 100 })
+                                          });
+                                          
+                                          if (!response.ok) {
+                                            const error = await response.json();
+                                            toast({
+                                              title: t.error,
+                                              description: error.error || error.details || (language === 'en' ? 'Failed to update stock' : 'Échec de la mise à jour du stock'),
+                                              variant: "destructive",
+                                            });
+                                            return;
+                                          }
+                                          
+                                          const result = await response.json();
+                                          const updatedPass = result.pass;
+                                          
+                                          // Update local state
+                                          const updatedPasses = [...passesForManagement];
+                                          updatedPasses[index] = {
+                                            ...pass,
+                                            max_quantity: updatedPass.max_quantity,
+                                            remaining_quantity: updatedPass.remaining_quantity,
+                                            is_unlimited: updatedPass.is_unlimited
+                                          };
+                                          setPassesForManagement(updatedPasses);
+                                          
+                                          toast({
+                                            title: t.success || (language === 'en' ? 'Success' : 'Succès'),
+                                            description: language === 'en' 
+                                              ? 'Stock limit updated' 
+                                              : 'Limite de stock mise à jour',
+                                          });
+                                        } catch (error: any) {
+                                          toast({
+                                            title: t.error,
+                                            description: error.message || (language === 'en' ? 'Failed to update stock' : 'Échec de la mise à jour du stock'),
+                                            variant: "destructive",
+                                          });
+                                        }
+                                      }}
+                                    />
+                                    <Label htmlFor={`pm-unlimited-${pass.id}-${index}`} className="text-sm font-medium cursor-pointer">
+                                      {language === 'en' ? 'Unlimited Stock' : 'Stock Illimité'}
+                                    </Label>
+                                  </div>
+                                  
+                                  {!pass.is_unlimited && (
+                                    <div>
+                                      <Label htmlFor={`pm-max-quantity-${pass.id}-${index}`}>
+                                        {language === 'en' ? 'Max Stock' : 'Stock Maximum'}
+                                      </Label>
+                                      <div className="flex gap-2">
+                                        <Input
+                                          id={`pm-max-quantity-${pass.id}-${index}`}
+                                          type="number"
+                                          min={pass.sold_quantity || 0}
+                                          value={pass.max_quantity !== null && pass.max_quantity !== undefined ? pass.max_quantity : ''}
+                                          disabled={!pass.id}
+                                          onChange={(e) => {
+                                            const value = e.target.value;
+                                            const numValue = value === '' ? null : parseInt(value);
+                                            const updatedPasses = [...passesForManagement];
+                                            updatedPasses[index] = {
+                                              ...pass,
+                                              max_quantity: numValue,
+                                              is_unlimited: numValue === null
+                                            };
+                                            setPassesForManagement(updatedPasses);
+                                          }}
+                                          placeholder={language === 'en' ? 'Enter max stock' : 'Entrez le stock max'}
+                                          className="flex-1"
+                                        />
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          disabled={!pass.id}
+                                          onClick={async () => {
+                                            if (!pass.id) return;
+                                            const maxQty = pass.max_quantity;
+                                            
+                                            if (maxQty !== null && maxQty !== undefined && maxQty < (pass.sold_quantity || 0)) {
+                                              toast({
+                                                title: t.error,
+                                                description: language === 'en' 
+                                                  ? `Cannot set max stock below sold quantity (${pass.sold_quantity})` 
+                                                  : `Impossible de définir le stock max en dessous de la quantité vendue (${pass.sold_quantity})`,
+                                                variant: "destructive",
+                                              });
+                                              return;
+                                            }
+                                            
+                                            try {
+                                              const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                              const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/stock`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                credentials: 'include',
+                                                body: JSON.stringify({ max_quantity: maxQty })
+                                              });
+                                              
+                                              if (!response.ok) {
+                                                const error = await response.json();
+                                                toast({
+                                                  title: t.error,
+                                                  description: error.error || error.details || (language === 'en' ? 'Failed to update stock' : 'Échec de la mise à jour du stock'),
+                                                  variant: "destructive",
+                                                });
+                                                return;
+                                              }
+                                              
+                                              const result = await response.json();
+                                              const updatedPass = result.pass;
+                                              
+                                              // Update local state
+                                              const updatedPasses = [...passesForManagement];
+                                              updatedPasses[index] = {
+                                                ...pass,
+                                                max_quantity: updatedPass.max_quantity,
+                                                remaining_quantity: updatedPass.remaining_quantity,
+                                                is_unlimited: updatedPass.is_unlimited
+                                              };
+                                              setPassesForManagement(updatedPasses);
+                                              
+                                              toast({
+                                                title: t.success || (language === 'en' ? 'Success' : 'Succès'),
+                                                description: language === 'en' 
+                                                  ? 'Stock limit updated successfully' 
+                                                  : 'Limite de stock mise à jour avec succès',
+                                              });
+                                            } catch (error: any) {
+                                              toast({
+                                                title: t.error,
+                                                description: error.message || (language === 'en' ? 'Failed to update stock' : 'Échec de la mise à jour du stock'),
+                                                variant: "destructive",
+                                              });
+                                            }
+                                          }}
+                                        >
+                                          <Save className="w-4 h-4 mr-2" />
+                                          {language === 'en' ? 'Save' : 'Enregistrer'}
+                                        </Button>
+                                      </div>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        {language === 'en' 
+                                          ? `Minimum: ${pass.sold_quantity || 0} (cannot be below sold quantity)` 
+                                          : `Minimum: ${pass.sold_quantity || 0} (ne peut pas être en dessous de la quantité vendue)`}
+                                      </p>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Activate/Deactivate Pass */}
+                                  <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                                    <div>
+                                      <Label className="text-sm font-medium">
+                                        {language === 'en' ? 'Pass Status' : 'Statut du Pass'}
+                                      </Label>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        {pass.is_active 
+                                          ? (language === 'en' ? 'Active - visible to customers' : 'Actif - visible par les clients')
+                                          : (language === 'en' ? 'Inactive - hidden from customers' : 'Inactif - caché aux clients')}
+                                      </p>
+                                    </div>
+                                    <Switch
+                                      checked={pass.is_active !== false}
+                                      disabled={!pass.id}
+                                      onCheckedChange={async (checked) => {
+                                        if (!pass.id) return;
+                                        
+                                        try {
+                                          const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                          const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/activate`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            credentials: 'include',
+                                            body: JSON.stringify({ is_active: checked })
+                                          });
+                                          
+                                          if (!response.ok) {
+                                            const error = await response.json();
+                                            toast({
+                                              title: t.error,
+                                              description: error.error || error.details || (language === 'en' ? 'Failed to update pass status' : 'Échec de la mise à jour du statut'),
+                                              variant: "destructive",
+                                            });
+                                            return;
+                                          }
+                                          
+                                          // Update local state
+                                          const updatedPasses = [...passesForManagement];
+                                          updatedPasses[index] = {
+                                            ...pass,
+                                            is_active: checked
+                                          };
+                                          setPassesForManagement(updatedPasses);
+                                          
+                                          toast({
+                                            title: t.success || (language === 'en' ? 'Success' : 'Succès'),
+                                            description: language === 'en' 
+                                              ? `Pass ${checked ? 'activated' : 'deactivated'} successfully` 
+                                              : `Pass ${checked ? 'activé' : 'désactivé'} avec succès`,
+                                          });
+                                        } catch (error: any) {
+                                          toast({
+                                            title: t.error,
+                                            description: error.message || (language === 'en' ? 'Failed to update pass status' : 'Échec de la mise à jour du statut'),
+                                            variant: "destructive",
+                                          });
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))
+                        )}
+                      </div>
+                      <div className="flex justify-end gap-2 mt-6">
+                        <DialogClose asChild>
+                          <Button variant="outline">
+                            {language === 'en' ? 'Close' : 'Fermer'}
+                          </Button>
+                        </DialogClose>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {events.map((event, index) => (
@@ -10040,10 +10160,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </div>
                           )}
                         </div>
-                        <div className="flex gap-2 mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-700">
+                        <div className="flex items-center justify-end mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-700">
+                          <div className="inline-flex items-center gap-0 rounded-md border border-border/50 bg-muted/30 p-0.5 shadow-sm">
                           <Button 
                             size="sm" 
-                            variant="outline" 
+                            variant="ghost" 
                             onClick={async () => {
                               // Always fetch fresh passes from database to get current values
                               const { data: passesData, error: passesError } = await supabase
@@ -10099,20 +10220,75 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 setIsEventDialogOpen(true);
                               }, 0);
                             }}
-                            className="transform hover:scale-105 transition-all duration-300"
+                            className="h-7 px-2.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground rounded-sm transition-all duration-200"
                           >
-                            <Edit className="w-4 h-4 mr-2" />
+                            <Edit className="w-3.5 h-3.5 mr-1.5" />
                             {t.edit}
                           </Button>
+                          <div className="w-px h-4 bg-border/50" />
                           <Button 
                             size="sm" 
-                            variant="destructive" 
+                            variant="ghost" 
                             onClick={() => handleDeleteEvent(event.id)}
-                            className="transform hover:scale-105 transition-all duration-300"
+                            className="h-7 px-2.5 text-xs font-medium text-destructive hover:bg-destructive/10 hover:text-destructive rounded-sm transition-all duration-200"
                           >
-                            <Trash2 className="w-4 h-4 mr-2" />
+                            <Trash2 className="w-3.5 h-3.5 mr-1.5" />
                             {t.delete}
                           </Button>
+                          <div className="w-px h-4 bg-border/50" />
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            onClick={async () => {
+                              setIsPassManagementLoading(true);
+                              try {
+                                // Fetch passes with stock info from admin API
+                                const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                const passesResponse = await fetch(`${apiBase}/api/admin/passes/${event.id}`, {
+                                  credentials: 'include'
+                                });
+                                
+                                if (passesResponse.ok) {
+                                  const passesResult = await passesResponse.json();
+                                  const passesWithStock = (passesResult.passes || []).map((p: any) => ({
+                                    id: p.id,
+                                    name: p.name || '',
+                                    price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+                                    description: p.description || '',
+                                    is_primary: p.is_primary || false,
+                                    max_quantity: p.max_quantity,
+                                    sold_quantity: p.sold_quantity || 0,
+                                    remaining_quantity: p.remaining_quantity,
+                                    is_unlimited: p.is_unlimited || false,
+                                    is_active: p.is_active !== undefined ? p.is_active : true,
+                                    is_sold_out: p.is_sold_out || false
+                                  }));
+                                  setPassesForManagement(passesWithStock);
+                                  setEventForPassManagement(event);
+                                  setIsPassManagementDialogOpen(true);
+                                } else {
+                                  toast({
+                                    title: t.error,
+                                    description: language === 'en' ? 'Failed to load passes' : 'Échec du chargement des passes',
+                                    variant: "destructive",
+                                  });
+                                }
+                              } catch (error: any) {
+                                toast({
+                                  title: t.error,
+                                  description: error.message || (language === 'en' ? 'Failed to load passes' : 'Échec du chargement des passes'),
+                                  variant: "destructive",
+                                });
+                              } finally {
+                                setIsPassManagementLoading(false);
+                              }
+                            }}
+                            className="h-7 px-2.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground rounded-sm transition-all duration-200"
+                          >
+                            <Package className="w-3.5 h-3.5 mr-1.5" />
+                            {language === 'en' ? 'Pass Stock' : 'Stock Passes'}
+                          </Button>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
