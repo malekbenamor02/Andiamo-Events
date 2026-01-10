@@ -1715,10 +1715,10 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
 
   // Build passes summary
   const passesSummary = orderData.passes.map(p => `
-    <tr style="border-bottom: 1px solid rgba(0, 0, 0, 0.1);">
-      <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px;">${p.passType}</td>
-      <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: center;">${p.quantity}</td>
-      <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: right;">${p.price.toFixed(2)} TND</td>
+    <tr style="border-bottom: 1px solid rgba(226, 24, 54, 0.15);">
+      <td class="pass-text" style="padding: 12px 0; font-size: 15px; background-color: transparent !important; color: #000000 !important;">${p.passType}</td>
+      <td style="padding: 12px 0; color: #666666; font-size: 15px; text-align: center; background-color: transparent !important;">${p.quantity}</td>
+      <td class="pass-text" style="padding: 12px 0; font-size: 15px; text-align: right; background-color: transparent !important; color: #000000 !important;">${p.price.toFixed(2)} TND</td>
     </tr>
   `).join('');
 
@@ -1849,6 +1849,17 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
             border: 1px solid rgba(42, 42, 42, 0.8);
           }
         }
+        .passes-container {
+          background: transparent !important;
+          border: none !important;
+          padding: 0;
+          margin: 40px 0;
+        }
+        @media (prefers-color-scheme: dark) {
+          .passes-container {
+            background: transparent !important;
+          }
+        }
         .info-row {
           margin-bottom: 20px;
         }
@@ -1885,6 +1896,7 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
           width: 100%;
           border-collapse: collapse;
           margin: 20px 0;
+          background: transparent !important;
         }
         .passes-table th {
           text-align: left;
@@ -1895,15 +1907,34 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
           text-transform: uppercase;
           letter-spacing: 0.5px;
           border-bottom: 2px solid rgba(226, 24, 54, 0.3);
+          background: transparent !important;
         }
         .passes-table td {
           padding: 12px 0;
           color: #1A1A1A;
           font-size: 15px;
+          background: transparent !important;
         }
         @media (prefers-color-scheme: dark) {
           .passes-table td {
-            color: #FFFFFF;
+            color: #B0B0B0;
+            background: transparent !important;
+          }
+          .passes-table th {
+            background: transparent !important;
+          }
+          tr[style*="border-bottom"] {
+            border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+          }
+        }
+        .pass-text {
+          color: #000000 !important;
+          background-color: transparent !important;
+        }
+        @media (prefers-color-scheme: dark) {
+          .pass-text {
+            color: #FFFFFF !important;
+            background-color: transparent !important;
           }
         }
         .total-row {
@@ -2080,7 +2111,7 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
           </div>
 
           <!-- Passes Summary -->
-          <div class="order-info-block">
+          <div class="passes-container">
             <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Passes Purchased</h3>
             <table class="passes-table">
               <thead>
@@ -2093,8 +2124,8 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
               <tbody>
                 ${passesSummary}
                 <tr class="total-row">
-                  <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
-                  <td style="text-align: right;"><strong>${orderData.totalAmount.toFixed(2)} TND</strong></td>
+                  <td colspan="2" style="text-align: right; padding-right: 20px; background-color: transparent !important;"><strong>Total Amount Paid:</strong></td>
+                  <td style="text-align: right; background-color: transparent !important;"><strong>${orderData.totalAmount.toFixed(2)} TND</strong></td>
                 </tr>
               </tbody>
             </table>
