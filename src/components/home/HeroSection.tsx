@@ -381,7 +381,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
               <div 
                 className="absolute inset-0" 
                 style={{
-                  background: 'linear-gradient(rgba(0,0,0,0.65), rgba(0,0,0,0.75))'
+                  background: 'linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.3))'
                 }}
               />
             </div>
@@ -403,7 +403,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
       <div className="relative z-20 text-center max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="animate-fade-in-up">
           <h1 className="text-3xl sm:text-4xl md:text-7xl font-heading font-black mb-6 min-h-[1.2em] uppercase">
-            <span className="block text-gradient-neon animate-pulse-glow">
+            <span className="block text-white">
               <TypewriterText 
                 texts={typewriterTexts[language]}
                 speed={80}
