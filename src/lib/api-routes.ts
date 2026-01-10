@@ -47,6 +47,11 @@ export const API_ROUTES = {
   GENERATE_QR_CODE: '/api/generate-qr-code',
   GENERATE_TICKETS_FOR_ORDER: '/api/generate-tickets-for-order',
   
+  // Admin Order Management
+  ADMIN_SKIP_AMBASSADOR_CONFIRMATION: '/api/admin-skip-ambassador-confirmation',
+  ADMIN_APPROVE_ORDER: '/api/admin-approve-order',
+  ADMIN_RESEND_TICKET_EMAIL: '/api/admin-resend-ticket-email',
+  
   // Sales Settings
   UPDATE_SALES_SETTINGS: '/api/update-sales-settings',
   

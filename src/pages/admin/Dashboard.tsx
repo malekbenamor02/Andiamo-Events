@@ -28,7 +28,8 @@ import {
   Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
   PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
   Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Database,
-  Search, Filter, MoreVertical, ExternalLink, Ticket, TrendingDown, Percent, Target, Package, Pause
+  Search, Filter, MoreVertical, ExternalLink, Ticket, TrendingDown, Percent, Target, Package, Pause,
+  Zap, MailCheck, ArrowRight, Shield
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
@@ -383,6 +384,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [orderLogs, setOrderLogs] = useState<any[]>([]);
   const [performanceReports, setPerformanceReports] = useState<any>(null);
   const [salesSystemTab, setSalesSystemTab] = useState('cod-ambassador-orders');
+  
+  // Admin skip confirmation and resend email state
+  const [isSkipConfirmationDialogOpen, setIsSkipConfirmationDialogOpen] = useState(false);
+  const [skippingOrderId, setSkippingOrderId] = useState<string | null>(null);
+  const [skipReason, setSkipReason] = useState('');
+  const [skippingOrder, setSkippingOrder] = useState(false);
+  const [resendingTicketEmail, setResendingTicketEmail] = useState(false);
 
   // Export COD Ambassador Orders to Excel
   const exportOrdersToExcel = async () => {
@@ -2090,83 +2098,35 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         return;
       }
 
-      // Get full order details for ticket generation
-      const { data: fullOrder, error: fullOrderError } = await (supabase as any)
-        .from('orders')
-        .select('*')
-        .eq('id', orderId)
-        .single();
+      // Use backend endpoint for atomic approval (similar to skip flow)
+      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_APPROVE_ORDER, apiBase);
 
-      if (fullOrderError) throw fullOrderError;
-
-      // Update order status to PAID (this triggers ticket generation)
-      const { error } = await (supabase as any)
-        .from('orders')
-        .update({
-          status: 'PAID',
-          approved_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', orderId);
-
-      if (error) throw error;
-
-      // Generate tickets and send email with QR codes
-      let ticketsGenerated = false;
-      if (fullOrder.user_email) {
-        try {
-          
-          // Small delay to ensure database is ready
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Generate tickets (this will also send the email with QR codes)
-          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
-          const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
-          
-          if (ticketApiUrl) {
-            const ticketResponse = await fetch(ticketApiUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ orderId }),
-            });
-
-            const responseData = await ticketResponse.json();
-
-            if (ticketResponse.ok && responseData.success) {
-              ticketsGenerated = true;
-            } else {
-              console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
-              console.error('❌ Error details:', responseData);
-            }
-          }
-        } catch (ticketError) {
-          console.error('Error generating tickets:', ticketError);
-        }
+      if (!apiUrl) {
+        throw new Error('Invalid API URL configuration');
       }
 
-      // Log the approval
-      await (supabase as any)
-        .from('order_logs')
-        .insert({
-          order_id: orderId,
-          action: 'approved',
-          performed_by: null,
-          performed_by_type: 'admin',
-          details: { 
-            old_status: 'PENDING_ADMIN_APPROVAL',
-            new_status: 'PAID',
-            tickets_generated: ticketsGenerated,
-            admin_action: true 
-          }
-        });
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Important: includes cookies for admin auth
+        body: JSON.stringify({ orderId }),
+      });
 
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.details || data.error || (language === 'en' ? 'Failed to approve order' : 'Échec de l\'approbation de la commande'));
+      }
+
+      // Success
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
-        description: language === 'en' 
-          ? `Order approved and tickets ${ticketsGenerated ? 'sent' : 'generation failed'}`
-          : `Commande approuvée et billets ${ticketsGenerated ? 'envoyés' : 'génération échouée'}`,
+        description: language === 'en'
+          ? `Order approved successfully. Tickets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Sent' : 'Failed'}, SMS: ${data.smsSent ? 'Sent' : 'Failed'}`
+          : `Commande approuvée avec succès. Billets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Envoyé' : 'Échoué'}, SMS: ${data.smsSent ? 'Envoyé' : 'Échoué'}`,
         variant: 'default'
       });
       fetchAmbassadorSalesData();
@@ -2377,6 +2337,155 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         description: error.message || (language === 'en' ? 'Failed to reject order' : 'Échec du rejet de la commande'),
         variant: 'destructive'
       });
+    }
+  };
+
+  // Admin Skip Ambassador Confirmation - NEW FEATURE
+  const handleSkipAmbassadorConfirmation = async (orderId: string, reason?: string) => {
+    setSkippingOrder(true);
+    try {
+      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_SKIP_AMBASSADOR_CONFIRMATION, apiBase);
+      
+      if (!apiUrl) {
+        throw new Error('Invalid API URL configuration');
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Important: includes cookies for admin auth
+        body: JSON.stringify({
+          orderId,
+          reason: reason || undefined
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Handle rate limiting (429)
+        if (response.status === 429) {
+          toast({
+            title: language === 'en' ? 'Rate Limit Exceeded' : 'Limite de Taux Dépassée',
+            description: language === 'en' 
+              ? 'Too many requests. Please try again later.'
+              : 'Trop de demandes. Veuillez réessayer plus tard.',
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        // Handle validation errors
+        throw new Error(data.details || data.error || (language === 'en' ? 'Failed to skip ambassador confirmation' : 'Échec de la confirmation de l\'ambassadeur'));
+      }
+
+      // Success
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en'
+          ? `Order approved successfully. Tickets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Sent' : 'Failed'}, SMS: ${data.smsSent ? 'Sent' : 'Failed'}`
+          : `Commande approuvée avec succès. Billets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Envoyé' : 'Échoué'}, SMS: ${data.smsSent ? 'Envoyé' : 'Échoué'}`,
+        variant: 'default'
+      });
+
+      // Close dialog and refresh data
+      setIsSkipConfirmationDialogOpen(false);
+      setSkippingOrderId(null);
+      setSkipReason('');
+      fetchAmbassadorSalesData();
+      
+      if (selectedOrder?.id === orderId) {
+        setIsOrderDetailsOpen(false);
+      }
+    } catch (error: any) {
+      console.error('Error skipping ambassador confirmation:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to skip ambassador confirmation' : 'Échec de la confirmation de l\'ambassadeur'),
+        variant: 'destructive'
+      });
+    } finally {
+      setSkippingOrder(false);
+    }
+  };
+
+  // Admin Resend Ticket Email - NEW FEATURE
+  const handleResendTicketEmail = async (orderId: string) => {
+    setResendingTicketEmail(true);
+    try {
+      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_RESEND_TICKET_EMAIL, apiBase);
+      
+      if (!apiUrl) {
+        throw new Error('Invalid API URL configuration');
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Important: includes cookies for admin auth
+        body: JSON.stringify({ orderId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Handle rate limiting (429)
+        if (response.status === 429) {
+          toast({
+            title: language === 'en' ? 'Rate Limit Exceeded' : 'Limite de Taux Dépassée',
+            description: language === 'en' 
+              ? 'Too many resend requests for this order. Please wait before trying again (max 5 per hour).'
+              : 'Trop de demandes de renvoi pour cette commande. Veuillez attendre avant de réessayer (max 5 par heure).',
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        // Handle validation errors
+        const errorMessage = data.details || data.error || (language === 'en' ? 'Failed to resend ticket email' : 'Échec du renvoi de l\'email des billets');
+        throw new Error(errorMessage);
+      }
+
+      // Success
+      toast({
+        title: language === 'en' ? 'Email Resent' : 'Email Renvoyé',
+        description: language === 'en'
+          ? `Ticket email resent successfully. Tickets: ${data.ticketsCount || 0}`
+          : `Email de billet renvoyé avec succès. Billets: ${data.ticketsCount || 0}`,
+        variant: 'default'
+      });
+
+      // Refresh email logs if order details are open
+      if (selectedOrder?.id === orderId) {
+        // Refresh email delivery logs
+        setLoadingEmailLogs(true);
+        try {
+          const logsResponse = await apiFetch(`/api/email-delivery-logs/${orderId}`);
+          if (logsResponse.ok) {
+            const logsData = await logsResponse.json();
+            setEmailDeliveryLogs(logsData.logs || []);
+          }
+        } catch (logsError) {
+          console.error('Error fetching email logs:', logsError);
+        } finally {
+          setLoadingEmailLogs(false);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error resending ticket email:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to resend ticket email' : 'Échec du renvoi de l\'email des billets'),
+        variant: 'destructive'
+      });
+    } finally {
+      setResendingTicketEmail(false);
     }
   };
 
@@ -13189,8 +13298,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                             className={cn(
                                               "w-3 h-3 rounded-full cursor-help transition-opacity hover:opacity-80",
                                               order.payment_status === 'PAID' ? 'bg-green-500' :
-                                              order.payment_status === 'FAILED' ? 'bg-red-500' :
-                                              order.payment_status === 'REFUNDED' ? 'bg-gray-500' :
+                                              order.payment_status === 'FAILED' || order.payment_status === 'REFUNDED' ? 'bg-red-500' :
                                               'bg-yellow-500'
                                             )}
                                           />
@@ -13381,11 +13489,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     // Get passes array (already enriched in fetchAmbassadorSalesData)
                                     const passes = order.passes || [];
                                     
-                                    // Status color indicator
+                                    // Status color indicator - Normalized colors
                                     const getStatusColor = () => {
                                       if (order.status === 'PAID' || order.status === 'APPROVED') return 'bg-green-500';
                                       if (order.status === 'CANCELLED' || order.status === 'REJECTED') return 'bg-red-500';
-                                      if (order.status === 'PENDING_CASH' || order.status === 'PENDING_ADMIN_APPROVAL') return 'bg-yellow-500';
+                                      if (order.status === 'PENDING_ADMIN_APPROVAL') return 'bg-yellow-500';
+                                      if (order.status === 'PENDING_CASH') return 'bg-gray-500'; // Grey for pending cash
                                       return 'bg-gray-500';
                                     };
 
@@ -13507,71 +13616,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                           {new Date(order.created_at).toLocaleDateString(language)}
                                         </TableCell>
                                         <TableCell className="py-2 text-center">
-                                          <div className="flex gap-1 justify-center flex-wrap">
-                                            {order.status === 'PENDING_ADMIN_APPROVAL' && (
-                                              <>
-                                                <Button
-                                                  size="sm"
-                                                  variant="default"
-                                                  className="bg-green-600 hover:bg-green-700 text-xs px-2 py-1 h-auto"
-                                                  onClick={() => handleApproveCodAmbassadorOrder(order.id)}
-                                                >
-                                                  <CheckCircle className="w-3 h-3 mr-1" />
-                                                  {language === 'en' ? 'Approve' : 'Approuver'}
-                                                </Button>
-                                                <Button
-                                                  size="sm"
-                                                  variant="destructive"
-                                                  className="text-xs px-2 py-1 h-auto"
-                                                  onClick={() => {
-                                                    setRejectingOrderId(order.id);
-                                                    setIsRejectDialogOpen(true);
-                                                  }}
-                                                >
-                                                  <XCircle className="w-3 h-3 mr-1" />
-                                                  {language === 'en' ? 'Reject' : 'Rejeter'}
-                                                </Button>
-                                              </>
-                                            )}
-                                            {order.status === 'PENDING_CASH' && (
-                                              <Badge variant="outline" className="border-yellow-500/30 text-yellow-300 text-xs">
-                                                {language === 'en' ? 'Waiting for Ambassador' : 'En Attente de l\'Ambassadeur'}
-                                              </Badge>
-                                            )}
-                                            {(order.status === 'PAID' || order.status === 'APPROVED') && (
-                                              <Badge variant="outline" className="border-green-500/30 text-green-300 text-xs">
-                                                {language === 'en' ? 'Paid' : 'Payé'}
-                                              </Badge>
-                                            )}
-                                            {order.status === 'REJECTED' && (
-                                              <TooltipProvider>
-                                                <Tooltip>
-                                                  <TooltipTrigger asChild>
-                                                    <Info className="w-4 h-4 text-muted-foreground cursor-help" />
-                                                  </TooltipTrigger>
-                                                  <TooltipContent>
-                                                    <p className="max-w-xs text-xs">
-                                                      {language === 'en' ? 'Reason' : 'Raison'}: {order.rejection_reason || 'N/A'}
-                                                    </p>
-                                                  </TooltipContent>
-                                                </Tooltip>
-                                              </TooltipProvider>
-                                            )}
-                                            {order.status === 'CANCELLED' && order.cancellation_reason && (
-                                              <TooltipProvider>
-                                                <Tooltip>
-                                                  <TooltipTrigger asChild>
-                                                    <Info className="w-4 h-4 text-red-400/70 cursor-help hover:text-red-400 transition-colors" />
-                                                  </TooltipTrigger>
-                                                  <TooltipContent>
-                                                    <p className="max-w-xs text-xs">
-                                                      {order.cancellation_reason}
-                                                    </p>
-                                                  </TooltipContent>
-                                                </Tooltip>
-                                              </TooltipProvider>
-                                            )}
-                                          </div>
+                                          {/* View Details Button - All actions available in the details dialog */}
+                                          <Button
+                                            size="sm"
+                                            variant="default"
+                                            className="bg-black hover:bg-gray-800 text-white border-none text-xs px-2 py-1 h-auto"
+                                            onClick={() => {
+                                              setSelectedOrder(order);
+                                              setIsOrderDetailsOpen(true);
+                                            }}
+                                            title={language === 'en' ? 'View order details and manage actions' : 'Voir les détails de la commande et gérer les actions'}
+                                          >
+                                            <Eye className="w-3 h-3 mr-1 text-white" />
+                                            {language === 'en' ? 'View' : 'Voir'}
+                                          </Button>
                                         </TableCell>
                                       </TableRow>
                                     );
@@ -15371,12 +15429,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               <div
                                 className={cn(
                                   "w-3 h-3 rounded-full cursor-help",
-                                  selectedOrder.status === 'COMPLETED' ? 'bg-green-500' :
-                                  selectedOrder.status === 'APPROVED' ? 'bg-green-500' :
-                                  selectedOrder.status === 'REJECTED' ? 'bg-red-500' :
+                                  selectedOrder.status === 'PAID' || selectedOrder.status === 'APPROVED' || selectedOrder.status === 'COMPLETED' ? 'bg-green-500' :
+                                  selectedOrder.status === 'REJECTED' || selectedOrder.status?.includes('CANCELLED') ? 'bg-red-500' :
                                   selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'bg-yellow-500' :
-                                  selectedOrder.status?.includes('CANCELLED') ? 'bg-red-500' :
-                                  selectedOrder.status === 'ACCEPTED' ? 'bg-cyan-500' :
+                                  selectedOrder.status === 'PENDING_CASH' ? 'bg-gray-500' :
                                   'bg-gray-500'
                                 )}
                               />
@@ -15386,13 +15442,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-                        <Badge variant={
-                          selectedOrder.status === 'COMPLETED' ? 'default' :
-                          selectedOrder.status === 'APPROVED' ? 'default' :
-                          selectedOrder.status === 'REJECTED' ? 'destructive' :
-                          selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'secondary' :
-                          selectedOrder.status?.includes('CANCELLED') ? 'destructive' : 'secondary'
-                        }>
+                        <Badge 
+                          variant={
+                            selectedOrder.status === 'PAID' || selectedOrder.status === 'APPROVED' || selectedOrder.status === 'COMPLETED' ? 'default' :
+                            selectedOrder.status === 'REJECTED' || selectedOrder.status?.includes('CANCELLED') ? 'destructive' :
+                            selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'secondary' :
+                            selectedOrder.status === 'PENDING_CASH' ? 'secondary' :
+                            'secondary'
+                          }
+                          className={
+                            selectedOrder.status === 'PAID' || selectedOrder.status === 'APPROVED' || selectedOrder.status === 'COMPLETED' ? 'bg-green-500 text-white border-green-600' :
+                            selectedOrder.status === 'REJECTED' || selectedOrder.status?.includes('CANCELLED') ? 'bg-red-500 text-white border-red-600' :
+                            selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'bg-yellow-500 text-white border-yellow-600' :
+                            selectedOrder.status === 'PENDING_CASH' ? 'bg-gray-500 text-white border-gray-600' :
+                            ''
+                          }
+                        >
                           {selectedOrder.status}
                         </Badge>
                       </div>
@@ -16034,7 +16099,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
 
               {/* Admin Actions */}
-              {selectedOrder.source === 'ambassador_manual' && selectedOrder.payment_method === 'ambassador_cash' && (
+              {(selectedOrder.status === 'PENDING_CASH' || 
+                (selectedOrder.status === 'PENDING_ADMIN_APPROVAL' && selectedOrder.payment_method === 'ambassador_cash')) && (
                 <Card className="bg-primary/5 border-primary/20">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -16044,7 +16110,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-wrap gap-2">
-                      {/* COD Order Actions */}
+                      {/* Admin Approve/Reject - For PENDING_ADMIN_APPROVAL (after ambassador confirms cash) */}
                       {selectedOrder.payment_method === 'ambassador_cash' && selectedOrder.status === 'PENDING_ADMIN_APPROVAL' && (
                         <>
                           <Button
@@ -16058,17 +16124,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           </Button>
                           <Button
                             onClick={() => {
-                              // For COD ambassador orders, open dialog (reason required)
-                              if (selectedOrder.source === 'ambassador_manual' && selectedOrder.payment_method === 'ambassador_cash') {
-                                setRejectingOrderId(selectedOrder.id);
-                                setIsRejectDialogOpen(true);
-                              } else {
-                                // For other orders, use prompt (optional reason)
-                                const reason = prompt(language === 'en' ? 'Enter rejection reason (optional):' : 'Entrez la raison du rejet (optionnel):');
-                                if (reason !== null) {
-                                  handleRejectOrderAsAdmin(selectedOrder.id, reason || undefined);
-                                }
-                              }
+                              // Open reject dialog (reason required for ambassador cash orders)
+                              setRejectingOrderId(selectedOrder.id);
+                              setIsRejectDialogOpen(true);
                             }}
                             variant="destructive"
                             size="sm"
@@ -16078,6 +16136,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           </Button>
                         </>
                       )}
+                      
+                      {/* Admin Skip Ambassador Confirmation - Only for PENDING_CASH (before ambassador confirms) */}
+                      {selectedOrder.status === 'PENDING_CASH' && (
+                        <Button
+                          onClick={() => {
+                            setSkippingOrderId(selectedOrder.id);
+                            setIsSkipConfirmationDialogOpen(true);
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-600"
+                        >
+                          <Zap className="w-4 h-4 mr-2" />
+                          {language === 'en' ? 'Approve Without Ambassador' : 'Approuver sans Ambassadeur'}
+                        </Button>
+                      )}
+                      
                       {/* Approved COD orders can be completed */}
                       {selectedOrder.payment_method === 'ambassador_cash' && selectedOrder.status === 'APPROVED' && (
                         <Button
@@ -16089,6 +16164,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           {language === 'en' ? 'Complete Order' : 'Terminer la Commande'}
                         </Button>
                       )}
+                      
                       {/* Legacy status support (for backward compatibility) */}
                       {selectedOrder.status === 'PENDING' && selectedOrder.payment_method !== 'ambassador_cash' && (
                         <Button
@@ -16110,6 +16186,41 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           {language === 'en' ? 'Complete Order' : 'Terminer la Commande'}
                         </Button>
                       )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Admin Resend Ticket Email - NEW FEATURE */}
+              {selectedOrder.status === 'PAID' && (
+                <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <MailCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                      {language === 'en' ? 'Ticket Email Actions' : 'Actions Email de Billets'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        onClick={() => handleResendTicketEmail(selectedOrder.id)}
+                        variant="outline"
+                        size="sm"
+                        disabled={resendingTicketEmail}
+                        className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                      >
+                        <Send className={`w-4 h-4 mr-2 ${resendingTicketEmail ? 'animate-spin' : ''}`} />
+                        {resendingTicketEmail 
+                          ? (language === 'en' ? 'Resending...' : 'Renvoi en cours...')
+                          : (language === 'en' ? 'Resend Ticket Email' : 'Renvoyer l\'Email des Billets')
+                        }
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {language === 'en' 
+                          ? 'Resend ticket email using existing tickets (max 5 per hour per order)'
+                          : 'Renvoyer l\'email des billets en utilisant les billets existants (max 5 par heure par commande)'
+                        }
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -16176,57 +16287,80 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         </DialogContent>
       </Dialog>
 
-      {/* Reject Order Dialog */}
-      <Dialog open={isRejectDialogOpen} onOpenChange={(open) => {
-        setIsRejectDialogOpen(open);
+      {/* Admin Skip Ambassador Confirmation Dialog - NEW FEATURE */}
+      <Dialog open={isSkipConfirmationDialogOpen} onOpenChange={(open) => {
+        setIsSkipConfirmationDialogOpen(open);
         if (!open) {
-          setRejectingOrderId(null);
-          setRejectionReason('');
+          setSkippingOrderId(null);
+          setSkipReason('');
         }
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-orange-600" />
+              {language === 'en' ? 'Skip Ambassador Confirmation' : 'Ignorer la Confirmation de l\'Ambassadeur'}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <Alert variant="default" className="border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800">
+              <AlertCircle className="h-4 w-4 text-orange-600" />
+              <AlertDescription className="text-sm text-orange-900 dark:text-orange-200">
+                {language === 'en' 
+                  ? 'This action will approve the order and generate tickets WITHOUT waiting for ambassador cash confirmation. Use only when ambassador has confirmed payment separately.'
+                  : 'Cette action approuvera la commande et générera les billets SANS attendre la confirmation de l\'ambassadeur. Utilisez uniquement lorsque l\'ambassadeur a confirmé le paiement séparément.'
+                }
+              </AlertDescription>
+            </Alert>
             <div>
-              <Label>{language === 'en' ? 'Rejection Reason' : 'Raison du Rejet'} *</Label>
+              <Label htmlFor="skip-reason">
+                {language === 'en' ? 'Reason (Optional)' : 'Raison (Optionnel)'}
+              </Label>
               <Textarea
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder={language === 'en' ? 'Enter rejection reason...' : 'Entrez la raison du rejet...'}
-                rows={4}
-                required
+                id="skip-reason"
+                value={skipReason}
+                onChange={(e) => setSkipReason(e.target.value)}
+                placeholder={language === 'en' 
+                  ? 'Enter reason for skipping ambassador confirmation (optional)...' 
+                  : 'Entrez la raison de l\'ignorance de la confirmation de l\'ambassadeur (optionnel)...'
+                }
+                rows={3}
+                className="mt-1"
               />
             </div>
             <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
                 onClick={() => {
-                  setIsRejectDialogOpen(false);
-                  setRejectingOrderId(null);
-                  setRejectionReason('');
+                  setIsSkipConfirmationDialogOpen(false);
+                  setSkippingOrderId(null);
+                  setSkipReason('');
                 }}
+                disabled={skippingOrder}
               >
                 {language === 'en' ? 'Cancel' : 'Annuler'}
               </Button>
               <Button
-                variant="destructive"
+                variant="default"
                 onClick={() => {
-                  if (rejectingOrderId && rejectionReason.trim()) {
-                    handleRejectCodAmbassadorOrder(rejectingOrderId, rejectionReason.trim());
-                  } else {
-                    toast({
-                      title: language === 'en' ? 'Error' : 'Erreur',
-                      description: language === 'en' ? 'Rejection reason is required' : 'La raison du rejet est requise',
-                      variant: 'destructive'
-                    });
+                  if (skippingOrderId) {
+                    handleSkipAmbassadorConfirmation(skippingOrderId, skipReason.trim() || undefined);
                   }
                 }}
-                disabled={!rejectionReason.trim()}
+                disabled={skippingOrder || !skippingOrderId}
+                className="bg-orange-600 hover:bg-orange-700 text-white"
               >
-                <XCircle className="w-4 h-4 mr-2" />
-                {language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}
+                {skippingOrder ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    {language === 'en' ? 'Processing...' : 'Traitement...'}
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4 mr-2" />
+                    {language === 'en' ? 'Skip & Approve' : 'Ignorer et Approuver'}
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -16276,8 +16410,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 className={cn(
                                   "w-3 h-3 rounded-full cursor-help",
                                   selectedOnlineOrder.payment_status === 'PAID' ? 'bg-green-500' :
-                                  selectedOnlineOrder.payment_status === 'FAILED' ? 'bg-red-500' :
-                                  selectedOnlineOrder.payment_status === 'REFUNDED' ? 'bg-orange-500' :
+                                  selectedOnlineOrder.payment_status === 'FAILED' || selectedOnlineOrder.payment_status === 'REFUNDED' ? 'bg-red-500' :
                                   'bg-yellow-500'
                                 )}
                               />
@@ -16290,9 +16423,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         <Badge
                           variant={
                             selectedOnlineOrder.payment_status === 'PAID' ? 'default' :
-                            selectedOnlineOrder.payment_status === 'FAILED' ? 'destructive' :
-                            selectedOnlineOrder.payment_status === 'REFUNDED' ? 'secondary' :
+                            selectedOnlineOrder.payment_status === 'FAILED' || selectedOnlineOrder.payment_status === 'REFUNDED' ? 'destructive' :
                             'outline'
+                          }
+                          className={
+                            selectedOnlineOrder.payment_status === 'PAID' ? 'bg-green-500 text-white border-green-600' :
+                            selectedOnlineOrder.payment_status === 'FAILED' || selectedOnlineOrder.payment_status === 'REFUNDED' ? 'bg-red-500 text-white border-red-600' :
+                            ''
                           }
                         >
                           {selectedOnlineOrder.payment_status || 'PENDING_PAYMENT'}

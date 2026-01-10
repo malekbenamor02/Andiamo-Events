@@ -3,12 +3,22 @@ const nodemailer = require('nodemailer');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+// Import ipKeyGenerator helper for proper IPv6 handling
+// In express-rate-limit v8+, ipKeyGenerator is a named export
+const { ipKeyGenerator } = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const https = require('https');
 const querystring = require('querystring');
 const crypto = require('crypto');
+
+// Import centralized SMS template helpers
+const {
+  buildClientOrderConfirmationSMS,
+  buildAmbassadorNewOrderSMS,
+  buildClientAdminApprovalSMS
+} = require('./smsTemplates.cjs');
 
 // Load environment variables
 // On Vercel, environment variables are already available, but dotenv is safe to call
@@ -1902,45 +1912,55 @@ app.post('/api/send-order-confirmation-sms', logSecurityRequest, smsLimiter, asy
       qrCodeUrl = `${apiBase}/api/qr-codes/${order.qr_access_token}`;
     }
 
-    // Format passes for SMS
-    let passesText = '';
+    // Prepare passes array for SMS template helper
+    let passes = [];
     if (order.order_passes && order.order_passes.length > 0) {
-      passesText = order.order_passes.map(p => 
-        `${p.quantity}× ${p.pass_type} (${p.price} DT)`
-      ).join(' + ');
+      passes = order.order_passes.map(p => ({
+        pass_type: p.pass_type,
+        quantity: p.quantity || 1
+      }));
     } else {
       if (order.notes) {
         try {
           const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
           if (notesData.all_passes && Array.isArray(notesData.all_passes)) {
-            passesText = notesData.all_passes.map((p) => 
-              `${p.quantity}× ${p.passName || p.pass_type} (${p.price} DT)`
-            ).join(' + ');
+            passes = notesData.all_passes.map(p => ({
+              pass_type: p.passName || p.pass_type || 'Standard',
+              quantity: p.quantity || 1
+            }));
           }
         } catch (e) {
           // Ignore parse errors
         }
       }
-      if (!passesText) {
-        passesText = `${order.quantity}× ${order.pass_type || 'Standard'} (${(order.total_price / order.quantity).toFixed(0)} DT)`;
+      if (passes.length === 0) {
+        passes = [{
+          pass_type: order.pass_type || 'Standard',
+          quantity: order.quantity || 1
+        }];
       }
     }
 
-    const orderNumber = order.order_number ? `#${order.order_number}` : order.id.substring(0, 8).toUpperCase();
-    const ambassadorName = order.ambassadors.full_name;
-    const ambassadorPhone = order.ambassadors.phone;
-
-    // Build SMS message - Client order confirmation
-    let message = `Commande confirmée :\n\n`;
-    message += `ID:${orderNumber} confirmée\n`;
-    message += `Pass: ${passesText} | Total: ${order.total_price} DT\n`;
-    message += `Ambassadeur: ${ambassadorName} – ${ambassadorPhone}\n`;
-    message += `We Create Memories`;
-
-    // Add single QR code URL if available (shows all QR codes)
-    if (qrCodeUrl) {
-      message += `\n\n🎫 Vos QR Codes:\n${qrCodeUrl}`;
-      message += `\n\n⚠️ Ce lien ne peut être utilisé qu'une seule fois.`;
+    // Build SMS message using centralized template helper
+    let message;
+    try {
+      message = buildClientOrderConfirmationSMS({
+        order,
+        passes,
+        ambassador: order.ambassadors
+      });
+      
+      // Log SMS type and order ID for validation
+      console.log('📱 SMS Type: Client Order Confirmation');
+      console.log('📱 Order ID:', order.id);
+      console.log('📱 Recipient:', order.user_phone ? `${order.user_phone.substring(0, 3)}***` : 'NOT SET');
+    } catch (smsError) {
+      console.error('❌ Error building SMS message:', smsError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to build SMS message',
+        details: smsError.message
+      });
     }
 
     // Send SMS using unified helper
@@ -2024,38 +2044,55 @@ app.post('/api/send-ambassador-order-sms', smsLimiter, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Order does not have an ambassador assigned' });
     }
 
-    // Format passes for SMS
-    let passesText = '';
+    // Prepare passes array for SMS template helper
+    let passes = [];
     if (order.order_passes && order.order_passes.length > 0) {
-      passesText = order.order_passes.map(p => 
-        `${p.quantity}× ${p.pass_type} (${p.price} DT)`
-      ).join(' + ');
+      passes = order.order_passes.map(p => ({
+        pass_type: p.pass_type,
+        quantity: p.quantity || 1
+      }));
     } else {
       if (order.notes) {
         try {
           const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
           if (notesData.all_passes && Array.isArray(notesData.all_passes)) {
-            passesText = notesData.all_passes.map((p) => 
-              `${p.quantity}× ${p.passName || p.pass_type} (${p.price} DT)`
-            ).join(' + ');
+            passes = notesData.all_passes.map(p => ({
+              pass_type: p.passName || p.pass_type || 'Standard',
+              quantity: p.quantity || 1
+            }));
           }
         } catch (e) {
           // Ignore parse errors
         }
       }
-      if (!passesText) {
-        passesText = `${order.quantity}× ${order.pass_type || 'Standard'} (${(order.total_price / order.quantity).toFixed(0)} DT)`;
+      if (passes.length === 0) {
+        passes = [{
+          pass_type: order.pass_type || 'Standard',
+          quantity: order.quantity || 1
+        }];
       }
     }
 
-    const orderNumber = order.order_number ? `#${order.order_number}` : order.id.substring(0, 8).toUpperCase();
-    const clientName = order.user_name;
-    const clientPhone = order.user_phone;
-
-    // Build SMS message - Ambassador new order assignment
-    let message = `Nouvelle cmd ${orderNumber}\n`;
-    message += `Pass: ${passesText} | Total: ${order.total_price} DT\n`;
-    message += `Client: ${clientName} – ${clientPhone}`;
+    // Build SMS message using centralized template helper
+    let message;
+    try {
+      message = buildAmbassadorNewOrderSMS({
+        order,
+        passes
+      });
+      
+      // Log SMS type and order ID for validation
+      console.log('📱 SMS Type: Ambassador New Order');
+      console.log('📱 Order ID:', order.id);
+      console.log('📱 Recipient:', order.ambassadors?.phone ? `${order.ambassadors.phone.substring(0, 3)}***` : 'NOT SET');
+    } catch (smsError) {
+      console.error('❌ Error building SMS message:', smsError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to build SMS message',
+        details: smsError.message
+      });
+    }
 
     // Send SMS to ambassador using unified helper
     const formattedNumber = formatPhoneNumber(order.ambassadors.phone);
@@ -5278,6 +5315,484 @@ app.post('/api/generate-qr-code', async (req, res) => {
 });
 
 /**
+ * Helper function to build ticket email HTML template
+ * Reusable by both generateTicketsAndSendEmail and resend ticket email
+ */
+function buildTicketEmailHtml(order, tickets, passes, orderId) {
+  const orderIdShort = orderId.substring(0, 8).toUpperCase();
+  const supportUrl = `${process.env.VITE_API_URL || process.env.API_URL || 'https://andiamoevents.com'}/contact`;
+  
+  // Group tickets by pass type
+  const ticketsByPassType = new Map();
+  tickets.forEach(ticket => {
+    const pass = passes.find(p => p.id === ticket.order_pass_id);
+    if (pass) {
+      const key = pass.pass_type;
+      if (!ticketsByPassType.has(key)) {
+        ticketsByPassType.set(key, []);
+      }
+      ticketsByPassType.get(key).push({ ...ticket, passType: key });
+    }
+  });
+
+  // Build tickets HTML grouped by pass type
+  const ticketsHtml = Array.from(ticketsByPassType.entries())
+    .map(([passType, passTickets]) => {
+      const ticketsList = passTickets
+        .filter(ticket => ticket.qr_code_url)
+        .map((ticket, index) => {
+          return `
+            <div style="margin: 20px 0; padding: 20px; background: #E8E8E8; border-radius: 8px; text-align: center; border: 1px solid rgba(0, 0, 0, 0.1);">
+              <h4 style="margin: 0 0 15px 0; color: #E21836; font-size: 16px; font-weight: 600;">${passType} - Ticket ${index + 1}</h4>
+              <img src="${ticket.qr_code_url}" alt="QR Code for ${passType}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid rgba(226, 24, 54, 0.3); display: block; margin: 0 auto;" />
+              <p style="margin: 10px 0 0 0; font-size: 12px; color: #666666; font-family: 'Courier New', monospace;">Token: ${ticket.secure_token.substring(0, 8)}...</p>
+            </div>
+          `;
+        })
+        .join('');
+
+      return `
+        <div style="margin: 30px 0;">
+          <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">${passType} Tickets (${passTickets.filter(t => t.qr_code_url).length})</h3>
+          ${ticketsList}
+        </div>
+      `;
+    })
+    .join('');
+
+  // Build passes summary
+  const passesSummary = passes.map(p => ({
+    passType: p.pass_type,
+    quantity: p.quantity,
+    price: parseFloat(p.price)
+  }));
+
+  // Build passes summary HTML
+  const passesSummaryHtml = passesSummary.map(p => `
+    <tr style="border-bottom: 1px solid rgba(0, 0, 0, 0.1);">
+      <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px;">${p.passType}</td>
+      <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: center;">${p.quantity}</td>
+      <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: right;">${p.price.toFixed(2)} TND</td>
+    </tr>
+  `).join('');
+
+  // Return the full email HTML (using the same template as generateTicketsAndSendEmail)
+  // This is the same template from lines 5687-6098 in the original function
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
+      <title>Your Digital Tickets - Andiamo Events</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+          line-height: 1.6; 
+          color: #1A1A1A; 
+          background: #FFFFFF;
+          padding: 0;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+        @media (prefers-color-scheme: dark) {
+          body {
+            color: #FFFFFF;
+            background: #1A1A1A;
+          }
+        }
+        a {
+          color: #E21836 !important;
+          text-decoration: none;
+        }
+        .email-wrapper {
+          max-width: 600px;
+          margin: 0 auto;
+          background: #FFFFFF;
+        }
+        @media (prefers-color-scheme: dark) {
+          .email-wrapper {
+            background: #1A1A1A;
+          }
+        }
+        .content-card {
+          background: #F5F5F5;
+          margin: 0 20px 30px;
+          border-radius: 12px;
+          padding: 50px 40px;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .content-card {
+            background: #1F1F1F;
+            border: 1px solid rgba(42, 42, 42, 0.5);
+          }
+        }
+        .title-section {
+          text-align: center;
+          margin-bottom: 40px;
+          padding-bottom: 30px;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .title-section {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          }
+        }
+        .title {
+          font-size: 32px;
+          font-weight: 700;
+          color: #1A1A1A;
+          margin-bottom: 12px;
+          letter-spacing: -0.5px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .title {
+            color: #FFFFFF;
+          }
+        }
+        .subtitle {
+          font-size: 16px;
+          color: #666666;
+          font-weight: 400;
+        }
+        @media (prefers-color-scheme: dark) {
+          .subtitle {
+            color: #B0B0B0;
+          }
+        }
+        .greeting {
+          font-size: 18px;
+          color: #1A1A1A;
+          margin-bottom: 30px;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .greeting {
+            color: #FFFFFF;
+          }
+        }
+        .greeting strong {
+          color: #E21836;
+          font-weight: 600;
+        }
+        .message {
+          font-size: 16px;
+          color: #666666;
+          margin-bottom: 25px;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .message {
+            color: #B0B0B0;
+          }
+        }
+        .order-info-block {
+          background: #E8E8E8;
+          border: 1px solid rgba(0, 0, 0, 0.15);
+          border-radius: 8px;
+          padding: 30px;
+          margin: 40px 0;
+        }
+        @media (prefers-color-scheme: dark) {
+          .order-info-block {
+            background: #252525;
+            border: 1px solid rgba(42, 42, 42, 0.8);
+          }
+        }
+        .info-row {
+          margin-bottom: 20px;
+        }
+        .info-row:last-child {
+          margin-bottom: 0;
+        }
+        .info-label {
+          font-size: 11px;
+          color: #999999;
+          text-transform: uppercase;
+          letter-spacing: 1.2px;
+          margin-bottom: 10px;
+          font-weight: 600;
+        }
+        @media (prefers-color-scheme: dark) {
+          .info-label {
+            color: #6B6B6B;
+          }
+        }
+        .info-value {
+          font-family: 'Courier New', 'Monaco', monospace;
+          font-size: 18px;
+          color: #1A1A1A;
+          font-weight: 500;
+          word-break: break-all;
+          letter-spacing: 0.5px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .info-value {
+            color: #FFFFFF;
+          }
+        }
+        .passes-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 20px 0;
+        }
+        .passes-table th {
+          text-align: left;
+          padding: 12px 0;
+          color: #E21836;
+          font-weight: 600;
+          font-size: 14px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          border-bottom: 2px solid rgba(226, 24, 54, 0.3);
+        }
+        .passes-table td {
+          padding: 12px 0;
+          color: #1A1A1A;
+          font-size: 15px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .passes-table td {
+            color: #FFFFFF;
+          }
+        }
+        .total-row {
+          border-top: 2px solid rgba(226, 24, 54, 0.3);
+          margin-top: 10px;
+          padding-top: 15px;
+        }
+        .total-row td {
+          font-weight: 700;
+          font-size: 18px;
+          color: #E21836;
+          padding-top: 15px;
+        }
+        .tickets-section {
+          background: #E8E8E8;
+          border: 1px solid rgba(0, 0, 0, 0.15);
+          border-radius: 8px;
+          padding: 30px;
+          margin: 40px 0;
+        }
+        @media (prefers-color-scheme: dark) {
+          .tickets-section {
+            background: #252525;
+            border: 1px solid rgba(42, 42, 42, 0.8);
+          }
+        }
+        .support-section {
+          background: #E8E8E8;
+          border-left: 3px solid rgba(226, 24, 54, 0.3);
+          padding: 20px 25px;
+          margin: 35px 0;
+          border-radius: 4px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .support-section {
+            background: #252525;
+          }
+        }
+        .support-text {
+          font-size: 14px;
+          color: #666666;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .support-text {
+            color: #B0B0B0;
+          }
+        }
+        .support-email {
+          color: #E21836 !important;
+          text-decoration: none;
+          font-weight: 500;
+        }
+        .closing-section {
+          text-align: center;
+          margin: 50px 0 40px;
+          padding-top: 40px;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .closing-section {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+          }
+        }
+        .slogan {
+          font-size: 24px;
+          font-style: italic;
+          color: #E21836;
+          font-weight: 300;
+          letter-spacing: 1px;
+          margin-bottom: 30px;
+        }
+        .signature {
+          font-size: 16px;
+          color: #666666;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .signature {
+            color: #B0B0B0;
+          }
+        }
+        .footer {
+          margin-top: 50px;
+          padding: 40px 20px 30px;
+          text-align: center;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer {
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+          }
+        }
+        .footer-text {
+          font-size: 12px;
+          color: #999999;
+          margin-bottom: 20px;
+          line-height: 1.6;
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer-text {
+            color: #6B6B6B;
+          }
+        }
+        .footer-links {
+          margin: 15px auto 0;
+          text-align: center;
+        }
+        .footer-link {
+          color: #999999;
+          text-decoration: none;
+          font-size: 13px;
+          margin: 0 8px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer-link {
+            color: #6B6B6B;
+          }
+        }
+        .footer-link:hover {
+          color: #E21836 !important;
+        }
+        @media only screen and (max-width: 600px) {
+          .content-card {
+            margin: 0 15px 20px;
+            padding: 35px 25px;
+          }
+          .title {
+            font-size: 26px;
+          }
+          .order-info-block {
+            padding: 25px 20px;
+          }
+          .tickets-section {
+            padding: 25px 20px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="email-wrapper">
+        <div class="content-card">
+          <div class="title-section">
+            <h1 class="title">Your Tickets Are Ready</h1>
+            <p class="subtitle">Order Confirmation - Andiamo Events</p>
+          </div>
+          
+          <p class="greeting">Dear <strong>${order.user_name || 'Valued Customer'}</strong>,</p>
+          
+          <p class="message">
+            We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.
+          </p>
+          
+          <div class="order-info-block">
+            <div class="info-row">
+              <div class="info-label">Order ID</div>
+              <div class="info-value">${orderIdShort}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Event</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.name || 'Event'}</div>
+            </div>
+            ${order.ambassadors ? `
+            <div class="info-row">
+              <div class="info-label">Delivered by</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.ambassadors.full_name}</div>
+            </div>
+            ` : ''}
+          </div>
+
+          <div class="order-info-block">
+            <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Passes Purchased</h3>
+            <table class="passes-table">
+              <thead>
+                <tr>
+                  <th>Pass Type</th>
+                  <th style="text-align: center;">Quantity</th>
+                  <th style="text-align: right;">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${passesSummaryHtml}
+                <tr class="total-row">
+                  <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
+                  <td style="text-align: right;"><strong>${order.total_price.toFixed(2)} TND</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="tickets-section">
+            <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Your Digital Tickets</h3>
+            <p class="message" style="margin-bottom: 25px;">
+              Please present these QR codes at the event entrance. Each ticket has a unique QR code for verification.
+            </p>
+            ${ticketsHtml}
+          </div>
+
+          <div class="order-info-block">
+            <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">Payment Confirmation</h3>
+            <p class="message" style="margin: 0;">
+              Your payment of <strong style="color: #E21836;">${order.total_price.toFixed(2)} TND</strong> has been successfully received${order.ambassadors ? ` by our ambassador <strong>${order.ambassadors.full_name}</strong>` : ''}. Your order is now fully validated and confirmed.
+            </p>
+          </div>
+          
+          <div class="support-section">
+            <p class="support-text">
+              Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a> or visit <a href="${supportUrl}" class="support-email">our support page</a>.
+            </p>
+          </div>
+          
+          <div class="closing-section">
+            <p class="slogan">We Create Memories</p>
+            <p class="signature">
+              Best regards,<br>
+              The Andiamo Events Team
+            </p>
+          </div>
+        </div>
+        
+        <div class="footer">
+          <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+          <div class="footer-links">
+            <a href="https://www.instagram.com/malek.bamor/" target="_blank" class="footer-link">Instagram</a>
+            <span style="color: #999999;">•</span>
+            <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
  * Helper function to generate tickets and send email for an order
  * This can be called from webhook or manual endpoint
  */
@@ -5378,8 +5893,9 @@ async function generateTicketsAndSendEmail(orderId) {
       userPhone: order.user_phone ? `${order.user_phone.substring(0, 3)}***` : 'NOT SET'
     });
 
-    // Check if order is in the correct status (COMPLETED for COD, PAID for online or ambassador_manual)
+    // Check if order is in the correct status (COMPLETED for COD, PAID for online or ambassador_manual, or PAID for any source after admin skip)
     const isPaidStatus = 
+      order.status === 'PAID' || // Accept PAID status for any source (admin skip sets all orders to PAID)
       (order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED')) ||
       (order.source === 'platform_online' && order.status === 'PAID') ||
       (order.source === 'ambassador_manual' && order.status === 'PAID');
@@ -5419,7 +5935,50 @@ async function generateTicketsAndSendEmail(orderId) {
 
     if (existingTickets && existingTickets.length > 0) {
       console.log('⚠️ Tickets already exist for this order:', existingTickets.length);
-      return { success: true, message: 'Tickets already generated', ticketsCount: existingTickets.length };
+      // Check if email/SMS were previously sent by checking logs
+      let previousEmailSent = false;
+      let previousSmsSent = false;
+      
+      try {
+        const { data: emailLogs } = await dbClient
+          .from('email_delivery_logs')
+          .select('status')
+          .eq('order_id', orderId)
+          .eq('status', 'sent')
+          .limit(1);
+        previousEmailSent = emailLogs && emailLogs.length > 0;
+      } catch (logErr) {
+        console.warn('⚠️ Could not check email delivery logs:', logErr);
+      }
+      
+      try {
+        const { data: smsLogs } = await dbClient
+          .from('sms_logs')
+          .select('status')
+          .eq('status', 'sent')
+          .limit(1);
+        // Note: sms_logs doesn't have order_id, so we check by phone number
+        if (order.user_phone) {
+          const { data: smsLogsByPhone } = await dbClient
+            .from('sms_logs')
+            .select('status')
+            .eq('phone_number', order.user_phone)
+            .eq('status', 'sent')
+            .order('sent_at', { ascending: false })
+            .limit(1);
+          previousSmsSent = smsLogsByPhone && smsLogsByPhone.length > 0;
+        }
+      } catch (logErr) {
+        console.warn('⚠️ Could not check SMS logs:', logErr);
+      }
+      
+      return { 
+        success: true, 
+        message: 'Tickets already generated', 
+        ticketsCount: existingTickets.length,
+        emailSent: previousEmailSent,
+        smsSent: previousSmsSent
+      };
     }
     console.log('✅ No existing tickets found, proceeding with generation');
 
@@ -6209,13 +6768,21 @@ async function generateTicketsAndSendEmail(orderId) {
     if (order.user_phone && WINSMS_API_KEY) {
       try {
         
-        // Build SMS message with new format
-        const orderIdShort = orderId.substring(0, 8).toUpperCase(); // First 8 characters of order ID (e.g., 98C1E3AC)
-        
-        let smsMessage = `Paiement confirmé\n`;
-        smsMessage += `ID: ${orderIdShort} | Total: ${order.total_price} DT\n`;
-        smsMessage += `Merci pour votre achat. Billets envoyés par email.\n`;
-        smsMessage += `We Create Memories`;
+        // Build SMS message using centralized template helper
+        let smsMessage;
+        try {
+          smsMessage = buildClientAdminApprovalSMS({
+            order
+          });
+          
+          // Log SMS type and order ID for validation
+          console.log('📱 SMS Type: Client Admin Approval');
+          console.log('📱 Order ID:', orderId);
+          console.log('📱 Recipient:', order.user_phone ? `${order.user_phone.substring(0, 3)}***` : 'NOT SET');
+        } catch (smsError) {
+          console.error('❌ Error building SMS message:', smsError);
+          throw new Error(`Failed to build SMS message: ${smsError.message}`);
+        }
 
         // Format phone number for logging (sendSingleSms will format it again)
         const formattedPhonePreview = formatPhoneNumber(order.user_phone);
@@ -6603,8 +7170,9 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
     }
 
     // Security: Verify order is in correct status (PAID) before generating tickets
-    // Only allow ticket generation for PAID orders (or COMPLETED for COD, or PAID for ambassador_manual)
+    // Accept PAID status for any source (admin can approve orders from any source)
     const isPaidStatus = 
+      order.status === 'PAID' || // Accept PAID status for any source (admin approval sets all orders to PAID)
       (order.source === 'platform_cod' && (order.status === 'COMPLETED' || order.status === 'MANUAL_COMPLETED')) ||
       (order.source === 'platform_online' && order.status === 'PAID') ||
       (order.source === 'ambassador_manual' && order.status === 'PAID');
@@ -6689,6 +7257,768 @@ app.post('/api/generate-tickets-for-order', logSecurityRequest, validateOrigin, 
     res.status(500).json({ 
       error: 'Failed to generate tickets', 
       details: error.message 
+    });
+  }
+});
+
+// ============================================
+// ADMIN: Skip Ambassador Confirmation
+// ============================================
+// POST /api/admin-skip-ambassador-confirmation - Admin-only endpoint to approve order without ambassador confirmation
+// This bypasses the normal flow where ambassador must confirm cash before admin can approve
+app.post('/api/admin-skip-ambassador-confirmation', requireAdminAuth, logSecurityRequest, async (req, res) => {
+  console.log('\n🔐 ============================================');
+  console.log('🔐 ADMIN: Skip Ambassador Confirmation');
+  console.log('🔐 ============================================');
+  
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId, reason } = req.body;
+    const adminId = req.admin?.id;
+    const adminEmail = req.admin?.email;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    console.log('🔐 Request details:', {
+      orderId,
+      adminId,
+      adminEmail: adminEmail ? `${adminEmail.substring(0, 3)}***` : 'NOT SET',
+      reason: reason || 'Not provided'
+    });
+
+    // Fetch order with conditional update (idempotency)
+    const dbClient = supabaseService || supabase;
+    
+    // Step 1: Verify order exists and is in valid status
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .select('id, status, source, payment_method, user_email, user_phone, total_price')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      console.error('❌ Order not found:', orderId);
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    console.log('🔐 Order status check:', {
+      orderId: order.id,
+      currentStatus: order.status,
+      source: order.source,
+      paymentMethod: order.payment_method
+    });
+
+    // Step 2: Validate order status (must be PENDING_CASH or PENDING_ADMIN_APPROVAL)
+    const validStatuses = ['PENDING_CASH', 'PENDING_ADMIN_APPROVAL'];
+    if (!validStatuses.includes(order.status)) {
+      console.error('❌ Invalid order status for skip confirmation:', order.status);
+      
+      // Log security event
+      try {
+        const securityLogClient = supabaseService || supabase;
+        await securityLogClient.from('security_audit_logs').insert({
+          event_type: 'invalid_status_transition',
+          endpoint: '/api/admin-skip-ambassador-confirmation',
+          user_id: adminId,
+          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.path,
+          details: {
+            reason: 'Order status is not PENDING_CASH or PENDING_ADMIN_APPROVAL',
+            order_id: orderId,
+            current_status: order.status,
+            attempted_action: 'skip_ambassador_confirmation'
+          },
+          severity: 'medium'
+        });
+      } catch (logError) {
+        console.error('Failed to log security event:', logError);
+      }
+      
+      return res.status(400).json({
+        error: 'Invalid order status',
+        details: `Order must be in PENDING_CASH or PENDING_ADMIN_APPROVAL status. Current status: ${order.status}`
+      });
+    }
+
+    // Step 3: Update order status to PAID (conditional update for idempotency)
+    const oldStatus = order.status;
+    const { data: updatedOrder, error: updateError } = await dbClient
+      .from('orders')
+      .update({
+        status: 'PAID',
+        payment_status: 'PAID',
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .in('status', validStatuses) // Only update if still in valid status (idempotency)
+      .select('id, status')
+      .single();
+
+    if (updateError || !updatedOrder) {
+      // Check if order was already updated (idempotency check)
+      const { data: checkOrder } = await dbClient
+        .from('orders')
+        .select('id, status')
+        .eq('id', orderId)
+        .single();
+
+      if (checkOrder && checkOrder.status === 'PAID') {
+        console.log('⚠️ Order already PAID (idempotent call)');
+        
+        // Check if tickets already exist
+        const { data: existingTickets } = await dbClient
+          .from('tickets')
+          .select('id')
+          .eq('order_id', orderId)
+          .limit(1);
+
+        // Log the duplicate attempt
+        await dbClient.from('order_logs').insert({
+          order_id: orderId,
+          action: 'admin_skip_confirmation_duplicate',
+          performed_by: adminId,
+          performed_by_type: 'admin',
+          details: {
+            old_status: oldStatus,
+            new_status: 'PAID',
+            tickets_already_exist: existingTickets && existingTickets.length > 0,
+            reason: reason || 'Not provided',
+            admin_email: adminEmail
+          }
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: 'Order already approved (idempotent call)',
+          orderId: orderId,
+          status: 'PAID',
+          ticketsExist: existingTickets && existingTickets.length > 0
+        });
+      }
+
+      console.error('❌ Error updating order status:', updateError);
+      return res.status(500).json({
+        error: 'Failed to update order status',
+        details: updateError?.message || 'Unknown error'
+      });
+    }
+
+    console.log('✅ Order status updated:', {
+      orderId: updatedOrder.id,
+      oldStatus,
+      newStatus: updatedOrder.status
+    });
+
+    // Step 4: Generate tickets and send email/SMS (idempotent function)
+    let ticketResult = null;
+    try {
+      console.log('🔐 Calling generateTicketsAndSendEmail...');
+      ticketResult = await generateTicketsAndSendEmail(orderId);
+      console.log('✅ Tickets generated:', {
+        success: ticketResult.success,
+        ticketsCount: ticketResult.ticketsCount,
+        emailSent: ticketResult.emailSent,
+        smsSent: ticketResult.smsSent
+      });
+    } catch (ticketError) {
+      console.error('❌ Error generating tickets:', ticketError);
+      // Don't fail the request - order is already PAID, tickets can be generated later
+      ticketResult = {
+        success: false,
+        error: ticketError.message
+      };
+    }
+
+    // Step 5: Log to order_logs (audit trail)
+    try {
+      await dbClient.from('order_logs').insert({
+        order_id: orderId,
+        action: 'admin_skip_confirmation',
+        performed_by: adminId,
+        performed_by_type: 'admin',
+        details: {
+          old_status: oldStatus,
+          new_status: 'PAID',
+          skipped_ambassador_confirmation: true,
+          tickets_generated: ticketResult?.success || false,
+          tickets_count: ticketResult?.ticketsCount || 0,
+          email_sent: ticketResult?.emailSent || false,
+          sms_sent: ticketResult?.smsSent || false,
+          reason: reason || 'Not provided',
+          admin_email: adminEmail,
+          admin_action: true
+        }
+      });
+      console.log('✅ Audit log created');
+    } catch (logError) {
+      console.error('❌ Error creating audit log:', logError);
+      // Don't fail the request if logging fails
+    }
+
+    console.log('🔐 ============================================');
+    console.log('🔐 ADMIN: Skip Confirmation Completed');
+    console.log('🔐 ============================================\n');
+
+    res.status(200).json({
+      success: true,
+      message: 'Order approved successfully (ambassador confirmation skipped)',
+      orderId: orderId,
+      oldStatus,
+      newStatus: 'PAID',
+      ticketsGenerated: ticketResult?.success || false,
+      ticketsCount: ticketResult?.ticketsCount || 0,
+      emailSent: ticketResult?.emailSent || false,
+      smsSent: ticketResult?.smsSent || false,
+      ticketError: ticketResult?.error || null
+    });
+
+  } catch (error) {
+    console.error('\n❌ ============================================');
+    console.error('❌ ADMIN: Skip Confirmation Error');
+    console.error('❌ ============================================');
+    console.error('❌ Error:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    console.error('❌ ============================================\n');
+
+    res.status(500).json({
+      error: 'Failed to skip ambassador confirmation',
+      details: error.message
+    });
+  }
+});
+
+// ============================================
+// ADMIN: Approve Order (After Ambassador Confirmation)
+// ============================================
+// POST /api/admin-approve-order - Admin-only endpoint to approve order after ambassador confirms cash
+// This is the normal approval flow: PENDING_ADMIN_APPROVAL → PAID
+app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async (req, res) => {
+  console.log('\n✅ ============================================');
+  console.log('✅ ADMIN: Approve Order (After Ambassador Confirmation)');
+  console.log('✅ ============================================');
+
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId } = req.body;
+    const adminId = req.admin?.id;
+    const adminEmail = req.admin?.email;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    console.log('✅ Request details:', {
+      orderId,
+      adminId,
+      adminEmail: adminEmail ? `${adminEmail.substring(0, 3)}***` : 'NOT SET'
+    });
+
+    const dbClient = supabaseService || supabase;
+
+    // Step 1: Verify order exists and is in valid status
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .select('id, status, source, payment_method, user_email, user_phone, total_price')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      console.error('❌ Order not found:', orderId);
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    console.log('✅ Order status check:', {
+      orderId: order.id,
+      currentStatus: order.status,
+      source: order.source,
+      paymentMethod: order.payment_method
+    });
+
+    // Step 2: Validate order status (must be PENDING_ADMIN_APPROVAL)
+    if (order.status !== 'PENDING_ADMIN_APPROVAL') {
+      console.error('❌ Invalid order status for approval:', order.status);
+
+      // Log security event
+      try {
+        const securityLogClient = supabaseService || supabase;
+        await securityLogClient.from('security_audit_logs').insert({
+          event_type: 'invalid_status_transition',
+          endpoint: '/api/admin-approve-order',
+          user_id: adminId,
+          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.path,
+          details: {
+            reason: 'Order status is not PENDING_ADMIN_APPROVAL',
+            order_id: orderId,
+            current_status: order.status,
+            attempted_action: 'approve_order'
+          },
+          severity: 'medium'
+        });
+      } catch (logError) {
+        console.error('Failed to log security event:', logError);
+      }
+
+      return res.status(400).json({
+        error: 'Invalid order status',
+        details: `Order must be in PENDING_ADMIN_APPROVAL status. Current status: ${order.status}`
+      });
+    }
+
+    // Step 3: Update order status to PAID (conditional update for idempotency)
+    const oldStatus = order.status;
+    const { data: updatedOrder, error: updateError } = await dbClient
+      .from('orders')
+      .update({
+        status: 'PAID',
+        payment_status: 'PAID',
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .eq('status', 'PENDING_ADMIN_APPROVAL') // Only update if still in PENDING_ADMIN_APPROVAL (idempotency)
+      .select('id, status')
+      .single();
+
+    if (updateError || !updatedOrder) {
+      // Check if order was already updated (idempotency check)
+      const { data: checkOrder } = await dbClient
+        .from('orders')
+        .select('id, status')
+        .eq('id', orderId)
+        .single();
+
+      if (checkOrder && checkOrder.status === 'PAID') {
+        console.log('⚠️ Order already PAID (idempotent call)');
+
+        // Check if tickets already exist
+        const { data: existingTickets } = await dbClient
+          .from('tickets')
+          .select('id')
+          .eq('order_id', orderId)
+          .limit(1);
+
+        // Log the duplicate attempt
+        await dbClient.from('order_logs').insert({
+          order_id: orderId,
+          action: 'admin_approve_duplicate',
+          performed_by: adminId,
+          performed_by_type: 'admin',
+          details: {
+            old_status: oldStatus,
+            new_status: 'PAID',
+            tickets_already_exist: existingTickets && existingTickets.length > 0,
+            admin_email: adminEmail
+          }
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: 'Order already approved (idempotent call)',
+          orderId: orderId,
+          status: 'PAID',
+          ticketsExist: existingTickets && existingTickets.length > 0
+        });
+      }
+
+      console.error('❌ Error updating order status:', updateError);
+      return res.status(500).json({
+        error: 'Failed to update order status',
+        details: updateError?.message || 'Unknown error'
+      });
+    }
+
+    console.log('✅ Order status updated:', {
+      orderId: updatedOrder.id,
+      oldStatus,
+      newStatus: updatedOrder.status
+    });
+
+    // Step 4: Generate tickets and send email/SMS (idempotent function)
+    let ticketResult = null;
+    try {
+      console.log('✅ Calling generateTicketsAndSendEmail...');
+      ticketResult = await generateTicketsAndSendEmail(orderId);
+      console.log('✅ Tickets generated:', {
+        success: ticketResult.success,
+        ticketsCount: ticketResult.ticketsCount,
+        emailSent: ticketResult.emailSent,
+        smsSent: ticketResult.smsSent
+      });
+    } catch (ticketError) {
+      console.error('❌ Error generating tickets:', ticketError);
+      // Don't fail the request - order is already PAID, tickets can be generated later
+      ticketResult = {
+        success: false,
+        error: ticketError.message
+      };
+    }
+
+    // Step 5: Log to order_logs (audit trail)
+    try {
+      await dbClient.from('order_logs').insert({
+        order_id: orderId,
+        action: 'admin_approve',
+        performed_by: adminId,
+        performed_by_type: 'admin',
+        details: {
+          old_status: oldStatus,
+          new_status: 'PAID',
+          tickets_generated: ticketResult?.success || false,
+          tickets_count: ticketResult?.ticketsCount || 0,
+          email_sent: ticketResult?.emailSent || false,
+          sms_sent: ticketResult?.smsSent || false,
+          admin_email: adminEmail,
+          admin_action: true
+        }
+      });
+      console.log('✅ Audit log created');
+    } catch (logError) {
+      console.error('❌ Error creating audit log:', logError);
+      // Don't fail the request if logging fails
+    }
+
+    console.log('✅ ============================================');
+    console.log('✅ ADMIN: Approve Order Completed');
+    console.log('✅ ============================================\n');
+
+    res.status(200).json({
+      success: true,
+      message: 'Order approved successfully',
+      orderId: orderId,
+      oldStatus,
+      newStatus: 'PAID',
+      ticketsGenerated: ticketResult?.success || false,
+      ticketsCount: ticketResult?.ticketsCount || 0,
+      emailSent: ticketResult?.emailSent || false,
+      smsSent: ticketResult?.smsSent || false,
+      ticketError: ticketResult?.error || null
+    });
+
+  } catch (error) {
+    console.error('\n❌ ============================================');
+    console.error('❌ ADMIN: Approve Order Error');
+    console.error('❌ ============================================');
+    console.error('❌ Error:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    console.error('❌ ============================================\n');
+
+    res.status(500).json({
+      error: 'Failed to approve order',
+      details: error.message
+    });
+  }
+});
+
+// ============================================
+// ADMIN: Resend Ticket Email
+// ============================================
+// POST /api/admin-resend-ticket-email - Admin-only endpoint to resend ticket email without regenerating tickets
+// Rate limited to prevent abuse (max 5 resends per hour per order)
+const resendTicketEmailLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 resends per hour per order
+  message: { error: 'Too many resend requests. Please try again later.' },
+  keyGenerator: (req) => {
+    // Use orderId for rate limiting (per order, not per IP)
+    // orderId should always be present (required in request body)
+    const orderId = req.body?.orderId;
+    if (orderId) {
+      return `resend-ticket-email:${orderId}`;
+    }
+    // Fallback to IP-based rate limiting (properly handles IPv6)
+    // Use ipKeyGenerator helper for proper IPv6 subnet handling (/56 subnet for IPv6)
+    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    return `resend-ticket-email:ip:${ipKeyGenerator(ip, 56)}`;
+  },
+  validate: {
+    // Disable validation since we're using ipKeyGenerator helper for IPv6 handling
+    keyGeneratorIpFallback: false
+  }
+});
+
+app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLimiter, logSecurityRequest, async (req, res) => {
+  console.log('\n📧 ============================================');
+  console.log('📧 ADMIN: Resend Ticket Email');
+  console.log('📧 ============================================');
+  
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId } = req.body;
+    const adminId = req.admin?.id;
+    const adminEmail = req.admin?.email;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    console.log('📧 Request details:', {
+      orderId,
+      adminId,
+      adminEmail: adminEmail ? `${adminEmail.substring(0, 3)}***` : 'NOT SET'
+    });
+
+    const dbClient = supabaseService || supabase;
+
+    // Step 1: Verify order exists and is PAID
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .select(`
+        id, 
+        status, 
+        payment_status,
+        source,
+        user_email,
+        user_name,
+        total_price,
+        events (
+          id,
+          name,
+          date,
+          venue
+        ),
+        ambassadors (
+          id,
+          full_name,
+          phone
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      console.error('❌ Order not found:', orderId);
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    console.log('📧 Order status check:', {
+      orderId: order.id,
+      status: order.status,
+      paymentStatus: order.payment_status,
+      hasUserEmail: !!order.user_email
+    });
+
+    // Step 2: Validate order is PAID
+    if (order.status !== 'PAID' && order.payment_status !== 'PAID') {
+      console.error('❌ Order not paid:', order.status, order.payment_status);
+      
+      // Log security event
+      try {
+        const securityLogClient = supabaseService || supabase;
+        await securityLogClient.from('security_audit_logs').insert({
+          event_type: 'invalid_resend_attempt',
+          endpoint: '/api/admin-resend-ticket-email',
+          user_id: adminId,
+          ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.path,
+          details: {
+            reason: 'Order is not PAID',
+            order_id: orderId,
+            current_status: order.status,
+            payment_status: order.payment_status
+          },
+          severity: 'medium'
+        });
+      } catch (logError) {
+        console.error('Failed to log security event:', logError);
+      }
+      
+      return res.status(400).json({
+        error: 'Order must be PAID to resend tickets',
+        details: `Current status: ${order.status}, Payment status: ${order.payment_status}`
+      });
+    }
+
+    // Step 3: Validate customer has email
+    if (!order.user_email) {
+      return res.status(400).json({
+        error: 'Customer email is required',
+        details: 'Order does not have a customer email address'
+      });
+    }
+
+    // Step 4: Verify tickets exist (must not regenerate)
+    const { data: tickets, error: ticketsError } = await dbClient
+      .from('tickets')
+      .select('id, order_id, order_pass_id, qr_code_url, secure_token, status')
+      .eq('order_id', orderId);
+
+    if (ticketsError) {
+      console.error('❌ Error fetching tickets:', ticketsError);
+      return res.status(500).json({
+        error: 'Failed to fetch tickets',
+        details: ticketsError.message
+      });
+    }
+
+    if (!tickets || tickets.length === 0) {
+      return res.status(400).json({
+        error: 'No tickets found for this order',
+        details: 'Tickets must be generated before resending email. Use the skip confirmation endpoint first.'
+      });
+    }
+
+    console.log('📧 Tickets found:', tickets.length);
+
+    // Step 5: Fetch order passes for email template
+    const { data: orderPasses, error: passesError } = await dbClient
+      .from('order_passes')
+      .select('*')
+      .eq('order_id', orderId);
+
+    if (passesError) {
+      console.error('❌ Error fetching order passes:', passesError);
+      return res.status(500).json({
+        error: 'Failed to fetch order passes',
+        details: passesError.message
+      });
+    }
+
+    const passes = orderPasses && orderPasses.length > 0
+      ? orderPasses
+      : [{
+          id: 'legacy',
+          order_id: orderId,
+          pass_type: order.pass_type || 'Standard',
+          quantity: order.quantity || 1,
+          price: order.total_price / (order.quantity || 1)
+        }];
+
+    // Step 6: Build email HTML using shared helper function (reuses exact same template)
+    const emailHtml = buildTicketEmailHtml(order, tickets, passes, orderId);
+
+    // Step 7: Send email
+    let emailSent = false;
+    let emailError = null;
+
+    try {
+      if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        throw new Error('Email service not configured');
+      }
+
+      console.log('📤 Sending email to:', order.user_email);
+      const emailResult = await transporter.sendMail({
+        from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+        to: order.user_email,
+        subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+        html: emailHtml
+      });
+
+      console.log('✅ Email sent successfully:', {
+        messageId: emailResult.messageId,
+        to: order.user_email
+      });
+
+      emailSent = true;
+
+      // Step 8: Log to email_delivery_logs
+      await dbClient.from('email_delivery_logs').insert({
+        order_id: orderId,
+        email_type: 'ticket_resend',
+        recipient_email: order.user_email,
+        recipient_name: order.user_name,
+        subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+        status: 'sent',
+        sent_at: new Date().toISOString()
+      });
+
+    } catch (emailErrorCaught) {
+      emailError = emailErrorCaught;
+      console.error('❌ Error sending email:', emailErrorCaught);
+
+      // Log email failure
+      await dbClient.from('email_delivery_logs').insert({
+        order_id: orderId,
+        email_type: 'ticket_resend',
+        recipient_email: order.user_email,
+        recipient_name: order.user_name,
+        subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+        status: 'failed',
+        error_message: emailErrorCaught.message || 'Unknown error'
+      });
+    }
+
+    // Step 9: Log to order_logs (audit trail)
+    try {
+      await dbClient.from('order_logs').insert({
+        order_id: orderId,
+        action: 'admin_resend_ticket_email',
+        performed_by: adminId,
+        performed_by_type: 'admin',
+        details: {
+          email_sent: emailSent,
+          email_error: emailError?.message || null,
+          tickets_count: tickets.length,
+          admin_email: adminEmail,
+          admin_action: true
+        }
+      });
+      console.log('✅ Audit log created');
+    } catch (logError) {
+      console.error('❌ Error creating audit log:', logError);
+    }
+
+    console.log('📧 ============================================');
+    console.log('📧 ADMIN: Resend Ticket Email Completed');
+    console.log('📧 ============================================\n');
+
+    if (!emailSent) {
+      return res.status(500).json({
+        error: 'Failed to send email',
+        details: emailError?.message || 'Unknown error',
+        orderId: orderId
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Ticket email resent successfully',
+      orderId: orderId,
+      emailSent: true,
+      ticketsCount: tickets.length
+    });
+
+  } catch (error) {
+    console.error('\n❌ ============================================');
+    console.error('❌ ADMIN: Resend Ticket Email Error');
+    console.error('❌ ============================================');
+    console.error('❌ Error:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    console.error('❌ ============================================\n');
+
+    res.status(500).json({
+      error: 'Failed to resend ticket email',
+      details: error.message
     });
   }
 });
