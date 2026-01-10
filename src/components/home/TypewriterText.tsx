@@ -18,7 +18,6 @@ const TypewriterText = ({
   const [currentTextIndex, setCurrentTextIndex] = useState(0);
   const [displayText, setDisplayText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showCursor, setShowCursor] = useState(true);
 
   // Check if current text contains Arabic characters
   const isArabic = /[\u0600-\u06FF]/.test(texts[currentTextIndex] || '');
@@ -55,24 +54,18 @@ const TypewriterText = ({
     return () => clearTimeout(timeout);
   }, [displayText, isDeleting, currentTextIndex, texts, speed, deleteSpeed, pauseTime]);
 
-  // Cursor blink animation
-  useEffect(() => {
-    const cursorInterval = setInterval(() => {
-      setShowCursor((prev) => !prev);
-    }, 530);
-
-    return () => clearInterval(cursorInterval);
-  }, []);
-
   // Don't uppercase Arabic text, only ASCII text
   const formattedText = isArabic ? displayText : displayText.toUpperCase();
 
   return (
     <span className={`${className} ${isArabic ? 'arabic-inline' : ''}`}>
       {formattedText}
-      <span className={`inline-block w-[2px] h-[1em] bg-current ${isArabic ? 'ms-1.5' : 'ml-1.5'} align-middle ${showCursor ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`} style={{ animation: 'blink 1s infinite' }}>
-        |
-      </span>
+      <span 
+        className={`inline-block w-[2px] h-[1em] ${isArabic ? 'ms-1.5' : 'ml-1.5'} align-middle bg-white`}
+        style={{ 
+          animation: 'blink 1s step-end infinite'
+        }}
+      />
     </span>
   );
 };

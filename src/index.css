@@ -464,6 +464,15 @@ All colors MUST be HSL.
   }
 }
 
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
 @keyframes fade-in-up {
   from {
     opacity: 0;
