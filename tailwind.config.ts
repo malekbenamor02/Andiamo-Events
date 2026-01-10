@@ -77,6 +77,8 @@ export default {
 				sans: ['Montserrat', 'sans-serif'], // Set as default sans-serif
 				heading: ['Montserrat', 'sans-serif'],
 				body: ['Montserrat', 'sans-serif'],
+				// Arabic Font (GE SS Two Bold) - Self-hosted
+				arabic: ['GE SS Two', 'Montserrat', 'sans-serif'],
 				// Legacy font names for backward compatibility
 				josefin: ['Montserrat', 'sans-serif'],
 				saira: ['Montserrat', 'sans-serif'],

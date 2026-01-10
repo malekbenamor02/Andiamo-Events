@@ -243,17 +243,17 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
     }
   };
 
-  // Typewriter texts for the first part of the title
+  // Typewriter texts for the hero title (Arabic appears after EN/FR texts)
   const typewriterTexts = {
     en: [
-      "We create memories",
-      "International event coming soon...",
-      "Here in Tunis",
+      "GUESS WHO IS COMING ?",
+      "AN INTERNATIONAL ARTIST COMING FOR THE FIRST TIME?",
+      "في تونس فما دحدح و في مصر فما … ؟",
     ],
     fr: [
-      "Nous créons des souvenirs",
-      "Événement international à venir...",
-      "Ici à Tunis",
+      "DEVINEZ QUI ARRIVE ?",
+      "UN ARTISTE INTERNATIONAL POUR LA PREMIÈRE FOIS ?",
+      "في تونس فما دحدح و في مصر فما … ؟",
     ],
   };
 

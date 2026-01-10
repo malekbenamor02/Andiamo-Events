@@ -1,6 +1,19 @@
 /* All @import statements must be at the very top, before any other CSS rules */
 /* Montserrat font loaded from Google Fonts */
 
+/* ============================================
+   Arabic Font (GE SS Two Bold) - Self-hosted
+   Location: public/assets/GESSTwoBold-Bold.woff(2)
+   ============================================ */
+@font-face {
+  font-family: 'GE SS Two';
+  src: url('/assets/GESSTwoBold-Bold.woff2') format('woff2'),
+       url('/assets/GESSTwoBold-Bold.woff') format('woff');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap; /* Performance: Show fallback while loading */
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -359,6 +372,17 @@ All colors MUST be HSL.
   .text-gradient-neon {
     @apply text-transparent bg-clip-text;
     background-image: var(--gradient-neon);
+  }
+  
+  /* ============================================
+     Scoped Arabic Inline Utility
+     Arabic inline content (keeps structure, no global RTL)
+     ============================================ */
+  .arabic-inline {
+    font-family: 'GE SS Two', 'Montserrat', sans-serif;
+    direction: rtl;
+    unicode-bidi: isolate;
+    display: inline-block;
   }
   
   /* Modal scrollbar hiding */

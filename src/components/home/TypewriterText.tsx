@@ -20,6 +20,9 @@ const TypewriterText = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showCursor, setShowCursor] = useState(true);
 
+  // Check if current text contains Arabic characters
+  const isArabic = /[\u0600-\u06FF]/.test(texts[currentTextIndex] || '');
+
   useEffect(() => {
     let timeout: NodeJS.Timeout;
     const currentText = texts[currentTextIndex];
@@ -61,10 +64,13 @@ const TypewriterText = ({
     return () => clearInterval(cursorInterval);
   }, []);
 
+  // Don't uppercase Arabic text, only ASCII text
+  const formattedText = isArabic ? displayText : displayText.toUpperCase();
+
   return (
-    <span className={className}>
-      {displayText.toUpperCase()}
-      <span className={`inline-block w-[2px] h-[1em] bg-current ml-1.5 align-middle ${showCursor ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`} style={{ animation: 'blink 1s infinite' }}>
+    <span className={`${className} ${isArabic ? 'arabic-inline' : ''}`}>
+      {formattedText}
+      <span className={`inline-block w-[2px] h-[1em] bg-current ${isArabic ? 'ms-1.5' : 'ml-1.5'} align-middle ${showCursor ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`} style={{ animation: 'blink 1s infinite' }}>
         |
       </span>
     </span>
