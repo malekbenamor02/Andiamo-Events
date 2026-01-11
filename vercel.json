@@ -21,9 +21,6 @@
     "api/ambassador-application.js": {
       "maxDuration": 30
     },
-    "api/og-image.js": {
-      "maxDuration": 30
-    },
     "api/orders/create.js": {
       "maxDuration": 60
     },
