@@ -33,6 +33,9 @@
     "api/send-email.js": {
       "maxDuration": 30
     },
+    "api/admin-approve-order.js": {
+      "maxDuration": 30
+    },
     "api/verify-admin.js": {
       "maxDuration": 30
     },
