@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Order, CreateOrderData, UpdateOrderStatusData, CancelOrderData } from '@/types/orders';
 import { OrderPass } from '@/types/orders';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
+import { getApiBaseUrl } from '@/lib/api-routes';
 
 /**
  * Create a new order

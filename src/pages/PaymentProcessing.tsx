@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getOrderById, updateOrderStatus } from '@/lib/orders/orderService';
 import { OrderStatus } from '@/lib/constants/orderStatuses';
 import PaymentSuccess from '@/components/payment/PaymentSuccess';
+import { getApiBaseUrl } from '@/lib/api-routes';
 // Payment generation and verification now handled via backend API
 
 interface PaymentProcessingProps {
