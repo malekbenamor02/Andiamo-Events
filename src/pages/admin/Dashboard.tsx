@@ -388,6 +388,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [loadingEmailLogs, setLoadingEmailLogs] = useState(false);
   const [resendingEmail, setResendingEmail] = useState(false);
   const [isOrderDetailsOpen, setIsOrderDetailsOpen] = useState(false);
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [editingEmailValue, setEditingEmailValue] = useState('');
+  const [updatingEmail, setUpdatingEmail] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -15665,6 +15668,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           setSelectedOrder(null);
           setSelectedOrderAmbassador(null);
           setEmailDeliveryLogs([]);
+          setIsEditingEmail(false);
+          setEditingEmailValue('');
         }
       }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -15795,7 +15800,128 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         <Mail className="w-3 h-3" />
                         {language === 'en' ? 'Email' : 'Email'}
                       </Label>
-                      <p className="text-base break-all">{selectedOrder.user_email || selectedOrder.email || 'N/A'}</p>
+                      {isEditingEmail ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="email"
+                            value={editingEmailValue}
+                            onChange={(e) => setEditingEmailValue(e.target.value)}
+                            className="flex-1 text-base"
+                            placeholder={language === 'en' ? 'Enter email address' : 'Entrez l\'adresse email'}
+                            disabled={updatingEmail}
+                          />
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={async () => {
+                              if (!editingEmailValue.trim()) {
+                                toast({
+                                  title: language === 'en' ? 'Error' : 'Erreur',
+                                  description: language === 'en' ? 'Email cannot be empty' : 'L\'email ne peut pas être vide',
+                                  variant: 'destructive'
+                                });
+                                return;
+                              }
+                              
+                              const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                              if (!emailRegex.test(editingEmailValue.trim())) {
+                                toast({
+                                  title: language === 'en' ? 'Error' : 'Erreur',
+                                  description: language === 'en' ? 'Invalid email format' : 'Format d\'email invalide',
+                                  variant: 'destructive'
+                                });
+                                return;
+                              }
+                              
+                              setUpdatingEmail(true);
+                              try {
+                                const apiBase = getApiBaseUrl();
+                                const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_UPDATE_ORDER_EMAIL, apiBase);
+                                
+                                if (!apiUrl) {
+                                  throw new Error('Invalid API URL configuration');
+                                }
+                                
+                                const response = await fetch(apiUrl, {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  credentials: 'include',
+                                  body: JSON.stringify({
+                                    orderId: selectedOrder.id,
+                                    newEmail: editingEmailValue.trim()
+                                  }),
+                                });
+                                
+                                const data = await response.json();
+                                
+                                if (!response.ok) {
+                                  throw new Error(data.error || data.details || 'Failed to update email');
+                                }
+                                
+                                toast({
+                                  title: language === 'en' ? 'Success' : 'Succès',
+                                  description: language === 'en' 
+                                    ? 'Email updated successfully' 
+                                    : 'Email mis à jour avec succès',
+                                  variant: 'default'
+                                });
+                                
+                                // Update local state
+                                setSelectedOrder({
+                                  ...selectedOrder,
+                                  user_email: editingEmailValue.trim()
+                                });
+                                
+                                setIsEditingEmail(false);
+                                setEditingEmailValue('');
+                              } catch (error: any) {
+                                console.error('Error updating email:', error);
+                                toast({
+                                  title: language === 'en' ? 'Error' : 'Erreur',
+                                  description: error.message || (language === 'en' ? 'Failed to update email' : 'Échec de la mise à jour de l\'email'),
+                                  variant: 'destructive'
+                                });
+                              } finally {
+                                setUpdatingEmail(false);
+                              }
+                            }}
+                            disabled={updatingEmail}
+                          >
+                            <Save className="w-4 h-4 mr-1" />
+                            {language === 'en' ? 'Save' : 'Enregistrer'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setIsEditingEmail(false);
+                              setEditingEmailValue('');
+                            }}
+                            disabled={updatingEmail}
+                          >
+                            <X className="w-4 h-4 mr-1" />
+                            {language === 'en' ? 'Cancel' : 'Annuler'}
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <p className="text-base break-all flex-1">{selectedOrder.user_email || selectedOrder.email || 'N/A'}</p>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setEditingEmailValue(selectedOrder.user_email || selectedOrder.email || '');
+                              setIsEditingEmail(true);
+                            }}
+                            className="h-8 w-8 p-0"
+                            title={language === 'en' ? 'Edit email' : 'Modifier l\'email'}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">

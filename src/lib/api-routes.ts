@@ -51,6 +51,7 @@ export const API_ROUTES = {
   ADMIN_SKIP_AMBASSADOR_CONFIRMATION: '/api/admin-skip-ambassador-confirmation',
   ADMIN_APPROVE_ORDER: '/api/admin-approve-order',
   ADMIN_RESEND_TICKET_EMAIL: '/api/admin-resend-ticket-email',
+  ADMIN_UPDATE_ORDER_EMAIL: '/api/admin/update-order-email',
   
   // Sales Settings
   UPDATE_SALES_SETTINGS: '/api/update-sales-settings',

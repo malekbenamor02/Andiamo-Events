@@ -1869,6 +1869,139 @@ We Create Memories`;
       }
     }
     
+    // ============================================
+    // /api/admin/update-order-email (POST)
+    // ============================================
+    if (path === '/api/admin/update-order-email' && method === 'POST') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        const bodyData = await parseBody(req);
+        const { orderId, newEmail } = bodyData;
+        const adminId = authResult.admin?.id;
+        const adminEmail = authResult.admin?.email;
+        
+        if (!orderId) {
+          return res.status(400).json({ error: 'Order ID is required' });
+        }
+        
+        if (!newEmail || typeof newEmail !== 'string') {
+          return res.status(400).json({ error: 'Valid email address is required' });
+        }
+        
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(newEmail.trim())) {
+          return res.status(400).json({ error: 'Invalid email format' });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+        
+        let supabaseService = null;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabaseService = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        }
+        
+        const dbClient = supabaseService || supabase;
+        
+        // Step 1: Verify order exists and get current email
+        const { data: order, error: orderError } = await dbClient
+          .from('orders')
+          .select('id, user_email')
+          .eq('id', orderId)
+          .single();
+        
+        if (orderError || !order) {
+          return res.status(404).json({ error: 'Order not found' });
+        }
+        
+        const oldEmail = order.user_email || null;
+        const trimmedNewEmail = newEmail.trim();
+        
+        // Step 2: Check if email is actually changing
+        if (oldEmail === trimmedNewEmail) {
+          return res.status(200).json({
+            success: true,
+            message: 'Email unchanged',
+            orderId: orderId,
+            email: trimmedNewEmail
+          });
+        }
+        
+        // Step 3: Update only user_email field
+        const { data: updatedOrder, error: updateError } = await dbClient
+          .from('orders')
+          .update({
+            user_email: trimmedNewEmail,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', orderId)
+          .select('id, user_email')
+          .single();
+        
+        if (updateError || !updatedOrder) {
+          console.error('Error updating order email:', updateError);
+          return res.status(500).json({
+            error: 'Failed to update order email',
+            details: updateError?.message || 'Unknown error'
+          });
+        }
+        
+        // Step 4: Log to order_logs (audit trail)
+        try {
+          await dbClient.from('order_logs').insert({
+            order_id: orderId,
+            action: 'admin_update_email',
+            performed_by: adminId,
+            performed_by_type: 'admin',
+            details: {
+              old_email: oldEmail,
+              new_email: trimmedNewEmail,
+              admin_id: adminId,
+              admin_email: adminEmail,
+              timestamp: new Date().toISOString()
+            }
+          });
+        } catch (logError) {
+          console.error('Error creating audit log:', logError);
+          // Don't fail the request if logging fails, but log the error
+        }
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Order email updated successfully',
+          orderId: orderId,
+          oldEmail: oldEmail,
+          newEmail: trimmedNewEmail
+        });
+      } catch (error) {
+        console.error('Error in /api/admin/update-order-email:', error);
+        return res.status(500).json({
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+    
     // 404 for unknown routes
     return res.status(404).json({
       error: 'Not Found',
