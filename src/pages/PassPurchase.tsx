@@ -47,6 +47,8 @@ interface Event {
   age_restriction?: number;
   dress_code?: string;
   special_notes?: string;
+  is_test?: boolean;
+  event_status?: string;
 }
 
 interface PassPurchaseProps {
@@ -180,10 +182,29 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         .eq('id', eventId)
         .single();
 
-      if (eventError) throw eventError;
+      if (eventError) {
+        // Handle specific error cases
+        if (eventError.code === 'PGRST116') {
+          // Event not found
+          setEvent(null);
+          setLoading(false);
+          return;
+        }
+        throw eventError;
+      }
+
+      // Check if event exists
+      if (!eventData) {
+        setEvent(null);
+        setLoading(false);
+        return;
+      }
+
+      // Type cast to access additional properties that might not be in the inferred type
+      const event = eventData as any;
 
       // Block test events on production (not localhost)
-      if (!isLocalhost && eventData?.is_test) {
+      if (!isLocalhost && event?.is_test) {
         // Redirect to home page or show error
         toast({
           title: t[language].error,
@@ -192,44 +213,84 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             : 'Cet événement n\'est pas disponible.',
           variant: 'destructive'
         });
-        navigate('/');
+        setEvent(null);
+        setLoading(false);
+        return;
+      }
+
+      // Check if event is cancelled
+      if (event?.event_status === 'cancelled') {
+        toast({
+          title: t[language].error,
+          description: language === 'en' 
+            ? 'This event has been cancelled.' 
+            : 'Cet événement a été annulé.',
+          variant: 'destructive'
+        });
+        setEvent(null);
+        setLoading(false);
         return;
       }
 
       // Fetch passes from server endpoint (includes stock information)
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
-      const passesResponse = await fetch(`${apiBase}/api/passes/${eventId}`);
-      
-      if (!passesResponse.ok) {
-        throw new Error('Failed to fetch passes');
+      let passes: any[] = [];
+      try {
+        // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
+        const apiBase = import.meta.env.VITE_API_URL || '';
+        const passesResponse = await fetch(`${apiBase}/api/passes/${eventId}`);
+        
+        if (passesResponse.ok) {
+          const passesResult = await passesResponse.json();
+          const passesData = passesResult.passes || [];
+
+          // Map passes with stock information
+          passes = passesData.map((p: any) => ({
+            id: p.id,
+            name: p.name || '',
+            price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
+            description: p.description || '',
+            is_primary: p.is_primary || false,
+            // Stock information
+            max_quantity: p.max_quantity,
+            sold_quantity: p.sold_quantity || 0,
+            remaining_quantity: p.remaining_quantity,
+            is_unlimited: p.is_unlimited || false,
+            is_sold_out: p.is_sold_out || false
+          }));
+        } else {
+          // Passes fetch failed, but we still show the event
+          console.warn('Failed to fetch passes for event:', eventId);
+          toast({
+            title: language === 'en' ? 'Warning' : 'Avertissement',
+            description: language === 'en' 
+              ? 'Event loaded but passes could not be loaded. Please try again later.' 
+              : 'Événement chargé mais les passes n\'ont pas pu être chargées. Veuillez réessayer plus tard.',
+            variant: "destructive",
+          });
+        }
+      } catch (passError) {
+        // Passes fetch error, but we still show the event
+        console.error('Error fetching passes:', passError);
+        toast({
+          title: language === 'en' ? 'Warning' : 'Avertissement',
+          description: language === 'en' 
+            ? 'Event loaded but passes could not be loaded. Please try again later.' 
+            : 'Événement chargé mais les passes n\'ont pas pu être chargées. Veuillez réessayer plus tard.',
+          variant: "destructive",
+        });
       }
 
-      const passesResult = await passesResponse.json();
-      const passesData = passesResult.passes || [];
-
-      // Map passes with stock information
-      const passes = passesData.map((p: any) => ({
-        id: p.id,
-        name: p.name || '',
-        price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
-        description: p.description || '',
-        is_primary: p.is_primary || false,
-        // Stock information
-        max_quantity: p.max_quantity,
-        sold_quantity: p.sold_quantity || 0,
-        remaining_quantity: p.remaining_quantity,
-        is_unlimited: p.is_unlimited || false,
-        is_sold_out: p.is_sold_out || false
-      }));
-
+      // Set event with passes (even if empty array)
       setEvent({
-        ...eventData,
+        ...event,
         passes: passes
       });
 
       // All passes start at 0 - no default selection
     } catch (error) {
       console.error('Error fetching event:', error);
+      // Only show "Event Not Found" if the event itself failed to load
+      setEvent(null);
       toast({
         title: t[language].error,
         description: language === 'en' ? 'Failed to load event' : 'Échec du chargement de l\'événement',
