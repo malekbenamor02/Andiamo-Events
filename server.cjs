@@ -8180,9 +8180,18 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
   console.log('✅ ADMIN: Approve Order (After Ambassador Confirmation)');
   console.log('✅ ============================================');
 
+  // Flag to ensure we only send one response
+  let responseSent = false;
+  const sendResponse = (status, data) => {
+    if (!responseSent) {
+      responseSent = true;
+      res.status(status).json(data);
+    }
+  };
+
   try {
     if (!supabase) {
-      return res.status(500).json({ error: 'Supabase not configured' });
+      return sendResponse(500, { error: 'Supabase not configured' });
     }
 
     const { orderId } = req.body;
@@ -8190,7 +8199,7 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
     const adminEmail = req.admin?.email;
 
     if (!orderId) {
-      return res.status(400).json({ error: 'Order ID is required' });
+      return sendResponse(400, { error: 'Order ID is required' });
     }
 
     console.log('✅ Request details:', {
@@ -8210,7 +8219,7 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
 
     if (orderError || !order) {
       console.error('❌ Order not found:', orderId);
-      return res.status(404).json({ error: 'Order not found' });
+      return sendResponse(404, { error: 'Order not found' });
     }
 
     console.log('✅ Order status check:', {
@@ -8247,7 +8256,7 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
         console.error('Failed to log security event:', logError);
       }
 
-      return res.status(400).json({
+      return sendResponse(400, {
         error: 'Invalid order status',
         details: `Order must be in PENDING_ADMIN_APPROVAL status. Current status: ${order.status}`
       });
@@ -8300,7 +8309,7 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
           }
         });
 
-        return res.status(200).json({
+        return sendResponse(200, {
           success: true,
           message: 'Order already approved (idempotent call)',
           orderId: orderId,
@@ -8310,7 +8319,7 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
       }
 
       console.error('❌ Error updating order status:', updateError);
-      return res.status(500).json({
+      return sendResponse(500, {
         error: 'Failed to update order status',
         details: updateError?.message || 'Unknown error'
       });
@@ -8323,10 +8332,21 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
     });
 
     // Step 4: Generate tickets and send email/SMS (idempotent function)
+    // Use timeout to prevent hanging (30 seconds max)
     let ticketResult = null;
     try {
       console.log('✅ Calling generateTicketsAndSendEmail...');
-      ticketResult = await generateTicketsAndSendEmail(orderId);
+      
+      // Add timeout wrapper to prevent hanging
+      const ticketGenerationPromise = generateTicketsAndSendEmail(orderId);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Ticket generation timed out after 30 seconds'));
+        }, 30000); // 30 second timeout
+      });
+      
+      ticketResult = await Promise.race([ticketGenerationPromise, timeoutPromise]);
+      
       console.log('✅ Tickets generated:', {
         success: ticketResult.success,
         ticketsCount: ticketResult.ticketsCount,
@@ -8338,7 +8358,7 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
       // Don't fail the request - order is already PAID, tickets can be generated later
       ticketResult = {
         success: false,
-        error: ticketError.message
+        error: ticketError.message || 'Unknown error during ticket generation'
       };
     }
 
@@ -8370,7 +8390,7 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
     console.log('✅ ADMIN: Approve Order Completed');
     console.log('✅ ============================================\n');
 
-    res.status(200).json({
+    sendResponse(200, {
       success: true,
       message: 'Order approved successfully',
       orderId: orderId,
@@ -8395,7 +8415,8 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
     });
     console.error('❌ ============================================\n');
 
-    res.status(500).json({
+    // Ensure response is sent (check if already sent)
+    sendResponse(500, {
       error: 'Failed to approve order',
       details: error.message
     });
