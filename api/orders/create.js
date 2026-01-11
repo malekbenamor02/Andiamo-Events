@@ -24,7 +24,16 @@ export default async (req, res) => {
   try {
     // Check environment variables
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+      console.error('❌ Missing Supabase environment variables:', {
+        hasSupabaseUrl: !!process.env.SUPABASE_URL,
+        hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY
+      });
       return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    // Warn if service role key is missing (order creation may fail due to RLS)
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.warn('⚠️ WARNING: SUPABASE_SERVICE_ROLE_KEY not set. Order creation may fail due to RLS policies.');
     }
 
     // Parse request body
@@ -93,13 +102,17 @@ export default async (req, res) => {
       process.env.SUPABASE_ANON_KEY
     );
 
-    // Use service role key if available for better access
+    // Use service role key if available for better access (matches localhost behavior)
+    // CRITICAL: Service role key is required for stock reservation and order creation
     let dbClient = supabase;
     if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
       dbClient = createClient(
         process.env.SUPABASE_URL,
         process.env.SUPABASE_SERVICE_ROLE_KEY
       );
+      console.log('✅ Using service role key for order creation (bypasses RLS)');
+    } else {
+      console.warn('⚠️ WARNING: Using anon key for order creation. Stock reservation may fail due to RLS policies.');
     }
 
     // STEP 1: Validate all passes exist and are active
