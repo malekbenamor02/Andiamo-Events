@@ -29,6 +29,18 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/passes/:eventId",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/passes/:id/stock",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/passes/:id/activate",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }

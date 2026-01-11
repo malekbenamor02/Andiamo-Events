@@ -856,6 +856,376 @@ export default async (req, res) => {
       }
     }
     
+    // ============================================
+    // /api/admin/passes/:eventId (GET)
+    // ============================================
+    if (path.startsWith('/api/admin/passes/') && method === 'GET') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        // Extract eventId from path: /api/admin/passes/[eventId]
+        const pathParts = path.split('/');
+        const eventId = pathParts[pathParts.length - 1];
+        
+        if (!eventId) {
+          return res.status(400).json({ error: 'Event ID is required' });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+        
+        let dbClient = supabase;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        }
+        
+        // Fetch ALL passes (including inactive) with stock information
+        const { data: passes, error: passesError } = await dbClient
+          .from('event_passes')
+          .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version, created_at, updated_at')
+          .eq('event_id', eventId)
+          .order('release_version', { ascending: false })
+          .order('is_primary', { ascending: false })
+          .order('price', { ascending: true });
+        
+        if (passesError) {
+          console.error('Error fetching passes:', passesError);
+          return res.status(500).json({
+            error: 'Failed to fetch passes',
+            details: passesError.message
+          });
+        }
+        
+        // Calculate stock information for each pass
+        const passesWithStock = (passes || []).map(pass => {
+          const isUnlimited = pass.max_quantity === null;
+          const remainingQuantity = isUnlimited ? null : (pass.max_quantity - pass.sold_quantity);
+          
+          return {
+            id: pass.id,
+            name: pass.name,
+            price: parseFloat(pass.price),
+            description: pass.description || '',
+            is_primary: pass.is_primary || false,
+            is_active: pass.is_active,
+            release_version: pass.release_version || 1,
+            max_quantity: pass.max_quantity,
+            sold_quantity: pass.sold_quantity || 0,
+            remaining_quantity: remainingQuantity,
+            is_unlimited: isUnlimited,
+            created_at: pass.created_at,
+            updated_at: pass.updated_at
+          };
+        });
+        
+        return res.status(200).json({
+          success: true,
+          passes: passesWithStock
+        });
+      } catch (error) {
+        console.error('Error in /api/admin/passes/:eventId:', error);
+        return res.status(500).json({
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+    
+    // ============================================
+    // /api/admin/passes/:id/stock (POST)
+    // ============================================
+    if (path.includes('/api/admin/passes/') && path.endsWith('/stock') && method === 'POST') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        // Extract pass ID from path: /api/admin/passes/[id]/stock
+        const pathParts = path.split('/');
+        const passId = pathParts[pathParts.length - 2]; // Second to last part
+        
+        if (!passId) {
+          return res.status(400).json({ error: 'Pass ID is required' });
+        }
+        
+        const bodyData = await parseBody(req);
+        const { max_quantity } = bodyData;
+        const adminId = authResult.admin?.id;
+        const adminEmail = authResult.admin?.email;
+        
+        if (max_quantity !== null && max_quantity !== undefined && (typeof max_quantity !== 'number' || max_quantity < 0)) {
+          return res.status(400).json({
+            error: 'Invalid max_quantity',
+            details: 'max_quantity must be null (unlimited) or a non-negative integer'
+          });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+        
+        let dbClient = supabase;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        }
+        
+        // Fetch current pass state
+        const { data: currentPass, error: fetchError } = await dbClient
+          .from('event_passes')
+          .select('*')
+          .eq('id', passId)
+          .single();
+        
+        if (fetchError || !currentPass) {
+          return res.status(404).json({ error: 'Pass not found' });
+        }
+        
+        // Validation: Cannot decrease max_quantity below sold_quantity
+        const newMaxQuantity = max_quantity === null || max_quantity === undefined ? null : parseInt(max_quantity);
+        if (newMaxQuantity !== null && newMaxQuantity < currentPass.sold_quantity) {
+          return res.status(400).json({
+            error: 'Invalid stock reduction',
+            details: `Cannot set max_quantity (${newMaxQuantity}) below sold_quantity (${currentPass.sold_quantity})`
+          });
+        }
+        
+        // Update max_quantity
+        const { data: updatedPass, error: updateError } = await dbClient
+          .from('event_passes')
+          .update({
+            max_quantity: newMaxQuantity,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', passId)
+          .select()
+          .single();
+        
+        if (updateError) {
+          console.error('Error updating pass stock:', updateError);
+          return res.status(500).json({
+            error: 'Failed to update pass stock',
+            details: updateError.message
+          });
+        }
+        
+        // Log admin action
+        try {
+          await dbClient.from('security_audit_logs').insert({
+            event_type: 'admin_stock_update',
+            user_id: adminId,
+            endpoint: '/api/admin/passes/:id/stock',
+            ip_address: req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown',
+            user_agent: req.headers['user-agent'] || 'unknown',
+            details: {
+              pass_id: passId,
+              event_id: currentPass.event_id,
+              action: 'UPDATE_STOCK',
+              before: {
+                max_quantity: currentPass.max_quantity,
+                sold_quantity: currentPass.sold_quantity,
+                is_active: currentPass.is_active,
+                release_version: currentPass.release_version,
+                name: currentPass.name,
+                price: currentPass.price
+              },
+              after: {
+                max_quantity: updatedPass.max_quantity,
+                sold_quantity: updatedPass.sold_quantity,
+                is_active: updatedPass.is_active,
+                release_version: updatedPass.release_version,
+                name: updatedPass.name,
+                price: updatedPass.price
+              },
+              admin_email: adminEmail
+            },
+            severity: 'medium'
+          });
+        } catch (logError) {
+          console.warn('Failed to log stock update (non-fatal):', logError);
+        }
+        
+        return res.status(200).json({
+          success: true,
+          pass: {
+            ...updatedPass,
+            remaining_quantity: updatedPass.max_quantity === null ? null : (updatedPass.max_quantity - updatedPass.sold_quantity),
+            is_unlimited: updatedPass.max_quantity === null
+          }
+        });
+      } catch (error) {
+        console.error('Error in /api/admin/passes/:id/stock:', error);
+        return res.status(500).json({
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+    
+    // ============================================
+    // /api/admin/passes/:id/activate (POST)
+    // ============================================
+    if (path.includes('/api/admin/passes/') && path.endsWith('/activate') && method === 'POST') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        // Extract pass ID from path: /api/admin/passes/[id]/activate
+        const pathParts = path.split('/');
+        const passId = pathParts[pathParts.length - 2]; // Second to last part
+        
+        if (!passId) {
+          return res.status(400).json({ error: 'Pass ID is required' });
+        }
+        
+        const bodyData = await parseBody(req);
+        const { is_active } = bodyData;
+        const adminId = authResult.admin?.id;
+        const adminEmail = authResult.admin?.email;
+        
+        if (typeof is_active !== 'boolean') {
+          return res.status(400).json({
+            error: 'Invalid is_active',
+            details: 'is_active must be a boolean'
+          });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+        
+        let dbClient = supabase;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        }
+        
+        // Fetch current pass state
+        const { data: currentPass, error: fetchError } = await dbClient
+          .from('event_passes')
+          .select('*')
+          .eq('id', passId)
+          .single();
+        
+        if (fetchError || !currentPass) {
+          return res.status(404).json({ error: 'Pass not found' });
+        }
+        
+        // Update is_active
+        const { data: updatedPass, error: updateError } = await dbClient
+          .from('event_passes')
+          .update({
+            is_active: is_active,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', passId)
+          .select()
+          .single();
+        
+        if (updateError) {
+          console.error('Error updating pass activation:', updateError);
+          return res.status(500).json({
+            error: 'Failed to update pass activation',
+            details: updateError.message
+          });
+        }
+        
+        // Log admin action
+        try {
+          await dbClient.from('security_audit_logs').insert({
+            event_type: 'admin_pass_activation',
+            user_id: adminId,
+            endpoint: '/api/admin/passes/:id/activate',
+            ip_address: req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown',
+            user_agent: req.headers['user-agent'] || 'unknown',
+            details: {
+              pass_id: passId,
+              event_id: currentPass.event_id,
+              action: 'ACTIVATE_PASS',
+              before: {
+                max_quantity: currentPass.max_quantity,
+                sold_quantity: currentPass.sold_quantity,
+                is_active: currentPass.is_active,
+                release_version: currentPass.release_version,
+                name: currentPass.name,
+                price: currentPass.price
+              },
+              after: {
+                max_quantity: updatedPass.max_quantity,
+                sold_quantity: updatedPass.sold_quantity,
+                is_active: updatedPass.is_active,
+                release_version: updatedPass.release_version,
+                name: updatedPass.name,
+                price: updatedPass.price
+              },
+              admin_email: adminEmail
+            },
+            severity: 'medium'
+          });
+        } catch (logError) {
+          console.warn('Failed to log pass activation (non-fatal):', logError);
+        }
+        
+        return res.status(200).json({
+          success: true,
+          pass: updatedPass
+        });
+      } catch (error) {
+        console.error('Error in /api/admin/passes/:id/activate:', error);
+        return res.status(500).json({
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+    
     // 404 for unknown routes
     return res.status(404).json({
       error: 'Not Found',
