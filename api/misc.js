@@ -2051,6 +2051,7 @@ We Create Memories`;
           .from('orders')
           .select(`
             id, 
+            order_number,
             status, 
             payment_status,
             source,
@@ -2263,7 +2264,7 @@ We Create Memories`;
                 <div class="order-info-block">
                   <div class="info-row">
                     <div class="info-label">Order ID</div>
-                    <div class="info-value">${order.order_number != null ? order.order_number.toString() : orderId.substring(0, 8).toUpperCase()}</div>
+                    <div class="info-value">${order.order_number != null ? order.order_number.toString() : ''}</div>
                   </div>
                   <div class="info-row">
                     <div class="info-label">Event</div>
