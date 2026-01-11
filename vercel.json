@@ -1,8 +1,32 @@
 {
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "/api/index.js"
+      "source": "/api/admin-logout",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin-update-application",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/ambassador-login",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/ambassador-application",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/ambassadors/active",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/phone-subscribe",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/send-email",
+      "destination": "/api/misc.js"
     },
     {
       "source": "/((?!api).*)",
@@ -10,7 +34,22 @@
     }
   ],
   "functions": {
-    "api/index.js": {
+    "api/admin-login.js": {
+      "maxDuration": 30
+    },
+    "api/admin-approve-order.js": {
+      "maxDuration": 30
+    },
+    "api/verify-admin.js": {
+      "maxDuration": 30
+    },
+    "api/orders-create.js": {
+      "maxDuration": 60
+    },
+    "api/passes-[eventId].js": {
+      "maxDuration": 30
+    },
+    "api/misc.js": {
       "maxDuration": 60
     }
   }

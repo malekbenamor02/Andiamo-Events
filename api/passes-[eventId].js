@@ -1,5 +1,5 @@
 // GET /api/passes/:eventId - Get active passes for an event with stock information
-// Vercel serverless function
+// Vercel serverless function - dynamic route
 
 import { createClient } from '@supabase/supabase-js';
 

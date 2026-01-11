@@ -1,26 +1,9 @@
-/**
- * Admin Authentication Middleware
- * 
- * This middleware verifies JWT tokens for admin/super admin routes.
- * It checks:
- * - Token presence in cookies
- * - JWT signature validity
- * - Token expiration
- * - Admin exists in database and is active
- * - Admin role (admin or super_admin)
- * 
- * Usage:
- *   const { verifyAdminAuth } = await import('./authAdminMiddleware.js');
- *   const authResult = await verifyAdminAuth(req);
- *   if (!authResult.valid) {
- *     return res.status(401).json({ error: authResult.error });
- *   }
- *   // Use authResult.admin for admin info
- */
+// Verify admin endpoint for Vercel
+// CRITICAL: Inlined authAdminMiddleware to avoid separate function
 
-export async function verifyAdminAuth(req) {
+// Inlined verifyAdminAuth function
+async function verifyAdminAuth(req) {
   try {
-    // Get token from cookie
     const cookies = req.headers.cookie || '';
     const cookieMatch = cookies.match(/adminToken=([^;]+)/);
     const token = cookieMatch ? cookieMatch[1] : null;
@@ -33,11 +16,9 @@ export async function verifyAdminAuth(req) {
       };
     }
     
-    // Verify JWT signature and expiration
     const jwt = await import('jsonwebtoken');
     const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
     
-    // Check if we're in production (Vercel or NODE_ENV=production)
     const isProduction = process.env.NODE_ENV === 'production' || 
                          process.env.VERCEL === '1' || 
                          !!process.env.VERCEL_URL;
@@ -54,13 +35,8 @@ export async function verifyAdminAuth(req) {
     
     let decoded;
     try {
-      // STRICT: jwt.verify automatically checks the 'exp' field
-      // If token is expired, it throws TokenExpiredError
-      // This ensures the immutable expiration is enforced
       decoded = jwt.default.verify(token, jwtSecret);
     } catch (jwtError) {
-      // Token is invalid, expired, or malformed
-      // STRICT: Expired tokens are immediately rejected - no extension possible
       return {
         valid: false,
         error: 'Invalid or expired token',
@@ -71,7 +47,6 @@ export async function verifyAdminAuth(req) {
       };
     }
     
-    // Check if token has required fields
     if (!decoded.id || !decoded.email || !decoded.role) {
       return {
         valid: false,
@@ -80,7 +55,6 @@ export async function verifyAdminAuth(req) {
       };
     }
     
-    // Verify role is admin or super_admin
     if (decoded.role !== 'admin' && decoded.role !== 'super_admin') {
       return {
         valid: false,
@@ -89,7 +63,6 @@ export async function verifyAdminAuth(req) {
       };
     }
     
-    // Check environment variables
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
       return {
         valid: false,
@@ -98,14 +71,12 @@ export async function verifyAdminAuth(req) {
       };
     }
     
-    // Initialize Supabase
     const { createClient } = await import('@supabase/supabase-js');
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_ANON_KEY
     );
     
-    // Verify admin exists in database and is active
     const { data: admin, error: dbError } = await supabase
       .from('admins')
       .select('id, email, name, role, is_active')
@@ -122,7 +93,6 @@ export async function verifyAdminAuth(req) {
       };
     }
     
-    // Verify role matches
     if (admin.role !== decoded.role) {
       return {
         valid: false,
@@ -131,13 +101,11 @@ export async function verifyAdminAuth(req) {
       };
     }
     
-    // Calculate session expiration from token
     const tokenExpiration = decoded.exp ? decoded.exp * 1000 : null;
     const timeRemaining = tokenExpiration 
       ? Math.max(0, Math.floor((tokenExpiration - Date.now()) / 1000)) 
       : 0;
     
-    // Return success with admin info
     return {
       valid: true,
       admin: {
@@ -161,33 +129,42 @@ export async function verifyAdminAuth(req) {
   }
 }
 
-/**
- * Express-style middleware wrapper
- * Use this in server.cjs or similar Express setups
- */
-export function requireAdminAuth(req, res, next) {
-  verifyAdminAuth(req).then(authResult => {
-    if (!authResult.valid) {
-      // Clear invalid token
-      res.clearCookie('adminToken', { path: '/' });
-      return res.status(authResult.statusCode || 401).json({
-        error: authResult.error,
-        reason: authResult.reason,
-        valid: false
-      });
-    }
-    
-    // Attach admin info to request
-    req.admin = authResult.admin;
-    req.sessionExpiresAt = authResult.sessionExpiresAt;
-    next();
-  }).catch(error => {
-    console.error('Auth middleware exception:', error);
+export default async (req, res) => {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
+  // Only allow GET
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  
+  // Use authentication middleware
+  const authResult = await verifyAdminAuth(req);
+  
+  if (!authResult.valid) {
+    // Clear invalid token
     res.clearCookie('adminToken', { path: '/' });
-    return res.status(500).json({
-      error: 'Authentication error',
-      valid: false
+    return res.status(authResult.statusCode || 401).json({
+      valid: false,
+      error: authResult.error,
+      reason: authResult.reason
     });
+  }
+  
+  // Return admin info with session expiration
+  // NO new token is generated - session continues with original expiration
+  return res.status(200).json({
+    valid: true,
+    admin: authResult.admin,
+    sessionExpiresAt: authResult.sessionExpiresAt,
+    sessionTimeRemaining: authResult.sessionTimeRemaining
   });
-}
-
+};
