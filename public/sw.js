@@ -1,6 +1,7 @@
 // Service Worker for Andiamo Events Scanner
 // Updated cache version to prevent refresh loops and exclude OG images
-const CACHE_NAME = 'andiamo-events-scanner-v4';
+// v5: Force refresh to fix localhost API issue
+const CACHE_NAME = 'andiamo-events-scanner-v5';
 const urlsToCache = [
   '/manifest.json',
   '/placeholder.svg'

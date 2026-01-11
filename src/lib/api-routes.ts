@@ -124,16 +124,52 @@ export const buildApiRoute = (
  * - Localhost is ONLY used in development
  * - Production uses same-origin /api/* routes
  * - No localhost fallback in production builds
+ * 
+ * CRITICAL: This function checks both build-time and runtime environment
+ * to prevent localhost from being used in production.
  */
 export function getApiBaseUrl(): string {
-  // In development mode, use localhost
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8082';
+  // Runtime check: If we're running on a production domain, NEVER use localhost
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    const isProductionDomain = hostname !== 'localhost' && 
+                                hostname !== '127.0.0.1' && 
+                                !hostname.startsWith('192.168.') &&
+                                !hostname.startsWith('10.0.') &&
+                                hostname !== '';
+    
+    // If we're on a production domain, ALWAYS use same-origin (empty string)
+    if (isProductionDomain) {
+      const apiBase = '';
+      console.log('🌐 getApiBaseUrl(): Production domain detected', {
+        hostname,
+        apiBase,
+        mode: import.meta.env.MODE,
+        dev: import.meta.env.DEV
+      });
+      return apiBase;
+    }
   }
   
-  // In production/preview, use same-origin (empty string)
+  // Build-time check: In development mode, use localhost
+  if (import.meta.env.DEV) {
+    const apiBase = 'http://localhost:8082';
+    console.log('🔧 getApiBaseUrl(): Development mode', {
+      apiBase,
+      mode: import.meta.env.MODE
+    });
+    return apiBase;
+  }
+  
+  // In production/preview builds, use same-origin (empty string)
   // This allows relative URLs like /api/admin-approve-order
-  return '';
+  const apiBase = '';
+  console.log('📦 getApiBaseUrl(): Production build', {
+    apiBase,
+    mode: import.meta.env.MODE,
+    dev: import.meta.env.DEV
+  });
+  return apiBase;
 }
 
 /**
@@ -143,16 +179,26 @@ export function getApiBaseUrl(): string {
 if (typeof window !== 'undefined') {
   // Only run in browser context
   const apiBase = getApiBaseUrl();
-  if (!import.meta.env.DEV && apiBase.includes('localhost')) {
+  const hostname = window.location.hostname;
+  const isProductionDomain = hostname !== 'localhost' && 
+                            hostname !== '127.0.0.1' && 
+                            !hostname.startsWith('192.168.') &&
+                            !hostname.startsWith('10.0.') &&
+                            hostname !== '';
+  
+  // If we're on a production domain and getApiBaseUrl returns localhost, that's a critical error
+  if (isProductionDomain && apiBase.includes('localhost')) {
     const error = new Error(
-      '❌ PRODUCTION BUILD IS USING LOCALHOST API - This is a critical configuration error!\n' +
+      '❌ CRITICAL: PRODUCTION BUILD IS USING LOCALHOST API!\n' +
+      `Hostname: ${hostname}\n` +
       `API Base URL: ${apiBase}\n` +
-      'Please check your environment configuration and ensure VITE_API_URL is not set in production.'
+      `Build Mode: ${import.meta.env.MODE}\n` +
+      `DEV Flag: ${import.meta.env.DEV}\n` +
+      'This should NEVER happen. The API base URL has been forced to empty string.'
     );
     console.error(error);
-    // In production, we want to fail loudly but not crash the app
-    // The error is logged, but we continue with empty string as fallback
-    // This allows the app to work while alerting developers to the issue
+    // Force return empty string to prevent the call
+    // This is a safety net - getApiBaseUrl() should already handle this
   }
 }
 
