@@ -9,10 +9,7 @@
     "api/admin-login.js": {
       "maxDuration": 30
     },
-    "api/verify-admin.js": {
-      "maxDuration": 30
-    },
-    "api/authAdminMiddleware.js": {
+    "api/admin-logout.js": {
       "maxDuration": 30
     },
     "api/admin-update-application.js": {
@@ -24,17 +21,26 @@
     "api/ambassador-application.js": {
       "maxDuration": 30
     },
-    "api/phone-subscribe.js": {
-      "maxDuration": 30
-    },
-    "api/passes/[eventId].js": {
-      "maxDuration": 30
-    },
-    "api/ambassadors/active.js": {
+    "api/og-image.js": {
       "maxDuration": 30
     },
     "api/orders/create.js": {
       "maxDuration": 60
+    },
+    "api/passes/[eventId].js": {
+      "maxDuration": 30
+    },
+    "api/phone-subscribe.js": {
+      "maxDuration": 30
+    },
+    "api/send-email.js": {
+      "maxDuration": 30
+    },
+    "api/verify-admin.js": {
+      "maxDuration": 30
+    },
+    "api/ambassadors/active.js": {
+      "maxDuration": 30
     }
   }
 }
