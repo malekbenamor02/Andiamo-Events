@@ -4498,7 +4498,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         
         // Fetch passes with stock info from admin API
         try {
-          const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+          // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
+          const apiBase = import.meta.env.VITE_API_URL || '';
           const passesResponse = await fetch(`${apiBase}/api/admin/passes/${editingEvent.id}`, {
             credentials: 'include'
           });
@@ -9676,7 +9677,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                       if (insertError) throw insertError;
 
                                       // Refresh passes list
-                                      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                      // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
+                                      const apiBase = import.meta.env.VITE_API_URL || '';
                                       const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventForPassManagement.id}`, {
                                         credentials: 'include'
                                       });
@@ -9787,7 +9789,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                           if (deleteError) throw deleteError;
                                           
                                           // Refresh passes list
-                                          const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                          // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
+                                          const apiBase = import.meta.env.VITE_API_URL || '';
                                           const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventForPassManagement.id}`, {
                                             credentials: 'include'
                                           });
@@ -9882,7 +9885,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                         if (!pass.id) return;
                                         
                                         try {
-                                          const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                          // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
+                                          const apiBase = import.meta.env.VITE_API_URL || '';
                                           const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/stock`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
@@ -9979,7 +9983,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                             }
                                             
                                             try {
-                                              const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                              // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
+                                              const apiBase = import.meta.env.VITE_API_URL || '';
                                               const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/stock`, {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
@@ -10056,7 +10061,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                         if (!pass.id) return;
                                         
                                         try {
-                                          const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                          // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
+                                          const apiBase = import.meta.env.VITE_API_URL || '';
                                           const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/activate`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
@@ -10243,7 +10249,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               setIsPassManagementLoading(true);
                               try {
                                 // Fetch passes with stock info from admin API
-                                const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+                                // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
+                                const apiBase = import.meta.env.VITE_API_URL || '';
                                 const passesResponse = await fetch(`${apiBase}/api/admin/passes/${event.id}`, {
                                   credentials: 'include'
                                 });
