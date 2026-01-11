@@ -45,6 +45,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin-resend-ticket-email",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/update-order-email",
       "destination": "/api/misc.js"
     },

@@ -2002,6 +2002,414 @@ We Create Memories`;
       }
     }
     
+    // ============================================
+    // /api/admin-resend-ticket-email (POST)
+    // ============================================
+    if (path === '/api/admin-resend-ticket-email' && method === 'POST') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        const bodyData = await parseBody(req);
+        const { orderId } = bodyData;
+        const adminId = authResult.admin?.id;
+        const adminEmail = authResult.admin?.email;
+        
+        if (!orderId) {
+          return res.status(400).json({ error: 'Order ID is required' });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+        
+        let supabaseService = null;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabaseService = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        }
+        
+        const dbClient = supabaseService || supabase;
+        
+        // Step 1: Verify order exists and is PAID
+        const { data: order, error: orderError } = await dbClient
+          .from('orders')
+          .select(`
+            id, 
+            status, 
+            payment_status,
+            source,
+            user_email,
+            user_name,
+            total_price,
+            pass_type,
+            quantity,
+            events (
+              id,
+              name,
+              date,
+              venue
+            ),
+            ambassadors (
+              id,
+              full_name,
+              phone
+            )
+          `)
+          .eq('id', orderId)
+          .single();
+        
+        if (orderError || !order) {
+          return res.status(404).json({ error: 'Order not found' });
+        }
+        
+        // Step 2: Validate order is PAID
+        if (order.status !== 'PAID' && order.payment_status !== 'PAID') {
+          // Log security event
+          try {
+            await dbClient.from('security_audit_logs').insert({
+              event_type: 'invalid_resend_attempt',
+              endpoint: '/api/admin-resend-ticket-email',
+              user_id: adminId,
+              ip_address: req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown',
+              user_agent: req.headers['user-agent'] || 'unknown',
+              request_method: req.method,
+              request_path: req.url,
+              details: {
+                reason: 'Order is not PAID',
+                order_id: orderId,
+                current_status: order.status,
+                payment_status: order.payment_status
+              },
+              severity: 'medium'
+            });
+          } catch (logError) {
+            console.error('Failed to log security event:', logError);
+          }
+          
+          return res.status(400).json({
+            error: 'Order must be PAID to resend tickets',
+            details: `Current status: ${order.status}, Payment status: ${order.payment_status}`
+          });
+        }
+        
+        // Step 3: Validate customer has email
+        if (!order.user_email) {
+          return res.status(400).json({
+            error: 'Customer email is required',
+            details: 'Order does not have a customer email address'
+          });
+        }
+        
+        // Step 4: Verify tickets exist (must not regenerate)
+        const { data: tickets, error: ticketsError } = await dbClient
+          .from('tickets')
+          .select('id, order_id, order_pass_id, qr_code_url, secure_token, status')
+          .eq('order_id', orderId);
+        
+        if (ticketsError) {
+          console.error('❌ Error fetching tickets:', ticketsError);
+          return res.status(500).json({
+            error: 'Failed to fetch tickets',
+            details: ticketsError.message
+          });
+        }
+        
+        if (!tickets || tickets.length === 0) {
+          return res.status(400).json({
+            error: 'No tickets found for this order',
+            details: 'Tickets must be generated before resending email. Use the skip confirmation endpoint first.'
+          });
+        }
+        
+        // Step 5: Fetch order passes for email template
+        const { data: orderPasses, error: passesError } = await dbClient
+          .from('order_passes')
+          .select('*')
+          .eq('order_id', orderId);
+        
+        if (passesError) {
+          console.error('❌ Error fetching order passes:', passesError);
+          return res.status(500).json({
+            error: 'Failed to fetch order passes',
+            details: passesError.message
+          });
+        }
+        
+        const passes = orderPasses && orderPasses.length > 0
+          ? orderPasses
+          : [{
+              id: 'legacy',
+              order_id: orderId,
+              pass_type: order.pass_type || 'Standard',
+              quantity: order.quantity || 1,
+              price: order.total_price / (order.quantity || 1)
+            }];
+        
+        // Step 6: Build email HTML (reuse same template as ticket generation)
+        // Group tickets by pass type
+        const ticketsByPassType = new Map();
+        tickets.forEach(ticket => {
+          const pass = passes.find(p => p.id === ticket.order_pass_id || (p.id === 'legacy' && !ticket.order_pass_id));
+          if (pass) {
+            const key = pass.pass_type;
+            if (!ticketsByPassType.has(key)) {
+              ticketsByPassType.set(key, []);
+            }
+            ticketsByPassType.get(key).push({ ...ticket, passType: key });
+          }
+        });
+        
+        // Build tickets HTML grouped by pass type
+        const ticketsHtml = Array.from(ticketsByPassType.entries())
+          .map(([passType, passTickets]) => {
+            const ticketsList = passTickets
+              .filter(ticket => ticket.qr_code_url)
+              .map((ticket, index) => {
+                return `
+                  <div style="margin: 20px 0; padding: 20px; background: #E8E8E8; border-radius: 8px; text-align: center; border: 1px solid rgba(0, 0, 0, 0.1);">
+                    <h4 style="margin: 0 0 15px 0; color: #E21836; font-size: 16px; font-weight: 600;">${passType} - Ticket ${index + 1}</h4>
+                    <img src="${ticket.qr_code_url}" alt="QR Code for ${passType}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid rgba(226, 24, 54, 0.3); display: block; margin: 0 auto;" />
+                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #666666; font-family: 'Courier New', monospace;">Token: ${ticket.secure_token.substring(0, 8)}...</p>
+                  </div>
+                `;
+              })
+              .join('');
+            
+            return `
+              <div style="margin: 30px 0;">
+                <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">${passType} Tickets (${passTickets.filter(t => t.qr_code_url).length})</h3>
+                ${ticketsList}
+              </div>
+            `;
+          })
+          .join('');
+        
+        // Build passes summary
+        const passesSummary = passes.map(p => ({
+          passType: p.pass_type,
+          quantity: p.quantity,
+          price: parseFloat(p.price)
+        }));
+        
+        const passesSummaryHtml = passesSummary.map(p => `
+          <tr style="border-bottom: 1px solid rgba(0, 0, 0, 0.1);">
+            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px;">${p.passType}</td>
+            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: center;">${p.quantity}</td>
+            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: right;">${p.price.toFixed(2)} TND</td>
+          </tr>
+        `).join('');
+        
+        const emailHtml = `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Your Digital Tickets - Andiamo Events</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #1A1A1A; background: #FFFFFF; }
+              .email-wrapper { max-width: 600px; margin: 0 auto; background: #FFFFFF; }
+              .content-card { background: #F5F5F5; margin: 0 20px 30px; border-radius: 12px; padding: 50px 40px; border: 1px solid rgba(0, 0, 0, 0.1); }
+              .title-section { text-align: center; margin-bottom: 40px; padding-bottom: 30px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); }
+              .title { font-size: 32px; font-weight: 700; color: #1A1A1A; margin-bottom: 12px; }
+              .subtitle { font-size: 16px; color: #666666; }
+              .greeting { font-size: 18px; color: #1A1A1A; margin-bottom: 30px; }
+              .greeting strong { color: #E21836; font-weight: 600; }
+              .message { font-size: 16px; color: #666666; margin-bottom: 25px; }
+              .order-info-block { background: #E8E8E8; border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 8px; padding: 30px; margin: 40px 0; }
+              .info-row { margin-bottom: 20px; }
+              .info-label { font-size: 11px; color: #999999; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 10px; font-weight: 600; }
+              .info-value { font-family: 'Courier New', monospace; font-size: 18px; color: #1A1A1A; font-weight: 500; }
+              .passes-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+              .passes-table th { text-align: left; padding: 12px 0; color: #E21836; font-weight: 600; font-size: 14px; border-bottom: 2px solid rgba(226, 24, 54, 0.3); }
+              .passes-table td { padding: 12px 0; color: #1A1A1A; font-size: 15px; }
+              .total-row { border-top: 2px solid rgba(226, 24, 54, 0.3); }
+              .total-row td { font-weight: 700; font-size: 18px; color: #E21836; padding-top: 15px; }
+              .tickets-section { background: #E8E8E8; border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 8px; padding: 30px; margin: 40px 0; }
+              .support-section { background: #E8E8E8; border-left: 3px solid rgba(226, 24, 54, 0.3); padding: 20px 25px; margin: 35px 0; border-radius: 4px; }
+              .support-text { font-size: 14px; color: #666666; line-height: 1.7; }
+              .support-email { color: #E21836 !important; text-decoration: none; font-weight: 500; }
+              .closing-section { text-align: center; margin: 50px 0 40px; padding-top: 40px; border-top: 1px solid rgba(0, 0, 0, 0.1); }
+              .slogan { font-size: 24px; font-style: italic; color: #E21836; font-weight: 300; margin-bottom: 30px; }
+              .signature { font-size: 16px; color: #666666; line-height: 1.7; }
+            </style>
+          </head>
+          <body>
+            <div class="email-wrapper">
+              <div class="content-card">
+                <div class="title-section">
+                  <h1 class="title">Your Tickets Are Ready</h1>
+                  <p class="subtitle">Order Confirmation - Andiamo Events</p>
+                </div>
+                <p class="greeting">Dear <strong>${order.user_name || 'Valued Customer'}</strong>,</p>
+                <p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.</p>
+                <div class="order-info-block">
+                  <div class="info-row">
+                    <div class="info-label">Order ID</div>
+                    <div class="info-value">${order.order_number != null ? order.order_number.toString() : orderId.substring(0, 8).toUpperCase()}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="info-label">Event</div>
+                    <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.name || 'Event'}</div>
+                  </div>
+                </div>
+                <div class="order-info-block">
+                  <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Passes Purchased</h3>
+                  <table class="passes-table">
+                    <thead>
+                      <tr>
+                        <th>Pass Type</th>
+                        <th style="text-align: center;">Quantity</th>
+                        <th style="text-align: right;">Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${passesSummaryHtml}
+                      <tr class="total-row">
+                        <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
+                        <td style="text-align: right;"><strong>${order.total_price.toFixed(2)} TND</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="tickets-section">
+                  <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Your Digital Tickets</h3>
+                  <p class="message" style="margin-bottom: 25px;">Please present these QR codes at the event entrance. Each ticket has a unique QR code for verification.</p>
+                  ${ticketsHtml}
+                </div>
+                <div class="support-section">
+                  <p class="support-text">Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>.</p>
+                </div>
+                <div class="closing-section">
+                  <p class="slogan">We Create Memories</p>
+                  <p class="signature">Best regards,<br>The Andiamo Events Team</p>
+                </div>
+              </div>
+            </div>
+          </body>
+          </html>
+        `;
+        
+        // Step 7: Send email
+        let emailSent = false;
+        let emailError = null;
+        
+        if (order.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
+          try {
+            const nodemailer = await import('nodemailer');
+            const transporter = nodemailer.default.createTransport({
+              host: process.env.EMAIL_HOST,
+              port: parseInt(process.env.EMAIL_PORT || '587'),
+              secure: false,
+              auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS,
+              },
+            });
+            
+            await transporter.sendMail({
+              from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+              to: order.user_email,
+              subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+              html: emailHtml
+            });
+            
+            emailSent = true;
+            
+            // Step 8: Log to email_delivery_logs
+            await dbClient.from('email_delivery_logs').insert({
+              order_id: orderId,
+              email_type: 'ticket_resend',
+              recipient_email: order.user_email,
+              recipient_name: order.user_name,
+              subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+              status: 'sent',
+              sent_at: new Date().toISOString()
+            });
+            
+            console.log('✅ Email sent successfully');
+          } catch (emailErrorCaught) {
+            emailError = emailErrorCaught;
+            console.error('❌ Error sending email:', emailErrorCaught);
+            
+            // Log email failure
+            await dbClient.from('email_delivery_logs').insert({
+              order_id: orderId,
+              email_type: 'ticket_resend',
+              recipient_email: order.user_email,
+              recipient_name: order.user_name,
+              subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+              status: 'failed',
+              error_message: emailErrorCaught.message || 'Unknown error'
+            });
+          }
+        } else {
+          return res.status(400).json({
+            error: 'Email service not configured or customer email missing',
+            details: !order.user_email ? 'Customer email is required' : 'Email service not configured'
+          });
+        }
+        
+        // Step 9: Log to order_logs (audit trail)
+        try {
+          await dbClient.from('order_logs').insert({
+            order_id: orderId,
+            action: 'admin_resend_ticket_email',
+            performed_by: adminId,
+            performed_by_type: 'admin',
+            details: {
+              email_sent: emailSent,
+              email_error: emailError?.message || null,
+              tickets_count: tickets.length,
+              admin_email: adminEmail,
+              admin_action: true
+            }
+          });
+        } catch (logError) {
+          console.error('❌ Error creating audit log:', logError);
+        }
+        
+        if (!emailSent) {
+          return res.status(500).json({
+            error: 'Failed to send email',
+            details: emailError?.message || 'Unknown error',
+            orderId: orderId
+          });
+        }
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Ticket email resent successfully',
+          orderId: orderId,
+          emailSent: true,
+          ticketsCount: tickets.length
+        });
+      } catch (error) {
+        console.error('Error in /api/admin-resend-ticket-email:', error);
+        return res.status(500).json({
+          error: 'Failed to resend ticket email',
+          details: error.message
+        });
+      }
+    }
+    
     // 404 for unknown routes
     return res.status(404).json({
       error: 'Not Found',
