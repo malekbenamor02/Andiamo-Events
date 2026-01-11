@@ -379,6 +379,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     ambassador: '',
     city: '',
     ville: '',
+    orderId: '',
   });
   const [allAmbassadorOrders, setAllAmbassadorOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -597,17 +598,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
 
     if (orderFilters.phone) {
-      filtered = filtered.filter(order => 
+      filtered = filtered.filter(order =>
         order.user_phone?.toLowerCase().includes(orderFilters.phone.toLowerCase())
       );
     }
 
     if (orderFilters.ambassador) {
-      filtered = filtered.filter(order => 
+      filtered = filtered.filter(order =>
         order.ambassador_name === orderFilters.ambassador
       );
     }
 
+    if (orderFilters.orderId) {
+      const orderIdSearch = orderFilters.orderId.trim().toUpperCase();
+      filtered = filtered.filter(order => {
+        // Format Order ID same way as displayed to clients (SMS/email)
+        // Use order_number if available, otherwise first 8 chars of id (uppercase)
+        const displayOrderId = order.order_number 
+          ? order.order_number.toString().toUpperCase()
+          : (order.id ? order.id.substring(0, 8).toUpperCase() : '');
+        return displayOrderId.includes(orderIdSearch);
+      });
+    }
 
     setFilteredCodOrders(filtered);
   }, [codAmbassadorOrders, orderFilters]);
@@ -13619,7 +13631,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       <CardContent>
                         {/* Filters */}
                         <div className="flex items-end gap-4 mb-4 pb-4 border-b">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
+                          <div>
+                            <Label className="text-xs mb-2">{language === 'en' ? 'Order ID' : 'ID Commande'}</Label>
+                            <Input
+                              placeholder={language === 'en' ? 'Order ID (e.g., C29CA564)' : 'ID Commande (ex: C29CA564)'}
+                              value={orderFilters.orderId}
+                              onChange={(e) => {
+                                setOrderFilters({ ...orderFilters, orderId: e.target.value });
+                              }}
+                              onKeyDown={(e) => {
+                                // Filter immediately on Enter key
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                }
+                              }}
+                              className="h-8 text-xs font-mono"
+                            />
+                          </div>
                           <div>
                             <Label className="text-xs mb-2">{language === 'en' ? 'Status' : 'Statut'}</Label>
                             <Select
@@ -13680,6 +13709,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 ambassador: '',
                                 city: '',
                                 ville: '',
+                                orderId: '',
                               });
                             }}
                             className="h-8 text-xs"
