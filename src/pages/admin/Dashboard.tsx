@@ -1977,7 +1977,31 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             });
 
             console.log('🔵 API Response Status:', ticketResponse.status);
-            const responseData = await ticketResponse.json();
+            
+            // Check if response is ok and has content
+            if (!ticketResponse.ok) {
+              const errorText = await ticketResponse.text();
+              console.error('❌ FRONTEND: API Error Response:', errorText);
+              throw new Error(errorText || `HTTP ${ticketResponse.status}: ${ticketResponse.statusText}`);
+            }
+            
+            // Parse JSON response safely - read as text first, then parse
+            const contentType = ticketResponse.headers.get('content-type');
+            const responseText = await ticketResponse.text();
+            let responseData;
+            
+            if (contentType && contentType.includes('application/json')) {
+              try {
+                responseData = JSON.parse(responseText);
+              } catch (jsonError) {
+                console.error('❌ FRONTEND: Failed to parse JSON response:', responseText);
+                throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
+              }
+            } else {
+              console.error('❌ FRONTEND: Non-JSON response received:', responseText);
+              throw new Error(`Expected JSON but received: ${contentType || 'unknown content type'}`);
+            }
+            
             console.log('🔵 API Response Data:', responseData);
 
             if (ticketResponse.ok && responseData.success) {
@@ -2127,10 +2151,43 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         body: JSON.stringify({ orderId }),
       });
 
-      const data = await response.json();
-
+      // Check if response is ok and has content
       if (!response.ok) {
-        throw new Error(data.details || data.error || (language === 'en' ? 'Failed to approve order' : 'Échec de l\'approbation de la commande'));
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const contentType = response.headers.get('content-type');
+          const errorText = await response.text();
+          
+          if (contentType && contentType.includes('application/json')) {
+            try {
+              const errorData = JSON.parse(errorText);
+              errorMessage = errorData.details || errorData.error || errorMessage;
+            } catch (jsonError) {
+              errorMessage = errorText || errorMessage;
+            }
+          } else {
+            errorMessage = errorText || errorMessage;
+          }
+        } catch (parseError) {
+          // If we can't parse the error, use the status text
+          console.error('Error parsing error response:', parseError);
+        }
+        throw new Error(errorMessage || (language === 'en' ? 'Failed to approve order' : 'Échec de l\'approbation de la commande'));
+      }
+
+      // Parse JSON response safely
+      let data;
+      const contentType = response.headers.get('content-type');
+      const responseText = await response.text();
+      
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          data = JSON.parse(responseText);
+        } catch (jsonError: any) {
+          throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
+        }
+      } else {
+        throw new Error(`Expected JSON but received: ${contentType || 'unknown content type'}. Response: ${responseText.substring(0, 100)}`);
       }
 
       // Success
