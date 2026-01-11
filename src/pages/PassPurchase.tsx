@@ -7,6 +7,7 @@ import { ExpandableText } from '@/components/ui/expandable-text';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import { getApiBaseUrl } from '@/lib/api-routes';
 
 // New unified order system components
 import { CustomerInfoForm } from '@/components/orders/CustomerInfoForm';
