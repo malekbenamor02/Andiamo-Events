@@ -3833,8 +3833,10 @@ app.get('/api/passes/:eventId', async (req, res) => {
       return res.status(400).json({ error: 'Event ID is required' });
     }
 
+    const dbClient = supabaseService || supabase;
+
     // Fetch only active passes with stock information
-    const { data: passes, error: passesError } = await supabase
+    const { data: passes, error: passesError } = await dbClient
       .from('event_passes')
       .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version')
       .eq('event_id', eventId)
@@ -3844,10 +3846,11 @@ app.get('/api/passes/:eventId', async (req, res) => {
       .order('release_version', { ascending: false });
 
     if (passesError) {
-      console.error('Error fetching passes:', passesError);
+      console.error('❌ Error fetching passes for event:', eventId, passesError);
       return res.status(500).json({
         error: 'Failed to fetch passes',
-        details: passesError.message
+        details: passesError.message,
+        code: passesError.code
       });
     }
 

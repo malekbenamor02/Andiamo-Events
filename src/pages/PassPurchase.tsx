@@ -259,23 +259,34 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           }));
         } else {
           // Passes fetch failed, but we still show the event
-          console.warn('Failed to fetch passes for event:', eventId);
+          const errorText = await passesResponse.text();
+          let errorData;
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            errorData = { error: errorText };
+          }
+          console.error('❌ Failed to fetch passes for event:', eventId, {
+            status: passesResponse.status,
+            statusText: passesResponse.statusText,
+            error: errorData
+          });
           toast({
             title: language === 'en' ? 'Warning' : 'Avertissement',
             description: language === 'en' 
-              ? 'Event loaded but passes could not be loaded. Please try again later.' 
-              : 'Événement chargé mais les passes n\'ont pas pu être chargées. Veuillez réessayer plus tard.',
+              ? `Event loaded but passes could not be loaded (${passesResponse.status}). Please try again later.` 
+              : `Événement chargé mais les passes n'ont pas pu être chargées (${passesResponse.status}). Veuillez réessayer plus tard.`,
             variant: "destructive",
           });
         }
-      } catch (passError) {
+      } catch (passError: any) {
         // Passes fetch error, but we still show the event
-        console.error('Error fetching passes:', passError);
+        console.error('❌ Error fetching passes for event:', eventId, passError);
         toast({
           title: language === 'en' ? 'Warning' : 'Avertissement',
           description: language === 'en' 
-            ? 'Event loaded but passes could not be loaded. Please try again later.' 
-            : 'Événement chargé mais les passes n\'ont pas pu être chargées. Veuillez réessayer plus tard.',
+            ? `Event loaded but passes could not be loaded: ${passError.message || 'Network error'}. Please try again later.` 
+            : `Événement chargé mais les passes n'ont pas pu être chargées: ${passError.message || 'Erreur réseau'}. Veuillez réessayer plus tard.`,
           variant: "destructive",
         });
       }
