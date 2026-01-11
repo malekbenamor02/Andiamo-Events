@@ -1230,6 +1230,8 @@ interface OrderCompletionData {
   ticketNumber?: string;
   referenceNumber?: string;
   supportContactUrl?: string;
+  eventTime?: string; // Formatted event time (e.g., "Saturday · 22 March 2026 · 22:00")
+  venueName?: string; // Event venue name
 }
 
 export const createOrderCompletionEmail = (orderData: OrderCompletionData): EmailConfig => {
@@ -1575,12 +1577,20 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           <div class="order-info-card">
             <h3>📋 Order Details</h3>
             <div class="info-item">
-              <strong>Order ID:</strong>
+              <strong>ORDER ID</strong>
               <span class="info-value">${orderData.orderId}</span>
             </div>
             <div class="info-item">
-              <strong>Event:</strong>
+              <strong>EVENT</strong>
               <span style="color: hsl(195, 100%, 50%); font-weight: 600;">${orderData.eventName}</span>
+            </div>
+            <div class="info-item">
+              <strong>EVENT TIME</strong>
+              <span class="info-value">${orderData.eventTime || 'TBA'}</span>
+            </div>
+            <div class="info-item">
+              <strong>VENUE</strong>
+              <span style="color: #e0e0e0; font-weight: 500;">${orderData.venueName || 'Venue to be announced'}</span>
             </div>
             <div class="info-item">
               <strong>Delivered by:</strong>

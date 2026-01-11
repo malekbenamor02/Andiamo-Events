@@ -5104,6 +5104,27 @@ app.post('/api/send-order-completion-email', async (req, res) => {
           price: order.total_price / (order.quantity || 1)
         }];
 
+    // Format event time from date
+    let formattedEventTime = null;
+    if (order.events?.date) {
+      try {
+        const eventDate = new Date(order.events.date);
+        if (!isNaN(eventDate.getTime())) {
+          const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+          const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+          const dayName = days[eventDate.getDay()];
+          const day = eventDate.getDate();
+          const monthName = months[eventDate.getMonth()];
+          const year = eventDate.getFullYear();
+          const hours = eventDate.getHours().toString().padStart(2, '0');
+          const minutes = eventDate.getMinutes().toString().padStart(2, '0');
+          formattedEventTime = `${dayName} · ${day} ${monthName} ${year} · ${hours}:${minutes}`;
+        }
+      } catch (e) {
+        console.error('Error formatting event date:', e);
+      }
+    }
+
     // Prepare email data
     const emailData = {
       customerName: order.user_name || 'Valued Customer',
@@ -5115,7 +5136,9 @@ app.post('/api/send-order-completion-email', async (req, res) => {
       qrCode: order.qr_code || null,
       ticketNumber: order.ticket_number || null,
       referenceNumber: order.reference_number || order.id.substring(0, 8).toUpperCase(),
-      supportContactUrl: `${req.protocol}://${req.get('host')}/contact`
+      supportContactUrl: `${req.protocol}://${req.get('host')}/contact`,
+      eventTime: formattedEventTime || null,
+      venueName: order.events?.venue || null
     };
 
     // Generate email HTML (we'll use a simplified version here, or import from email.ts)
@@ -5456,6 +5479,27 @@ app.post('/api/resend-order-completion-email', requireAdminAuth, async (req, res
           price: order.total_price / (order.quantity || 1)
         }];
 
+    // Format event time from date
+    let formattedEventTime = null;
+    if (order.events?.date) {
+      try {
+        const eventDate = new Date(order.events.date);
+        if (!isNaN(eventDate.getTime())) {
+          const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+          const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+          const dayName = days[eventDate.getDay()];
+          const day = eventDate.getDate();
+          const monthName = months[eventDate.getMonth()];
+          const year = eventDate.getFullYear();
+          const hours = eventDate.getHours().toString().padStart(2, '0');
+          const minutes = eventDate.getMinutes().toString().padStart(2, '0');
+          formattedEventTime = `${dayName} · ${day} ${monthName} ${year} · ${hours}:${minutes}`;
+        }
+      } catch (e) {
+        console.error('Error formatting event date:', e);
+      }
+    }
+
     // Create email HTML (same as above)
     const emailHtml = `
       <!DOCTYPE html>
@@ -5476,6 +5520,9 @@ app.post('/api/resend-order-completion-email', requireAdminAuth, async (req, res
           </div>
           <p>Dear <strong>${order.user_name || 'Valued Customer'}</strong>,</p>
           <p>Your order ${orderId} has been confirmed. Total: ${order.total_price} TND</p>
+          ${order.events?.name ? `<p><strong>Event:</strong> ${order.events.name}</p>` : ''}
+          ${formattedEventTime ? `<p><strong>Event Time:</strong> ${formattedEventTime}</p>` : ''}
+          ${order.events?.venue ? `<p><strong>Venue:</strong> ${order.events.venue}</p>` : ''}
         </div>
       </body>
       </html>
