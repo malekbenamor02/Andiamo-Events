@@ -75,6 +75,9 @@ export const API_ROUTES = {
   AMBASSADOR_SALES_ORDERS: '/api/admin/ambassador-sales/orders',
   AMBASSADOR_SALES_LOGS: '/api/admin/ambassador-sales/logs',
   
+  // Admin Logs & Analytics
+  ADMIN_LOGS: '/api/admin/logs',
+  
   // Testing & Diagnostics
   TEST: '/api/test',
   TEST_SUPABASE: '/api/test-supabase',

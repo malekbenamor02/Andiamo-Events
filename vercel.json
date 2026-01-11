@@ -53,6 +53,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/logs",
+      "destination": "/api/admin/logs.js"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
@@ -74,6 +78,9 @@
       "maxDuration": 30
     },
     "api/misc.js": {
+      "maxDuration": 60
+    },
+    "api/admin/logs.js": {
       "maxDuration": 60
     }
   }

@@ -38,6 +38,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerTrigger } from "@/components/ui/drawer";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
@@ -296,6 +297,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [siteLogs, setSiteLogs] = useState<Array<{id: string; log_type: string; category: string; message: string; details: any; user_type: string; created_at: string}>>([]);
   const [loadingSiteLogs, setLoadingSiteLogs] = useState(false);
+  // New comprehensive logs state
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loadingComprehensiveLogs, setLoadingComprehensiveLogs] = useState(false);
+  const [logsPagination, setLogsPagination] = useState({ total: 0, limit: 50, offset: 0, hasMore: false });
+  const [logsFilters, setLogsFilters] = useState({
+    type: [] as string[],
+    category: '',
+    userRole: '',
+    startDate: null as Date | null,
+    endDate: null as Date | null,
+    search: '',
+    sortBy: 'time' as 'time' | 'type',
+    order: 'desc' as 'asc' | 'desc'
+  });
+  const [selectedLog, setSelectedLog] = useState<any | null>(null);
+  const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [faviconSettings, setFaviconSettings] = useState<FaviconSettings>({});
   const [loadingFaviconSettings, setLoadingFaviconSettings] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState<{type: string; loading: boolean}>({type: '', loading: false});
@@ -3192,6 +3210,87 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setLoadingSiteLogs(false);
     }
   };
+
+  // Fetch comprehensive logs from API
+  const fetchLogs = async (resetOffset = false) => {
+    try {
+      setLoadingComprehensiveLogs(true);
+      
+      const params = new URLSearchParams();
+      if (logsFilters.type.length > 0) {
+        params.append('type', logsFilters.type[0]); // API supports single type, take first
+      }
+      if (logsFilters.category) {
+        params.append('category', logsFilters.category);
+      }
+      if (logsFilters.userRole) {
+        params.append('userRole', logsFilters.userRole);
+      }
+      if (logsFilters.startDate) {
+        params.append('startDate', logsFilters.startDate.toISOString());
+      }
+      if (logsFilters.endDate) {
+        params.append('endDate', logsFilters.endDate.toISOString());
+      }
+      if (logsFilters.search) {
+        params.append('search', logsFilters.search);
+      }
+      params.append('limit', logsPagination.limit.toString());
+      params.append('offset', resetOffset ? '0' : logsPagination.offset.toString());
+      params.append('sortBy', logsFilters.sortBy);
+      params.append('order', logsFilters.order);
+
+      const url = buildFullApiUrl(API_ROUTES.ADMIN_LOGS) + '?' + params.toString();
+      const response = await fetch(url, {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setLogs(data.logs);
+        setLogsPagination(data.pagination);
+      } else {
+        throw new Error(data.error || 'Failed to fetch logs');
+      }
+    } catch (error: any) {
+      console.error('Error fetching logs:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? `Failed to fetch logs: ${error.message}` 
+          : `Échec de la récupération des logs: ${error.message}`,
+        variant: 'destructive',
+      });
+      setLogs([]);
+    } finally {
+      setLoadingComprehensiveLogs(false);
+    }
+  };
+
+  // Auto-refresh effect
+  useEffect(() => {
+    if (autoRefresh && activeTab === 'logs') {
+      const interval = setInterval(() => {
+        fetchLogs(true);
+      }, 30000); // Refresh every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [autoRefresh, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load logs when tab is opened
+  useEffect(() => {
+    if (activeTab === 'logs' && logs.length === 0 && !loadingComprehensiveLogs) {
+      fetchLogs(true);
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch favicon settings
   const loadFaviconSettings = async () => {
@@ -8490,28 +8589,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <Megaphone className={`w-4 h-4 transition-transform duration-300 ${activeTab === "marketing" ? "animate-pulse" : ""}`} />
                 <span>{language === 'en' ? 'Marketing' : 'Marketing'}</span>
               </button>
-              {currentAdminRole === 'super_admin' && (
-                <button
-                  onClick={() => {
-                    setActiveTab("logs");
-                    if (siteLogs.length === 0) {
-                      fetchSiteLogs();
-                    }
-                  }}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-875 ${
-                    activeTab === "logs" 
-                      ? "shadow-lg" 
-                      : ""
-                  }`}
-                  style={{
-                    color: activeTab === "logs" ? '#E21836' : '#B8B8B8',
-                    background: activeTab === "logs" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                  }}
-                >
-                  <Activity className={`w-4 h-4 transition-transform duration-300 ${activeTab === "logs" ? "animate-pulse" : ""}`} />
-                  <span>{language === 'en' ? 'Logs' : 'Journaux'}</span>
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  setActiveTab("logs");
+                  if (logs.length === 0) {
+                    fetchLogs(true);
+                  }
+                }}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-875 ${
+                  activeTab === "logs" 
+                    ? "shadow-lg" 
+                    : ""
+                }`}
+                style={{
+                  color: activeTab === "logs" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "logs" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
+              >
+                <Activity className={`w-4 h-4 transition-transform duration-300 ${activeTab === "logs" ? "animate-pulse" : ""}`} />
+                <span>{language === 'en' ? 'Logs & Analytics' : 'Journaux et Analytiques'}</span>
+              </button>
               {currentAdminRole === 'super_admin' && (
                 <button
                   onClick={() => setActiveTab("settings")}
@@ -13929,24 +14026,217 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </div>
               </TabsContent>
 
-              {/* Logs Tab - Only visible to super_admin */}
-              {currentAdminRole === 'super_admin' && (
-                <TabsContent value="logs" className="space-y-6">
+              {/* Logs & Analytics Tab - Available to all admins */}
+              <TabsContent value="logs" className="space-y-6">
+                {/* Header */}
                 <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-                  <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
-                    {language === 'en' ? 'Site Logs & Analytics' : 'Journaux et Analytiques du Site'}
-                  </h2>
-                  <Button
-                    onClick={fetchSiteLogs}
-                    disabled={loadingSiteLogs}
-                    variant="outline"
-                    className="animate-in slide-in-from-right-4 duration-1000"
-                  >
-                    <RefreshCw className={`w-4 h-4 mr-2 ${loadingSiteLogs ? 'animate-spin' : ''}`} />
-                    {language === 'en' ? 'Refresh' : 'Actualiser'}
-                  </Button>
+                  <div>
+                    <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+                      {language === 'en' ? 'Site Logs & Analytics' : 'Journaux et Analytiques du Site'}
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {language === 'en' 
+                        ? 'Comprehensive view of all system logs, security events, and activity' 
+                        : 'Vue complète de tous les journaux système, événements de sécurité et activités'}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border">
+                      <Switch
+                        checked={autoRefresh}
+                        onCheckedChange={setAutoRefresh}
+                        id="auto-refresh"
+                      />
+                      <Label htmlFor="auto-refresh" className="text-sm cursor-pointer">
+                        {language === 'en' ? 'Auto-refresh' : 'Actualisation auto'}
+                      </Label>
+                    </div>
+                    <Button
+                      onClick={() => fetchLogs(true)}
+                      disabled={loadingComprehensiveLogs}
+                      variant="outline"
+                      className="animate-in slide-in-from-right-4 duration-1000"
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${loadingComprehensiveLogs ? 'animate-spin' : ''}`} />
+                      {language === 'en' ? 'Refresh' : 'Actualiser'}
+                    </Button>
+                  </div>
                 </div>
 
+                {/* Filters Panel */}
+                <Card className="shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Filter className="w-5 h-5 text-primary" />
+                      {language === 'en' ? 'Filters' : 'Filtres'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {/* Log Type Filter */}
+                      <div className="space-y-2">
+                        <Label>{language === 'en' ? 'Log Type' : 'Type de Log'}</Label>
+                        <Select
+                          value={logsFilters.type[0] || 'all'}
+                          onValueChange={(value) => {
+                            setLogsFilters(prev => ({ ...prev, type: value && value !== 'all' ? [value] : [] }));
+                            setTimeout(() => fetchLogs(true), 100);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={language === 'en' ? 'All types' : 'Tous les types'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">{language === 'en' ? 'All types' : 'Tous les types'}</SelectItem>
+                            <SelectItem value="info">Info</SelectItem>
+                            <SelectItem value="warning">Warning</SelectItem>
+                            <SelectItem value="error">Error</SelectItem>
+                            <SelectItem value="success">Success</SelectItem>
+                            <SelectItem value="action">Action</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Category Filter */}
+                      <div className="space-y-2">
+                        <Label>{language === 'en' ? 'Category' : 'Catégorie'}</Label>
+                        <Input
+                          placeholder={language === 'en' ? 'Filter by category' : 'Filtrer par catégorie'}
+                          value={logsFilters.category}
+                          onChange={(e) => {
+                            setLogsFilters(prev => ({ ...prev, category: e.target.value }));
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              fetchLogs(true);
+                            }
+                          }}
+                        />
+                      </div>
+
+                      {/* User Role Filter */}
+                      <div className="space-y-2">
+                        <Label>{language === 'en' ? 'User Role' : 'Rôle Utilisateur'}</Label>
+                        <Select
+                          value={logsFilters.userRole || 'all'}
+                          onValueChange={(value) => {
+                            setLogsFilters(prev => ({ ...prev, userRole: value && value !== 'all' ? value : '' }));
+                            setTimeout(() => fetchLogs(true), 100);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={language === 'en' ? 'All roles' : 'Tous les rôles'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">{language === 'en' ? 'All roles' : 'Tous les rôles'}</SelectItem>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="ambassador">Ambassador</SelectItem>
+                            <SelectItem value="guest">Guest</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Search */}
+                      <div className="space-y-2">
+                        <Label>{language === 'en' ? 'Search' : 'Recherche'}</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder={language === 'en' ? 'Search messages...' : 'Rechercher messages...'}
+                            value={logsFilters.search}
+                            onChange={(e) => {
+                              setLogsFilters(prev => ({ ...prev, search: e.target.value }));
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                fetchLogs(true);
+                              }
+                            }}
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              setLogsFilters({
+                                type: [],
+                                category: '',
+                                userRole: '',
+                                startDate: null,
+                                endDate: null,
+                                search: '',
+                                sortBy: 'time',
+                                order: 'desc'
+                              });
+                              setTimeout(() => fetchLogs(true), 100);
+                            }}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Date Range */}
+                      <div className="space-y-2">
+                        <Label>{language === 'en' ? 'Start Date' : 'Date de début'}</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal",
+                                !logsFilters.startDate && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {logsFilters.startDate ? format(logsFilters.startDate, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar
+                              mode="single"
+                              selected={logsFilters.startDate || undefined}
+                              onSelect={(date) => {
+                                setLogsFilters(prev => ({ ...prev, startDate: date || null }));
+                                if (date) setTimeout(() => fetchLogs(true), 100);
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>{language === 'en' ? 'End Date' : 'Date de fin'}</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal",
+                                !logsFilters.endDate && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {logsFilters.endDate ? format(logsFilters.endDate, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar
+                              mode="single"
+                              selected={logsFilters.endDate || undefined}
+                              onSelect={(date) => {
+                                setLogsFilters(prev => ({ ...prev, endDate: date || null }));
+                                if (date) setTimeout(() => fetchLogs(true), 100);
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Logs Table */}
                 <Card className="shadow-lg">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -13955,43 +14245,69 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">
                       {language === 'en' 
-                        ? 'View all website activity, errors, and events' 
-                        : 'Voir toutes les activités, erreurs et événements du site'}
+                        ? `Showing ${logs.length} of ${logsPagination.total} logs` 
+                        : `Affichage de ${logs.length} sur ${logsPagination.total} logs`}
                     </p>
                   </CardHeader>
                   <CardContent>
-                    {loadingSiteLogs ? (
+                    {loadingComprehensiveLogs ? (
                       <div className="flex items-center justify-center py-12">
                         <RefreshCw className="w-6 h-6 animate-spin text-primary" />
                         <span className="ml-2 text-muted-foreground">
                           {language === 'en' ? 'Loading logs...' : 'Chargement des logs...'}
                         </span>
                       </div>
-                    ) : siteLogs.length === 0 ? (
+                    ) : logs.length === 0 ? (
                       <div className="text-center py-12 text-muted-foreground">
                         <Database className="w-12 h-12 mx-auto mb-4 opacity-50" />
                         <p>{language === 'en' ? 'No logs found' : 'Aucun log trouvé'}</p>
+                        <p className="text-xs mt-2">
+                          {language === 'en' 
+                            ? 'Try adjusting your filters or date range' 
+                            : 'Essayez d\'ajuster vos filtres ou votre plage de dates'}
+                        </p>
                       </div>
                     ) : (
                       <div className="space-y-4">
                         <div className="overflow-x-auto">
-                          <table className="w-full border-collapse">
-                            <thead>
-                              <tr className="border-b border-border">
-                                <th className="text-left p-3 text-sm font-semibold">{language === 'en' ? 'Time' : 'Heure'}</th>
-                                <th className="text-left p-3 text-sm font-semibold">{language === 'en' ? 'Type' : 'Type'}</th>
-                                <th className="text-left p-3 text-sm font-semibold">{language === 'en' ? 'Category' : 'Catégorie'}</th>
-                                <th className="text-left p-3 text-sm font-semibold">{language === 'en' ? 'User' : 'Utilisateur'}</th>
-                                <th className="text-left p-3 text-sm font-semibold">{language === 'en' ? 'Message' : 'Message'}</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {siteLogs.map((log) => (
-                                <tr key={log.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                                  <td className="p-3 text-sm text-muted-foreground">
-                                    {new Date(log.created_at).toLocaleString()}
-                                  </td>
-                                  <td className="p-3">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>{language === 'en' ? 'Time' : 'Heure'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Type' : 'Type'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Category' : 'Catégorie'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Source' : 'Source'}</TableHead>
+                                <TableHead>{language === 'en' ? 'User' : 'Utilisateur'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Message' : 'Message'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {logs.map((log) => (
+                                <TableRow 
+                                  key={log.id} 
+                                  className={cn(
+                                    "hover:bg-muted/30 transition-colors cursor-pointer",
+                                    log.log_type === 'error' && "bg-red-500/5"
+                                  )}
+                                  onClick={() => {
+                                    setSelectedLog(log);
+                                    setIsLogDrawerOpen(true);
+                                  }}
+                                >
+                                  <TableCell className="text-sm text-muted-foreground">
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          {format(new Date(log.created_at), "MMM dd, yyyy HH:mm:ss")}
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>{new Date(log.created_at).toISOString()}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </TableCell>
+                                  <TableCell>
                                     <Badge 
                                       variant={
                                         log.log_type === 'error' ? 'destructive' :
@@ -13999,51 +14315,183 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                         log.log_type === 'success' ? 'default' :
                                         'secondary'
                                       }
-                                      className={
-                                        log.log_type === 'error' ? 'bg-red-500' :
-                                        log.log_type === 'warning' ? 'bg-yellow-500' :
-                                        log.log_type === 'success' ? 'bg-green-500' :
-                                        ''
-                                      }
+                                      className={cn(
+                                        log.log_type === 'error' && 'bg-red-500',
+                                        log.log_type === 'warning' && 'bg-yellow-500',
+                                        log.log_type === 'success' && 'bg-green-500'
+                                      )}
                                     >
                                       {log.log_type}
                                     </Badge>
-                                  </td>
-                                  <td className="p-3 text-sm">{log.category}</td>
-                                  <td className="p-3 text-sm">
-                                    <Badge variant="outline">{log.user_type || 'guest'}</Badge>
-                                  </td>
-                                  <td className="p-3 text-sm">
-                                    <div className="max-w-md">
-                                      <p className="truncate">{log.message}</p>
-                                      {log.details && (
-                                        <details className="mt-1">
-                                          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                                            {language === 'en' ? 'Details' : 'Détails'}
-                                          </summary>
-                                          <pre className="mt-1 p-2 bg-muted/50 rounded text-xs overflow-auto max-h-32">
-                                            {JSON.stringify(log.details, null, 2)}
-                                          </pre>
-                                        </details>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
+                                  </TableCell>
+                                  <TableCell className="text-sm">{log.category}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline" className="text-xs">
+                                      {log.source}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline">
+                                      {log.user_type || 'guest'}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="max-w-md">
+                                    <p className="truncate text-sm">{log.message}</p>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedLog(log);
+                                        setIsLogDrawerOpen(true);
+                                      }}
+                                    >
+                                      <Eye className="w-4 h-4" />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
                               ))}
-                            </tbody>
-                          </table>
+                            </TableBody>
+                          </Table>
                         </div>
-                        <div className="text-sm text-muted-foreground text-center pt-4">
-                          {language === 'en' 
-                            ? `Showing ${siteLogs.length} most recent logs` 
-                            : `Affichage des ${siteLogs.length} logs les plus récents`}
+
+                        {/* Pagination */}
+                        <div className="flex items-center justify-between pt-4">
+                          <div className="text-sm text-muted-foreground">
+                            {language === 'en' 
+                              ? `Showing ${logsPagination.offset + 1}-${Math.min(logsPagination.offset + logs.length, logsPagination.total)} of ${logsPagination.total}` 
+                              : `Affichage de ${logsPagination.offset + 1}-${Math.min(logsPagination.offset + logs.length, logsPagination.total)} sur ${logsPagination.total}`}
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setLogsPagination(prev => ({ ...prev, offset: Math.max(0, prev.offset - prev.limit) }));
+                                setTimeout(() => fetchLogs(), 100);
+                              }}
+                              disabled={logsPagination.offset === 0}
+                            >
+                              {language === 'en' ? 'Previous' : 'Précédent'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setLogsPagination(prev => ({ ...prev, offset: prev.offset + prev.limit }));
+                                setTimeout(() => fetchLogs(), 100);
+                              }}
+                              disabled={!logsPagination.hasMore}
+                            >
+                              {language === 'en' ? 'Next' : 'Suivant'}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     )}
                   </CardContent>
                 </Card>
+
+                {/* Log Details Drawer */}
+                <Drawer open={isLogDrawerOpen} onOpenChange={setIsLogDrawerOpen}>
+                  <DrawerContent className="max-h-[80vh]">
+                    <DrawerHeader>
+                      <DrawerTitle>
+                        {language === 'en' ? 'Log Details' : 'Détails du Log'}
+                      </DrawerTitle>
+                      <DrawerDescription>
+                        {selectedLog?.message}
+                      </DrawerDescription>
+                    </DrawerHeader>
+                    {selectedLog && (
+                      <div className="px-4 pb-4 overflow-y-auto">
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Type' : 'Type'}</Label>
+                              <Badge className="mt-1">{selectedLog.log_type}</Badge>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Category' : 'Catégorie'}</Label>
+                              <p className="mt-1 text-sm">{selectedLog.category}</p>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Source' : 'Source'}</Label>
+                              <p className="mt-1 text-sm">{selectedLog.source}</p>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'User Type' : 'Type d\'Utilisateur'}</Label>
+                              <p className="mt-1 text-sm">{selectedLog.user_type || 'guest'}</p>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Created At' : 'Créé le'}</Label>
+                              <p className="mt-1 text-sm">{new Date(selectedLog.created_at).toLocaleString()}</p>
+                            </div>
+                            {selectedLog.ip_address && (
+                              <div>
+                                <Label className="text-xs text-muted-foreground">IP Address</Label>
+                                <p className="mt-1 text-sm">{selectedLog.ip_address}</p>
+                              </div>
+                            )}
+                            {selectedLog.request_method && (
+                              <div>
+                                <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Request Method' : 'Méthode de Requête'}</Label>
+                                <p className="mt-1 text-sm">{selectedLog.request_method}</p>
+                              </div>
+                            )}
+                            {selectedLog.request_path && (
+                              <div>
+                                <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Request Path' : 'Chemin de Requête'}</Label>
+                                <p className="mt-1 text-sm font-mono text-xs">{selectedLog.request_path}</p>
+                              </div>
+                            )}
+                            {selectedLog.response_status && (
+                              <div>
+                                <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Response Status' : 'Statut de Réponse'}</Label>
+                                <Badge className={cn(
+                                  "mt-1",
+                                  selectedLog.response_status >= 200 && selectedLog.response_status < 300 && "bg-green-500",
+                                  selectedLog.response_status >= 400 && selectedLog.response_status < 500 && "bg-yellow-500",
+                                  selectedLog.response_status >= 500 && "bg-red-500"
+                                )}>
+                                  {selectedLog.response_status}
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
+
+                          {selectedLog.details && (
+                            <div>
+                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Details (JSON)' : 'Détails (JSON)'}</Label>
+                              <pre className="mt-2 p-4 bg-muted/50 rounded-lg text-xs overflow-auto max-h-64">
+                                {JSON.stringify(selectedLog.details, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+
+                          {selectedLog.error_stack && (
+                            <div>
+                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Error Stack' : 'Pile d\'Erreur'}</Label>
+                              <pre className="mt-2 p-4 bg-red-500/10 rounded-lg text-xs overflow-auto max-h-64 font-mono">
+                                {selectedLog.error_stack}
+                              </pre>
+                            </div>
+                          )}
+
+                          {selectedLog.user_agent && (
+                            <div>
+                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'User Agent' : 'Agent Utilisateur'}</Label>
+                              <p className="mt-1 text-xs font-mono break-all">{selectedLog.user_agent}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </DrawerContent>
+                </Drawer>
               </TabsContent>
-              )}
 
               {/* Settings Tab - Only visible to super_admin */}
               {currentAdminRole === 'super_admin' && (
