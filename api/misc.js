@@ -1525,6 +1525,62 @@ export default async (req, res) => {
                 
                 if (ticketData) {
                   tickets.push(ticketData);
+                  
+                  // Populate QR Ticket Registry (fails silently - must not block ticket generation)
+                  try {
+                    const pass = orderPasses.find(p => p.id === ticketData.order_pass_id);
+                    const ambassador = fullOrder.ambassadors || null;
+                    const event = fullOrder.events || null;
+                    
+                    const registryEntry = {
+                      secure_token: ticketData.secure_token,
+                      ticket_id: ticketData.id,
+                      order_id: fullOrder.id,
+                      source: fullOrder.source,
+                      payment_method: fullOrder.payment_method || 'online',
+                      ambassador_id: fullOrder.ambassador_id || null,
+                      ambassador_name: ambassador?.full_name || null,
+                      ambassador_phone: ambassador?.phone || null,
+                      buyer_name: fullOrder.user_name,
+                      buyer_phone: fullOrder.user_phone,
+                      buyer_email: fullOrder.user_email || null,
+                      buyer_city: fullOrder.city,
+                      buyer_ville: fullOrder.ville || null,
+                      event_id: fullOrder.event_id || null,
+                      event_name: event?.name || null,
+                      event_date: event?.date || null,
+                      event_venue: event?.venue || null,
+                      event_city: event?.city || null,
+                      order_pass_id: pass?.id || ticketData.order_pass_id,
+                      pass_type: pass?.pass_type || 'Standard',
+                      pass_price: pass?.price || 0,
+                      ticket_status: 'VALID',
+                      qr_code_url: ticketData.qr_code_url,
+                      generated_at: ticketData.generated_at || new Date().toISOString()
+                    };
+                    
+                    const { data: registryData, error: registryInsertError } = await dbClient.from('qr_tickets').insert(registryEntry);
+                    
+                    if (registryInsertError) {
+                      console.error(`❌ QR Registry Insert Error for ticket ${ticketData.secure_token}:`, {
+                        error: registryInsertError.message,
+                        code: registryInsertError.code,
+                        details: registryInsertError.details,
+                        hint: registryInsertError.hint,
+                        usingServiceRole: !!supabaseService,
+                        entry: registryEntry
+                      });
+                    } else {
+                      console.log(`✅ QR Registry populated for ticket ${ticketData.secure_token}`);
+                    }
+                  } catch (registryError) {
+                    // Fail silently - log error but don't block ticket generation
+                    console.error(`⚠️ Failed to populate QR registry for ticket ${ticketData.secure_token}:`, {
+                      error: registryError.message,
+                      stack: registryError.stack,
+                      usingServiceRole: !!supabaseService
+                    });
+                  }
                 }
               }
             }

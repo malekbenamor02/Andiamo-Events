@@ -492,6 +492,62 @@ export const generateTicketsForOrder = async (
       throw new Error('Failed to generate QR codes for any tickets');
     }
 
+    // 6.5. Populate QR Ticket Registry for all tickets (fails silently)
+    for (const ticket of ticketsWithQRCodes) {
+      try {
+        const pass = orderPasses.find((p: OrderPass) => p.id === ticket.order_pass_id);
+        const ambassador = order.ambassadors || null;
+        const event = order.events || null;
+        
+        const registryEntry = {
+          secure_token: ticket.secure_token,
+          ticket_id: ticket.id,
+          order_id: order.id,
+          source: order.source,
+          payment_method: order.payment_method || 'online',
+          ambassador_id: order.ambassador_id || null,
+          ambassador_name: ambassador?.full_name || null,
+          ambassador_phone: ambassador?.phone || null,
+          buyer_name: order.user_name,
+          buyer_phone: order.user_phone,
+          buyer_email: order.user_email || null,
+          buyer_city: order.city,
+          buyer_ville: order.ville || null,
+          event_id: order.event_id || null,
+          event_name: event?.name || null,
+          event_date: event?.date || null,
+          event_venue: event?.venue || null,
+          event_city: event?.city || null,
+          order_pass_id: pass?.id || ticket.order_pass_id,
+          pass_type: pass?.pass_type || 'Standard',
+          pass_price: pass?.price || 0,
+          ticket_status: 'VALID',
+          qr_code_url: ticket.qr_code_url,
+          generated_at: ticket.generated_at || new Date().toISOString()
+        };
+        
+        const { data: registryData, error: registryInsertError } = await supabase.from('qr_tickets').insert(registryEntry);
+        
+        if (registryInsertError) {
+          console.error(`❌ QR Registry Insert Error for ticket ${ticket.secure_token}:`, {
+            error: registryInsertError.message,
+            code: registryInsertError.code,
+            details: registryInsertError.details,
+            hint: registryInsertError.hint,
+            entry: registryEntry
+          });
+        } else {
+          console.log(`✅ QR Registry populated for ticket ${ticket.secure_token}`);
+        }
+      } catch (registryError) {
+        // Fail silently - log error but don't block ticket generation
+        console.error(`⚠️ Failed to populate QR registry for ticket ${ticket.secure_token}:`, {
+          error: registryError instanceof Error ? registryError.message : String(registryError),
+          stack: registryError instanceof Error ? registryError.stack : undefined
+        });
+      }
+    }
+
     // 7. Send confirmation email with all QR codes
     const emailResult = await sendConfirmationEmail(
       order,
