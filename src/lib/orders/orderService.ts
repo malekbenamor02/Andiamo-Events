@@ -26,7 +26,8 @@ export async function createOrder(data: CreateOrderData): Promise<Order> {
 
   // Call server-side order creation endpoint
   // Server handles: stock validation, atomic reservation, order creation, order_passes creation
-  const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:8082');
+  // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
+  const apiBase = import.meta.env.VITE_API_URL || '';
   
   const response = await fetch(`${apiBase}/api/orders/create`, {
     method: 'POST',

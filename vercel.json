@@ -32,6 +32,9 @@
     },
     "api/ambassadors/active.js": {
       "maxDuration": 30
+    },
+    "api/orders/create.js": {
+      "maxDuration": 60
     }
   }
 }
