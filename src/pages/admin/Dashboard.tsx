@@ -373,6 +373,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [codOrders, setCodOrders] = useState<any[]>([]);
   const [manualOrders, setManualOrders] = useState<any[]>([]);
   const [codAmbassadorOrders, setCodAmbassadorOrders] = useState<any[]>([]);
+  const [pendingAmbassadorOrdersCount, setPendingAmbassadorOrdersCount] = useState<number>(0);
+  const [previousPendingAmbassadorOrdersCount, setPreviousPendingAmbassadorOrdersCount] = useState<number | null>(null);
   const [filteredCodOrders, setFilteredCodOrders] = useState<any[]>([]);
   const [orderFilters, setOrderFilters] = useState({
     status: '',
@@ -756,6 +758,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       ambassadorCommission: "Commission Rate (%)",
       ambassadorPassword: "Password",
       approvedAmbassadors: "Total Ambassadors",
+      ambassadorOrdersPending: "Ambassador Orders Pending",
       passPurchases: "Pass Purchases",
       totalPurchases: "Total Purchases",
       purchaseDetails: "Purchase Details",
@@ -853,6 +856,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       ambassadorCommission: "Taux de Commission (%)",
       ambassadorPassword: "Mot de Passe",
       approvedAmbassadors: "Ambassadeurs Totaux",
+      ambassadorOrdersPending: "Commandes Ambassadeurs en Attente",
       passPurchases: "Achats de Passes",
       totalPurchases: "Total des Achats",
       purchaseDetails: "Détails de l'Achat",
@@ -1584,6 +1588,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         };
       });
       setCodAmbassadorOrders(enrichedCodAmbassadorOrders);
+
+      // Calculate pending ambassador orders count
+      // Count orders that are NOT completed (not PAID) and are ambassador sales
+      const pendingStatuses = ['PENDING_CASH', 'PENDING_ADMIN_APPROVAL', 'PENDING_AMBASSADOR_CONFIRMATION'];
+      const pendingOrders = enrichedCodAmbassadorOrders.filter((order: any) => 
+        order.payment_method === 'ambassador_cash' &&
+        pendingStatuses.includes(order.status)
+      );
+      
+      // Store previous count for trend calculation
+      setPreviousPendingAmbassadorOrdersCount(pendingAmbassadorOrdersCount);
+      setPendingAmbassadorOrdersCount(pendingOrders.length);
 
       // Fetch all ambassador orders (all COD orders are now ambassador_manual)
       const { data: allData, error: allError } = await (supabase as any)
@@ -8787,7 +8803,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </CardContent>
                   </Card>
 
-                  {/* Approved Ambassadors Card */}
+                  {/* Ambassador Orders Pending Card */}
                   <Card 
                     className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
                       animatedCards.has(3) 
@@ -8811,29 +8827,50 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(107, 107, 107, 0.2)' }}>
                           <Users className="w-6 h-6" style={{ color: '#6B6B6B' }} />
                         </div>
-                        <div className="flex items-center gap-1 text-xs font-heading">
-                          <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
-                          <span style={{ color: '#E21836' }}>+22%</span>
-                        </div>
+                        {previousPendingAmbassadorOrdersCount !== null && previousPendingAmbassadorOrdersCount > 0 ? (
+                          <div className="flex items-center gap-1 text-xs font-heading">
+                            {(() => {
+                              const trend = ((pendingAmbassadorOrdersCount - previousPendingAmbassadorOrdersCount) / previousPendingAmbassadorOrdersCount) * 100;
+                              const isPositive = trend >= 0;
+                              return (
+                                <>
+                                  {isPositive ? (
+                                    <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
+                                  ) : (
+                                    <TrendingDown className="w-3 h-3" style={{ color: '#E21836' }} />
+                                  )}
+                                  <span style={{ color: '#E21836' }}>
+                                    {isPositive ? '+' : ''}{trend.toFixed(1)}%
+                                  </span>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 text-xs font-heading" style={{ color: '#6B6B6B' }}>
+                            <span>—</span>
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground font-heading">{t.approvedAmbassadors}</p>
+                        <p className="text-sm text-muted-foreground font-heading">{t.ambassadorOrdersPending}</p>
                         <p className="text-3xl font-bold font-heading text-foreground">
-                            {ambassadors.length}
+                            {pendingAmbassadorOrdersCount}
                           </p>
-                        <p className="text-xs text-muted-foreground font-heading">
-                          {language === 'en' ? 'Team members' : 'Membres de l\'équipe'}
-                        </p>
                         </div>
                       {/* Mini Sparkline */}
                       <div className="mt-4 h-8 flex items-end gap-1">
-                        {[4, 5, 6, 7, 8, 9, ambassadors.length].map((h, i) => (
-                          <div 
-                            key={i}
-                            className="flex-1 bg-primary/30 rounded-t transition-all duration-300 hover:bg-primary/50"
-                            style={{ height: `${(h / 12) * 100}%` }}
-                          />
-                        ))}
+                        {(() => {
+                          const barValues = [Math.max(0, pendingAmbassadorOrdersCount - 6), Math.max(0, pendingAmbassadorOrdersCount - 5), Math.max(0, pendingAmbassadorOrdersCount - 4), Math.max(0, pendingAmbassadorOrdersCount - 3), Math.max(0, pendingAmbassadorOrdersCount - 2), Math.max(0, pendingAmbassadorOrdersCount - 1), pendingAmbassadorOrdersCount];
+                          const maxValue = Math.max(...barValues, 1);
+                          return barValues.map((h, i) => (
+                            <div 
+                              key={i}
+                              className="flex-1 bg-primary/30 rounded-t transition-all duration-300 hover:bg-primary/50"
+                              style={{ height: `${(h / maxValue) * 100}%` }}
+                            />
+                          ));
+                        })()}
                       </div>
                     </CardContent>
                   </Card>
