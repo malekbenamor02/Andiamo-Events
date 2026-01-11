@@ -42,8 +42,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { apiFetch, handleApiResponse } from "@/lib/api-client";
-import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
-import { sanitizeUrl } from "@/lib/url-validator";
+import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
 import { useQueryClient } from "@tanstack/react-query";
 import { useInvalidateEvents } from "@/hooks/useEvents";
 import { useInvalidateSiteContent } from "@/hooks/useSiteContent";
@@ -1765,7 +1764,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           await new Promise(resolve => setTimeout(resolve, 500));
           
           // Generate tickets (this will also send the email with QR codes)
-          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+          const apiBase = getApiBaseUrl();
           const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
           
           if (!ticketApiUrl) {
@@ -1787,8 +1786,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             console.error('❌ Error details:', responseData);
             
             // Fallback to old email system if ticket generation fails
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8082';
-            const emailResponse = await fetch(`${apiUrl}/api/send-order-completion-email`, {
+            const apiBase = getApiBaseUrl();
+            const emailUrl = buildFullApiUrl(API_ROUTES.SEND_ORDER_COMPLETION_EMAIL, apiBase);
+            if (!emailUrl) {
+              throw new Error('Invalid API URL configuration');
+            }
+            const emailResponse = await fetch(emailUrl, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -1951,7 +1954,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           await new Promise(resolve => setTimeout(resolve, 500));
           
           // Generate tickets (this will also send the email with QR codes)
-          const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+          const apiBase = getApiBaseUrl();
           const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
           
           console.log('🔵 API Configuration:', {
@@ -2135,7 +2138,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       // Use backend endpoint for atomic approval (similar to skip flow)
-      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_APPROVE_ORDER, apiBase);
 
       if (!apiUrl) {
@@ -2413,7 +2416,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const handleSkipAmbassadorConfirmation = async (orderId: string, reason?: string) => {
     setSkippingOrder(true);
     try {
-      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_SKIP_AMBASSADOR_CONFIRMATION, apiBase);
       
       if (!apiUrl) {
@@ -2485,7 +2488,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const handleResendTicketEmail = async (orderId: string) => {
     setResendingTicketEmail(true);
     try {
-      const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+      const apiBase = getApiBaseUrl();
       const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_RESEND_TICKET_EMAIL, apiBase);
       
       if (!apiUrl) {
@@ -4555,8 +4558,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         
         // Fetch passes with stock info from admin API
         try {
-          // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
-          const apiBase = import.meta.env.VITE_API_URL || '';
+          // Use getApiBaseUrl() for consistent API routing
+          const apiBase = getApiBaseUrl();
           const passesResponse = await fetch(`${apiBase}/api/admin/passes/${editingEvent.id}`, {
             credentials: 'include'
           });
@@ -9734,8 +9737,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                       if (insertError) throw insertError;
 
                                       // Refresh passes list
-                                      // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
-                                      const apiBase = import.meta.env.VITE_API_URL || '';
+                                      // Use getApiBaseUrl() for consistent API routing
+                                      const apiBase = getApiBaseUrl();
                                       const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventForPassManagement.id}`, {
                                         credentials: 'include'
                                       });
@@ -9846,8 +9849,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                           if (deleteError) throw deleteError;
                                           
                                           // Refresh passes list
-                                          // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
-                                          const apiBase = import.meta.env.VITE_API_URL || '';
+                                          // Use getApiBaseUrl() for consistent API routing
+                                          const apiBase = getApiBaseUrl();
                                           const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventForPassManagement.id}`, {
                                             credentials: 'include'
                                           });
@@ -9942,8 +9945,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                         if (!pass.id) return;
                                         
                                         try {
-                                          // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
-                                          const apiBase = import.meta.env.VITE_API_URL || '';
+                                          // Use getApiBaseUrl() for consistent API routing
+                                          const apiBase = getApiBaseUrl();
                                           const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/stock`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
@@ -10040,8 +10043,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                             }
                                             
                                             try {
-                                              // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
-                                              const apiBase = import.meta.env.VITE_API_URL || '';
+                                              // Use getApiBaseUrl() for consistent API routing
+                                              const apiBase = getApiBaseUrl();
                                               const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/stock`, {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
@@ -10118,8 +10121,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                         if (!pass.id) return;
                                         
                                         try {
-                                          // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
-                                          const apiBase = import.meta.env.VITE_API_URL || '';
+                                          // Use getApiBaseUrl() for consistent API routing
+                                          const apiBase = getApiBaseUrl();
                                           const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/activate`, {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
@@ -10306,8 +10309,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               setIsPassManagementLoading(true);
                               try {
                                 // Fetch passes with stock info from admin API
-                                // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
-                                const apiBase = import.meta.env.VITE_API_URL || '';
+                                // Use getApiBaseUrl() for consistent API routing
+                                const apiBase = getApiBaseUrl();
                                 const passesResponse = await fetch(`${apiBase}/api/admin/passes/${event.id}`, {
                                   credentials: 'include'
                                 });

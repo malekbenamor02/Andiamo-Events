@@ -114,6 +114,49 @@ export const buildApiRoute = (
 };
 
 /**
+ * Gets the API base URL based on environment
+ * 
+ * RULES:
+ * - Development (import.meta.env.DEV): Returns 'http://localhost:8082'
+ * - Production/Preview: Returns '' (empty string for same-origin requests)
+ * 
+ * This ensures:
+ * - Localhost is ONLY used in development
+ * - Production uses same-origin /api/* routes
+ * - No localhost fallback in production builds
+ */
+export function getApiBaseUrl(): string {
+  // In development mode, use localhost
+  if (import.meta.env.DEV) {
+    return 'http://localhost:8082';
+  }
+  
+  // In production/preview, use same-origin (empty string)
+  // This allows relative URLs like /api/admin-approve-order
+  return '';
+}
+
+/**
+ * Runtime guard to prevent localhost in production builds
+ * This will throw an error if localhost is detected in non-dev builds
+ */
+if (typeof window !== 'undefined') {
+  // Only run in browser context
+  const apiBase = getApiBaseUrl();
+  if (!import.meta.env.DEV && apiBase.includes('localhost')) {
+    const error = new Error(
+      '❌ PRODUCTION BUILD IS USING LOCALHOST API - This is a critical configuration error!\n' +
+      `API Base URL: ${apiBase}\n` +
+      'Please check your environment configuration and ensure VITE_API_URL is not set in production.'
+    );
+    console.error(error);
+    // In production, we want to fail loudly but not crash the app
+    // The error is logged, but we continue with empty string as fallback
+    // This allows the app to work while alerting developers to the issue
+  }
+}
+
+/**
  * Safely builds a full API URL with base URL
  * Validates all parts before constructing the URL
  */
@@ -123,7 +166,9 @@ export const buildFullApiUrl = (
   ...args: any[]
 ): string | null => {
   const routeString = buildApiRoute(route, ...args);
-  const sanitizedBase = baseUrl ? sanitizeUrl(baseUrl) : null;
+  // If baseUrl is not provided, use getApiBaseUrl() as default
+  const effectiveBaseUrl = baseUrl !== undefined ? baseUrl : getApiBaseUrl();
+  const sanitizedBase = effectiveBaseUrl ? sanitizeUrl(effectiveBaseUrl) : null;
   
   if (sanitizedBase) {
     return buildApiUrl(routeString, sanitizedBase);

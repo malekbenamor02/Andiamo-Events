@@ -235,8 +235,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       // Fetch passes from server endpoint (includes stock information)
       let passes: any[] = [];
       try {
-        // Use VITE_API_URL if set, otherwise use relative URL (works with proxy or same domain)
-        const apiBase = import.meta.env.VITE_API_URL || '';
+        // Use getApiBaseUrl() for consistent API routing
+        const apiBase = getApiBaseUrl();
         const passesResponse = await fetch(`${apiBase}/api/passes/${eventId}`);
         
         if (passesResponse.ok) {

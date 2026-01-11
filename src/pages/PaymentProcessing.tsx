@@ -164,7 +164,7 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
         return;
       }
       
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : '');
+      const apiBase = getApiBaseUrl();
       const successLink = `${publicUrl}/payment-processing?orderId=${orderId}&status=success`;
       const failLink = `${publicUrl}/payment-processing?orderId=${orderId}&status=failed`;
       const webhookUrl = `${apiBase || publicUrl}/api/flouci-webhook`;
@@ -367,7 +367,7 @@ const PaymentProcessing = ({ language }: PaymentProcessingProps) => {
         sessionStorage.removeItem(`payment_retry_${orderId}`);
       }
 
-      const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : '');
+      const apiBase = getApiBaseUrl();
 
       // Add timeout to prevent hanging requests (45 seconds)
       const controller = new AbortController();

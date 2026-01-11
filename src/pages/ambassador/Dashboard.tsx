@@ -21,8 +21,7 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { format } from "date-fns";
 import { fetchSalesSettings, subscribeToSalesSettings } from "@/lib/salesSettings";
-import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
-import { sanitizeUrl } from "@/lib/url-validator";
+import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
 import { logger } from "@/lib/logger";
 
 interface AmbassadorDashboardProps {
@@ -707,7 +706,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     try {
       // If password is being updated, use server-side API for secure hashing
       if (profileForm.password && profileForm.password.trim() !== '') {
-        const apiBase = sanitizeUrl(import.meta.env.VITE_API_URL || 'http://localhost:8082');
+        const apiBase = getApiBaseUrl();
         const passwordApiUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_UPDATE_PASSWORD, apiBase);
         
         if (!passwordApiUrl) {
