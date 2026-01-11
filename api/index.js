@@ -20,49 +20,49 @@ export default async (req, res) => {
   try {
     // Admin routes
     if (path === '/api/admin-login' && method === 'POST') {
-      const handler = await import('./admin-login.js');
+      const handler = await import('./handlers/admin-login.js');
       return handler.default(req, res);
     }
     
     if (path === '/api/admin-logout' && method === 'POST') {
-      const handler = await import('./admin-logout.js');
+      const handler = await import('./handlers/admin-logout.js');
       return handler.default(req, res);
     }
     
     if (path === '/api/admin-update-application' && method === 'POST') {
-      const handler = await import('./admin-update-application.js');
+      const handler = await import('./handlers/admin-update-application.js');
       return handler.default(req, res);
     }
     
     if (path === '/api/admin-approve-order' && method === 'POST') {
-      const handler = await import('./admin-approve-order.js');
+      const handler = await import('./handlers/admin-approve-order.js');
       return handler.default(req, res);
     }
     
     if (path === '/api/verify-admin' && method === 'GET') {
-      const handler = await import('./verify-admin.js');
+      const handler = await import('./handlers/verify-admin.js');
       return handler.default(req, res);
     }
     
     // Ambassador routes
     if (path === '/api/ambassador-login' && method === 'POST') {
-      const handler = await import('./ambassador-login.js');
+      const handler = await import('./handlers/ambassador-login.js');
       return handler.default(req, res);
     }
     
     if (path === '/api/ambassador-application' && method === 'POST') {
-      const handler = await import('./ambassador-application.js');
+      const handler = await import('./handlers/ambassador-application.js');
       return handler.default(req, res);
     }
     
     if (path === '/api/ambassadors/active' && method === 'GET') {
-      const handler = await import('./ambassadors/active.js');
+      const handler = await import('./handlers/ambassadors/active.js');
       return handler.default(req, res);
     }
     
     // Order routes
     if (path === '/api/orders/create' && method === 'POST') {
-      const handler = await import('./orders/create.js');
+      const handler = await import('./handlers/orders/create.js');
       return handler.default(req, res);
     }
     
@@ -71,18 +71,18 @@ export default async (req, res) => {
       const eventId = path.replace('/api/passes/', '');
       // Pass eventId as query parameter for compatibility
       req.query = { ...req.query, eventId };
-      const handler = await import('./passes/[eventId].js');
+      const handler = await import('./handlers/passes/[eventId].js');
       return handler.default(req, res);
     }
     
     // Other routes
     if (path === '/api/phone-subscribe' && method === 'POST') {
-      const handler = await import('./phone-subscribe.js');
+      const handler = await import('./handlers/phone-subscribe.js');
       return handler.default(req, res);
     }
     
     if (path === '/api/send-email' && method === 'POST') {
-      const handler = await import('./send-email.js');
+      const handler = await import('./handlers/send-email.js');
       return handler.default(req, res);
     }
     
