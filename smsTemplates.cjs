@@ -29,15 +29,16 @@ function formatPassesText(passes) {
 
 /**
  * Format order number for SMS display
- * @param {Object} order - Order object with order_number or id
- * @returns {string} Formatted order number (e.g., "123" without #)
+ * @param {Object} order - Order object with order_number
+ * @returns {string} Formatted order number (e.g., "518954" without #)
  */
 function formatOrderNumber(order) {
-  if (order.order_number) {
+  // Use only order_number from database (numeric values like 518954, 907756, etc.)
+  if (order.order_number != null) {
     return order.order_number.toString();
   }
-  // Fallback to first 8 characters of UUID if order_number doesn't exist
-  return order.id ? order.id.substring(0, 8).toUpperCase() : '';
+  // Return empty string if order_number doesn't exist
+  return '';
 }
 
 /**

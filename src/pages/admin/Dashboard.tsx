@@ -612,12 +612,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (orderFilters.orderId) {
       const orderIdSearch = orderFilters.orderId.trim().toUpperCase();
       filtered = filtered.filter(order => {
-        // Format Order ID same way as displayed to clients (SMS/email)
-        // Use order_number if available, otherwise first 8 chars of id (uppercase)
-        const displayOrderId = order.order_number 
-          ? order.order_number.toString().toUpperCase()
-          : (order.id ? order.id.substring(0, 8).toUpperCase() : '');
-        return displayOrderId.includes(orderIdSearch);
+        // Filter by order_number from database (numeric values like 518954, 907756, etc.)
+        if (order.order_number != null) {
+          const orderNumberStr = order.order_number.toString().toUpperCase();
+          return orderNumberStr.includes(orderIdSearch);
+        }
+        return false;
       });
     }
 

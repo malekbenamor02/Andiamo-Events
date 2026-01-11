@@ -616,7 +616,7 @@ export default async (req, res) => {
                     <div class="order-info-block">
                       <div class="info-row">
                         <div class="info-label">Order ID</div>
-                        <div class="info-value">${orderId.substring(0, 8).toUpperCase()}</div>
+                        <div class="info-value">${fullOrder.order_number != null ? fullOrder.order_number.toString() : orderId.substring(0, 8).toUpperCase()}</div>
                       </div>
                       <div class="info-row">
                         <div class="info-label">Event</div>
@@ -713,7 +713,7 @@ export default async (req, res) => {
               const formattedPhone = '+216' + cleaned;
               
               // Build SMS message
-              const orderNumber = fullOrder.order_number || orderId.substring(0, 8).toUpperCase();
+              const orderNumber = fullOrder.order_number != null ? fullOrder.order_number.toString() : '';
               const totalPrice = parseFloat(fullOrder.total_price).toFixed(0);
               const smsMessage = `Paiement confirmé #${orderNumber}
 Total: ${totalPrice} DT
