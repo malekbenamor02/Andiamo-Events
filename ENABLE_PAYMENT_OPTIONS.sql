@@ -15,7 +15,7 @@ WHERE option_type = 'ambassador_cash';
 -- UPDATE public.payment_options 
 -- SET enabled = true, 
 --     external_link = 'https://your-payment-app.com',
---     app_name = 'AIO Events',
+--     app_name = 'Online Payment By AIO Events',
 --     updated_at = NOW()
 -- WHERE option_type = 'external_app';
 

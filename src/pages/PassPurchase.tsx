@@ -7,7 +7,7 @@ import { ExpandableText } from '@/components/ui/expandable-text';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
-import { getApiBaseUrl } from '@/lib/api-routes';
+import { getApiBaseUrl, API_ROUTES } from '@/lib/api-routes';
 
 // New unified order system components
 import { CustomerInfoForm } from '@/components/orders/CustomerInfoForm';
@@ -860,14 +860,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                           }
                         }}
                         onExternalAppClick={async () => {
-                          // Validate customer info and passes before proceeding
+                          // Validate customer info only (pass selection not required)
                           const errors: Record<string, string> = {};
-                          
-                          // Check at least one pass selected
-                          const hasSelectedPass = Object.values(selectedPasses).some(qty => qty > 0);
-                          if (!hasSelectedPass) {
-                            errors.passes = t[language].selectAtLeastOnePass;
-                          }
 
                           // Validate customer info
                           if (!customerInfo.full_name.trim() || customerInfo.full_name.trim().length < 2) {
@@ -906,35 +900,44 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                           setProcessing(true);
 
                           const selectedPassesArray = getSelectedPassesArray();
-                          if (!selectedPassesArray || selectedPassesArray.length === 0) {
-                            toast({
-                              title: t[language].error,
-                              description: t[language].selectAtLeastOnePass,
-                              variant: "destructive",
-                            });
-                            setProcessing(false);
-                            return;
-                          }
-
                           const totalPrice = calculateTotal();
-                          if (totalPrice <= 0) {
-                            toast({
-                              title: t[language].error,
-                              description: t[language].selectAtLeastOnePass,
-                              variant: "destructive",
-                            });
-                            setProcessing(false);
-                            return;
-                          }
+                          const totalQuantity = selectedPassesArray.reduce((sum, pass) => sum + pass.quantity, 0);
 
                           try {
-                            const order = await createOrder({
-                              customerInfo,
-                              passes: selectedPassesArray,
-                              paymentMethod: PaymentMethod.EXTERNAL_APP,
-                              eventId: eventId || undefined
+
+                            // Prepare event info
+                            const eventInfo = event ? {
+                              id: event.id,
+                              name: event.name,
+                              date: event.date,
+                              venue: event.venue,
+                              city: event.city
+                            } : null;
+
+                            // Save submission to AIO Events (no order creation, no emails/SMS)
+                            const apiBase = getApiBaseUrl();
+                            const response = await fetch(`${apiBase}${API_ROUTES.AIO_EVENTS_SAVE_SUBMISSION}`, {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json'
+                              },
+                              body: JSON.stringify({
+                                customerInfo,
+                                eventInfo,
+                                selectedPasses: selectedPassesArray,
+                                totalPrice: totalPrice,
+                                totalQuantity: totalQuantity,
+                                language
+                              })
                             });
 
+                            const result = await response.json();
+
+                            if (!response.ok) {
+                              throw new Error(result.error || result.details || 'Failed to save submission');
+                            }
+
+                            // After saving, redirect to external payment link
                             const option = paymentOptions.find(o => o.option_type === 'external_app');
                             if (option?.external_link) {
                               window.location.href = option.external_link;
@@ -947,8 +950,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                               setProcessing(false);
                             }
                           } catch (error: any) {
-                            console.error('Order submission error:', error);
-                            const errorMessage = error.message || (language === 'en' ? 'Failed to submit order' : 'Échec de la soumission de la commande');
+                            console.error('AIO Events submission error:', error);
+                            const errorMessage = error.message || (language === 'en' ? 'Failed to save submission' : 'Échec de l\'enregistrement');
                             toast({
                               title: t[language].error,
                               description: errorMessage,

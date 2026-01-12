@@ -67,6 +67,9 @@ export const API_ROUTES = {
   ADMIN_PAYMENT_OPTIONS: '/api/admin/payment-options',
   UPDATE_PAYMENT_OPTION: (type: string) => `/api/admin/payment-options/${type}`,
   
+  // AIO Events Submissions
+  AIO_EVENTS_SAVE_SUBMISSION: '/api/aio-events/save-submission',
+  
   // Active Ambassadors
   ACTIVE_AMBASSADORS: '/api/ambassadors/active',
   
