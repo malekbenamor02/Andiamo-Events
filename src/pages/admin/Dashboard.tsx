@@ -15348,49 +15348,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           </div>
                         </div>
 
-                        {/* Test Email Section */}
-                        <div className="p-4 bg-muted/30 rounded-lg border border-border space-y-3">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Mail className="w-4 h-4 text-primary" />
-                            <Label className="font-semibold">
-                              {language === 'en' ? 'Test Email' : 'Email de Test'}
-                            </Label>
-                          </div>
-                          <div className="space-y-2">
-                            <Input
-                              type="email"
-                              value={testEmailAddress}
-                              onChange={(e) => setTestEmailAddress(e.target.value)}
-                              placeholder={language === 'en' ? 'Enter test email address...' : 'Entrez l\'adresse email de test...'}
-                              className="bg-background text-foreground"
-                            />
-                            <Button
-                              onClick={handleSendTestEmail}
-                              disabled={sendingTestEmail || !testEmailAddress.trim() || !emailSubject.trim() || !emailContent.trim()}
-                              variant="outline"
-                              size="sm"
-                              className="w-full"
-                            >
-                              {sendingTestEmail ? (
-                                <>
-                                  <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                                  {language === 'en' ? 'Sending Test...' : 'Envoi du Test...'}
-                                </>
-                              ) : (
-                                <>
-                                  <Send className="w-4 h-4 mr-2" />
-                                  {language === 'en' ? 'Send Test Email' : 'Envoyer Email de Test'}
-                                </>
-                              )}
-                            </Button>
-                            <div className="text-xs text-muted-foreground">
-                              {language === 'en' 
-                                ? 'Send a test email to preview how it will look before sending to all subscribers'
-                                : 'Envoyez un email de test pour prévisualiser son apparence avant de l\'envoyer à tous les abonnés'}
-                            </div>
-                          </div>
-                        </div>
-
                         {/* Delay Setting */}
                         <div className="space-y-2">
                           <Label>
