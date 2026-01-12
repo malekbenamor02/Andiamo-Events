@@ -475,20 +475,28 @@ export default async (req, res) => {
       });
     }
 
-    // STEP 8: Send SMS notifications and emails for COD orders (non-blocking)
+    // STEP 8: Send SMS notifications and emails for COD orders
     // Note: In Vercel serverless, SMS can be sent via separate endpoint calls
-    // Emails are sent here directly
+    // Emails are sent here directly - with timeout to prevent blocking
     if (paymentMethod === 'ambassador_cash' && ambassadorId) {
-      // Fire and forget - don't block response
-      // Use setTimeout to ensure response is sent first
-      setTimeout(async () => {
-        try {
-          // Send order confirmation emails to both client and ambassador
-          await sendOrderConfirmationEmails(order.id, dbClient);
-        } catch (emailError) {
-          console.error('Failed to send order confirmation emails (non-fatal):', emailError);
-        }
-      }, 0);
+      console.log(`📧 Order ${order.id} is ambassador_cash - attempting to send confirmation emails...`);
+      // In Vercel serverless, we need to await before response is sent
+      // But use timeout to prevent blocking too long
+      try {
+        await Promise.race([
+          sendOrderConfirmationEmails(order.id, dbClient),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Email sending timeout')), 3000)
+          )
+        ]);
+        console.log(`📧 Email sending completed for order ${order.id}`);
+      } catch (emailError) {
+        // Log but don't fail - emails are non-critical
+        // If timeout occurs, emails may still send but we don't wait
+        console.error(`📧 Email sending timed out or failed for order ${order.id} (non-fatal):`, emailError.message || emailError);
+      }
+    } else {
+      console.log(`📧 Skipping email - paymentMethod: ${paymentMethod}, ambassadorId: ${ambassadorId}`);
     }
     
     // STEP 9: Return created order with order_passes
@@ -994,9 +1002,15 @@ async function sendOrderConfirmationEmailToRecipient(order, orderPasses, recipie
   }
 
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || !process.env.EMAIL_HOST) {
-    console.log(`📧 Skipping ${recipientType} email - email service not configured`);
+    console.error(`📧 Email service not configured - Missing:`, {
+      EMAIL_USER: !process.env.EMAIL_USER,
+      EMAIL_PASS: !process.env.EMAIL_PASS,
+      EMAIL_HOST: !process.env.EMAIL_HOST
+    });
     return { success: false, skipped: true, reason: 'not_configured' };
   }
+  
+  console.log(`📧 Attempting to send ${recipientType} email to: ${recipientEmail.substring(0, 3)}***`);
 
   // Create email log entry (before try block so it's accessible in catch)
   let emailLog = null;
@@ -1025,13 +1039,16 @@ async function sendOrderConfirmationEmailToRecipient(order, orderPasses, recipie
     const subject = 'Order Confirmation - Andiamo Events';
 
     // Send email
+    console.log(`📧 Creating email transporter for ${recipientType}...`);
     const emailTransporter = getEmailTransporter();
-    await emailTransporter.sendMail({
+    console.log(`📧 Sending email to ${recipientType}...`);
+    const emailResult = await emailTransporter.sendMail({
       from: `Andiamo Events <${process.env.EMAIL_USER}>`,
       to: recipientEmail,
       subject: subject,
       html: emailHtml
     });
+    console.log(`📧 Email sent successfully to ${recipientType}, messageId: ${emailResult.messageId}`);
 
     // Update email log
     if (emailLog && dbClient) {
@@ -1084,6 +1101,8 @@ async function sendOrderConfirmationEmails(orderId, dbClient) {
     console.warn('📧 Cannot send order confirmation emails - Supabase client not provided');
     return;
   }
+
+  console.log(`📧 Starting email sending for order: ${orderId}`);
 
   try {
     // Fetch order with all needed relations
