@@ -3638,6 +3638,93 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  // Send test email to a single address
+  const handleSendTestEmail = async () => {
+    if (!testEmailAddress.trim()) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter a test email address' 
+          : 'Veuillez entrer une adresse email de test',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(testEmailAddress.trim())) {
+      toast({
+        title: language === 'en' ? 'Invalid Email' : 'Email Invalide',
+        description: language === 'en' 
+          ? 'Please enter a valid email address' 
+          : 'Veuillez entrer une adresse email valide',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!emailSubject.trim()) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter an email subject' 
+          : 'Veuillez entrer un sujet d\'email',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!emailContent.trim()) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter email content' 
+          : 'Veuillez entrer le contenu de l\'email',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setSendingTestEmail(true);
+      
+      const response = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: testEmailAddress.trim(),
+          subject: emailSubject,
+          html: emailContent
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.details || errorData.error || 'Failed to send test email');
+      }
+
+      toast({
+        title: language === 'en' ? 'Test Email Sent' : 'Email de Test Envoyé',
+        description: language === 'en'
+          ? `Test email sent successfully to ${testEmailAddress.trim()}`
+          : `Email de test envoyé avec succès à ${testEmailAddress.trim()}`,
+        variant: 'default'
+      });
+    } catch (error: any) {
+      console.error('Error sending test email:', error);
+      toast({
+        title: language === 'en' ? 'Test Email Failed' : 'Échec de l\'Email de Test',
+        description: error.message || (language === 'en' ? 'Failed to send test email' : 'Échec de l\'envoi de l\'email de test'),
+        variant: 'destructive'
+      });
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
   // Send bulk emails with delay
   const handleSendBulkEmails = async () => {
     if (!emailSubject.trim()) {
