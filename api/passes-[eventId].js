@@ -28,11 +28,28 @@ export default async (req, res) => {
 
     // Get eventId from Vercel dynamic route parameter
     // In Vercel, [eventId] becomes available as req.query.eventId
-    const eventId = req.query.eventId;
+    // Also check req.url for fallback (in case rewrite is used)
+    let eventId = req.query.eventId;
+    
+    // Fallback: extract from URL if query param is not available
+    if (!eventId && req.url) {
+      const urlMatch = req.url.match(/\/api\/passes\/([^/?]+)/);
+      if (urlMatch) {
+        eventId = urlMatch[1];
+      }
+    }
 
     if (!eventId) {
+      console.error('❌ Event ID missing from request:', { 
+        query: req.query, 
+        url: req.url,
+        method: req.method 
+      });
       return res.status(400).json({ error: 'Event ID is required' });
     }
+    
+    // Clean eventId (remove any trailing colons or source map references)
+    eventId = String(eventId).split(':')[0].trim();
 
     // Initialize Supabase clients
     const supabase = createClient(

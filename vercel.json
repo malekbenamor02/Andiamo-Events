@@ -29,6 +29,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/passes/:eventId",
+      "destination": "/api/passes-[eventId].js"
+    },
+    {
       "source": "/api/admin/passes/:eventId",
       "destination": "/api/misc.js"
     },
