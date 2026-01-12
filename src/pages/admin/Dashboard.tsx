@@ -6263,6 +6263,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       let eventId = event.id;
+      let newEventData: any = null; // Declare outside if/else block for scope access
 
       // Convert date from datetime-local format to ISO string if needed
       let eventDate = event.date;
@@ -6306,7 +6307,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // Passes are no longer saved from the event edit dialog
       } else {
         // Create new event
-        const { data: newEventData, error } = await supabase
+        const { data: insertedEventData, error } = await supabase
           .from('events')
           .insert({
             name: event.name,
@@ -6327,12 +6328,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         if (error) throw error;
 
+        newEventData = insertedEventData; // Assign to outer scope variable
         eventId = newEventData.id;
 
         // Pass management is now handled separately via Pass Stock Management dialog
         // Admins should create passes using the "Pass Stock" button after creating the event
       }
 
+      // At this point, the event is successfully saved to the database
+      // Show success immediately and update UI optimistically
       toast({
         title: t.eventSaved,
         description: language === 'en' ? "Event saved successfully" : "Événement enregistré avec succès",
@@ -6374,15 +6378,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setEditingEvent(null);
       setIsEventDialogOpen(false);
       
-      // Invalidate events cache so frontend shows updated data
-      invalidateEvents();
-      
-      // Refresh all data to ensure consistency (but don't wait for it to close dialog)
-      // The optimistic update above already shows the event immediately
-      fetchAllData().catch(err => {
-        console.error('Error refreshing data after save:', err);
-        // If refresh fails, the optimistic update is still there, so UI is fine
-      });
+      // Post-save operations (cache invalidation and refresh) - wrap in try-catch
+      // These should not trigger the main error handler since the save already succeeded
+      try {
+        // Invalidate events cache so frontend shows updated data
+        invalidateEvents();
+        
+        // Refresh all data to ensure consistency (but don't wait for it to close dialog)
+        // The optimistic update above already shows the event immediately
+        fetchAllData().catch(err => {
+          console.error('Error refreshing data after save:', err);
+          // If refresh fails, the optimistic update is still there, so UI is fine
+        });
+      } catch (postSaveError) {
+        // Log post-save errors but don't show error toast since save already succeeded
+        console.error('Error in post-save operations (cache invalidation):', postSaveError);
+        // Silently fail - the event is already saved and shown in UI
+      }
 
     } catch (error) {
       console.error('Error saving event:', error, error?.message, error?.details);
