@@ -47,6 +47,7 @@ interface OrderData {
   status: string;
   payment_method: string;
   source: string;
+  order_number?: string | number | null; // Order number used in SMS (e.g., 257283)
   events?: {
     id: string;
     name: string;
@@ -262,6 +263,26 @@ const generateAndUploadQRCodes = async (
  * Compose confirmation email HTML with all ticket QR codes
  * Now uses the ambassador-style template from email.ts
  */
+// Helper function to format event time
+const formatEventTime = (eventDate: string | undefined): string | undefined => {
+  if (!eventDate) return undefined;
+  try {
+    const date = new Date(eventDate);
+    if (isNaN(date.getTime())) return undefined;
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const dayName = days[date.getDay()];
+    const day = date.getDate();
+    const monthName = months[date.getMonth()];
+    const year = date.getFullYear();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${dayName} · ${day} ${monthName} ${year} · ${hours}:${minutes}`;
+  } catch (e) {
+    return undefined;
+  }
+};
+
 const composeConfirmationEmail = (
   orderData: OrderData,
   tickets: Ticket[],
@@ -297,7 +318,10 @@ const composeConfirmationEmail = (
     customerName,
     customerEmail: orderData.user_email || '',
     orderId: orderData.id,
+    orderNumber: orderData.order_number, // Pass order number for SMS consistency
     eventName,
+    eventTime: formatEventTime(orderData.events?.date),
+    venueName: orderData.events?.venue,
     totalAmount,
     ambassadorName,
     passes: passesSummary,

@@ -5607,11 +5607,6 @@ app.post('/api/send-order-completion-email', async (req, res) => {
             ` : ''}
 
             <div class="order-info">
-              <h3>💳 Payment Confirmation</h3>
-              <p>Your payment of <strong>${emailData.totalAmount.toFixed(2)} TND</strong> has been successfully received in cash by our ambassador <strong>${emailData.ambassadorName}</strong>. Your order is now fully validated and confirmed.</p>
-            </div>
-
-            <div class="order-info">
               <h3>💬 Need Help?</h3>
               <p>If you have any questions about your order, need to verify your purchase, or require assistance, please don't hesitate to contact our support team.</p>
               <a href="${emailData.supportContactUrl}" class="support-link">Contact Support</a>
@@ -5890,7 +5885,7 @@ app.post('/api/resend-order-completion-email', requireAdminAuth, async (req, res
             <h1>✅ Order Confirmed!</h1>
           </div>
           <p>Dear <strong>${order.user_name || 'Valued Customer'}</strong>,</p>
-          <p>Your order ${orderId} has been confirmed. Total: ${order.total_price} TND</p>
+          <p>Your order ${order.order_number !== null && order.order_number !== undefined ? `#${order.order_number}` : orderId.substring(0, 8).toUpperCase()} has been confirmed. Total: ${order.total_price} TND</p>
           ${order.events?.name ? `<p><strong>Event:</strong> ${order.events.name}</p>` : ''}
           ${formattedEventTime ? `<p><strong>Event Time:</strong> ${formattedEventTime}</p>` : ''}
           ${order.events?.venue ? `<p><strong>Venue:</strong> ${order.events.venue}</p>` : ''}
@@ -6407,6 +6402,26 @@ app.post('/api/generate-qr-code', async (req, res) => {
  * Helper function to build ticket email HTML template
  * Reusable by both generateTicketsAndSendEmail and resend ticket email
  */
+// Helper function to format event time
+function formatEventTime(eventDate) {
+  if (!eventDate) return null;
+  try {
+    const date = new Date(eventDate);
+    if (isNaN(date.getTime())) return null;
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const dayName = days[date.getDay()];
+    const day = date.getDate();
+    const monthName = months[date.getMonth()];
+    const year = date.getFullYear();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${dayName} · ${day} ${monthName} ${year} · ${hours}:${minutes}`;
+  } catch (e) {
+    return null;
+  }
+}
+
 function buildTicketEmailHtml(order, tickets, passes, orderId) {
   const orderIdShort = orderId.substring(0, 8).toUpperCase();
   const supportUrl = `${process.env.VITE_API_URL || process.env.API_URL || 'https://andiamoevents.com'}/contact`;
@@ -6802,12 +6817,20 @@ function buildTicketEmailHtml(order, tickets, passes, orderId) {
           
           <div class="order-info-block">
             <div class="info-row">
-              <div class="info-label">Order ID</div>
-              <div class="info-value">${orderIdShort}</div>
+              <div class="info-label">Order Number</div>
+              <div class="info-value">${order.order_number !== null && order.order_number !== undefined ? `#${order.order_number}` : orderIdShort}</div>
             </div>
             <div class="info-row">
               <div class="info-label">Event</div>
               <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.name || 'Event'}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Event Time</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${formatEventTime(order.events?.date) || 'TBA'}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Venue</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.venue || 'Venue to be announced'}</div>
             </div>
             ${order.ambassadors ? `
             <div class="info-row">
@@ -6845,13 +6868,6 @@ function buildTicketEmailHtml(order, tickets, passes, orderId) {
             ${ticketsHtml}
           </div>
 
-          <div class="order-info-block">
-            <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">Payment Confirmation</h3>
-            <p class="message" style="margin: 0;">
-              Your payment of <strong style="color: #E21836;">${order.total_price.toFixed(2)} TND</strong> has been successfully received${order.ambassadors ? ` by our ambassador <strong>${order.ambassadors.full_name}</strong>` : ''}. Your order is now fully validated and confirmed.
-            </p>
-          </div>
-          
           <div class="support-section">
             <p class="support-text">
               Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a> or visit <a href="${supportUrl}" class="support-email">our support page</a>.
@@ -7723,12 +7739,20 @@ async function generateTicketsAndSendEmail(orderId) {
                 
                 <div class="order-info-block">
                   <div class="info-row">
-                    <div class="info-label">Order ID</div>
-                    <div class="info-value">${orderId.substring(0, 8).toUpperCase()}</div>
+                    <div class="info-label">Order Number</div>
+                    <div class="info-value">${order.order_number !== null && order.order_number !== undefined ? `#${order.order_number}` : orderId.substring(0, 8).toUpperCase()}</div>
                   </div>
                   <div class="info-row">
                     <div class="info-label">Event</div>
                     <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.name || 'Event'}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="info-label">Event Time</div>
+                    <div style="font-size: 18px; color: #E21836; font-weight: 600;">${formatEventTime(order.events?.date) || 'TBA'}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="info-label">Venue</div>
+                    <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.venue || 'Venue to be announced'}</div>
                   </div>
                   ${order.ambassadors ? `
                   <div class="info-row">
@@ -7766,13 +7790,6 @@ async function generateTicketsAndSendEmail(orderId) {
                   ${ticketsHtml}
                 </div>
 
-                <div class="order-info-block">
-                  <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">Payment Confirmation</h3>
-                  <p class="message" style="margin: 0;">
-                    Your payment of <strong style="color: #E21836;">${order.total_price.toFixed(2)} TND</strong> has been successfully received${order.ambassadors ? ` by our ambassador <strong>${order.ambassadors.full_name}</strong>` : ''}. Your order is now fully validated and confirmed.
-                  </p>
-                </div>
-                
                 <div class="support-section">
                   <p class="support-text">
                     Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a> or visit <a href="${supportUrl}" class="support-email">our support page</a>.
@@ -8961,6 +8978,7 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLi
         user_email,
         user_name,
         total_price,
+        order_number,
         events (
           id,
           name,

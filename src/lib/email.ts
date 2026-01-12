@@ -1218,6 +1218,7 @@ export const generatePassword = (): string => {
 interface OrderCompletionData {
   customerName: string;
   orderId: string;
+  orderNumber?: string | number | null; // Order number used in SMS (e.g., 257283)
   eventName: string;
   ambassadorName: string;
   passes: Array<{
@@ -1445,27 +1446,6 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           color: hsl(195, 100%, 50%);
           padding-top: 15px;
         }
-        .payment-confirmation {
-          background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
-          border-left: 4px solid hsl(195, 100%, 50%);
-          border-radius: 12px;
-          padding: 25px;
-          margin: 30px 0;
-          box-shadow: 0 0 20px rgba(0, 195, 255, 0.1);
-        }
-        .payment-confirmation h3 {
-          font-family: 'Montserrat', sans-serif;
-          font-style: normal;
-          font-size: 18px;
-          color: hsl(195, 100%, 50%);
-          margin-bottom: 15px;
-        }
-        .payment-confirmation p {
-          color: #d0d0d0;
-          font-size: 15px;
-          line-height: 1.8;
-          margin: 0;
-        }
         .support-section {
           background: linear-gradient(135deg, hsl(218, 23%, 15%) 0%, hsl(218, 23%, 18%) 100%);
           border-radius: 12px;
@@ -1577,8 +1557,8 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           <div class="order-info-card">
             <h3>📋 Order Details</h3>
             <div class="info-item">
-              <strong>ORDER ID</strong>
-              <span class="info-value">${orderData.orderId}</span>
+              <strong>ORDER NUMBER</strong>
+              <span class="info-value">${orderData.orderNumber !== null && orderData.orderNumber !== undefined ? `#${orderData.orderNumber}` : orderData.orderId.substring(0, 8).toUpperCase()}</span>
             </div>
             <div class="info-item">
               <strong>EVENT</strong>
@@ -1586,7 +1566,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
             </div>
             <div class="info-item">
               <strong>EVENT TIME</strong>
-              <span class="info-value">${orderData.eventTime || 'TBA'}</span>
+              <span style="color: hsl(195, 100%, 50%); font-weight: 600;">${orderData.eventTime || 'TBA'}</span>
             </div>
             <div class="info-item">
               <strong>VENUE</strong>
@@ -1619,13 +1599,6 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
           </div>
 
           ${digitalTicketSection}
-
-          <div class="payment-confirmation">
-            <h3>💳 Payment Confirmation</h3>
-            <p>
-              Your payment of <strong style="color: hsl(195, 100%, 50%);">${orderData.totalAmount.toFixed(2)} TND</strong> has been successfully received in cash by our ambassador <strong>${orderData.ambassadorName}</strong>. Your order is now fully validated and confirmed.
-            </p>
-          </div>
 
           <div class="support-section">
             <h3>💬 Need Help?</h3>
@@ -1667,7 +1640,10 @@ interface QRCodeEmailData {
   customerName: string;
   customerEmail: string;
   orderId: string;
+  orderNumber?: string | number | null; // Order number used in SMS (e.g., 257283)
   eventName: string;
+  eventTime?: string; // Formatted event time (e.g., "Saturday · 22 March 2026 · 22:00")
+  venueName?: string; // Event venue name
   totalAmount: number;
   ambassadorName?: string;
   passes: Array<{
@@ -2105,12 +2081,20 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
           <!-- Order Info Section -->
           <div class="order-info-block">
             <div class="info-row">
-              <div class="info-label">Order ID</div>
-              <div class="info-value">${orderData.orderId.substring(0, 8).toUpperCase()}</div>
+              <div class="info-label">Order Number</div>
+              <div class="info-value">${orderData.orderNumber != null ? `#${orderData.orderNumber}` : orderData.orderId.substring(0, 8).toUpperCase()}</div>
             </div>
             <div class="info-row">
               <div class="info-label">Event</div>
               <div style="font-size: 18px; color: #E21836; font-weight: 600;">${orderData.eventName}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Event Time</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${orderData.eventTime || 'TBA'}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Venue</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${orderData.venueName || 'Venue to be announced'}</div>
             </div>
             ${orderData.ambassadorName ? `
             <div class="info-row">
@@ -2148,14 +2132,6 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
               Please present these QR codes at the event entrance. Each ticket has a unique QR code for verification.
             </p>
             ${ticketsHtml}
-          </div>
-
-          <!-- Payment Confirmation -->
-          <div class="order-info-block">
-            <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">Payment Confirmation</h3>
-            <p class="message" style="margin: 0;">
-              Your payment of <strong style="color: #E21836;">${orderData.totalAmount.toFixed(2)} TND</strong> has been successfully received${orderData.ambassadorName ? ` by our ambassador <strong>${orderData.ambassadorName}</strong>` : ''}. Your order is now fully validated and confirmed.
-            </p>
           </div>
           
           <!-- Support Section -->

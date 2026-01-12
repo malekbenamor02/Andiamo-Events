@@ -1705,12 +1705,36 @@ export default async (req, res) => {
                         <p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.</p>
                         <div class="order-info-block">
                           <div class="info-row">
-                            <div class="info-label">Order ID</div>
-                            <div class="info-value">${fullOrder.order_number != null ? fullOrder.order_number.toString() : orderId.substring(0, 8).toUpperCase()}</div>
+                            <div class="info-label">Order Number</div>
+                            <div class="info-value">${fullOrder.order_number !== null && fullOrder.order_number !== undefined ? `#${fullOrder.order_number}` : orderId.substring(0, 8).toUpperCase()}</div>
                           </div>
                           <div class="info-row">
                             <div class="info-label">Event</div>
                             <div style="font-size: 18px; color: #E21836; font-weight: 600;">${fullOrder.events?.name || 'Event'}</div>
+                          </div>
+                          <div class="info-row">
+                            <div class="info-label">Event Time</div>
+                            <div style="font-size: 18px; color: #E21836; font-weight: 600;">${fullOrder.events?.date ? (() => {
+                              try {
+                                const date = new Date(fullOrder.events.date);
+                                if (!isNaN(date.getTime())) {
+                                  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                                  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                                  const dayName = days[date.getDay()];
+                                  const day = date.getDate();
+                                  const monthName = months[date.getMonth()];
+                                  const year = date.getFullYear();
+                                  const hours = date.getHours().toString().padStart(2, '0');
+                                  const minutes = date.getMinutes().toString().padStart(2, '0');
+                                  return `${dayName} · ${day} ${monthName} ${year} · ${hours}:${minutes}`;
+                                }
+                              } catch (e) {}
+                              return 'TBA';
+                            })() : 'TBA'}</div>
+                          </div>
+                          <div class="info-row">
+                            <div class="info-label">Venue</div>
+                            <div style="font-size: 18px; color: #E21836; font-weight: 600;">${fullOrder.events?.venue || 'Venue to be announced'}</div>
                           </div>
                         </div>
                         <div class="order-info-block">
@@ -2319,12 +2343,36 @@ We Create Memories`;
                 <p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.</p>
                 <div class="order-info-block">
                   <div class="info-row">
-                    <div class="info-label">Order ID</div>
-                    <div class="info-value">${order.order_number != null ? order.order_number.toString() : ''}</div>
+                    <div class="info-label">Order Number</div>
+                    <div class="info-value">${order.order_number !== null && order.order_number !== undefined ? `#${order.order_number}` : orderId.substring(0, 8).toUpperCase()}</div>
                   </div>
                   <div class="info-row">
                     <div class="info-label">Event</div>
                     <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.name || 'Event'}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="info-label">Event Time</div>
+                    <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.date ? (() => {
+                      try {
+                        const date = new Date(order.events.date);
+                        if (!isNaN(date.getTime())) {
+                          const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                          const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                          const dayName = days[date.getDay()];
+                          const day = date.getDate();
+                          const monthName = months[date.getMonth()];
+                          const year = date.getFullYear();
+                          const hours = date.getHours().toString().padStart(2, '0');
+                          const minutes = date.getMinutes().toString().padStart(2, '0');
+                          return `${dayName} · ${day} ${monthName} ${year} · ${hours}:${minutes}`;
+                        }
+                      } catch (e) {}
+                      return 'TBA';
+                    })() : 'TBA'}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="info-label">Venue</div>
+                    <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.venue || 'Venue to be announced'}</div>
                   </div>
                 </div>
                 <div class="order-info-block">
