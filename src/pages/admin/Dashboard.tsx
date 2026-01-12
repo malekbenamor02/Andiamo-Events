@@ -299,6 +299,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [siteLogs, setSiteLogs] = useState<Array<{id: string; log_type: string; category: string; message: string; details: any; user_type: string; created_at: string}>>([]);
   const [loadingSiteLogs, setLoadingSiteLogs] = useState(false);
+  
+  // Email Marketing state
+  const [marketingSubTab, setMarketingSubTab] = useState<'sms' | 'email'>('sms');
+  const [emailSubscribers, setEmailSubscribers] = useState<Array<{id: string; email: string; subscribed_at: string; language?: string}>>([]);
+  const [loadingEmailSubscribers, setLoadingEmailSubscribers] = useState(false);
+  const [importingEmails, setImportingEmails] = useState(false);
+  const [showEmailImportDialog, setShowEmailImportDialog] = useState(false);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailContent, setEmailContent] = useState("");
+  const [sendingBulkEmails, setSendingBulkEmails] = useState(false);
+  const [emailDelaySeconds, setEmailDelaySeconds] = useState<number>(2); // Delay between emails in seconds
   // New comprehensive logs state
   const [logs, setLogs] = useState<any[]>([]);
   const [loadingComprehensiveLogs, setLoadingComprehensiveLogs] = useState(false);
@@ -1200,8 +1211,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (smsLogs.length === 0) {
         fetchSmsLogs();
       }
+      // Load email subscribers when email marketing tab is active
+      if (marketingSubTab === 'email' && emailSubscribers.length === 0) {
+        fetchEmailSubscribers();
+      }
     }
+  }, [activeTab, marketingSubTab, phoneSubscribers.length, smsLogs.length, emailSubscribers.length]);
 
+  useEffect(() => {
     if (activeTab === "tickets" && !hasTicketsAnimated) {
       const timer = setTimeout(() => {
         setHasTicketsAnimated(true);
@@ -3379,6 +3396,347 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
     } finally {
       setImportingPhones(false);
+    }
+  };
+
+  // Fetch email subscribers
+  const fetchEmailSubscribers = async () => {
+    try {
+      setLoadingEmailSubscribers(true);
+      const { data, error } = await supabase
+        .from('newsletter_subscribers')
+        .select('id, email, subscribed_at, language')
+        .order('subscribed_at', { ascending: false });
+      
+      if (error) {
+        console.warn('newsletter_subscribers query error:', error);
+        setEmailSubscribers([]);
+        return;
+      }
+      
+      setEmailSubscribers((data || []).map((item: any) => ({
+        id: item.id,
+        email: item.email,
+        subscribed_at: item.subscribed_at || new Date().toISOString(),
+        language: item.language || 'en'
+      })));
+    } catch (error) {
+      console.error('Error fetching email subscribers:', error);
+      setEmailSubscribers([]);
+    } finally {
+      setLoadingEmailSubscribers(false);
+    }
+  };
+
+  // Export email subscribers to Excel
+  const handleExportEmails = async () => {
+    try {
+      if (emailSubscribers.length === 0) {
+        toast({
+          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
+          description: language === 'en' 
+            ? 'No email addresses to export'
+            : 'Aucune adresse email à exporter',
+          variant: 'default'
+        });
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Email Subscribers');
+
+      worksheet.columns = [
+        { header: 'Email', key: 'email', width: 30 }
+      ];
+
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE21836' }
+      };
+      worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+
+      emailSubscribers.forEach(subscriber => {
+        worksheet.addRow({
+          email: subscriber.email
+        });
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `email_subscribers_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: language === 'en' ? 'Export Successful' : 'Exportation Réussie',
+        description: language === 'en' 
+          ? `Exported ${emailSubscribers.length} email addresses`
+          : `${emailSubscribers.length} adresses email exportées`,
+        variant: 'default'
+      });
+    } catch (error: any) {
+      console.error('Error exporting email addresses:', error);
+      toast({
+        title: language === 'en' ? 'Export Failed' : 'Échec de l\'Exportation',
+        description: error.message || (language === 'en' ? 'Failed to export email addresses' : 'Échec de l\'exportation des adresses email'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Import email addresses from Excel file
+  const handleImportEmailsFromExcel = async (file: File) => {
+    try {
+      setImportingEmails(true);
+
+      const workbook = new ExcelJS.Workbook();
+      const buffer = await file.arrayBuffer();
+      await workbook.xlsx.load(buffer);
+
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        throw new Error(language === 'en' ? 'Invalid Excel file format' : 'Format de fichier Excel invalide');
+      }
+
+      const emails: string[] = [];
+      
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+        
+        const emailCell = row.getCell(1);
+        if (emailCell && emailCell.value) {
+          let emailValue = String(emailCell.value).trim().toLowerCase();
+          
+          // Basic email validation
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (emailRegex.test(emailValue)) {
+            emails.push(emailValue);
+          }
+        }
+      });
+
+      if (emails.length === 0) {
+        toast({
+          title: language === 'en' ? 'No Valid Emails' : 'Aucun Email Valide',
+          description: language === 'en' 
+            ? 'No valid email addresses found in Excel file'
+            : 'Aucune adresse email valide trouvée dans le fichier Excel',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Check for duplicates
+      const { data: existingSubscribers, error: checkError } = await supabase
+        .from('newsletter_subscribers')
+        .select('email')
+        .in('email', emails);
+
+      if (checkError) throw checkError;
+
+      const existingEmailSet = new Set(
+        (existingSubscribers || []).map((s: any) => s.email.toLowerCase())
+      );
+
+      const newEmailsToImport = emails.filter(
+        email => !existingEmailSet.has(email.toLowerCase())
+      );
+
+      let duplicatesCount = emails.length - newEmailsToImport.length;
+      const results: string[] = [];
+      const errors: Array<{ email: string; error: string }> = [];
+
+      if (newEmailsToImport.length === 0) {
+        toast({
+          title: language === 'en' ? 'All Duplicates' : 'Tous Doublons',
+          description: language === 'en' 
+            ? `All ${emails.length} email addresses already exist in database`
+            : `Toutes les ${emails.length} adresses email existent déjà dans la base de données`,
+          variant: 'default'
+        });
+        return;
+      }
+
+      // Batch insert in chunks of 100
+      const chunkSize = 100;
+      for (let i = 0; i < newEmailsToImport.length; i += chunkSize) {
+        const chunk = newEmailsToImport.slice(i, i + chunkSize).map(email => ({
+          email: email,
+          language: 'en' as const
+        }));
+
+        try {
+          const { data: inserted, error: insertError } = await supabase
+            .from('newsletter_subscribers')
+            .insert(chunk)
+            .select('email');
+
+          if (insertError) {
+            for (const emailData of chunk) {
+              try {
+                const { error: singleError } = await supabase
+                  .from('newsletter_subscribers')
+                  .insert(emailData);
+
+                if (singleError) {
+                  if (singleError.code === '23505') {
+                    duplicatesCount++;
+                  } else {
+                    errors.push({ email: emailData.email, error: singleError.message });
+                  }
+                } else {
+                  results.push(emailData.email);
+                }
+              } catch (err: any) {
+                errors.push({ email: emailData.email, error: err.message });
+              }
+            }
+          } else {
+            if (inserted) {
+              results.push(...inserted.map((item: any) => item.email));
+            }
+          }
+        } catch (err: any) {
+          console.error('Batch insert error:', err);
+          errors.push({ email: 'batch', error: err.message });
+        }
+      }
+
+      await fetchEmailSubscribers();
+
+      toast({
+        title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
+        description: language === 'en'
+          ? `Imported: ${results.length}, Duplicates: ${duplicatesCount}, Errors: ${errors.length}`
+          : `Importé: ${results.length}, Doublons: ${duplicatesCount}, Erreurs: ${errors.length}`,
+        variant: results.length > 0 ? 'default' : 'destructive'
+      });
+
+      if (errors.length > 0) {
+        console.error('Import errors:', errors);
+      }
+
+      setShowEmailImportDialog(false);
+    } catch (error: any) {
+      console.error('Error importing from Excel:', error);
+      toast({
+        title: language === 'en' ? 'Import Failed' : 'Échec de l\'Importation',
+        description: error.message || (language === 'en' ? 'Failed to import email addresses' : 'Échec de l\'importation des adresses email'),
+        variant: 'destructive'
+      });
+    } finally {
+      setImportingEmails(false);
+    }
+  };
+
+  // Send bulk emails with delay
+  const handleSendBulkEmails = async () => {
+    if (!emailSubject.trim()) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter an email subject' 
+          : 'Veuillez entrer un sujet d\'email',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!emailContent.trim()) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter email content' 
+          : 'Veuillez entrer le contenu de l\'email',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (emailSubscribers.length === 0) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'No email subscribers available' 
+          : 'Aucun abonné email disponible',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setSendingBulkEmails(true);
+      const results: Array<{ email: string; success: boolean; error?: string }> = [];
+      
+      // Send emails with delay between each
+      for (let i = 0; i < emailSubscribers.length; i++) {
+        const subscriber = emailSubscribers[i];
+        
+        try {
+          const response = await fetch('/api/send-email', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              to: subscriber.email,
+              subject: emailSubject,
+              html: emailContent
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.details || errorData.error || 'Failed to send email');
+          }
+
+          results.push({ email: subscriber.email, success: true });
+        } catch (error: any) {
+          results.push({ 
+            email: subscriber.email, 
+            success: false, 
+            error: error.message || 'Unknown error' 
+          });
+        }
+
+        // Delay before next email (except for the last one)
+        if (i < emailSubscribers.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, emailDelaySeconds * 1000));
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.filter(r => !r.success).length;
+
+      toast({
+        title: language === 'en' ? 'Bulk Email Complete' : 'Envoi en Masse Terminé',
+        description: language === 'en'
+          ? `Sent: ${successCount}, Failed: ${failCount}`
+          : `Envoyé: ${successCount}, Échoué: ${failCount}`,
+        variant: failCount === 0 ? 'default' : 'destructive'
+      });
+
+      // Clear form after successful send
+      if (failCount === 0) {
+        setEmailSubject("");
+        setEmailContent("");
+      }
+    } catch (error: any) {
+      console.error('Error sending bulk emails:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to send bulk emails' : 'Échec de l\'envoi en masse'),
+        variant: 'destructive'
+      });
+    } finally {
+      setSendingBulkEmails(false);
     }
   };
 
@@ -13612,6 +13970,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
               {/* Marketing Tab */}
               <TabsContent value="marketing" className="space-y-6">
+                {/* Sub-tabs for SMS and Email Marketing */}
+                <Tabs value={marketingSubTab} onValueChange={(value) => setMarketingSubTab(value as 'sms' | 'email')} className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 mb-6">
+                    <TabsTrigger value="sms" className="flex items-center gap-2">
+                      <PhoneCall className="w-4 h-4" />
+                      {language === 'en' ? 'SMS Marketing' : 'Marketing SMS'}
+                    </TabsTrigger>
+                    <TabsTrigger value="email" className="flex items-center gap-2">
+                      <Mail className="w-4 h-4" />
+                      {language === 'en' ? 'Email Marketing' : 'Marketing Email'}
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {/* SMS Marketing Tab */}
+                  <TabsContent value="sms" className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full px-2">
                   {/* SMS Balance Card */}
                   <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
@@ -14369,6 +14742,242 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </Card>
                   </div>
                 </div>
+                  </TabsContent>
+
+                  {/* Email Marketing Tab */}
+                  <TabsContent value="email" className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full px-2">
+                  {/* Email Subscribers Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Mail className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'Email Marketing' : 'Marketing Email'}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">
+                          {language === 'en' 
+                            ? `Send emails to all newsletter subscribers`
+                            : `Envoyer des emails à tous les abonnés newsletter`}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        {/* Subscriber Count */}
+                        <div className="p-3 bg-muted/30 rounded-lg border border-border">
+                          <div className="text-sm font-semibold text-foreground mb-1">
+                            {language === 'en' ? 'Subscribers Count' : 'Nombre d\'Abonnés'}
+                          </div>
+                          <div className="text-2xl font-bold text-primary">
+                            {loadingEmailSubscribers ? (
+                              <RefreshCw className="w-6 h-6 animate-spin" />
+                            ) : (
+                              emailSubscribers.length
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {language === 'en' 
+                              ? 'This email will be sent to all newsletter subscribers'
+                              : 'Cet email sera envoyé à tous les abonnés newsletter'}
+                          </div>
+                        </div>
+
+                        {/* Export/Import Buttons */}
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={handleExportEmails}
+                            disabled={emailSubscribers.length === 0 || loadingEmailSubscribers}
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            {language === 'en' ? 'Export Excel' : 'Exporter Excel'}
+                          </Button>
+                          <Dialog open={showEmailImportDialog} onOpenChange={setShowEmailImportDialog}>
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex-1"
+                              >
+                                <Upload className="w-4 h-4 mr-2" />
+                                {language === 'en' ? 'Import Excel' : 'Importer Excel'}
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-2xl">
+                              <DialogHeader>
+                                <DialogTitle>
+                                  {language === 'en' ? 'Import Email Addresses from Excel' : 'Importer des Adresses Email depuis Excel'}
+                                </DialogTitle>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                {/* Instructions */}
+                                <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+                                  <div className="flex items-start gap-2">
+                                    <Info className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                                    <div className="space-y-2 text-sm">
+                                      <p className="font-semibold">
+                                        {language === 'en' ? 'Excel File Format:' : 'Format du Fichier Excel:'}
+                                      </p>
+                                      <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
+                                        <li>
+                                          {language === 'en' 
+                                            ? 'First column: Email Address (valid email format required)'
+                                            : 'Première colonne: Adresse Email (format email valide requis)'}
+                                        </li>
+                                        <li>
+                                          {language === 'en' 
+                                            ? 'First row should be headers (will be skipped)'
+                                            : 'La première ligne doit contenir les en-têtes (sera ignorée)'}
+                                        </li>
+                                        <li>
+                                          {language === 'en' 
+                                            ? 'Duplicate emails will be automatically skipped'
+                                            : 'Les emails en double seront automatiquement ignorés'}
+                                        </li>
+                                        <li>
+                                          {language === 'en' 
+                                            ? 'Subscription time will be set automatically to import time'
+                                            : 'La date d\'abonnement sera définie automatiquement à l\'heure d\'importation'}
+                                        </li>
+                                      </ul>
+                                      <div className="mt-3 p-2 bg-background rounded border border-border">
+                                        <p className="font-semibold text-xs mb-1">
+                                          {language === 'en' ? 'Example:' : 'Exemple:'}
+                                        </p>
+                                        <pre className="text-xs text-muted-foreground">
+                                          {language === 'en' 
+                                            ? 'Email\nuser@example.com\nsubscriber@example.com'
+                                            : 'Email\nuser@example.com\nsubscriber@example.com'}
+                                        </pre>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* File Upload */}
+                                <div className="space-y-2">
+                                  <Label>
+                                    {language === 'en' ? 'Select Excel File (.xlsx)' : 'Sélectionner un Fichier Excel (.xlsx)'}
+                                  </Label>
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      type="file"
+                                      accept=".xlsx,.xls"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                          handleImportEmailsFromExcel(file);
+                                        }
+                                      }}
+                                      disabled={importingEmails}
+                                      className="flex-1"
+                                    />
+                                  </div>
+                                  {importingEmails && (
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                      <RefreshCw className="w-4 h-4 animate-spin" />
+                                      {language === 'en' ? 'Importing...' : 'Importation...'}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Email Composition Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Mail className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'Compose Email' : 'Composer Email'}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">
+                          {language === 'en' 
+                            ? `Create and send bulk emails to subscribers`
+                            : `Créer et envoyer des emails en masse aux abonnés`}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-4">
+                        {/* Email Subject */}
+                        <div className="space-y-2">
+                          <Label>{language === 'en' ? 'Subject' : 'Sujet'} *</Label>
+                          <Input
+                            value={emailSubject}
+                            onChange={(e) => setEmailSubject(e.target.value)}
+                            placeholder={language === 'en' ? 'Enter email subject...' : 'Entrez le sujet de l\'email...'}
+                            className="bg-background text-foreground"
+                          />
+                        </div>
+
+                        {/* Email Content */}
+                        <div className="space-y-2 flex-1 flex flex-col">
+                          <Label>{language === 'en' ? 'Email Content (HTML)' : 'Contenu Email (HTML)'} *</Label>
+                          <Textarea
+                            value={emailContent}
+                            onChange={(e) => setEmailContent(e.target.value)}
+                            placeholder={language === 'en' ? 'Enter email content (HTML supported)...' : 'Entrez le contenu de l\'email (HTML supporté)...'}
+                            className="min-h-[300px] text-sm bg-background text-foreground font-mono"
+                          />
+                          <div className="text-xs text-muted-foreground">
+                            {language === 'en' 
+                              ? 'HTML tags are supported. Use <p>, <h1>, <strong>, <a>, etc.'
+                              : 'Les balises HTML sont supportées. Utilisez <p>, <h1>, <strong>, <a>, etc.'}
+                          </div>
+                        </div>
+
+                        {/* Delay Setting */}
+                        <div className="space-y-2">
+                          <Label>
+                            {language === 'en' ? 'Delay Between Emails (seconds)' : 'Délai Entre les Emails (secondes)'}
+                          </Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="60"
+                            value={emailDelaySeconds}
+                            onChange={(e) => setEmailDelaySeconds(Math.max(1, Math.min(60, parseInt(e.target.value) || 2)))}
+                            className="bg-background text-foreground"
+                          />
+                          <div className="text-xs text-muted-foreground">
+                            {language === 'en' 
+                              ? `Each email will be sent ${emailDelaySeconds} second(s) after the previous one`
+                              : `Chaque email sera envoyé ${emailDelaySeconds} seconde(s) après le précédent`}
+                          </div>
+                        </div>
+
+                        {/* Send Button */}
+                        <Button
+                          onClick={handleSendBulkEmails}
+                          disabled={sendingBulkEmails || !emailSubject.trim() || !emailContent.trim() || emailSubscribers.length === 0}
+                          className="w-full btn-gradient"
+                          size="lg"
+                        >
+                          {sendingBulkEmails ? (
+                            <>
+                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                              {language === 'en' ? 'Sending Emails...' : 'Envoi des Emails...'}
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-5 h-5 mr-2" />
+                              {language === 'en' 
+                                ? `Send to ${emailSubscribers.length} Subscribers`
+                                : `Envoyer à ${emailSubscribers.length} Abonnés`}
+                            </>
+                          )}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+                  </TabsContent>
+                </Tabs>
               </TabsContent>
 
               {/* Logs & Analytics Tab - Available to all admins */}
