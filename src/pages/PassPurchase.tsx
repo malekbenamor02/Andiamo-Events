@@ -689,6 +689,17 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
             {/* Main Form */}
             <div className="lg:col-span-2 space-y-6">
+              {/* Seating Chart Guide */}
+              <Card className="glass">
+                <CardContent className="p-4">
+                  <img
+                    src="/assets/Dahih-event.jpg"
+                    alt={language === 'en' ? 'Seating Chart Guide' : 'Guide du Plan de Places'}
+                    className="w-full h-auto rounded-lg object-contain"
+                  />
+                </CardContent>
+              </Card>
+
               {/* STEP 1: Pass Selection */}
               <Card className="glass">
                 <CardHeader>
