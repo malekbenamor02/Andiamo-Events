@@ -652,7 +652,9 @@ export default async (req, res) => {
           .eq('status', 'approved')
           .eq('city', normalizedCity);
 
-        if (normalizedVille) {
+        // For Sousse: ignore ville filter, show all ambassadors in Sousse
+        // For other cities: filter by ville if provided
+        if (normalizedVille && normalizedCity !== 'Sousse') {
           query = query.eq('ville', normalizedVille);
         }
         
