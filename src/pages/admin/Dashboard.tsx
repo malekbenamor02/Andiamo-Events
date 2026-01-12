@@ -3176,8 +3176,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       // Add header row
       worksheet.columns = [
-        { header: 'Phone Number', key: 'phone_number', width: 20 },
-        { header: 'Subscribed At', key: 'subscribed_at', width: 25 }
+        { header: 'Phone Number', key: 'phone_number', width: 20 }
       ];
 
       // Style header row
@@ -3192,8 +3191,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Add data rows
       phoneSubscribers.forEach(subscriber => {
         worksheet.addRow({
-          phone_number: subscriber.phone_number,
-          subscribed_at: new Date(subscriber.subscribed_at).toLocaleString()
+          phone_number: subscriber.phone_number
         });
       });
 
@@ -13967,11 +13965,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                         </li>
                                         <li>
                                           {language === 'en' 
-                                            ? 'Second column: Subscribed At (optional, will be ignored)'
-                                            : 'Deuxième colonne: Date d\'abonnement (optionnel, sera ignoré)'}
-                                        </li>
-                                        <li>
-                                          {language === 'en' 
                                             ? 'First row should be headers (will be skipped)'
                                             : 'La première ligne doit contenir les en-têtes (sera ignorée)'}
                                         </li>
@@ -13980,6 +13973,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                             ? 'Duplicate numbers will be automatically skipped'
                                             : 'Les numéros en double seront automatiquement ignorés'}
                                         </li>
+                                        <li>
+                                          {language === 'en' 
+                                            ? 'Subscription time will be set automatically to import time'
+                                            : 'La date d\'abonnement sera définie automatiquement à l\'heure d\'importation'}
+                                        </li>
                                       </ul>
                                       <div className="mt-3 p-2 bg-background rounded border border-border">
                                         <p className="font-semibold text-xs mb-1">
@@ -13987,8 +13985,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                         </p>
                                         <pre className="text-xs text-muted-foreground">
                                           {language === 'en' 
-                                            ? 'Phone Number | Subscribed At\n27169458     | 2024-01-15\n98765432     | 2024-01-16'
-                                            : 'Numéro de Téléphone | Date d\'Abonnement\n27169458            | 2024-01-15\n98765432            | 2024-01-16'}
+                                            ? 'Phone Number\n27169458\n98765432'
+                                            : 'Numéro de Téléphone\n27169458\n98765432'}
                                         </pre>
                                       </div>
                                     </div>
