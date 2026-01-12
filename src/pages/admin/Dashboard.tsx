@@ -920,6 +920,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   useEffect(() => {
     fetchAllData();
+    fetchAmbassadorSalesData(); // Fetch ambassador orders data on initial load for pending count
   }, []);
 
   // Animation effect for overview cards
