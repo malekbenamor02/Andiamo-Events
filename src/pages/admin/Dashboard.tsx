@@ -3638,6 +3638,279 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  // Build marketing email HTML using the same template as other emails
+  const buildMarketingEmailHtml = (content: string, recipientName?: string) => {
+    const supportUrl = `${window.location.origin}/contact`;
+    const recipient = recipientName || 'Valued Subscriber';
+    
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="color-scheme" content="light dark">
+        <meta name="supported-color-schemes" content="light dark">
+        <title>${emailSubject || 'Newsletter - Andiamo Events'}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6; 
+            color: #1A1A1A; 
+            background: #FFFFFF;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+          }
+          @media (prefers-color-scheme: dark) {
+            body {
+              color: #FFFFFF;
+              background: #1A1A1A;
+            }
+          }
+          a {
+            color: #E21836 !important;
+            text-decoration: none;
+          }
+          .email-wrapper {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #FFFFFF;
+          }
+          @media (prefers-color-scheme: dark) {
+            .email-wrapper {
+              background: #1A1A1A;
+            }
+          }
+          .content-card {
+            background: #F5F5F5;
+            margin: 0 20px 30px;
+            border-radius: 12px;
+            padding: 50px 40px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+          }
+          @media (prefers-color-scheme: dark) {
+            .content-card {
+              background: #1F1F1F;
+              border: 1px solid rgba(42, 42, 42, 0.5);
+            }
+          }
+          .title-section {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 30px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+          }
+          @media (prefers-color-scheme: dark) {
+            .title-section {
+              border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            }
+          }
+          .title {
+            font-size: 32px;
+            font-weight: 700;
+            color: #1A1A1A;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+          }
+          @media (prefers-color-scheme: dark) {
+            .title {
+              color: #FFFFFF;
+            }
+          }
+          .subtitle {
+            font-size: 16px;
+            color: #666666;
+            font-weight: 400;
+          }
+          @media (prefers-color-scheme: dark) {
+            .subtitle {
+              color: #B0B0B0;
+            }
+          }
+          .greeting {
+            font-size: 18px;
+            color: #1A1A1A;
+            margin-bottom: 30px;
+            line-height: 1.7;
+          }
+          @media (prefers-color-scheme: dark) {
+            .greeting {
+              color: #FFFFFF;
+            }
+          }
+          .greeting strong {
+            color: #E21836;
+            font-weight: 600;
+          }
+          .message {
+            font-size: 16px;
+            color: #666666;
+            margin-bottom: 25px;
+            line-height: 1.7;
+          }
+          @media (prefers-color-scheme: dark) {
+            .message {
+              color: #B0B0B0;
+            }
+          }
+          .message-content {
+            font-size: 16px;
+            color: #666666;
+            margin-bottom: 25px;
+            line-height: 1.7;
+          }
+          @media (prefers-color-scheme: dark) {
+            .message-content {
+              color: #B0B0B0;
+            }
+          }
+          .support-section {
+            background: #E8E8E8;
+            border-left: 3px solid rgba(226, 24, 54, 0.3);
+            padding: 20px 25px;
+            margin: 35px 0;
+            border-radius: 4px;
+          }
+          @media (prefers-color-scheme: dark) {
+            .support-section {
+              background: #252525;
+            }
+          }
+          .support-text {
+            font-size: 14px;
+            color: #666666;
+            line-height: 1.7;
+          }
+          @media (prefers-color-scheme: dark) {
+            .support-text {
+              color: #B0B0B0;
+            }
+          }
+          .support-email {
+            color: #E21836 !important;
+            text-decoration: none;
+            font-weight: 500;
+          }
+          .closing-section {
+            text-align: center;
+            margin: 50px 0 40px;
+            padding-top: 40px;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+          }
+          @media (prefers-color-scheme: dark) {
+            .closing-section {
+              border-top: 1px solid rgba(255, 255, 255, 0.1);
+            }
+          }
+          .slogan {
+            font-size: 24px;
+            font-style: italic;
+            color: #E21836;
+            font-weight: 300;
+            margin-bottom: 30px;
+          }
+          .signature {
+            font-size: 16px;
+            color: #666666;
+            line-height: 1.7;
+          }
+          @media (prefers-color-scheme: dark) {
+            .signature {
+              color: #B0B0B0;
+            }
+          }
+          .footer {
+            margin-top: 50px;
+            padding: 40px 20px 30px;
+            text-align: center;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+          }
+          @media (prefers-color-scheme: dark) {
+            .footer {
+              border-top: 1px solid rgba(255, 255, 255, 0.05);
+            }
+          }
+          .footer-text {
+            font-size: 12px;
+            color: #999999;
+            margin-bottom: 20px;
+            line-height: 1.6;
+          }
+          @media (prefers-color-scheme: dark) {
+            .footer-text {
+              color: #6B6B6B;
+            }
+          }
+          .footer-links {
+            margin: 15px auto 0;
+            text-align: center;
+          }
+          .footer-link {
+            color: #999999;
+            text-decoration: none;
+            font-size: 13px;
+            margin: 0 8px;
+          }
+          @media (prefers-color-scheme: dark) {
+            .footer-link {
+              color: #6B6B6B;
+            }
+          }
+          .footer-link:hover {
+            color: #E21836 !important;
+          }
+          @media only screen and (max-width: 600px) {
+            .content-card {
+              margin: 0 15px 20px;
+              padding: 35px 25px;
+            }
+            .title {
+              font-size: 26px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="email-wrapper">
+          <div class="content-card">
+            <div class="title-section">
+              <h1 class="title">Andiamo Events</h1>
+              <p class="subtitle">${emailSubject || 'Newsletter Update'}</p>
+            </div>
+            
+            <p class="greeting">Dear <strong>${recipient}</strong>,</p>
+            
+            <div class="message-content">
+              ${content}
+            </div>
+
+            <div class="support-section">
+              <p class="support-text">Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a> or visit our <a href="${supportUrl}" class="support-email">contact page</a>.</p>
+            </div>
+            
+            <div class="closing-section">
+              <p class="slogan">We Create Memories</p>
+              <p class="signature">Best regards,<br>The Andiamo Events Team</p>
+            </div>
+          </div>
+        </div>
+        <div class="footer">
+          <p class="footer-text">
+            You're receiving this email because you subscribed to our newsletter.<br>
+            If you no longer wish to receive these emails, please contact us.
+          </p>
+          <div class="footer-links">
+            <a href="${window.location.origin}" class="footer-link">Visit Website</a>
+            <a href="${supportUrl}" class="footer-link">Contact Us</a>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
   // Send test email to a single address
   const handleSendTestEmail = async () => {
     if (!testEmailAddress.trim()) {
@@ -3689,6 +3962,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       setSendingTestEmail(true);
       
+      // Wrap content in email template
+      const emailHtml = buildMarketingEmailHtml(emailContent, 'Test Recipient');
+      
       const response = await fetch('/api/send-email', {
         method: 'POST',
         headers: {
@@ -3697,7 +3973,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         body: JSON.stringify({
           to: testEmailAddress.trim(),
           subject: emailSubject,
-          html: emailContent
+          html: emailHtml
         }),
       });
 
@@ -3769,6 +4045,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         const subscriber = emailSubscribers[i];
         
         try {
+          // Wrap content in email template
+          const emailHtml = buildMarketingEmailHtml(emailContent);
+          
           const response = await fetch('/api/send-email', {
             method: 'POST',
             headers: {
@@ -3777,7 +4056,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             body: JSON.stringify({
               to: subscriber.email,
               subject: emailSubject,
-              html: emailContent
+              html: emailHtml
             }),
           });
 
@@ -15012,17 +15291,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
                         {/* Email Content */}
                         <div className="space-y-2 flex-1 flex flex-col">
-                          <Label>{language === 'en' ? 'Email Content (HTML)' : 'Contenu Email (HTML)'} *</Label>
+                          <Label>{language === 'en' ? 'Email Content' : 'Contenu Email'} *</Label>
                           <Textarea
                             value={emailContent}
                             onChange={(e) => setEmailContent(e.target.value)}
-                            placeholder={language === 'en' ? 'Enter email content (HTML supported)...' : 'Entrez le contenu de l\'email (HTML supporté)...'}
-                            className="min-h-[300px] text-sm bg-background text-foreground font-mono"
+                            placeholder={language === 'en' ? 'Enter your email content (HTML supported)...' : 'Entrez le contenu de votre email (HTML supporté)...'}
+                            className="min-h-[300px] text-sm bg-background text-foreground"
                           />
                           <div className="text-xs text-muted-foreground">
                             {language === 'en' 
-                              ? 'HTML tags are supported. Use <p>, <h1>, <strong>, <a>, etc.'
-                              : 'Les balises HTML sont supportées. Utilisez <p>, <h1>, <strong>, <a>, etc.'}
+                              ? 'Your content will be wrapped in our email template. HTML tags are supported: <p>, <h1>, <strong>, <a>, etc.'
+                              : 'Votre contenu sera enveloppé dans notre modèle d\'email. Les balises HTML sont supportées: <p>, <h1>, <strong>, <a>, etc.'}
                           </div>
                         </div>
 
