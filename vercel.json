@@ -37,6 +37,10 @@
       "destination": "/api/orders-create.js"
     },
     {
+      "source": "/api/aio-events/save-submission",
+      "destination": "/api/aio-events-save-submission.js"
+    },
+    {
       "source": "/api/admin/passes/:eventId",
       "destination": "/api/misc.js"
     },
@@ -81,6 +85,9 @@
     },
     "api/orders-create.js": {
       "maxDuration": 60
+    },
+    "api/aio-events-save-submission.js": {
+      "maxDuration": 30
     },
     "api/passes-[eventId].js": {
       "maxDuration": 30
