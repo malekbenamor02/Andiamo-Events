@@ -13971,7 +13971,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {/* Marketing Tab */}
               <TabsContent value="marketing" className="space-y-6">
                 {/* Sub-tabs for SMS and Email Marketing */}
-                <Tabs value={marketingSubTab} onValueChange={(value) => setMarketingSubTab(value as 'sms' | 'email')} className="w-full">
+                <Tabs value={marketingSubTab} onValueChange={(value) => {
+                  setMarketingSubTab(value as 'sms' | 'email');
+                  // Fetch email subscribers when switching to email tab
+                  if (value === 'email' && emailSubscribers.length === 0) {
+                    fetchEmailSubscribers();
+                  }
+                }} className="w-full">
                   <TabsList className="grid w-full grid-cols-2 mb-6">
                     <TabsTrigger value="sms" className="flex items-center gap-2">
                       <PhoneCall className="w-4 h-4" />
