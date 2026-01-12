@@ -275,6 +275,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Broadcast mode (popup subscribers only)
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
+  const [importingPhones, setImportingPhones] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   
   // Targeted mode (ambassador applications)
   const [targetedMessage, setTargetedMessage] = useState("");
@@ -3152,6 +3154,233 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
     } finally {
       setImportingFromApplications(false);
+    }
+  };
+
+  // Export phone numbers to Excel
+  const handleExportPhones = async () => {
+    try {
+      if (phoneSubscribers.length === 0) {
+        toast({
+          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
+          description: language === 'en' 
+            ? 'No phone numbers to export'
+            : 'Aucun numéro de téléphone à exporter',
+          variant: 'default'
+        });
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Phone Numbers');
+
+      // Add header row
+      worksheet.columns = [
+        { header: 'Phone Number', key: 'phone_number', width: 20 },
+        { header: 'Subscribed At', key: 'subscribed_at', width: 25 }
+      ];
+
+      // Style header row
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE21836' }
+      };
+      worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+
+      // Add data rows
+      phoneSubscribers.forEach(subscriber => {
+        worksheet.addRow({
+          phone_number: subscriber.phone_number,
+          subscribed_at: new Date(subscriber.subscribed_at).toLocaleString()
+        });
+      });
+
+      // Generate buffer and download
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `phone_subscribers_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: language === 'en' ? 'Export Successful' : 'Exportation Réussie',
+        description: language === 'en' 
+          ? `Exported ${phoneSubscribers.length} phone numbers`
+          : `${phoneSubscribers.length} numéros exportés`,
+        variant: 'default'
+      });
+    } catch (error: any) {
+      console.error('Error exporting phone numbers:', error);
+      toast({
+        title: language === 'en' ? 'Export Failed' : 'Échec de l\'Exportation',
+        description: error.message || (language === 'en' ? 'Failed to export phone numbers' : 'Échec de l\'exportation des numéros'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Import phone numbers from Excel file
+  const handleImportPhonesFromExcel = async (file: File) => {
+    try {
+      setImportingPhones(true);
+
+      const workbook = new ExcelJS.Workbook();
+      const buffer = await file.arrayBuffer();
+      await workbook.xlsx.load(buffer);
+
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        throw new Error(language === 'en' ? 'Invalid Excel file format' : 'Format de fichier Excel invalide');
+      }
+
+      const phoneNumbers: string[] = [];
+      
+      // Read phone numbers from first column (skip header row)
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // Skip header
+        
+        const phoneCell = row.getCell(1);
+        if (phoneCell && phoneCell.value) {
+          let phoneValue = String(phoneCell.value).trim();
+          
+          // Remove any non-digit characters except leading + if present
+          phoneValue = phoneValue.replace(/[^\d+]/g, '');
+          
+          // Remove leading + if present
+          if (phoneValue.startsWith('+')) {
+            phoneValue = phoneValue.substring(1);
+          }
+          
+          // Validate: exactly 8 digits, starts with 2, 4, 5, or 9
+          const phoneRegex = /^[2594][0-9]{7}$/;
+          if (phoneRegex.test(phoneValue)) {
+            phoneNumbers.push(phoneValue);
+          }
+        }
+      });
+
+      if (phoneNumbers.length === 0) {
+        toast({
+          title: language === 'en' ? 'No Valid Numbers' : 'Aucun Numéro Valide',
+          description: language === 'en' 
+            ? 'No valid phone numbers found in Excel file'
+            : 'Aucun numéro de téléphone valide trouvé dans le fichier Excel',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Check for duplicates in database
+      const { data: existingSubscribers, error: checkError } = await supabase
+        .from('phone_subscribers')
+        .select('phone_number')
+        .in('phone_number', phoneNumbers);
+
+      if (checkError) throw checkError;
+
+      const existingPhoneSet = new Set(
+        (existingSubscribers || []).map((s: any) => s.phone_number)
+      );
+
+      // Filter out duplicates
+      const newPhonesToImport = phoneNumbers.filter(
+        phone => !existingPhoneSet.has(phone)
+      );
+
+      let duplicatesCount = phoneNumbers.length - newPhonesToImport.length;
+      const results: string[] = [];
+      const errors: Array<{ phone: string; error: string }> = [];
+
+      if (newPhonesToImport.length === 0) {
+        toast({
+          title: language === 'en' ? 'All Duplicates' : 'Tous Doublons',
+          description: language === 'en' 
+            ? `All ${phoneNumbers.length} phone numbers already exist in database`
+            : `Tous les ${phoneNumbers.length} numéros existent déjà dans la base de données`,
+          variant: 'default'
+        });
+        return;
+      }
+
+      // Batch insert in chunks of 100
+      const chunkSize = 100;
+      for (let i = 0; i < newPhonesToImport.length; i += chunkSize) {
+        const chunk = newPhonesToImport.slice(i, i + chunkSize).map(phone => ({
+          phone_number: phone,
+          language: 'en' as const
+        }));
+
+        try {
+          const { data: inserted, error: insertError } = await supabase
+            .from('phone_subscribers')
+            .insert(chunk)
+            .select('phone_number');
+
+          if (insertError) {
+            // If batch fails, try individual inserts
+            for (const phone of chunk) {
+              try {
+                const { error: singleError } = await supabase
+                  .from('phone_subscribers')
+                  .insert(phone);
+
+                if (singleError) {
+                  if (singleError.code === '23505') {
+                    // Duplicate (race condition)
+                    duplicatesCount++;
+                  } else {
+                    errors.push({ phone: phone.phone_number, error: singleError.message });
+                  }
+                } else {
+                  results.push(phone.phone_number);
+                }
+              } catch (err: any) {
+                errors.push({ phone: phone.phone_number, error: err.message });
+              }
+            }
+          } else {
+            if (inserted) {
+              results.push(...inserted.map((item: any) => item.phone_number));
+            }
+          }
+        } catch (err: any) {
+          console.error('Batch insert error:', err);
+          errors.push({ phone: 'batch', error: err.message });
+        }
+      }
+
+      // Refresh subscribers list
+      await fetchPhoneSubscribers();
+
+      toast({
+        title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
+        description: language === 'en'
+          ? `Imported: ${results.length}, Duplicates: ${duplicatesCount}, Errors: ${errors.length}`
+          : `Importé: ${results.length}, Doublons: ${duplicatesCount}, Erreurs: ${errors.length}`,
+        variant: results.length > 0 ? 'default' : 'destructive'
+      });
+
+      if (errors.length > 0) {
+        console.error('Import errors:', errors);
+      }
+
+      setShowImportDialog(false);
+    } catch (error: any) {
+      console.error('Error importing from Excel:', error);
+      toast({
+        title: language === 'en' ? 'Import Failed' : 'Échec de l\'Importation',
+        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : 'Échec de l\'importation des numéros'),
+        variant: 'destructive'
+      });
+    } finally {
+      setImportingPhones(false);
     }
   };
 
@@ -13690,6 +13919,111 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               ? 'This message will be sent to all popup subscribers'
                               : 'Ce message sera envoyé à tous les abonnés popup'}
                           </div>
+                        </div>
+
+                        {/* Export/Import Buttons */}
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={handleExportPhones}
+                            disabled={phoneSubscribers.length === 0}
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            {language === 'en' ? 'Export Excel' : 'Exporter Excel'}
+                          </Button>
+                          <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex-1"
+                              >
+                                <Upload className="w-4 h-4 mr-2" />
+                                {language === 'en' ? 'Import Excel' : 'Importer Excel'}
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-2xl">
+                              <DialogHeader>
+                                <DialogTitle>
+                                  {language === 'en' ? 'Import Phone Numbers from Excel' : 'Importer des Numéros depuis Excel'}
+                                </DialogTitle>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                {/* Instructions */}
+                                <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+                                  <div className="flex items-start gap-2">
+                                    <Info className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                                    <div className="space-y-2 text-sm">
+                                      <p className="font-semibold">
+                                        {language === 'en' ? 'Excel File Format:' : 'Format du Fichier Excel:'}
+                                      </p>
+                                      <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
+                                        <li>
+                                          {language === 'en' 
+                                            ? 'First column: Phone Number (8 digits, starts with 2, 4, 5, or 9)'
+                                            : 'Première colonne: Numéro de téléphone (8 chiffres, commence par 2, 4, 5 ou 9)'}
+                                        </li>
+                                        <li>
+                                          {language === 'en' 
+                                            ? 'Second column: Subscribed At (optional, will be ignored)'
+                                            : 'Deuxième colonne: Date d\'abonnement (optionnel, sera ignoré)'}
+                                        </li>
+                                        <li>
+                                          {language === 'en' 
+                                            ? 'First row should be headers (will be skipped)'
+                                            : 'La première ligne doit contenir les en-têtes (sera ignorée)'}
+                                        </li>
+                                        <li>
+                                          {language === 'en' 
+                                            ? 'Duplicate numbers will be automatically skipped'
+                                            : 'Les numéros en double seront automatiquement ignorés'}
+                                        </li>
+                                      </ul>
+                                      <div className="mt-3 p-2 bg-background rounded border border-border">
+                                        <p className="font-semibold text-xs mb-1">
+                                          {language === 'en' ? 'Example:' : 'Exemple:'}
+                                        </p>
+                                        <pre className="text-xs text-muted-foreground">
+                                          {language === 'en' 
+                                            ? 'Phone Number | Subscribed At\n27169458     | 2024-01-15\n98765432     | 2024-01-16'
+                                            : 'Numéro de Téléphone | Date d\'Abonnement\n27169458            | 2024-01-15\n98765432            | 2024-01-16'}
+                                        </pre>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* File Upload */}
+                                <div className="space-y-2">
+                                  <Label>
+                                    {language === 'en' ? 'Select Excel File (.xlsx)' : 'Sélectionner un Fichier Excel (.xlsx)'}
+                                  </Label>
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      type="file"
+                                      accept=".xlsx,.xls"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                          handleImportPhonesFromExcel(file);
+                                        }
+                                      }}
+                                      disabled={importingPhones}
+                                      className="flex-1"
+                                    />
+                                  </div>
+                                  {importingPhones && (
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                      <RefreshCw className="w-4 h-4 animate-spin" />
+                                      {language === 'en' ? 'Importing...' : 'Importation...'}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
                         </div>
                         
                         <div className="space-y-2">
