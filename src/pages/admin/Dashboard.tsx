@@ -3895,15 +3895,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               <p class="signature">Best regards,<br>The Andiamo Events Team</p>
             </div>
           </div>
-        </div>
-        <div class="footer">
-          <p class="footer-text">
-            You're receiving this email because you subscribed to our newsletter.<br>
-            If you no longer wish to receive these emails, please contact us.
-          </p>
-          <div class="footer-links">
-            <a href="${window.location.origin}" class="footer-link">Visit Website</a>
-            <a href="${supportUrl}" class="footer-link">Contact Us</a>
+          
+          <div class="footer">
+            <p class="footer-text">
+              You're receiving this email because you subscribed to our newsletter.<br>
+              If you no longer wish to receive these emails, please contact us.
+            </p>
+            <p class="footer-text" style="margin-top: 20px;">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+            <div class="footer-links">
+              <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
+              <span style="color: #999999;">•</span>
+              <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
+            </div>
           </div>
         </div>
       </body>

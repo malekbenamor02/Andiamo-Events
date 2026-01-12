@@ -392,9 +392,9 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
         <div class="footer">
           <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
           <div class="footer-links">
-            <a href="https://www.instagram.com/malek.bamor/" target="_blank" class="footer-link">Instagram</a>
+            <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
             <span style="color: #999999;">•</span>
-            <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
+            <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
           </div>
         </div>
       </div>
@@ -697,9 +697,9 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
         <div class="footer">
           <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
           <div class="footer-links">
-            <a href="https://www.instagram.com/malek.bamor/" target="_blank" class="footer-link">Instagram</a>
+            <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
             <span style="color: #999999;">•</span>
-            <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
+            <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
           </div>
         </div>
       </div>
@@ -1187,9 +1187,9 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
         <div class="footer">
           <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
           <div class="footer-links">
-            <a href="https://www.instagram.com/malek.bamor/" target="_blank" class="footer-link">Instagram</a>
+            <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
             <span style="color: #999999;">•</span>
-            <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
+            <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
           </div>
         </div>
       </div>
@@ -1620,7 +1620,13 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
         
         <div class="footer" style="background: hsl(218, 23%, 8%) !important; padding: 30px 40px; text-align: center; border-top: 1px solid hsl(218, 23%, 20%);">
           <div class="footer-brand">ANDIAMO EVENTS</div>
-          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 0;">© 2024 Andiamo Events. All rights reserved.</p>
+          <p class="footer-text" style="color: #888 !important; font-size: 13px; margin: 10px 0;">© 2024 Andiamo Events. All rights reserved.</p>
+          <p class="footer-text" style="color: #888 !important; font-size: 12px; margin: 15px 0 10px 0;">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+          <div style="margin-top: 15px;">
+            <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" style="color: #888 !important; text-decoration: none; font-size: 13px; margin: 0 8px;">Instagram</a>
+            <span style="color: #888;">•</span>
+            <a href="https://malekbenamor.dev/" target="_blank" style="color: #888 !important; text-decoration: none; font-size: 13px; margin: 0 8px;">Website</a>
+          </div>
         </div>
       </div>
     </body>
@@ -2155,9 +2161,9 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
         <div class="footer">
           <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
           <div class="footer-links">
-            <a href="https://www.instagram.com/malek.bamor/" target="_blank" class="footer-link">Instagram</a>
+            <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
             <span style="color: #999999;">•</span>
-            <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
+            <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
           </div>
         </div>
       </div>
