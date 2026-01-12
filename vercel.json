@@ -33,6 +33,10 @@
       "destination": "/api/passes-[eventId].js"
     },
     {
+      "source": "/api/orders/create",
+      "destination": "/api/orders-create.js"
+    },
+    {
       "source": "/api/admin/passes/:eventId",
       "destination": "/api/misc.js"
     },
