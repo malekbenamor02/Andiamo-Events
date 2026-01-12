@@ -36,6 +36,7 @@ export const TUNIS_VILLES = [
   'Ariana',
   'Bardo',
   'Carthage',
+  'Centre Ville',
   'Ennasser/Ghazela',
   'Ezzahra/Boumhel',
   'Gammarth',
