@@ -136,6 +136,59 @@ export function PaymentOptionSelector({
   return (
     <div className="space-y-4">
       <Label className="text-base font-semibold">{t.selectPayment}</Label>
+      
+      {/* External App Payment - Card without radio button (rendered first) */}
+      {externalAppOption && (
+        <Card
+          className={`transition-all ${
+            customerInfoComplete
+              ? 'cursor-pointer hover:bg-accent'
+              : 'opacity-50 cursor-not-allowed bg-muted/30'
+          }`}
+          onClick={() => {
+            if (customerInfoComplete && onExternalAppClick) {
+              onExternalAppClick();
+            }
+          }}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-start space-x-3">
+              <div className="mt-1">
+                <ExternalLink className={`w-5 h-5 ${customerInfoComplete ? 'text-primary' : 'text-muted-foreground'}`} />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center space-x-2">
+                  <Label
+                    className={`font-semibold ${
+                      customerInfoComplete ? 'cursor-pointer' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {getOptionLabel(externalAppOption)}
+                  </Label>
+                </div>
+                <p className={`text-sm mt-1 ${
+                  customerInfoComplete ? 'text-muted-foreground' : 'text-muted-foreground/70'
+                }`}>
+                  {customerInfoComplete 
+                    ? getOptionDescription(externalAppOption)
+                    : (language === 'en' 
+                        ? 'Please enter your information above to access the external payment link'
+                        : 'Veuillez entrer vos informations ci-dessus pour accéder au lien de paiement externe')
+                  }
+                </p>
+                {externalAppOption.app_image && (
+                  <img
+                    src={externalAppOption.app_image}
+                    alt={externalAppOption.app_name || 'App'}
+                    className={`h-8 mt-2 ${!customerInfoComplete ? 'opacity-50' : ''}`}
+                  />
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <RadioGroup
         value={selectedMethod || undefined}
         onValueChange={(value) => {
@@ -197,58 +250,6 @@ export function PaymentOptionSelector({
         </label>
         ))}
       </RadioGroup>
-
-      {/* External App Payment - Card without radio button */}
-      {externalAppOption && (
-        <Card
-          className={`transition-all ${
-            customerInfoComplete
-              ? 'cursor-pointer hover:bg-accent'
-              : 'opacity-50 cursor-not-allowed bg-muted/30'
-          }`}
-          onClick={() => {
-            if (customerInfoComplete && onExternalAppClick) {
-              onExternalAppClick();
-            }
-          }}
-        >
-          <CardContent className="p-4">
-            <div className="flex items-start space-x-3">
-              <div className="mt-1">
-                <ExternalLink className={`w-5 h-5 ${customerInfoComplete ? 'text-primary' : 'text-muted-foreground'}`} />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center space-x-2">
-                  <Label
-                    className={`font-semibold ${
-                      customerInfoComplete ? 'cursor-pointer' : 'text-muted-foreground'
-                    }`}
-                  >
-                    {getOptionLabel(externalAppOption)}
-                  </Label>
-                </div>
-                <p className={`text-sm mt-1 ${
-                  customerInfoComplete ? 'text-muted-foreground' : 'text-muted-foreground/70'
-                }`}>
-                  {customerInfoComplete 
-                    ? getOptionDescription(externalAppOption)
-                    : (language === 'en' 
-                        ? 'Please enter your information above to access the external payment link'
-                        : 'Veuillez entrer vos informations ci-dessus pour accéder au lien de paiement externe')
-                  }
-                </p>
-                {externalAppOption.app_image && (
-                  <img
-                    src={externalAppOption.app_image}
-                    alt={externalAppOption.app_name || 'App'}
-                    className={`h-8 mt-2 ${!customerInfoComplete ? 'opacity-50' : ''}`}
-                  />
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
