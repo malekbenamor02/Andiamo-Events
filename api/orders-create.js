@@ -4,6 +4,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
+import querystring from 'querystring';
+import https from 'https';
 
 export default async (req, res) => {
   // Set CORS headers
@@ -487,27 +489,44 @@ export default async (req, res) => {
     }
 
     // STEP 8: Send SMS notifications and emails for COD orders
-    // Note: In Vercel serverless, SMS can be sent via separate endpoint calls
-    // Emails are sent here directly - with timeout to prevent blocking
+    // Both SMS and emails are sent here directly - with timeout to prevent blocking
     if (paymentMethod === 'ambassador_cash' && ambassadorId) {
-      console.log(`📧 Order ${order.id} is ambassador_cash - attempting to send confirmation emails...`);
+      console.log(`📱📧 Order ${order.id} is ambassador_cash - attempting to send SMS and emails...`);
+      
+      // Send SMS and emails in parallel with timeout
       // In Vercel serverless, we need to await before response is sent
       // But use timeout to prevent blocking too long
       try {
         await Promise.race([
-          sendOrderConfirmationEmails(order.id, dbClient),
+          Promise.all([
+            // Send SMS to client
+            sendClientOrderConfirmationSMS(order.id, dbClient).catch(smsError => {
+              console.error(`📱 Client SMS failed for order ${order.id} (non-fatal):`, smsError);
+              return { success: false, error: smsError.message };
+            }),
+            // Send SMS to ambassador
+            sendAmbassadorNewOrderSMS(order.id, dbClient).catch(smsError => {
+              console.error(`📱 Ambassador SMS failed for order ${order.id} (non-fatal):`, smsError);
+              return { success: false, error: smsError.message };
+            }),
+            // Send emails
+            sendOrderConfirmationEmails(order.id, dbClient).catch(emailError => {
+              console.error(`📧 Email sending failed for order ${order.id} (non-fatal):`, emailError);
+              return { success: false, error: emailError.message };
+            })
+          ]),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Email sending timeout')), 3000)
+            setTimeout(() => reject(new Error('SMS/Email sending timeout')), 5000)
           )
         ]);
-        console.log(`📧 Email sending completed for order ${order.id}`);
-      } catch (emailError) {
-        // Log but don't fail - emails are non-critical
-        // If timeout occurs, emails may still send but we don't wait
-        console.error(`📧 Email sending timed out or failed for order ${order.id} (non-fatal):`, emailError.message || emailError);
+        console.log(`📱📧 SMS and email sending completed for order ${order.id}`);
+      } catch (error) {
+        // Log but don't fail - SMS/emails are non-critical
+        // If timeout occurs, they may still send but we don't wait
+        console.error(`📱📧 SMS/Email sending timed out or failed for order ${order.id} (non-fatal):`, error.message || error);
       }
     } else {
-      console.log(`📧 Skipping email - paymentMethod: ${paymentMethod}, ambassadorId: ${ambassadorId}`);
+      console.log(`📱📧 Skipping SMS/email - paymentMethod: ${paymentMethod}, ambassadorId: ${ambassadorId}`);
     }
     
     // STEP 9: Return created order with order_passes
@@ -975,6 +994,470 @@ function buildOrderConfirmationEmailHtml(order, orderPasses) {
     </html>
   `;
 }
+
+// ============================================
+// SMS Helper Functions
+// ============================================
+
+/**
+ * Format phone number for WinSMS API (+216XXXXXXXX)
+ */
+function formatPhoneNumber(phone) {
+  if (!phone) return null;
+  
+  // Remove all non-digit characters
+  let cleaned = phone.replace(/\D/g, '');
+  
+  // Remove country code if present (216 or +216)
+  if (cleaned.startsWith('216')) {
+    cleaned = cleaned.substring(3);
+  }
+  
+  // Remove leading zeros
+  cleaned = cleaned.replace(/^0+/, '');
+  
+  // Validate: must be 8 digits starting with 2, 5, 9, or 4
+  if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
+    // Return with +216 prefix for WinSMS API
+    return '+216' + cleaned;
+  }
+  
+  return null;
+}
+
+/**
+ * Send SMS via WinSMS API
+ */
+async function sendSms(phoneNumbers, message, senderId = 'Andiamo') {
+  const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
+  const WINSMS_API_HOST = 'www.winsmspro.com';
+  const WINSMS_API_PATH = '/sms/sms/api';
+
+  if (!WINSMS_API_KEY) {
+    throw new Error('SMS service not configured: WINSMS_API_KEY is required');
+  }
+
+  if (!phoneNumbers || (Array.isArray(phoneNumbers) && phoneNumbers.length === 0)) {
+    throw new Error('Phone numbers are required');
+  }
+
+  if (!message || !message.trim()) {
+    throw new Error('Message is required');
+  }
+
+  // Format phone numbers
+  const phoneArray = Array.isArray(phoneNumbers) ? phoneNumbers : [phoneNumbers];
+  const formattedNumbers = phoneArray
+    .map(phone => formatPhoneNumber(phone))
+    .filter(phone => phone !== null);
+
+  if (formattedNumbers.length === 0) {
+    throw new Error('No valid phone numbers provided');
+  }
+
+  // Join multiple numbers with comma (as per WinSMS documentation)
+  const toParam = formattedNumbers.join(',');
+
+  // Build URL with query parameters (GET method as per WinSMS documentation)
+  const queryParams = querystring.stringify({
+    action: 'send-sms',
+    api_key: WINSMS_API_KEY,
+    to: toParam,
+    sms: message.trim(),
+    from: senderId,
+    response: 'json' // Required by WinSMS API to get JSON response
+  });
+
+  const url = `https://${WINSMS_API_HOST}${WINSMS_API_PATH}?${queryParams}`;
+  
+  console.log('📱 Sending SMS:', {
+    from: senderId,
+    messageLength: message.trim().length,
+    recipientCount: formattedNumbers.length
+  });
+
+  // Make HTTPS GET request (as per WinSMS documentation)
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve({
+            status: res.statusCode,
+            data: parsed,
+            raw: data
+          });
+        } catch (e) {
+          console.error('❌ WinSMS API response parse error:', e.message);
+          console.error('❌ Raw response:', data);
+          resolve({
+            status: res.statusCode,
+            data: data,
+            raw: data,
+            parseError: e.message
+          });
+        }
+      });
+    }).on('error', (e) => {
+      console.error('❌ WinSMS API request error:', e.message);
+      reject(new Error(`SMS API request failed: ${e.message}`));
+    });
+  });
+}
+
+/**
+ * Format passes text for SMS: "VIP x2, Standard x1"
+ */
+function formatPassesText(passes) {
+  if (!passes || passes.length === 0) {
+    throw new Error('Passes array is required and cannot be empty');
+  }
+  
+  return passes
+    .map(p => {
+      const passType = p.pass_type || p.passName || 'Standard';
+      const quantity = p.quantity || 1;
+      return `${passType} x${quantity}`;
+    })
+    .join(', ');
+}
+
+/**
+ * Format order number for SMS display
+ */
+function formatOrderNumber(order) {
+  // Use only order_number from database (numeric values like 518954, 907756, etc.)
+  if (order.order_number != null) {
+    return order.order_number.toString();
+  }
+  // Return empty string if order_number doesn't exist
+  return '';
+}
+
+/**
+ * Build client order confirmation SMS message
+ */
+function buildClientOrderConfirmationSMS(data) {
+  const { order, passes, ambassador } = data;
+  
+  // Validate required fields
+  if (!order) throw new Error('Order is required for client order confirmation SMS');
+  if (!passes || passes.length === 0) throw new Error('Passes are required for client order confirmation SMS');
+  if (!ambassador) throw new Error('Ambassador is required for client order confirmation SMS');
+  if (!ambassador.full_name) throw new Error('Ambassador full_name is required');
+  if (!ambassador.phone) throw new Error('Ambassador phone is required');
+  if (order.total_price === undefined || order.total_price === null) throw new Error('Order total_price is required');
+  
+  const orderNumber = formatOrderNumber(order);
+  const passesText = formatPassesText(passes);
+  const totalPrice = parseFloat(order.total_price).toFixed(0);
+  const ambassadorName = ambassador.full_name;
+  const ambassadorPhone = ambassador.phone;
+  
+  // Template EXACT - DO NOT MODIFY
+  return `Commande #${orderNumber} confirmée
+Pass: ${passesText} | Total: ${totalPrice} DT
+Ambassadeur: ${ambassadorName} – ${ambassadorPhone}
+We Create Memories`;
+}
+
+/**
+ * Build ambassador new order SMS message
+ */
+function buildAmbassadorNewOrderSMS(data) {
+  const { order, passes } = data;
+  
+  // Validate required fields
+  if (!order) throw new Error('Order is required for ambassador new order SMS');
+  if (!passes || passes.length === 0) throw new Error('Passes are required for ambassador new order SMS');
+  if (!order.user_name) throw new Error('Order user_name is required');
+  if (!order.user_phone) throw new Error('Order user_phone is required');
+  if (order.total_price === undefined || order.total_price === null) throw new Error('Order total_price is required');
+  
+  const orderNumber = formatOrderNumber(order);
+  const clientName = order.user_name;
+  const clientPhone = order.user_phone;
+  const passesText = formatPassesText(passes);
+  const totalPrice = parseFloat(order.total_price).toFixed(0);
+  
+  // Template EXACT - DO NOT MODIFY
+  return `Nouvelle commande #${orderNumber}
+Client: ${clientName} – ${clientPhone} Pass: ${passesText}
+Total: ${totalPrice} DT`;
+}
+
+/**
+ * Send order confirmation SMS to client
+ */
+async function sendClientOrderConfirmationSMS(orderId, dbClient) {
+  if (!dbClient) {
+    console.warn('📱 Cannot send SMS - Supabase client not provided');
+    return { success: false, skipped: true, reason: 'no_db_client' };
+  }
+
+  if (!process.env.WINSMS_API_KEY) {
+    console.warn('📱 SMS service not configured - WINSMS_API_KEY missing');
+    return { success: false, skipped: true, reason: 'not_configured' };
+  }
+
+  try {
+    // Fetch order with relations
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .select(`
+        *,
+        order_passes (*),
+        ambassadors (
+          id,
+          full_name,
+          phone
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      console.error('❌ Failed to fetch order for SMS:', orderError);
+      return { success: false, error: 'Order not found' };
+    }
+
+    if (!order.ambassador_id || !order.ambassadors) {
+      console.warn('📱 Skipping SMS - order does not have an ambassador assigned');
+      return { success: false, skipped: true, reason: 'no_ambassador' };
+    }
+
+    if (!order.user_phone) {
+      console.warn('📱 Skipping SMS - no user phone number');
+      return { success: false, skipped: true, reason: 'no_phone' };
+    }
+
+    // Prepare passes array for SMS template
+    let passes = [];
+    if (order.order_passes && order.order_passes.length > 0) {
+      passes = order.order_passes.map(p => ({
+        pass_type: p.pass_type,
+        quantity: p.quantity || 1
+      }));
+    } else {
+      if (order.notes) {
+        try {
+          const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+          if (notesData.all_passes && Array.isArray(notesData.all_passes)) {
+            passes = notesData.all_passes.map(p => ({
+              pass_type: p.passName || p.pass_type || 'Standard',
+              quantity: p.quantity || 1
+            }));
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      if (passes.length === 0) {
+        passes = [{
+          pass_type: order.pass_type || 'Standard',
+          quantity: order.quantity || 1
+        }];
+      }
+    }
+
+    // Build SMS message
+    let message;
+    try {
+      message = buildClientOrderConfirmationSMS({
+        order,
+        passes,
+        ambassador: order.ambassadors
+      });
+      
+      console.log('📱 SMS Type: Client Order Confirmation');
+      console.log('📱 Order ID:', order.id);
+      console.log('📱 Recipient:', order.user_phone ? `${order.user_phone.substring(0, 3)}***` : 'NOT SET');
+    } catch (smsError) {
+      console.error('❌ Error building SMS message:', smsError);
+      return { success: false, error: `Failed to build SMS message: ${smsError.message}` };
+    }
+
+    // Format and send SMS
+    const formattedNumber = formatPhoneNumber(order.user_phone);
+    if (!formattedNumber) {
+      console.error('❌ Invalid phone number format:', order.user_phone);
+      return { success: false, error: `Invalid phone number format: ${order.user_phone}` };
+    }
+
+    const responseData = await sendSms(formattedNumber, message);
+    const isSuccess = responseData.status === 200 &&
+                      responseData.data &&
+                      (responseData.data.code === 'ok' ||
+                       responseData.data.code === '200' ||
+                       (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
+
+    // Log to sms_logs
+    try {
+      await dbClient.from('sms_logs').insert({
+        phone_number: order.user_phone,
+        message: message.trim(),
+        status: isSuccess ? 'sent' : 'failed',
+        api_response: JSON.stringify(responseData.data || responseData.raw),
+        sent_at: isSuccess ? new Date().toISOString() : null,
+        error_message: isSuccess ? null : (responseData.data?.message || 'SMS sending failed')
+      });
+    } catch (logErr) {
+      console.warn('⚠️ Failed to log SMS send result:', logErr);
+    }
+
+    if (!isSuccess) {
+      console.error('❌ SMS sending failed:', responseData.data?.message || 'Unknown error');
+      return { success: false, error: responseData.data?.message || 'Failed to send SMS' };
+    }
+
+    console.log('✅ Client order confirmation SMS sent successfully');
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Error sending client order confirmation SMS:', error);
+    return { success: false, error: error.message || 'Failed to send SMS' };
+  }
+}
+
+/**
+ * Send new order SMS to ambassador
+ */
+async function sendAmbassadorNewOrderSMS(orderId, dbClient) {
+  if (!dbClient) {
+    console.warn('📱 Cannot send SMS - Supabase client not provided');
+    return { success: false, skipped: true, reason: 'no_db_client' };
+  }
+
+  if (!process.env.WINSMS_API_KEY) {
+    console.warn('📱 SMS service not configured - WINSMS_API_KEY missing');
+    return { success: false, skipped: true, reason: 'not_configured' };
+  }
+
+  try {
+    // Fetch order with relations
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .select(`
+        *,
+        order_passes (*),
+        ambassadors (
+          id,
+          full_name,
+          phone
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      console.error('❌ Failed to fetch order for SMS:', orderError);
+      return { success: false, error: 'Order not found' };
+    }
+
+    if (!order.ambassador_id || !order.ambassadors) {
+      console.warn('📱 Skipping SMS - order does not have an ambassador assigned');
+      return { success: false, skipped: true, reason: 'no_ambassador' };
+    }
+
+    if (!order.ambassadors.phone) {
+      console.warn('📱 Skipping SMS - no ambassador phone number');
+      return { success: false, skipped: true, reason: 'no_ambassador_phone' };
+    }
+
+    // Prepare passes array for SMS template
+    let passes = [];
+    if (order.order_passes && order.order_passes.length > 0) {
+      passes = order.order_passes.map(p => ({
+        pass_type: p.pass_type,
+        quantity: p.quantity || 1
+      }));
+    } else {
+      if (order.notes) {
+        try {
+          const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+          if (notesData.all_passes && Array.isArray(notesData.all_passes)) {
+            passes = notesData.all_passes.map(p => ({
+              pass_type: p.passName || p.pass_type || 'Standard',
+              quantity: p.quantity || 1
+            }));
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      if (passes.length === 0) {
+        passes = [{
+          pass_type: order.pass_type || 'Standard',
+          quantity: order.quantity || 1
+        }];
+      }
+    }
+
+    // Build SMS message
+    let message;
+    try {
+      message = buildAmbassadorNewOrderSMS({
+        order,
+        passes
+      });
+      
+      console.log('📱 SMS Type: Ambassador New Order');
+      console.log('📱 Order ID:', order.id);
+      console.log('📱 Recipient:', order.ambassadors?.phone ? `${order.ambassadors.phone.substring(0, 3)}***` : 'NOT SET');
+    } catch (smsError) {
+      console.error('❌ Error building SMS message:', smsError);
+      return { success: false, error: `Failed to build SMS message: ${smsError.message}` };
+    }
+
+    // Format and send SMS
+    const formattedNumber = formatPhoneNumber(order.ambassadors.phone);
+    if (!formattedNumber) {
+      console.error('❌ Invalid ambassador phone number format:', order.ambassadors.phone);
+      return { success: false, error: `Invalid ambassador phone number: ${order.ambassadors.phone}` };
+    }
+
+    const responseData = await sendSms(formattedNumber, message);
+    const isSuccess = responseData.status === 200 &&
+                      responseData.data &&
+                      (responseData.data.code === 'ok' ||
+                       responseData.data.code === '200' ||
+                       (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
+
+    // Log to sms_logs
+    try {
+      await dbClient.from('sms_logs').insert({
+        phone_number: order.ambassadors.phone,
+        message: message.trim(),
+        status: isSuccess ? 'sent' : 'failed',
+        api_response: JSON.stringify(responseData.data || responseData.raw),
+        sent_at: isSuccess ? new Date().toISOString() : null,
+        error_message: isSuccess ? null : (responseData.data?.message || 'SMS sending failed')
+      });
+    } catch (logErr) {
+      console.warn('⚠️ Failed to log SMS send result:', logErr);
+    }
+
+    if (!isSuccess) {
+      console.error('❌ SMS sending failed:', responseData.data?.message || 'Unknown error');
+      return { success: false, error: responseData.data?.message || 'Failed to send SMS' };
+    }
+
+    console.log('✅ Ambassador new order SMS sent successfully');
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Error sending ambassador new order SMS:', error);
+    return { success: false, error: error.message || 'Failed to send SMS' };
+  }
+}
+
+// ============================================
+// Email Helper Functions
+// ============================================
 
 /**
  * Get email transporter (creates new instance each time)
