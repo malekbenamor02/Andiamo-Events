@@ -33,6 +33,8 @@ interface EventPass {
   remaining_quantity?: number | null;
   is_unlimited?: boolean;
   is_sold_out?: boolean;
+  // Payment method restrictions (UX only - backend is authoritative)
+  allowed_payment_methods?: string[] | null;
 }
 
 interface Event {
@@ -97,6 +99,44 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       setSelectedAmbassadorDetails(null);
     }
   }, [paymentMethod]);
+
+  // Clear payment method if it becomes incompatible with selected passes (UX only - backend is authoritative)
+  useEffect(() => {
+    if (paymentMethod && event?.passes && Object.keys(selectedPasses).some(id => selectedPasses[id] > 0)) {
+      const selectedPassIds = Object.keys(selectedPasses).filter(id => selectedPasses[id] > 0);
+      let isCompatible = true;
+      const incompatiblePasses: string[] = [];
+      
+      for (const passId of selectedPassIds) {
+        const pass = event.passes.find(p => p.id === passId);
+        if (!pass) continue;
+        
+        // If pass has no restrictions, it's compatible with all methods
+        if (!pass.allowed_payment_methods || pass.allowed_payment_methods.length === 0) {
+          continue;
+        }
+        
+        // Check if the payment method is in the allowed list
+        if (!pass.allowed_payment_methods.includes(paymentMethod)) {
+          isCompatible = false;
+          incompatiblePasses.push(pass.name);
+        }
+      }
+      
+      // If payment method is no longer compatible, clear it
+      if (!isCompatible) {
+        setPaymentMethod(null);
+        toast({
+          title: language === 'en' ? 'Payment method cleared' : 'Méthode de paiement effacée',
+          description: language === 'en'
+            ? `The selected payment method is not available for: ${incompatiblePasses.join(', ')}`
+            : `La méthode de paiement sélectionnée n'est pas disponible pour : ${incompatiblePasses.join(', ')}`,
+          variant: 'default',
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPasses, event?.passes]);
 
   // Update selected ambassador details when ambassador ID changes
   useEffect(() => {
@@ -256,7 +296,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             sold_quantity: p.sold_quantity || 0,
             remaining_quantity: p.remaining_quantity,
             is_unlimited: p.is_unlimited || false,
-            is_sold_out: p.is_sold_out || false
+            is_sold_out: p.is_sold_out || false,
+            // Payment method restrictions (UX only - backend is authoritative)
+            allowed_payment_methods: p.allowed_payment_methods || null
           }));
         } else {
           // Passes fetch failed, but we still show the event
@@ -313,6 +355,30 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     }
   };
 
+  // Helper function to check if a pass is compatible with a payment method (UX only - backend is authoritative)
+  const isPassCompatibleWithPaymentMethod = (pass: EventPass, method: PaymentMethod | null): boolean => {
+    // If no payment method selected, show all passes (user hasn't chosen yet)
+    if (!method) return true;
+    
+    // If pass has no restrictions (NULL or empty array), allow all methods
+    if (!pass.allowed_payment_methods || pass.allowed_payment_methods.length === 0) {
+      return true;
+    }
+    
+    // Check if the selected payment method is in the allowed list
+    return pass.allowed_payment_methods.includes(method);
+  };
+
+  // Get payment method display name for restrictions message
+  const getPaymentMethodDisplayName = (method: string, lang: 'en' | 'fr'): string => {
+    const names: Record<string, { en: string; fr: string }> = {
+      'online': { en: 'Online Payment', fr: 'Paiement en ligne' },
+      'external_app': { en: 'External App', fr: 'Application externe' },
+      'ambassador_cash': { en: 'Cash on Delivery', fr: 'Paiement à la livraison' }
+    };
+    return names[method]?.[lang] || method;
+  };
+
   // Update pass quantity (respects stock limits)
   const updatePassQuantity = (passId: string, quantity: number) => {
     const pass = event?.passes?.find(p => p.id === passId);
@@ -346,6 +412,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     }
     
     setSelectedPasses(newPasses);
+    // Note: useEffect will handle clearing payment method if it becomes incompatible
   };
 
   // Calculate total price
@@ -716,6 +783,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                         const maxAllowed = isUnlimited ? 10 : Math.min(10, remainingQuantity || 0);
                         const isLowStock = !isSoldOut && !isUnlimited && remainingQuantity !== null && remainingQuantity <= 5;
                         
+                        // Check if pass is compatible with selected payment method (UX only - backend is authoritative)
+                        const isCompatible = isPassCompatibleWithPaymentMethod(pass, paymentMethod);
+                        const isIncompatible = paymentMethod !== null && !isCompatible;
+                        
                         return (
                           <div 
                             key={pass.id}
@@ -724,6 +795,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                             } ${
                               isSoldOut 
                                 ? 'opacity-45 grayscale-[0.3] pointer-events-none cursor-not-allowed blur-[0.5px]' 
+                                : isIncompatible
+                                ? 'opacity-60 border-muted-foreground/50'
                                 : 'hover:border-primary/50'
                             }`}
                           >
@@ -753,7 +826,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                                 </p>
                               )}
                               {/* Stock warning - ONLY show when stock is low (≤ 5) */}
-                              {isLowStock && (
+                              {isLowStock && !isIncompatible && (
                                 <p className="text-sm text-orange-500 font-semibold mt-2 flex items-center gap-1">
                                   <span>⚠️</span>
                                   <span>
@@ -765,8 +838,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                               )}
                             </div>
                             
-                            {/* Quantity controls - HIDE completely for sold-out passes */}
-                            {!isSoldOut ? (
+                            {/* Quantity controls - HIDE for sold-out or incompatible passes */}
+                            {!isSoldOut && !isIncompatible ? (
                               <div className="flex items-center justify-between">
                                 <span className="text-sm">{t[language].quantity}</span>
                                 <div className="flex items-center gap-2">
@@ -792,6 +865,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                                     +
                                   </Button>
                                 </div>
+                              </div>
+                            ) : isIncompatible ? (
+                              <div className="flex items-center justify-center py-2">
+                                <span className="text-sm font-medium text-amber-500">
+                                  {language === 'en' ? 'Available only with online payment by AIO Events.' : 'Disponible uniquement avec le paiement en ligne par AIO Events.'}
+                                </span>
                               </div>
                             ) : (
                               <div className="flex items-center justify-center py-2">
@@ -859,6 +938,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                         options={paymentOptions}
                         selectedMethod={paymentMethod}
                         customerInfo={customerInfo}
+                        selectedPasses={selectedPasses}
+                        eventPasses={event?.passes || []}
                         onSelect={(method) => {
                           setPaymentMethod(method);
                           // Clear validation errors when selecting

@@ -69,7 +69,7 @@ export default async (req, res) => {
     // Fetch only active passes with stock information
     const { data: passes, error: passesError } = await dbClient
       .from('event_passes')
-      .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version')
+      .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version, allowed_payment_methods')
       .eq('event_id', eventId)
       .eq('is_active', true)  // Only active passes
       .order('is_primary', { ascending: false })
@@ -104,7 +104,9 @@ export default async (req, res) => {
         sold_quantity: pass.sold_quantity || 0,
         remaining_quantity: remainingQuantity,
         is_unlimited: isUnlimited,
-        is_sold_out: isSoldOut
+        is_sold_out: isSoldOut,
+        // Payment method restrictions
+        allowed_payment_methods: pass.allowed_payment_methods || null
       };
     });
 

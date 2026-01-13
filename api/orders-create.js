@@ -120,7 +120,7 @@ export default async (req, res) => {
     const passIds = passes.map(p => p.passId);
     const { data: eventPasses, error: passesError } = await dbClient
       .from('event_passes')
-      .select('id, name, price, is_active, max_quantity, sold_quantity')
+      .select('id, name, price, is_active, max_quantity, sold_quantity, allowed_payment_methods')
       .in('id', passIds);
 
     if (passesError) {
@@ -160,6 +160,17 @@ export default async (req, res) => {
           error: 'Pass not available',
           details: `Pass "${eventPass.name}" is no longer available for purchase`
         });
+      }
+
+      // Validate payment method compatibility (BACKEND ENFORCEMENT - MANDATORY)
+      // If allowed_payment_methods is NULL, allow all methods (backward compatible)
+      if (eventPass.allowed_payment_methods && eventPass.allowed_payment_methods.length > 0) {
+        if (!eventPass.allowed_payment_methods.includes(paymentMethod)) {
+          return res.status(400).json({
+            error: 'Payment method not allowed',
+            details: `Pass "${eventPass.name}" is only available with the following payment methods: ${eventPass.allowed_payment_methods.join(', ')}. Selected method: ${paymentMethod}`
+          });
+        }
       }
 
       // Validate price (server is authority for pricing)

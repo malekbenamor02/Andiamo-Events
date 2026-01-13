@@ -4209,7 +4209,7 @@ app.get('/api/passes/:eventId', async (req, res) => {
     // Fetch only active passes with stock information
     const { data: passes, error: passesError } = await dbClient
       .from('event_passes')
-      .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version')
+      .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version, allowed_payment_methods')
       .eq('event_id', eventId)
       .eq('is_active', true)  // Only active passes
       .order('is_primary', { ascending: false })
@@ -4244,7 +4244,9 @@ app.get('/api/passes/:eventId', async (req, res) => {
         sold_quantity: pass.sold_quantity || 0,
         remaining_quantity: remainingQuantity,
         is_unlimited: isUnlimited,
-        is_sold_out: isSoldOut
+        is_sold_out: isSoldOut,
+        // Payment method restrictions
+        allowed_payment_methods: pass.allowed_payment_methods || null
       };
     });
 
@@ -4284,7 +4286,7 @@ app.get('/api/admin/passes/:eventId', requireAdminAuth, async (req, res) => {
     // Fetch ALL passes (including inactive) with stock information
     const { data: passes, error: passesError } = await dbClient
       .from('event_passes')
-      .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version, created_at, updated_at')
+      .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version, allowed_payment_methods, created_at, updated_at')
       .eq('event_id', eventId)
       .order('release_version', { ascending: false })
       .order('is_primary', { ascending: false })
@@ -4316,6 +4318,8 @@ app.get('/api/admin/passes/:eventId', requireAdminAuth, async (req, res) => {
         sold_quantity: pass.sold_quantity || 0,
         remaining_quantity: remainingQuantity,
         is_unlimited: isUnlimited,
+        // Payment method restrictions
+        allowed_payment_methods: pass.allowed_payment_methods || null,
         created_at: pass.created_at,
         updated_at: pass.updated_at
       };
@@ -4442,6 +4446,132 @@ app.post('/api/admin/passes/:id/stock', requireAdminAuth, async (req, res) => {
 
   } catch (error) {
     console.error('Error in /api/admin/passes/:id/stock:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// PUT /api/admin/passes/:id/payment-methods - Update pass payment method restrictions
+app.put('/api/admin/passes/:id/payment-methods', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { id } = req.params;
+    const { allowed_payment_methods } = req.body;
+    const adminId = req.admin?.id;
+    const adminEmail = req.admin?.email;
+
+    if (!adminId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!id) {
+      return res.status(400).json({ error: 'Pass ID is required' });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // Fetch current pass to verify it exists
+    const { data: currentPass, error: fetchError } = await dbClient
+      .from('event_passes')
+      .select('id, name, event_id, allowed_payment_methods')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !currentPass) {
+      return res.status(404).json({
+        error: 'Pass not found',
+        details: fetchError?.message || 'Pass does not exist'
+      });
+    }
+
+    // Validate allowed_payment_methods if provided
+    // NULL = all methods allowed (backward compatible)
+    // Empty array = normalize to NULL
+    // Non-empty array = must contain only valid values
+    let normalizedMethods = null;
+    if (allowed_payment_methods !== undefined) {
+      if (Array.isArray(allowed_payment_methods)) {
+        if (allowed_payment_methods.length === 0) {
+          normalizedMethods = null;
+        } else {
+          // Validate all values are valid payment methods
+          const validMethods = ['online', 'external_app', 'ambassador_cash'];
+          const invalidMethods = allowed_payment_methods.filter(m => !validMethods.includes(m));
+          if (invalidMethods.length > 0) {
+            return res.status(400).json({
+              error: 'Invalid payment methods',
+              details: `Invalid payment methods: ${invalidMethods.join(', ')}. Valid values: ${validMethods.join(', ')}`
+            });
+          }
+          normalizedMethods = allowed_payment_methods;
+        }
+      } else if (allowed_payment_methods === null) {
+        normalizedMethods = null;
+      } else {
+        return res.status(400).json({
+          error: 'Invalid format',
+          details: 'allowed_payment_methods must be an array or null'
+        });
+      }
+    }
+
+    // Update pass
+    const { data: updatedPass, error: updateError } = await dbClient
+      .from('event_passes')
+      .update({
+        allowed_payment_methods: normalizedMethods,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating pass payment methods:', updateError);
+      return res.status(500).json({
+        error: 'Failed to update pass payment methods',
+        details: updateError.message
+      });
+    }
+
+    // Log admin action
+    try {
+      await dbClient.from('security_audit_logs').insert({
+        event_type: 'admin_pass_payment_methods_update',
+        user_id: adminId,
+        endpoint: '/api/admin/passes/:id/payment-methods',
+        ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        user_agent: req.headers['user-agent'] || 'unknown',
+        details: {
+          pass_id: id,
+          event_id: currentPass.event_id,
+          action: 'UPDATE_PAYMENT_METHODS',
+          before: {
+            allowed_payment_methods: currentPass.allowed_payment_methods
+          },
+          after: {
+            allowed_payment_methods: updatedPass.allowed_payment_methods
+          },
+          admin_email: adminEmail || 'unknown'
+        },
+        severity: 'medium'
+      });
+    } catch (logError) {
+      console.warn('Failed to log payment methods update (non-fatal):', logError);
+    }
+
+    res.status(200).json({
+      success: true,
+      pass: updatedPass
+    });
+
+  } catch (error) {
+    console.error('Error in /api/admin/passes/:id/payment-methods:', error);
     res.status(500).json({
       error: 'Internal server error',
       details: error.message
@@ -10035,7 +10165,7 @@ app.post('/api/orders/create', async (req, res) => {
     const passIds = passes.map(p => p.passId);
     const { data: eventPasses, error: passesError } = await dbClient
       .from('event_passes')
-      .select('id, name, price, is_active, max_quantity, sold_quantity')
+      .select('id, name, price, is_active, max_quantity, sold_quantity, allowed_payment_methods')
       .in('id', passIds);
 
     if (passesError) {
@@ -10075,6 +10205,17 @@ app.post('/api/orders/create', async (req, res) => {
           error: 'Pass not available',
           details: `Pass "${eventPass.name}" is no longer available for purchase`
         });
+      }
+
+      // Validate payment method compatibility (BACKEND ENFORCEMENT - MANDATORY)
+      // If allowed_payment_methods is NULL, allow all methods (backward compatible)
+      if (eventPass.allowed_payment_methods && eventPass.allowed_payment_methods.length > 0) {
+        if (!eventPass.allowed_payment_methods.includes(paymentMethod)) {
+          return res.status(400).json({
+            error: 'Payment method not allowed',
+            details: `Pass "${eventPass.name}" is only available with the following payment methods: ${eventPass.allowed_payment_methods.join(', ')}. Selected method: ${paymentMethod}`
+          });
+        }
       }
 
       // Validate price (server is authority for pricing)

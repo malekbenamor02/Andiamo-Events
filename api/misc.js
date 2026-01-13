@@ -902,7 +902,7 @@ export default async (req, res) => {
         // Fetch ALL passes (including inactive) with stock information
         const { data: passes, error: passesError } = await dbClient
           .from('event_passes')
-          .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version, created_at, updated_at')
+          .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version, allowed_payment_methods, created_at, updated_at')
           .eq('event_id', eventId)
           .order('release_version', { ascending: false })
           .order('is_primary', { ascending: false })
@@ -933,6 +933,8 @@ export default async (req, res) => {
             sold_quantity: pass.sold_quantity || 0,
             remaining_quantity: remainingQuantity,
             is_unlimited: isUnlimited,
+            // Payment method restrictions
+            allowed_payment_methods: pass.allowed_payment_methods || null,
             created_at: pass.created_at,
             updated_at: pass.updated_at
           };

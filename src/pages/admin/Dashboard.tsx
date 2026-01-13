@@ -84,6 +84,8 @@ interface EventPass {
   is_unlimited?: boolean;
   is_active?: boolean;
   is_sold_out?: boolean;
+  // Payment method restrictions
+  allowed_payment_methods?: string[] | null;
 }
 
 interface Event {
@@ -208,7 +210,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [eventForPassManagement, setEventForPassManagement] = useState<Event | null>(null);
   const [passesForManagement, setPassesForManagement] = useState<EventPass[]>([]);
   const [isPassManagementLoading, setIsPassManagementLoading] = useState(false);
-  const [newPassForm, setNewPassForm] = useState<{ name: string; price: number; description: string; is_primary: boolean } | null>(null);
+  const [newPassForm, setNewPassForm] = useState<{ name: string; price: number; description: string; is_primary: boolean; allowed_payment_methods: string[] } | null>(null);
   const [isAmbassadorDialogOpen, setIsAmbassadorDialogOpen] = useState(false);
   const [isAmbassadorInfoDialogOpen, setIsAmbassadorInfoDialogOpen] = useState(false);
   
@@ -5665,7 +5667,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               remaining_quantity: p.remaining_quantity,
               is_unlimited: p.is_unlimited || false,
               is_active: p.is_active !== undefined ? p.is_active : true,
-              is_sold_out: p.is_sold_out || false
+              is_sold_out: p.is_sold_out || false,
+              allowed_payment_methods: p.allowed_payment_methods || null
             }));
             setEditingEvent(prev => prev ? { ...prev, passes: passesWithStock } : null);
             return;
@@ -5695,6 +5698,55 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     
     loadPassesForEditing();
   }, [isEventDialogOpen, editingEvent?.id, language]);
+
+  // Load passes when pass management dialog opens
+  useEffect(() => {
+    const loadPassesForManagement = async () => {
+      if (isPassManagementDialogOpen && eventForPassManagement?.id) {
+        try {
+          setIsPassManagementLoading(true);
+          const apiBase = getApiBaseUrl();
+          const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventForPassManagement.id}`, {
+            credentials: 'include'
+          });
+          
+          if (passesResponse.ok) {
+            const passesResult = await passesResponse.json();
+            const passesWithStock = (passesResult.passes || []).map((p: any) => ({
+              id: p.id,
+              name: p.name || '',
+              price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+              description: p.description || '',
+              is_primary: p.is_primary || false,
+              max_quantity: p.max_quantity,
+              sold_quantity: p.sold_quantity || 0,
+              remaining_quantity: p.remaining_quantity,
+              is_unlimited: p.is_unlimited || false,
+              is_active: p.is_active !== undefined ? p.is_active : true,
+              is_sold_out: p.is_sold_out || false,
+              allowed_payment_methods: p.allowed_payment_methods || null
+            }));
+            setPassesForManagement(passesWithStock);
+          } else {
+            console.error('Failed to fetch passes:', passesResponse.status);
+            setPassesForManagement([]);
+          }
+        } catch (error) {
+          console.error('Error loading passes for management:', error);
+          setPassesForManagement([]);
+        } finally {
+          setIsPassManagementLoading(false);
+        }
+      } else if (!isPassManagementDialogOpen) {
+        // Clear passes when dialog closes
+        setPassesForManagement([]);
+        setEventForPassManagement(null);
+        setNewPassForm(null);
+      }
+    };
+    
+    loadPassesForManagement();
+  }, [isPassManagementDialogOpen, eventForPassManagement?.id, language]);
 
   const fetchAllData = async () => {
     try {
@@ -10730,7 +10782,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 name: '',
                                 price: 0,
                                 description: '',
-                                is_primary: passesForManagement.length === 0 || !passesForManagement.some(p => p.is_primary)
+                                is_primary: passesForManagement.length === 0 || !passesForManagement.some(p => p.is_primary),
+                                allowed_payment_methods: [] // Empty = all methods allowed (NULL in DB)
                               });
                             }}
                           >
@@ -10798,6 +10851,61 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   {language === 'en' ? 'Mark as primary pass' : 'Marquer comme pass principal'}
                                 </Label>
                               </div>
+                              <div className="space-y-2">
+                                <Label>{language === 'en' ? 'Allowed Payment Methods' : 'Méthodes de Paiement Autorisées'}</Label>
+                                <p className="text-xs text-muted-foreground">
+                                  {language === 'en' 
+                                    ? 'If none selected, all payment methods are allowed. Select specific methods to restrict this pass.'
+                                    : 'Si aucune n\'est sélectionnée, toutes les méthodes de paiement sont autorisées. Sélectionnez des méthodes spécifiques pour restreindre ce pass.'}
+                                </p>
+                                <div className="space-y-2">
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="pm-online"
+                                      checked={newPassForm.allowed_payment_methods.includes('online')}
+                                      onCheckedChange={(checked) => {
+                                        const methods = checked
+                                          ? [...newPassForm.allowed_payment_methods, 'online']
+                                          : newPassForm.allowed_payment_methods.filter(m => m !== 'online');
+                                        setNewPassForm({ ...newPassForm, allowed_payment_methods: methods });
+                                      }}
+                                    />
+                                    <Label htmlFor="pm-online" className="text-sm font-normal cursor-pointer">
+                                      {language === 'en' ? 'Online Payment' : 'Paiement en ligne'}
+                                    </Label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="pm-external-app"
+                                      checked={newPassForm.allowed_payment_methods.includes('external_app')}
+                                      onCheckedChange={(checked) => {
+                                        const methods = checked
+                                          ? [...newPassForm.allowed_payment_methods, 'external_app']
+                                          : newPassForm.allowed_payment_methods.filter(m => m !== 'external_app');
+                                        setNewPassForm({ ...newPassForm, allowed_payment_methods: methods });
+                                      }}
+                                    />
+                                    <Label htmlFor="pm-external-app" className="text-sm font-normal cursor-pointer">
+                                      {language === 'en' ? 'External App' : 'Application externe'}
+                                    </Label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="pm-ambassador-cash"
+                                      checked={newPassForm.allowed_payment_methods.includes('ambassador_cash')}
+                                      onCheckedChange={(checked) => {
+                                        const methods = checked
+                                          ? [...newPassForm.allowed_payment_methods, 'ambassador_cash']
+                                          : newPassForm.allowed_payment_methods.filter(m => m !== 'ambassador_cash');
+                                        setNewPassForm({ ...newPassForm, allowed_payment_methods: methods });
+                                      }}
+                                    />
+                                    <Label htmlFor="pm-ambassador-cash" className="text-sm font-normal cursor-pointer">
+                                      {language === 'en' ? 'Cash on Delivery (Ambassador)' : 'Paiement à la livraison (Ambassadeur)'}
+                                    </Label>
+                                  </div>
+                                </div>
+                              </div>
                               <div className="flex justify-end gap-2">
                                 <Button
                                   variant="outline"
@@ -10841,6 +10949,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                       }
 
                                       // Insert new pass
+                                      // Normalize allowed_payment_methods: empty array = NULL (all methods allowed)
+                                      const allowedPaymentMethods = newPassForm.allowed_payment_methods.length > 0
+                                        ? newPassForm.allowed_payment_methods
+                                        : null;
+
                                       const { data: newPass, error: insertError } = await supabase
                                         .from('event_passes')
                                         .insert({
@@ -10848,7 +10961,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                           name: newPassForm.name.trim(),
                                           price: Number(newPassForm.price.toFixed(2)),
                                           description: newPassForm.description || '',
-                                          is_primary: newPassForm.is_primary
+                                          is_primary: newPassForm.is_primary,
+                                          allowed_payment_methods: allowedPaymentMethods
                                         })
                                         .select()
                                         .single();
@@ -10875,7 +10989,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                           remaining_quantity: p.remaining_quantity,
                                           is_unlimited: p.is_unlimited || false,
                                           is_active: p.is_active !== undefined ? p.is_active : true,
-                                          is_sold_out: p.is_sold_out || false
+                                          is_sold_out: p.is_sold_out || false,
+                                          allowed_payment_methods: p.allowed_payment_methods || null
                                         }));
                                         setPassesForManagement(passesWithStock);
                                       }
@@ -11052,6 +11167,193 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                     </div>
                                   </div>
                                 </div>
+                                
+                                {/* Payment Method Restrictions */}
+                                {pass.id && (
+                                  <div className="space-y-2 p-3 bg-muted/20 rounded-lg border">
+                                    <Label className="text-sm font-semibold">
+                                      {language === 'en' ? 'Allowed Payment Methods' : 'Méthodes de Paiement Autorisées'}
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                      {language === 'en' 
+                                        ? 'If none selected, all payment methods are allowed. Select specific methods to restrict this pass.'
+                                        : 'Si aucune n\'est sélectionnée, toutes les méthodes de paiement sont autorisées. Sélectionnez des méthodes spécifiques pour restreindre ce pass.'}
+                                    </p>
+                                    <div className="space-y-2">
+                                      <div className="flex items-center space-x-2">
+                                        <Checkbox
+                                          id={`pm-online-${pass.id}`}
+                                          checked={(pass.allowed_payment_methods || []).includes('online')}
+                                          onCheckedChange={async (checked) => {
+                                            if (!pass.id) return;
+                                            const currentMethods = pass.allowed_payment_methods || [];
+                                            const newMethods = checked
+                                              ? [...currentMethods, 'online']
+                                              : currentMethods.filter(m => m !== 'online');
+                                            
+                                            try {
+                                              const apiBase = getApiBaseUrl();
+                                              const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/payment-methods`, {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                credentials: 'include',
+                                                body: JSON.stringify({ 
+                                                  allowed_payment_methods: newMethods.length > 0 ? newMethods : null 
+                                                })
+                                              });
+                                              
+                                              if (!response.ok) {
+                                                const error = await response.json();
+                                                toast({
+                                                  title: t.error,
+                                                  description: error.error || error.details || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
+                                                  variant: "destructive",
+                                                });
+                                                return;
+                                              }
+                                              
+                                              const result = await response.json();
+                                              const updatedPasses = [...passesForManagement];
+                                              updatedPasses[index] = {
+                                                ...pass,
+                                                allowed_payment_methods: result.pass.allowed_payment_methods || null
+                                              };
+                                              setPassesForManagement(updatedPasses);
+                                              
+                                              toast({
+                                                title: t.success || (language === 'en' ? 'Success' : 'Succès'),
+                                                description: language === 'en' ? 'Payment methods updated' : 'Méthodes de paiement mises à jour',
+                                              });
+                                            } catch (error: any) {
+                                              toast({
+                                                title: t.error,
+                                                description: error.message || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
+                                                variant: "destructive",
+                                              });
+                                            }
+                                          }}
+                                        />
+                                        <Label htmlFor={`pm-online-${pass.id}`} className="text-sm font-normal cursor-pointer">
+                                          {language === 'en' ? 'Online Payment' : 'Paiement en ligne'}
+                                        </Label>
+                                      </div>
+                                      <div className="flex items-center space-x-2">
+                                        <Checkbox
+                                          id={`pm-external-app-${pass.id}`}
+                                          checked={(pass.allowed_payment_methods || []).includes('external_app')}
+                                          onCheckedChange={async (checked) => {
+                                            if (!pass.id) return;
+                                            const currentMethods = pass.allowed_payment_methods || [];
+                                            const newMethods = checked
+                                              ? [...currentMethods, 'external_app']
+                                              : currentMethods.filter(m => m !== 'external_app');
+                                            
+                                            try {
+                                              const apiBase = getApiBaseUrl();
+                                              const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/payment-methods`, {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                credentials: 'include',
+                                                body: JSON.stringify({ 
+                                                  allowed_payment_methods: newMethods.length > 0 ? newMethods : null 
+                                                })
+                                              });
+                                              
+                                              if (!response.ok) {
+                                                const error = await response.json();
+                                                toast({
+                                                  title: t.error,
+                                                  description: error.error || error.details || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
+                                                  variant: "destructive",
+                                                });
+                                                return;
+                                              }
+                                              
+                                              const result = await response.json();
+                                              const updatedPasses = [...passesForManagement];
+                                              updatedPasses[index] = {
+                                                ...pass,
+                                                allowed_payment_methods: result.pass.allowed_payment_methods || null
+                                              };
+                                              setPassesForManagement(updatedPasses);
+                                              
+                                              toast({
+                                                title: t.success || (language === 'en' ? 'Success' : 'Succès'),
+                                                description: language === 'en' ? 'Payment methods updated' : 'Méthodes de paiement mises à jour',
+                                              });
+                                            } catch (error: any) {
+                                              toast({
+                                                title: t.error,
+                                                description: error.message || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
+                                                variant: "destructive",
+                                              });
+                                            }
+                                          }}
+                                        />
+                                        <Label htmlFor={`pm-external-app-${pass.id}`} className="text-sm font-normal cursor-pointer">
+                                          {language === 'en' ? 'External App' : 'Application externe'}
+                                        </Label>
+                                      </div>
+                                      <div className="flex items-center space-x-2">
+                                        <Checkbox
+                                          id={`pm-ambassador-cash-${pass.id}`}
+                                          checked={(pass.allowed_payment_methods || []).includes('ambassador_cash')}
+                                          onCheckedChange={async (checked) => {
+                                            if (!pass.id) return;
+                                            const currentMethods = pass.allowed_payment_methods || [];
+                                            const newMethods = checked
+                                              ? [...currentMethods, 'ambassador_cash']
+                                              : currentMethods.filter(m => m !== 'ambassador_cash');
+                                            
+                                            try {
+                                              const apiBase = getApiBaseUrl();
+                                              const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/payment-methods`, {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                credentials: 'include',
+                                                body: JSON.stringify({ 
+                                                  allowed_payment_methods: newMethods.length > 0 ? newMethods : null 
+                                                })
+                                              });
+                                              
+                                              if (!response.ok) {
+                                                const error = await response.json();
+                                                toast({
+                                                  title: t.error,
+                                                  description: error.error || error.details || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
+                                                  variant: "destructive",
+                                                });
+                                                return;
+                                              }
+                                              
+                                              const result = await response.json();
+                                              const updatedPasses = [...passesForManagement];
+                                              updatedPasses[index] = {
+                                                ...pass,
+                                                allowed_payment_methods: result.pass.allowed_payment_methods || null
+                                              };
+                                              setPassesForManagement(updatedPasses);
+                                              
+                                              toast({
+                                                title: t.success || (language === 'en' ? 'Success' : 'Succès'),
+                                                description: language === 'en' ? 'Payment methods updated' : 'Méthodes de paiement mises à jour',
+                                              });
+                                            } catch (error: any) {
+                                              toast({
+                                                title: t.error,
+                                                description: error.message || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
+                                                variant: "destructive",
+                                              });
+                                            }
+                                          }}
+                                        />
+                                        <Label htmlFor={`pm-ambassador-cash-${pass.id}`} className="text-sm font-normal cursor-pointer">
+                                          {language === 'en' ? 'Cash on Delivery (Ambassador)' : 'Paiement à la livraison (Ambassadeur)'}
+                                        </Label>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                                 
                                 {/* Stock Limit Control */}
                                 <div className="space-y-4">
