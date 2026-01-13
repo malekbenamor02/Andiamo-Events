@@ -152,7 +152,18 @@ function setCORSHeaders(res, req) {
 }
 
 export default async (req, res) => {
-  const path = req.url.split('?')[0]; // Remove query string
+  // Get path from URL, handling both /api/... and /... formats (Vercel may strip /api prefix)
+  let path = req.url.split('?')[0]; // Remove query string
+  // Normalize path: if it doesn't start with /api but matches known API routes, add /api prefix
+  // This handles Vercel rewrites where /api might be stripped
+  if (!path.startsWith('/api/') && (
+    path.startsWith('/admin/') || 
+    path.startsWith('/ambassador') || 
+    path.startsWith('/phone') || 
+    path.startsWith('/send-email')
+  )) {
+    path = '/api' + path;
+  }
   const method = req.method;
   
   // Set CORS headers
@@ -2668,6 +2679,152 @@ We Create Memories`;
         return res.status(500).json({
           error: 'Failed to resend ticket email',
           details: error.message
+        });
+      }
+    }
+    
+    // /api/admin/aio-events-submissions (GET)
+    if (path === '/api/admin/aio-events-submissions' && method === 'GET') {
+      try {
+        // Verify admin authentication
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            details: authResult.details || authResult.reason
+          });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ 
+            error: 'Supabase not configured',
+            details: 'Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables'
+          });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        
+        // Use service role key if available for better access
+        let supabase;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        } else {
+          supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_ANON_KEY
+          );
+        }
+
+        // Parse query parameters (all optional)
+        const {
+          status,        // Filter by status
+          eventId,       // Filter by event_id
+          search,        // Full-text search on name, email, phone
+          startDate,     // ISO date string
+          endDate,       // ISO date string
+          limit = '50',  // Pagination limit (default 50, max 200)
+          offset = '0',  // Pagination offset
+          sortBy = 'submitted_at', // Sort by: submitted_at, created_at, total_price
+          order = 'desc'  // Sort order: asc, desc
+        } = req.query;
+
+        // Validate and sanitize inputs
+        const limitNum = Math.min(parseInt(limit, 10) || 50, 200);
+        const offsetNum = Math.max(parseInt(offset, 10) || 0, 0);
+        const sortOrder = order === 'asc' ? 'asc' : 'desc';
+        
+        // Validate date range
+        let startDateObj = null;
+        let endDateObj = null;
+        if (startDate) {
+          startDateObj = new Date(startDate);
+          if (isNaN(startDateObj.getTime())) {
+            return res.status(400).json({ error: 'Invalid startDate format. Use ISO 8601 format.' });
+          }
+        }
+        if (endDate) {
+          endDateObj = new Date(endDate);
+          if (isNaN(endDateObj.getTime())) {
+            return res.status(400).json({ error: 'Invalid endDate format. Use ISO 8601 format.' });
+          }
+        }
+        
+        // Ensure endDate is after startDate
+        if (startDateObj && endDateObj && endDateObj < startDateObj) {
+          return res.status(400).json({ error: 'endDate must be after startDate' });
+        }
+
+        // Build query
+        let query = supabase
+          .from('aio_events_submissions')
+          .select('*', { count: 'exact' });
+
+        // Apply filters
+        if (status) {
+          query = query.eq('status', status);
+        }
+        if (eventId) {
+          query = query.eq('event_id', eventId);
+        }
+        if (startDateObj) {
+          query = query.gte('submitted_at', startDateObj.toISOString());
+        }
+        if (endDateObj) {
+          query = query.lte('submitted_at', endDateObj.toISOString());
+        }
+        if (search) {
+          // Full-text search on name, email, phone
+          query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
+        }
+
+        // Apply sorting
+        const validSortFields = ['submitted_at', 'created_at', 'total_price', 'total_quantity'];
+        const sortField = validSortFields.includes(sortBy) ? sortBy : 'submitted_at';
+        query = query.order(sortField, { ascending: sortOrder === 'asc' });
+
+        // Apply pagination
+        query = query.range(offsetNum, offsetNum + limitNum - 1);
+
+        // Execute query
+        const { data: submissions, error: queryError, count } = await query;
+
+        if (queryError) {
+          console.error('Error querying aio_events_submissions:', queryError);
+          return res.status(500).json({
+            error: 'Database query error',
+            details: queryError.message
+          });
+        }
+
+        // Return results
+        return res.json({
+          success: true,
+          submissions: submissions || [],
+          pagination: {
+            total: count || 0,
+            limit: limitNum,
+            offset: offsetNum,
+            hasMore: offsetNum + limitNum < (count || 0)
+          },
+          filters: {
+            status: status || null,
+            eventId: eventId || null,
+            startDate: startDateObj?.toISOString() || null,
+            endDate: endDateObj?.toISOString() || null,
+            search: search || null
+          }
+        });
+      } catch (error) {
+        console.error('❌ /api/admin/aio-events-submissions: Error:', {
+          error: error.message,
+          stack: error.stack
+        });
+        return res.status(500).json({ 
+          error: 'Server error',
+          details: error.message || 'An unexpected error occurred while fetching submissions'
         });
       }
     }

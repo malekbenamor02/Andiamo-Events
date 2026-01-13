@@ -331,6 +331,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
   const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  
+  // AIO Events Submissions state
+  const [aioEventsSubmissions, setAioEventsSubmissions] = useState<any[]>([]);
+  const [loadingAioEventsSubmissions, setLoadingAioEventsSubmissions] = useState(false);
+  const [aioEventsPagination, setAioEventsPagination] = useState({ total: 0, limit: 50, offset: 0, hasMore: false });
   const [faviconSettings, setFaviconSettings] = useState<FaviconSettings>({});
   const [loadingFaviconSettings, setLoadingFaviconSettings] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState<{type: string; loading: boolean}>({type: '', loading: false});
@@ -4231,6 +4236,198 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setLogs([]);
     } finally {
       setLoadingComprehensiveLogs(false);
+    }
+  };
+
+  // Export AIO Events Submissions to Excel
+  const exportAioEventsSubmissionsToExcel = async () => {
+    try {
+      setLoadingAioEventsSubmissions(true);
+      
+      // Fetch ALL submissions (no pagination limit)
+      const params = new URLSearchParams();
+      params.append('limit', '10000'); // Large limit to get all
+      params.append('offset', '0');
+      params.append('sortBy', 'submitted_at');
+      params.append('order', 'desc');
+
+      const url = buildFullApiUrl(API_ROUTES.ADMIN_AIO_EVENTS_SUBMISSIONS) + '?' + params.toString();
+      const response = await fetch(url, {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch submissions');
+      }
+
+      const allSubmissions = data.submissions || [];
+
+      // Create workbook
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('AIO Events Submissions');
+
+      // Define columns with headers
+      worksheet.columns = [
+        { header: 'ID', key: 'id', width: 36 },
+        { header: 'Full Name', key: 'full_name', width: 25 },
+        { header: 'Email', key: 'email', width: 35 },
+        { header: 'Phone', key: 'phone', width: 20 },
+        { header: 'City', key: 'city', width: 15 },
+        { header: 'Ville (Neighborhood)', key: 'ville', width: 20 },
+        { header: 'Event ID', key: 'event_id', width: 36 },
+        { header: 'Event Name', key: 'event_name', width: 30 },
+        { header: 'Event Date', key: 'event_date', width: 20 },
+        { header: 'Event Venue', key: 'event_venue', width: 25 },
+        { header: 'Event City', key: 'event_city', width: 15 },
+        { header: 'Selected Passes', key: 'selected_passes', width: 50 },
+        { header: 'Total Quantity', key: 'total_quantity', width: 15 },
+        { header: 'Total Price (TND)', key: 'total_price', width: 18 },
+        { header: 'Language', key: 'language', width: 10 },
+        { header: 'User Agent', key: 'user_agent', width: 50 },
+        { header: 'IP Address', key: 'ip_address', width: 18 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'Submitted At', key: 'submitted_at', width: 25 },
+        { header: 'Created At', key: 'created_at', width: 25 },
+      ];
+
+      // Style the header row
+      worksheet.getRow(1).font = { bold: true, size: 12 };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE21836' }
+      };
+      worksheet.getRow(1).font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+      worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+      // Add data rows
+      allSubmissions.forEach((submission: any) => {
+        // Format selected passes
+        let passesStr = 'N/A';
+        if (submission.selected_passes && Array.isArray(submission.selected_passes) && submission.selected_passes.length > 0) {
+          passesStr = submission.selected_passes.map((p: any) => 
+            `${p.name || p.passName || 'Pass'} × ${p.quantity || 1}`
+          ).join(', ');
+        }
+
+        // Format dates
+        const submittedDate = submission.submitted_at ? new Date(submission.submitted_at) : null;
+        const createdDate = submission.created_at ? new Date(submission.created_at) : null;
+        const eventDate = submission.event_date ? new Date(submission.event_date) : null;
+
+        worksheet.addRow({
+          id: submission.id || 'N/A',
+          full_name: submission.full_name || 'N/A',
+          email: submission.email || 'N/A',
+          phone: submission.phone || 'N/A',
+          city: submission.city || 'N/A',
+          ville: submission.ville || 'N/A',
+          event_id: submission.event_id || 'N/A',
+          event_name: submission.event_name || 'N/A',
+          event_date: eventDate ? eventDate.toLocaleDateString(language === 'en' ? 'en-US' : 'fr-FR') + ' ' + eventDate.toLocaleTimeString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
+          event_venue: submission.event_venue || 'N/A',
+          event_city: submission.event_city || 'N/A',
+          selected_passes: passesStr,
+          total_quantity: submission.total_quantity || 0,
+          total_price: submission.total_price ? parseFloat(submission.total_price).toFixed(2) : '0.00',
+          language: submission.language || 'en',
+          user_agent: submission.user_agent || 'N/A',
+          ip_address: submission.ip_address || 'N/A',
+          status: submission.status || 'submitted',
+          submitted_at: submittedDate ? submittedDate.toLocaleDateString(language === 'en' ? 'en-US' : 'fr-FR') + ' ' + submittedDate.toLocaleTimeString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
+          created_at: createdDate ? createdDate.toLocaleDateString(language === 'en' ? 'en-US' : 'fr-FR') + ' ' + createdDate.toLocaleTimeString(language === 'en' ? 'en-US' : 'fr-FR') : 'N/A',
+        });
+      });
+
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `aio-events-submissions-${timestamp}.xlsx`;
+
+      // Download file
+      const buffer = await workbook.xlsx.writeBuffer();   
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const downloadUrl = window.URL.createObjectURL(blob);       
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' 
+          ? `Exported ${allSubmissions.length} submissions to Excel` 
+          : `${allSubmissions.length} soumissions exportées vers Excel`,
+        variant: 'default',
+      });
+    } catch (error: any) {
+      console.error('Error exporting AIO events submissions:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? `Failed to export submissions: ${error.message}` 
+          : `Échec de l'exportation: ${error.message}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingAioEventsSubmissions(false);
+    }
+  };
+
+  // Fetch AIO Events Submissions
+  const fetchAioEventsSubmissions = async (resetOffset = false) => {
+    try {
+      setLoadingAioEventsSubmissions(true);
+      
+      const params = new URLSearchParams();
+      params.append('limit', aioEventsPagination.limit.toString());
+      params.append('offset', resetOffset ? '0' : aioEventsPagination.offset.toString());
+      params.append('sortBy', 'submitted_at');
+      params.append('order', 'desc');
+
+      const url = buildFullApiUrl(API_ROUTES.ADMIN_AIO_EVENTS_SUBMISSIONS) + '?' + params.toString();
+      const response = await fetch(url, {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setAioEventsSubmissions(data.submissions);
+        setAioEventsPagination(data.pagination);
+      } else {
+        throw new Error(data.error || 'Failed to fetch AIO events submissions');
+      }
+    } catch (error: any) {
+      console.error('Error fetching AIO events submissions:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? `Failed to fetch AIO events submissions: ${error.message}` 
+          : `Échec de la récupération des soumissions AIO Events: ${error.message}`,
+        variant: 'destructive',
+      });
+      setAioEventsSubmissions([]);
+    } finally {
+      setLoadingAioEventsSubmissions(false);
     }
   };
 
@@ -9609,6 +9806,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               >
                 <Megaphone className={`w-4 h-4 transition-transform duration-300 ${activeTab === "marketing" ? "animate-pulse" : ""}`} />
                 <span>{language === 'en' ? 'Marketing' : 'Marketing'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("aio-events");
+                  if (aioEventsSubmissions.length === 0) {
+                    fetchAioEventsSubmissions(true);
+                  }
+                }}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
+                  activeTab === "aio-events" 
+                    ? "shadow-lg" 
+                    : ""
+                }`}
+                style={{
+                  color: activeTab === "aio-events" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "aio-events" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
+              >
+                <Database className={`w-4 h-4 transition-transform duration-300 ${activeTab === "aio-events" ? "animate-pulse" : ""}`} />
+                <span>AIO Events</span>
               </button>
               <button
                 onClick={() => {
@@ -15700,6 +15917,174 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </div>
                   </TabsContent>
                 </Tabs>
+              </TabsContent>
+
+              {/* AIO Events Submissions Tab */}
+              <TabsContent value="aio-events" className="space-y-6">
+                {/* Header */}
+                <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+                      AIO Events Submissions
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {language === 'en' 
+                        ? 'View all AIO Events form submissions' 
+                        : 'Voir toutes les soumissions du formulaire AIO Events'}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={exportAioEventsSubmissionsToExcel}
+                      disabled={loadingAioEventsSubmissions}
+                      variant="outline"
+                      className="animate-in slide-in-from-right-4 duration-1000"
+                    >
+                      <Download className={`w-4 h-4 mr-2 ${loadingAioEventsSubmissions ? 'animate-spin' : ''}`} />
+                      {language === 'en' ? 'Export Excel' : 'Exporter Excel'}
+                    </Button>
+                    <Button
+                      onClick={() => fetchAioEventsSubmissions(true)}
+                      disabled={loadingAioEventsSubmissions}
+                      variant="outline"
+                      className="animate-in slide-in-from-right-4 duration-1000"
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${loadingAioEventsSubmissions ? 'animate-spin' : ''}`} />
+                      {language === 'en' ? 'Refresh' : 'Actualiser'}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Submissions Table */}
+                <Card className="shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Database className="w-5 h-5 text-primary" />
+                      {language === 'en' ? 'Submissions' : 'Soumissions'}
+                      <Badge variant="secondary" className="ml-2">
+                        {aioEventsPagination.total}
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {loadingAioEventsSubmissions ? (
+                      <div className="flex items-center justify-center py-12">
+                        <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+                        <span className="ml-3 text-muted-foreground">
+                          {language === 'en' ? 'Loading submissions...' : 'Chargement des soumissions...'}
+                        </span>
+                      </div>
+                    ) : aioEventsSubmissions.length === 0 ? (
+                      <div className="text-center py-12 text-muted-foreground">
+                        {language === 'en' ? 'No submissions found' : 'Aucune soumission trouvée'}
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>{language === 'en' ? 'Name' : 'Nom'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Email' : 'Email'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Phone' : 'Téléphone'}</TableHead>
+                              <TableHead>{language === 'en' ? 'City' : 'Ville'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Event' : 'Événement'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Passes' : 'Passes'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Total' : 'Total'}</TableHead>
+                              <TableHead>{language === 'en' ? 'Date' : 'Date'}</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {aioEventsSubmissions.map((submission) => (
+                              <TableRow key={submission.id}>
+                                <TableCell className="font-medium">{submission.full_name || '-'}</TableCell>
+                                <TableCell className="font-mono text-xs">{submission.email || '-'}</TableCell>
+                                <TableCell className="font-mono text-xs">{submission.phone || '-'}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col">
+                                    <span>{submission.city || '-'}</span>
+                                    {submission.ville && (
+                                      <span className="text-xs text-muted-foreground">{submission.ville}</span>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col max-w-[200px]">
+                                    <span className="font-medium truncate">{submission.event_name || '-'}</span>
+                                    {submission.event_date && (
+                                      <span className="text-xs text-muted-foreground">
+                                        {format(new Date(submission.event_date), 'MMM dd, yyyy')}
+                                      </span>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col">
+                                    <span className="text-sm font-medium">{submission.total_quantity || 0}</span>
+                                    {submission.selected_passes && Array.isArray(submission.selected_passes) && submission.selected_passes.length > 0 && (
+                                      <span className="text-xs text-muted-foreground">
+                                        {submission.selected_passes.map((p: any, idx: number) => (
+                                          <span key={idx}>
+                                            {p.name || p.passName || 'Pass'} × {p.quantity || 1}
+                                            {idx < submission.selected_passes.length - 1 ? ', ' : ''}
+                                          </span>
+                                        ))}
+                                      </span>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="font-medium">
+                                  {submission.total_price ? `${submission.total_price.toFixed(2)} TND` : '-'}
+                                </TableCell>
+                                <TableCell className="font-mono text-xs">
+                                  {submission.submitted_at 
+                                    ? format(new Date(submission.submitted_at), 'MMM dd, yyyy HH:mm')
+                                    : '-'}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                    
+                    {/* Pagination */}
+                    {aioEventsPagination.total > 0 && (
+                      <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                        <div className="text-sm text-muted-foreground">
+                          {language === 'en' 
+                            ? `Showing ${aioEventsPagination.offset + 1} to ${Math.min(aioEventsPagination.offset + aioEventsPagination.limit, aioEventsPagination.total)} of ${aioEventsPagination.total} submissions`
+                            : `Affichage de ${aioEventsPagination.offset + 1} à ${Math.min(aioEventsPagination.offset + aioEventsPagination.limit, aioEventsPagination.total)} sur ${aioEventsPagination.total} soumissions`}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const newOffset = Math.max(0, aioEventsPagination.offset - aioEventsPagination.limit);
+                              setAioEventsPagination(prev => ({ ...prev, offset: newOffset }));
+                              fetchAioEventsSubmissions(false);
+                            }}
+                            disabled={aioEventsPagination.offset === 0 || loadingAioEventsSubmissions}
+                          >
+                            {language === 'en' ? 'Previous' : 'Précédent'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const newOffset = aioEventsPagination.offset + aioEventsPagination.limit;
+                              setAioEventsPagination(prev => ({ ...prev, offset: newOffset }));
+                              fetchAioEventsSubmissions(false);
+                            }}
+                            disabled={!aioEventsPagination.hasMore || loadingAioEventsSubmissions}
+                          >
+                            {language === 'en' ? 'Next' : 'Suivant'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               {/* Logs & Analytics Tab - Available to all admins */}

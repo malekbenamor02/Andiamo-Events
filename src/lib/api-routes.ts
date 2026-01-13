@@ -81,6 +81,9 @@ export const API_ROUTES = {
   // Admin Logs & Analytics
   ADMIN_LOGS: '/api/admin/logs',
   
+  // AIO Events Submissions (Admin) - via misc.js
+  ADMIN_AIO_EVENTS_SUBMISSIONS: '/api/admin/aio-events-submissions',
+  
   // Testing & Diagnostics
   TEST: '/api/test',
   TEST_SUPABASE: '/api/test-supabase',

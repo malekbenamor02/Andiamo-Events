@@ -69,6 +69,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/aio-events-submissions",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/logs",
       "destination": "/api/admin/logs.js"
     },
