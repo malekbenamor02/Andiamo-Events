@@ -49,6 +49,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/passes/:id/payment-methods",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/passes/:id/activate",
       "destination": "/api/misc.js"
     },

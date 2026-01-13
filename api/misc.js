@@ -1099,6 +1099,159 @@ export default async (req, res) => {
     }
     
     // ============================================
+    // /api/admin/passes/:id/payment-methods (PUT)
+    // ============================================
+    if (path.includes('/api/admin/passes/') && path.endsWith('/payment-methods') && method === 'PUT') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        // Extract pass ID from path: /api/admin/passes/[id]/payment-methods
+        const pathParts = path.split('/');
+        const passId = pathParts[pathParts.length - 2]; // Second to last part
+        
+        if (!passId) {
+          return res.status(400).json({ error: 'Pass ID is required' });
+        }
+        
+        const bodyData = await parseBody(req);
+        const { allowed_payment_methods } = bodyData;
+        const adminId = authResult.admin?.id;
+        const adminEmail = authResult.admin?.email;
+        
+        if (!adminId) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+        
+        let dbClient = supabase;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        }
+        
+        // Fetch current pass to verify it exists
+        const { data: currentPass, error: fetchError } = await dbClient
+          .from('event_passes')
+          .select('id, name, event_id, allowed_payment_methods')
+          .eq('id', passId)
+          .single();
+        
+        if (fetchError || !currentPass) {
+          return res.status(404).json({
+            error: 'Pass not found',
+            details: fetchError?.message || 'Pass does not exist'
+          });
+        }
+        
+        // Validate allowed_payment_methods if provided
+        // NULL = all methods allowed (backward compatible)
+        // Empty array = normalize to NULL
+        // Non-empty array = must contain only valid values
+        let normalizedMethods = null;
+        if (allowed_payment_methods !== undefined) {
+          if (Array.isArray(allowed_payment_methods)) {
+            if (allowed_payment_methods.length === 0) {
+              normalizedMethods = null;
+            } else {
+              // Validate all values are valid payment methods
+              const validMethods = ['online', 'external_app', 'ambassador_cash'];
+              const invalidMethods = allowed_payment_methods.filter(m => !validMethods.includes(m));
+              if (invalidMethods.length > 0) {
+                return res.status(400).json({
+                  error: 'Invalid payment methods',
+                  details: `Invalid payment methods: ${invalidMethods.join(', ')}. Valid values: ${validMethods.join(', ')}`
+                });
+              }
+              normalizedMethods = allowed_payment_methods;
+            }
+          } else if (allowed_payment_methods === null) {
+            normalizedMethods = null;
+          } else {
+            return res.status(400).json({
+              error: 'Invalid format',
+              details: 'allowed_payment_methods must be an array or null'
+            });
+          }
+        }
+        
+        // Update pass
+        const { data: updatedPass, error: updateError } = await dbClient
+          .from('event_passes')
+          .update({
+            allowed_payment_methods: normalizedMethods,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', passId)
+          .select()
+          .single();
+        
+        if (updateError) {
+          console.error('Error updating pass payment methods:', updateError);
+          return res.status(500).json({
+            error: 'Failed to update pass payment methods',
+            details: updateError.message
+          });
+        }
+        
+        // Log admin action
+        try {
+          await dbClient.from('security_audit_logs').insert({
+            event_type: 'admin_pass_payment_methods_update',
+            user_id: adminId,
+            endpoint: '/api/admin/passes/:id/payment-methods',
+            ip_address: req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown',
+            user_agent: req.headers['user-agent'] || 'unknown',
+            details: {
+              pass_id: passId,
+              event_id: currentPass.event_id,
+              action: 'UPDATE_PAYMENT_METHODS',
+              before: {
+                allowed_payment_methods: currentPass.allowed_payment_methods
+              },
+              after: {
+                allowed_payment_methods: updatedPass.allowed_payment_methods
+              },
+              admin_email: adminEmail || 'unknown'
+            },
+            severity: 'medium'
+          });
+        } catch (logError) {
+          console.warn('Failed to log payment methods update (non-fatal):', logError);
+        }
+        
+        return res.status(200).json({
+          success: true,
+          pass: updatedPass
+        });
+      } catch (error) {
+        console.error('Error in /api/admin/passes/:id/payment-methods:', error);
+        return res.status(500).json({
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+    
+    // ============================================
     // /api/admin/passes/:id/activate (POST)
     // ============================================
     if (path.includes('/api/admin/passes/') && path.endsWith('/activate') && method === 'POST') {
