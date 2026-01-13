@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, MapPin, Users, ArrowLeft, CheckCircle, XCircle, Lock } from 'lucide-react';
@@ -95,7 +95,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   useEffect(() => {
     if (paymentMethod !== PaymentMethod.AMBASSADOR_CASH) {
       setSelectedAmbassadorId(null);
-      setTermsAccepted(false);
       setSelectedAmbassadorDetails(null);
     }
   }, [paymentMethod]);
@@ -489,14 +488,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       if (!selectedAmbassadorId) {
         errors.ambassador = language === 'en' ? 'Please select an ambassador' : 'Veuillez sélectionner un ambassadeur';
       }
-      if (!termsAccepted) {
-        errors.terms = t[language].termsRequired;
-      }
-    }
-
-    // Validate terms acceptance for online payments
-    if (paymentMethod === PaymentMethod.ONLINE && !termsAccepted) {
-      errors.termsAccepted = t[language].termsRequired;
     }
 
     setValidationErrors(errors);
@@ -506,6 +497,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Automatically accept terms when submitting
+    setTermsAccepted(true);
 
     if (!validateForm()) {
       toast({
@@ -1109,18 +1103,44 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       language={language}
                     />
                     
-                    {/* Validation errors for terms */}
-                    {(validationErrors.terms || validationErrors.termsAccepted) && (
-                      <p className="text-red-500 text-sm mt-2">
-                        {validationErrors.terms || validationErrors.termsAccepted}
+                    {/* Terms Acceptance Notice */}
+                    <div className="mt-4 pt-4 border-t">
+                      <p className="text-sm text-muted-foreground text-center">
+                        {language === 'en' ? (
+                          <>
+                            By submitting this order, you accept our{' '}
+                            <Link 
+                              to="/terms" 
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline underline-offset-2"
+                            >
+                              Terms and General Conditions of Sale
+                            </Link>
+                            .
+                          </>
+                        ) : (
+                          <>
+                            En soumettant cette commande, vous acceptez nos{' '}
+                            <Link 
+                              to="/terms" 
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline underline-offset-2"
+                            >
+                              Terms et conditions générales de vente
+                            </Link>
+                            .
+                          </>
+                        )}
                       </p>
-                    )}
+                    </div>
                     
                     {/* Submit Button */}
                     <Button
                       type="submit"
                       disabled={processing || !hasSelectedPasses}
-                      className="w-full btn-gradient disabled:opacity-50"
+                      className="w-full btn-gradient disabled:opacity-50 mt-4"
                     >
                       {processing ? (
                         <>

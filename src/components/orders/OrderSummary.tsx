@@ -6,12 +6,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import { SelectedPass } from '@/types/orders';
 import { Receipt, Ticket } from 'lucide-react';
 import { PaymentMethod } from '@/lib/constants/orderStatuses';
-import { Link } from 'react-router-dom';
 
 interface OrderSummaryProps {
   selectedPasses: SelectedPass[];
@@ -114,57 +111,6 @@ export function OrderSummary({
               {totalPrice.toFixed(2)} TND
             </span>
           </div>
-
-          {/* Terms Acceptance */}
-          {(paymentMethod === PaymentMethod.ONLINE || 
-            paymentMethod === PaymentMethod.EXTERNAL_APP || 
-            paymentMethod === PaymentMethod.AMBASSADOR_CASH) && (
-            <div className="mt-4 pt-4 border-t">
-              <div className="flex items-start space-x-2">
-                <Checkbox
-                  id="terms"
-                  checked={termsAccepted || false}
-                  onCheckedChange={(checked) => onTermsChange?.(checked === true)}
-                  className={!termsAccepted && paymentMethod ? 'border-red-500' : ''}
-                />
-                <Label
-                  htmlFor="terms"
-                  className="text-sm cursor-pointer leading-tight"
-                >
-                  {language === 'en' ? (
-                    <>
-                      I accept the{' '}
-                      <Link 
-                        to="/terms" 
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline underline-offset-2"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Terms and General Conditions of Sale
-                      </Link>
-                    </>
-                  ) : (
-                    <>
-                      J'accepte les{' '}
-                      <Link 
-                        to="/terms" 
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline underline-offset-2"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Terms et conditions générales de vente
-                      </Link>
-                    </>
-                  )}
-                  {paymentMethod === PaymentMethod.AMBASSADOR_CASH && (
-                    <span className="text-primary"> *</span>
-                  )}
-                </Label>
-              </div>
-            </div>
-          )}
         </div>
       </CardContent>
     </Card>
