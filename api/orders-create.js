@@ -1661,8 +1661,7 @@ async function sendOrderConfirmationEmails(orderId, dbClient) {
           id,
           full_name,
           phone,
-          email,
-          social_link
+          email
         )
       `)
       .eq('id', orderId)

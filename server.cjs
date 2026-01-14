@@ -7234,8 +7234,7 @@ async function sendOrderConfirmationEmails(orderId) {
           id,
           full_name,
           phone,
-          email,
-          social_link
+          email
         )
       `)
       .eq('id', orderId)
