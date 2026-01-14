@@ -100,6 +100,8 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
             <Route path="/contact" element={<Contact language={language} />} />
             <Route path="/terms" element={<Terms language={language} />} />
             <Route path="/refund-policy" element={<RefundPolicy language={language} />} />
+            {/* Friendly URL route for event pass purchase: /event-slug */}
+            <Route path="/:eventSlug" element={<PassPurchase language={language} />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <Footer language={language} />

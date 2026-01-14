@@ -1126,7 +1126,8 @@ const Events = ({ language }: EventsProps) => {
                             className="btn-gradient flex-1 py-6 text-base md:text-lg font-semibold shadow-lg shadow-primary/50 hover:shadow-xl hover:shadow-primary/60 hover:scale-[1.02] transition-all duration-300"
                             onClick={() => {
                               closeModal();
-                              navigate(`/pass-purchase?eventId=${selectedEvent.id}`);
+                              const slug = selectedEvent.slug || generateSlug(selectedEvent.name);
+                              navigate(`/${slug}`);
                             }}
                           >
                             <ExternalLink className="w-5 h-5 mr-2" />

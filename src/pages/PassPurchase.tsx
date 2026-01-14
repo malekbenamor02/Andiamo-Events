@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, MapPin, Users, ArrowLeft, CheckCircle, XCircle, Lock } from 'lucide-react';
@@ -61,7 +61,10 @@ interface PassPurchaseProps {
 const PassPurchase = ({ language }: PassPurchaseProps) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const eventId = searchParams.get('eventId');
+  const { eventSlug } = useParams<{ eventSlug?: string }>();
+  // Support both new slug-based URLs and legacy eventId query param
+  const eventIdFromQuery = searchParams.get('eventId');
+  const eventId = eventIdFromQuery || null;
   const { toast } = useToast();
   
   const [event, setEvent] = useState<Event | null>(null);
@@ -201,13 +204,26 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   };
 
   useEffect(() => {
-    if (eventId) {
+    if (eventSlug || eventId) {
       fetchEvent();
+    } else {
+      // No event identifier provided, show error
+      setEvent(null);
+      setLoading(false);
+      toast({
+        title: t[language].error,
+        description: language === 'en' 
+          ? 'Event not specified' 
+          : 'Événement non spécifié',
+        variant: 'destructive'
+      });
     }
-  }, [eventId]);
+  }, [eventSlug, eventId]);
 
   const fetchEvent = async () => {
     try {
+      setLoading(true);
+      
       // Check if we're on localhost (for testing) or production
       const isLocalhost = typeof window !== 'undefined' && (
         window.location.hostname === 'localhost' ||
@@ -216,11 +232,41 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         window.location.hostname.startsWith('10.0.')
       );
 
-      const { data: eventData, error: eventError } = await supabase
-        .from('events')
-        .select('*')
-        .eq('id', eventId)
-        .single();
+      let eventData: any = null;
+      let eventError: any = null;
+      let resolvedEventId: string | null = null;
+
+      // Fetch event by slug or eventId
+      if (eventSlug) {
+        // New friendly URL: fetch by slug
+        const normalizedSlug = decodeURIComponent(eventSlug).toLowerCase().trim();
+        const { data, error } = await supabase
+          .from('events')
+          .select('*')
+          .eq('slug', normalizedSlug)
+          .single();
+        
+        eventData = data;
+        eventError = error;
+        if (data) {
+          resolvedEventId = data.id;
+        }
+      } else if (eventId) {
+        // Legacy URL: fetch by eventId
+        const { data, error } = await supabase
+          .from('events')
+          .select('*')
+          .eq('id', eventId)
+          .single();
+        
+        eventData = data;
+        eventError = error;
+        resolvedEventId = eventId;
+      } else {
+        setEvent(null);
+        setLoading(false);
+        return;
+      }
 
       if (eventError) {
         // Handle specific error cases
@@ -277,7 +323,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       try {
         // Use getApiBaseUrl() for consistent API routing
         const apiBase = getApiBaseUrl();
-        const passesResponse = await fetch(`${apiBase}/api/passes/${eventId}`);
+        if (!resolvedEventId) {
+          throw new Error('Event ID not resolved');
+        }
+        const passesResponse = await fetch(`${apiBase}/api/passes/${resolvedEventId}`);
         
         if (passesResponse.ok) {
           const passesResult = await passesResponse.json();
@@ -308,7 +357,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           } catch {
             errorData = { error: errorText };
           }
-          console.error('❌ Failed to fetch passes for event:', eventId, {
+          console.error('❌ Failed to fetch passes for event:', resolvedEventId, {
             status: passesResponse.status,
             statusText: passesResponse.statusText,
             error: errorData
@@ -323,7 +372,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         }
       } catch (passError: any) {
         // Passes fetch error, but we still show the event
-        console.error('❌ Error fetching passes for event:', eventId, passError);
+        console.error('❌ Error fetching passes for event:', resolvedEventId, passError);
         toast({
           title: language === 'en' ? 'Warning' : 'Avertissement',
           description: language === 'en' 
@@ -549,7 +598,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         passes: selectedPassesArray,
         paymentMethod,
         ambassadorId: paymentMethod === PaymentMethod.AMBASSADOR_CASH ? selectedAmbassadorId || undefined : undefined,
-        eventId: eventId || undefined
+        eventId: event?.id || eventId || undefined
       });
 
       // Handle redirect based on payment method

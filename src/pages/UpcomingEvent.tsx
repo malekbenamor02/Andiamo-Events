@@ -303,7 +303,10 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center animate-fade-in-up">
               <Button
-                onClick={() => navigate(`/pass-purchase?eventId=${event.id}`)}
+                onClick={() => {
+                  const slug = event.slug || generateSlug(event.name);
+                  navigate(`/${slug}`);
+                }}
                 className="btn-gradient transform transition-all duration-300 hover:scale-105 text-lg px-8 py-6"
                 size="lg"
               >

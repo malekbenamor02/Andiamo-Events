@@ -30,6 +30,7 @@ export interface Event {
   special_notes?: string;
   organizer_contact?: string;
   event_category?: string;
+  slug?: string;
 }
 
 /**

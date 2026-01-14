@@ -3,6 +3,7 @@ import { Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { generateSlug } from "@/lib/utils";
 import TypewriterText from "./TypewriterText";
 
 interface HeroSectionProps {
@@ -180,7 +181,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
         // Get all events and filter in JavaScript for more flexibility
         const { data, error } = await supabase
           .from('events')
-          .select('id, name, date, event_type, event_status, is_test')
+          .select('id, name, date, event_type, event_status, is_test, slug')
           .order('date', { ascending: true });
 
         if (error) {
@@ -440,7 +441,8 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
               }}
               onClick={() => {
                 if (nextEvent) {
-                  navigate(`/pass-purchase?eventId=${nextEvent.id}`);
+                  const slug = nextEvent.slug || generateSlug(nextEvent.name);
+                  navigate(`/${slug}`);
                 } else {
                   navigate('/events');
                 }

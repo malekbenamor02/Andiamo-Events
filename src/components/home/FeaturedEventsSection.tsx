@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, MapPin, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { generateSlug } from '@/lib/utils';
 import { useFeaturedEvents, type Event } from '@/hooks/useEvents';
 
 interface Event {
@@ -100,7 +101,10 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                 )}
                 <div className="mt-4">
                   <Button
-                    onClick={() => navigate(`/pass-purchase?eventId=${event.id}`)}
+                    onClick={() => {
+                      const slug = event.slug || generateSlug(event.name);
+                      navigate(`/${slug}`);
+                    }}
                     className="btn-gradient w-full inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold text-white shadow-md shadow-primary/40 hover:shadow-lg hover:shadow-primary/50 hover:scale-[1.02] transition-all duration-300"
                   >
                     <ExternalLink className="w-4 h-4 mr-2" />
