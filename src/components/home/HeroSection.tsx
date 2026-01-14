@@ -247,14 +247,16 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
   // Typewriter texts for the hero title (Arabic appears after EN/FR texts)
   const typewriterTexts = {
     en: [
-      "GUESS WHO IS COMING ?",
-      "AN INTERNATIONAL ARTIST COMING FOR THE FIRST TIME?",
-      "في تونس فما دحدح و في مصر فما … ؟",
+      "EL DAHEEH LIVE SHOW FOR THE FIRST TIME IN TUNIS !!",
+      "01 February 2026",
+      "PALAIS DES CONGRES , TUNIS, AVENUE MOHAMED 5",
+      "الدحيح في تونس",
     ],
     fr: [
-      "DEVINEZ QUI ARRIVE ?",
-      "UN ARTISTE INTERNATIONAL POUR LA PREMIÈRE FOIS ?",
-      "في تونس فما دحدح و في مصر فما … ؟",
+      "EL DAHEEH LIVE SHOW FOR THE FIRST TIME IN TUNIS !!",
+      "01 February 2026",
+      "PALAIS DES CONGRES , TUNIS, AVENUE MOHAMED 5",
+      "الدحيح في تونس",
     ],
   };
 
