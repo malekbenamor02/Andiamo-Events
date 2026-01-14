@@ -612,13 +612,29 @@ function buildOrderConfirmationEmailHtml(order, orderPasses, recipientType = 'cl
   // Helper function to extract Instagram username from URL
   const getInstagramUsername = (url) => {
     if (!url) return null;
+    // Handle both https://www.instagram.com/username and https://instagram.com/username
     const match = url.match(/instagram\.com\/([^\/\?]+)/);
     return match ? match[1] : null;
   };
   
+  // Helper function to ensure Instagram URL is properly formatted
+  const formatInstagramUrl = (url) => {
+    if (!url) return 'https://www.instagram.com/andiamo.events/';
+    // If it's already a full URL, return it
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    // If it's just a username, add the full URL
+    return `https://www.instagram.com/${url.replace('@', '')}/`;
+  };
+  
   // Get ambassador Instagram username and URL
-  const ambassadorInstagramUrl = order.ambassadors?.social_link || 'https://www.instagram.com/andiamo.events/';
+  const ambassadorInstagramUrl = order.ambassadors?.social_link 
+    ? formatInstagramUrl(order.ambassadors.social_link)
+    : 'https://www.instagram.com/andiamo.events/';
   const ambassadorInstagramUsername = getInstagramUsername(ambassadorInstagramUrl) || 'andiamo.events';
+  
+  console.log(`📧 Ambassador Instagram - URL: ${ambassadorInstagramUrl}, Username: ${ambassadorInstagramUsername}`);
   
   // Build passes summary
   const passesSummaryHtml = orderPasses.map(p => `
@@ -1682,9 +1698,10 @@ async function sendOrderConfirmationEmails(orderId, dbClient) {
       orderPasses = passes || [];
     }
 
-    // Fetch ambassador social_link from ambassador_applications if not in ambassadors relation
-    if (order.ambassadors && !order.ambassadors.social_link) {
+    // Fetch ambassador social_link from ambassador_applications
+    if (order.ambassadors) {
       try {
+        // Always fetch social_link from ambassador_applications to ensure we have the latest
         const { data: application } = await dbClient
           .from('ambassador_applications')
           .select('social_link')
@@ -1693,6 +1710,9 @@ async function sendOrderConfirmationEmails(orderId, dbClient) {
         
         if (application?.social_link) {
           order.ambassadors.social_link = application.social_link;
+          console.log(`📧 Fetched ambassador Instagram: ${application.social_link}`);
+        } else {
+          console.log(`⚠️ No Instagram link found for ambassador ${order.ambassadors.phone}`);
         }
       } catch (err) {
         console.warn('⚠️ Failed to fetch ambassador social_link from applications:', err);
