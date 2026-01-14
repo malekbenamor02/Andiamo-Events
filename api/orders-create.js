@@ -592,13 +592,33 @@ function formatEventTime(eventDate) {
  * Build order confirmation email HTML (simple version without tickets)
  * Reusable for both client and ambassador
  */
-function buildOrderConfirmationEmailHtml(order, orderPasses) {
+function buildOrderConfirmationEmailHtml(order, orderPasses, recipientType = 'client') {
   const orderNumber = order.order_number !== null && order.order_number !== undefined 
     ? `#${order.order_number}` 
     : order.id.substring(0, 8).toUpperCase();
   
   const eventTime = formatEventTime(order.events?.date) || 'TBA';
   const venue = order.events?.venue || 'Venue to be announced';
+  
+  // Determine title and subtitle based on recipient type
+  const title = recipientType === 'client' ? 'Payment Processing' : 'New Order';
+  const subtitle = recipientType === 'client' ? 'Payment Processing – Andiamo Events' : 'New Order - Andiamo Events';
+  
+  // Determine greeting message based on recipient type
+  const greetingMessage = recipientType === 'client' 
+    ? 'Thank you for your order with Andiamo Events!<br><br>One of our official Andiamo Events ambassadors, ' + (order.ambassadors?.full_name || 'your assigned ambassador') + ', will be contacting you shortly to complete the delivery process and assist you if needed.<br><br>Once the payment process is fully completed, you will receive a final confirmation email with all the necessary details.'
+    : 'We\'re excited to confirm that a new order has been successfully processed!<br><br>Please contact the client as soon as possible to confirm availability, coordinate delivery, and provide assistance if needed.<br><br>Timely communication is essential to ensure a smooth experience for the client.<br><br>Thank you for your cooperation.';
+  
+  // Helper function to extract Instagram username from URL
+  const getInstagramUsername = (url) => {
+    if (!url) return null;
+    const match = url.match(/instagram\.com\/([^\/\?]+)/);
+    return match ? match[1] : null;
+  };
+  
+  // Get ambassador Instagram username and URL
+  const ambassadorInstagramUrl = order.ambassadors?.social_link || 'https://www.instagram.com/andiamo.events/';
+  const ambassadorInstagramUsername = getInstagramUsername(ambassadorInstagramUrl) || 'andiamo.events';
   
   // Build passes summary
   const passesSummaryHtml = orderPasses.map(p => `
@@ -917,14 +937,14 @@ function buildOrderConfirmationEmailHtml(order, orderPasses) {
       <div class="email-wrapper">
         <div class="content-card">
           <div class="title-section">
-            <h1 class="title">Order Confirmed</h1>
-            <p class="subtitle">Order Confirmation - Andiamo Events</p>
+            <h1 class="title">${title}</h1>
+            <p class="subtitle">${subtitle}</p>
           </div>
           
-          <p class="greeting">Dear <strong>${order.user_name || 'Valued Customer'}</strong>,</p>
+          <p class="greeting">Dear <strong>${recipientType === 'client' ? (order.user_name || 'Valued Customer') : (order.ambassadors?.full_name || 'Ambassador')}</strong>,</p>
           
           <p class="message">
-            We're excited to confirm that your order has been successfully processed!
+            ${greetingMessage}
           </p>
           
           <div class="order-info-block">
@@ -932,24 +952,33 @@ function buildOrderConfirmationEmailHtml(order, orderPasses) {
               <div class="info-label">Order Number</div>
               <div class="info-value">${orderNumber}</div>
             </div>
-            <div class="info-row">
-              <div class="info-label">Event</div>
-              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.name || 'Event'}</div>
-            </div>
-            <div class="info-row">
-              <div class="info-label">Event Time</div>
-              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${eventTime}</div>
-            </div>
-            <div class="info-row">
-              <div class="info-label">Venue</div>
-              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${venue}</div>
-            </div>
+            ${recipientType === 'client' ? `
             ${order.ambassadors ? `
             <div class="info-row">
               <div class="info-label">Delivered by</div>
               <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.ambassadors.full_name}</div>
             </div>
+            <div class="info-row">
+              <div class="info-label">Ambassador Phone</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.ambassadors.phone || 'N/A'}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Ambassador Instagram</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">
+                <a href="${ambassadorInstagramUrl}" target="_blank" style="color: #E21836 !important; text-decoration: none;">@${ambassadorInstagramUsername}</a>
+              </div>
+            </div>
             ` : ''}
+            ` : `
+            <div class="info-row">
+              <div class="info-label">Client Name</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.user_name || 'N/A'}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Client Phone</div>
+              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.user_phone || 'N/A'}</div>
+            </div>
+            `}
           </div>
 
           <div class="order-info-block">
@@ -965,7 +994,7 @@ function buildOrderConfirmationEmailHtml(order, orderPasses) {
               <tbody>
                 ${passesSummaryHtml}
                 <tr class="total-row">
-                  <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
+                  <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>${recipientType === 'client' ? 'Total Amount Paid:' : 'Total Amount:'}</strong></td>
                   <td style="text-align: right;"><strong>${parseFloat(order.total_price).toFixed(2)} TND</strong></td>
                 </tr>
               </tbody>
@@ -973,7 +1002,15 @@ function buildOrderConfirmationEmailHtml(order, orderPasses) {
           </div>
 
           <div class="support-section">
-            <p class="support-text">Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>.</p>
+            ${recipientType === 'client' ? `
+        <p class="support-text">Need assistance? Contact us at 
+          <a href="mailto:Contact@andiamoevents.com" style="color: #E21836 !important; text-decoration: none; font-weight: 500;">Contact@andiamoevents.com</a> or in our Instagram page 
+          <a href="https://www.instagram.com/andiamo.events/" target="_blank" style="color: #E21836 !important; text-decoration: none; font-weight: 500;">@andiamo.events</a> or contact with 
+          <a href="tel:28070128" style="color: #E21836 !important; text-decoration: none; font-weight: 500;">28070128</a>.
+        </p>
+            ` : `
+            <p class="support-text">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a>.</p>
+            `}
           </div>
           <div class="closing-section">
             <p class="slogan">We Create Memories</p>
@@ -1526,7 +1563,7 @@ async function sendOrderConfirmationEmailToRecipient(order, orderPasses, recipie
           email_type: 'order_confirmation',
           recipient_email: recipientEmail,
           recipient_name: recipientName || 'Recipient',
-          subject: 'Order Confirmation - Andiamo Events',
+          subject: recipientType === 'client' ? 'Payment Processing – Andiamo Events' : 'New Order - Andiamo Events',
           status: 'pending'
         })
         .select()
@@ -1538,8 +1575,8 @@ async function sendOrderConfirmationEmailToRecipient(order, orderPasses, recipie
   }
 
   try {
-    const emailHtml = buildOrderConfirmationEmailHtml(order, orderPasses);
-    const subject = 'Order Confirmation - Andiamo Events';
+    const emailHtml = buildOrderConfirmationEmailHtml(order, orderPasses, recipientType);
+    const subject = recipientType === 'client' ? 'Payment Processing – Andiamo Events' : 'New Order - Andiamo Events';
 
     // Send email
     console.log(`📧 Creating email transporter for ${recipientType}...`);
@@ -1624,7 +1661,8 @@ async function sendOrderConfirmationEmails(orderId, dbClient) {
           id,
           full_name,
           phone,
-          email
+          email,
+          social_link
         )
       `)
       .eq('id', orderId)
@@ -1643,6 +1681,23 @@ async function sendOrderConfirmationEmails(orderId, dbClient) {
         .select('*')
         .eq('order_id', orderId);
       orderPasses = passes || [];
+    }
+
+    // Fetch ambassador social_link from ambassador_applications if not in ambassadors relation
+    if (order.ambassadors && !order.ambassadors.social_link) {
+      try {
+        const { data: application } = await dbClient
+          .from('ambassador_applications')
+          .select('social_link')
+          .eq('phone_number', order.ambassadors.phone)
+          .maybeSingle();
+        
+        if (application?.social_link) {
+          order.ambassadors.social_link = application.social_link;
+        }
+      } catch (err) {
+        console.warn('⚠️ Failed to fetch ambassador social_link from applications:', err);
+      }
     }
 
     // Send email to client
