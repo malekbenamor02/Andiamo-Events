@@ -65,6 +65,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin-remove-order",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/update-order-email",
       "destination": "/api/misc.js"
     },
