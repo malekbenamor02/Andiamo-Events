@@ -4127,6 +4127,214 @@ app.post('/api/ambassador/cancel-order', async (req, res) => {
   }
 });
 
+// GET /api/ambassador/orders - Get ambassador's orders (excludes REMOVED_BY_ADMIN)
+app.get('/api/ambassador/orders', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { ambassadorId, status, limit = 100 } = req.query;
+
+    if (!ambassadorId) {
+      return res.status(400).json({
+        error: 'Missing required field',
+        details: 'ambassadorId is required'
+      });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // Verify ambassador exists and is approved
+    const { data: ambassador, error: ambassadorError } = await dbClient
+      .from('ambassadors')
+      .select('id, status')
+      .eq('id', ambassadorId)
+      .single();
+
+    if (ambassadorError || !ambassador) {
+      return res.status(404).json({ error: 'Ambassador not found' });
+    }
+
+    if (ambassador.status !== 'approved') {
+      return res.status(403).json({ 
+        error: 'Ambassador not approved',
+        details: 'Only approved ambassadors can access orders'
+      });
+    }
+
+    // Build query - exclude REMOVED_BY_ADMIN by default
+    let query = dbClient
+      .from('orders')
+      .select('*, order_passes (*)')
+      .eq('ambassador_id', ambassadorId)
+      .neq('status', 'REMOVED_BY_ADMIN') // Exclude removed orders
+      .order('created_at', { ascending: false })
+      .limit(parseInt(limit));
+
+    // Apply status filter if provided
+    if (status) {
+      if (status === 'REMOVED_BY_ADMIN') {
+        // If explicitly requesting removed orders, show only those
+        query = dbClient
+          .from('orders')
+          .select('*, order_passes (*)')
+          .eq('ambassador_id', ambassadorId)
+          .eq('status', 'REMOVED_BY_ADMIN')
+          .order('created_at', { ascending: false })
+          .limit(parseInt(limit));
+      } else {
+        query = query.eq('status', status);
+      }
+    }
+
+    const { data: orders, error: ordersError } = await query;
+
+    if (ordersError) {
+      console.error('Error fetching ambassador orders:', ordersError);
+      return res.status(500).json({
+        error: 'Failed to fetch orders',
+        details: ordersError.message
+      });
+    }
+
+    res.json({
+      success: true,
+      data: orders || [],
+      count: orders?.length || 0
+    });
+
+  } catch (error) {
+    console.error('Error in /api/ambassador/orders:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// GET /api/ambassador/performance - Get ambassador performance metrics (excludes REMOVED_BY_ADMIN)
+app.get('/api/ambassador/performance', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { ambassadorId } = req.query;
+
+    if (!ambassadorId) {
+      return res.status(400).json({
+        error: 'Missing required field',
+        details: 'ambassadorId is required'
+      });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // Verify ambassador exists and is approved
+    const { data: ambassador, error: ambassadorError } = await dbClient
+      .from('ambassadors')
+      .select('id, status')
+      .eq('id', ambassadorId)
+      .single();
+
+    if (ambassadorError || !ambassador) {
+      return res.status(404).json({ error: 'Ambassador not found' });
+    }
+
+    if (ambassador.status !== 'approved') {
+      return res.status(403).json({ 
+        error: 'Ambassador not approved',
+        details: 'Only approved ambassadors can access performance data'
+      });
+    }
+
+    // Fetch all orders with order_passes (exclude REMOVED_BY_ADMIN)
+    const { data: allOrders, error: ordersError } = await dbClient
+      .from('orders')
+      .select('*, order_passes (*)')
+      .eq('ambassador_id', ambassadorId)
+      .neq('status', 'REMOVED_BY_ADMIN'); // Exclude removed orders from performance
+
+    if (ordersError) {
+      console.error('Error fetching ambassador orders for performance:', ordersError);
+      return res.status(500).json({
+        error: 'Failed to fetch orders',
+        details: ordersError.message
+      });
+    }
+
+    const activeOrders = allOrders || [];
+
+    // Calculate metrics
+    const total = activeOrders.length;
+    const paid = activeOrders.filter(o => o.status === 'PAID').length;
+    const cancelled = activeOrders.filter(o => 
+      o.status === 'CANCELLED' || 
+      o.status === 'CANCELLED_BY_AMBASSADOR' || 
+      o.status === 'CANCELLED_BY_ADMIN'
+    ).length;
+    const rejected = activeOrders.filter(o => o.status === 'REJECTED').length;
+    const ignored = activeOrders.filter(o => 
+      (o.status === 'PENDING') && 
+      o.assigned_at &&
+      new Date(o.assigned_at).getTime() < Date.now() - 15 * 60 * 1000 &&
+      !o.accepted_at
+    ).length;
+
+    // Calculate revenue from PAID orders only
+    const revenueOrders = activeOrders.filter(o => o.status === 'PAID');
+    let totalRevenue = 0;
+    let totalPassesSold = 0;
+
+    revenueOrders.forEach(order => {
+      if (order.order_passes && Array.isArray(order.order_passes)) {
+        order.order_passes.forEach((pass) => {
+          totalRevenue += parseFloat(pass.price || 0) * parseInt(pass.quantity || 0);
+          totalPassesSold += parseInt(pass.quantity || 0);
+        });
+      } else {
+        // Fallback to total_price if order_passes not available
+        totalRevenue += parseFloat(order.total_price || 0);
+        totalPassesSold += 1;
+      }
+    });
+
+    // Calculate average response time
+    const acceptedOrders = activeOrders.filter(o => o.accepted_at && o.assigned_at);
+    let averageResponseTime = 0;
+    if (acceptedOrders.length > 0) {
+      const totalResponseTime = acceptedOrders.reduce((sum, order) => {
+        const assigned = new Date(order.assigned_at);
+        const accepted = new Date(order.accepted_at);
+        return sum + (accepted.getTime() - assigned.getTime());
+      }, 0);
+      averageResponseTime = totalResponseTime / acceptedOrders.length / 1000 / 60; // Convert to minutes
+    }
+
+    res.json({
+      success: true,
+      data: {
+        total,
+        paid,
+        cancelled,
+        rejected,
+        ignored,
+        totalPassesSold,
+        totalRevenue,
+        averageResponseTime: Math.round(averageResponseTime * 10) / 10 // Round to 1 decimal
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in /api/ambassador/performance:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
 // POST /api/admin/cancel-order - Cancel order by admin
 app.post('/api/admin/cancel-order', requireAdminAuth, async (req, res) => {
   try {
@@ -4229,6 +4437,210 @@ app.post('/api/admin/cancel-order', requireAdminAuth, async (req, res) => {
 });
 
 // POST /api/admin/reject-order - Reject COD order (admin reject pending order)
+// POST /api/admin-remove-order - Admin-only endpoint to soft-delete orders (set status to REMOVED_BY_ADMIN)
+app.post('/api/admin-remove-order', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId } = req.body;
+    const adminId = req.admin?.id;
+    const adminEmail = req.admin?.email;
+
+    if (!orderId) {
+      return res.status(400).json({
+        error: 'Order ID is required',
+        details: 'orderId must be provided'
+      });
+    }
+
+    console.log('✅ ADMIN: Remove Order Request:', {
+      orderId,
+      adminId,
+      adminEmail: adminEmail ? `${adminEmail.substring(0, 3)}***` : 'NOT SET'
+    });
+
+    const dbClient = supabaseService || supabase;
+
+    // Step 1: Verify order exists and get current status
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .select('id, status, payment_method, payment_status')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      console.error('❌ Order not found:', orderId);
+      return res.status(404).json({
+        error: 'Order not found',
+        details: `No order found with id: ${orderId}`
+      });
+    }
+
+    console.log('✅ Order status check:', {
+      orderId: order.id,
+      currentStatus: order.status,
+      paymentMethod: order.payment_method
+    });
+
+    // Step 2: Validate order status (must NOT be PAID)
+    if (order.status === 'PAID') {
+      console.error('❌ Cannot remove PAID order:', order.status);
+
+      // Log security event
+      try {
+        await dbClient.from('security_audit_logs').insert({
+          event_type: 'invalid_order_removal',
+          endpoint: '/api/admin-remove-order',
+          user_id: adminId,
+          ip_address: req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown',
+          user_agent: req.headers['user-agent'] || 'unknown',
+          request_method: req.method,
+          request_path: req.url,
+          details: {
+            reason: 'Cannot remove PAID orders',
+            order_id: orderId,
+            current_status: order.status,
+            attempted_action: 'remove_order'
+          },
+          severity: 'medium'
+        });
+      } catch (logError) {
+        console.error('Failed to log security event:', logError);
+      }
+
+      return res.status(400).json({
+        error: 'Cannot remove paid order',
+        details: 'PAID orders cannot be removed. Only non-PAID orders can be removed.'
+      });
+    }
+
+    // Step 3: Check if order is already removed
+    if (order.status === 'REMOVED_BY_ADMIN') {
+      console.log('⚠️ Order already removed (idempotent call)');
+      return res.status(200).json({
+        success: true,
+        message: 'Order already removed (idempotent call)',
+        orderId: orderId,
+        status: 'REMOVED_BY_ADMIN'
+      });
+    }
+
+    // Step 4: Get order_passes to prepare for stock decrease (for future feature #2)
+    const { data: orderPasses, error: passesError } = await dbClient
+      .from('order_passes')
+      .select('*')
+      .eq('order_id', orderId);
+
+    if (passesError) {
+      console.error('⚠️ Error fetching order passes (non-critical):', passesError);
+    }
+
+    // Step 5: Update order status to REMOVED_BY_ADMIN (soft delete)
+    const oldStatus = order.status;
+    const { data: updatedOrder, error: updateError } = await dbClient
+      .from('orders')
+      .update({
+        status: 'REMOVED_BY_ADMIN',
+        removed_at: new Date().toISOString(),
+        removed_by: adminId,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .eq('status', oldStatus) // Only update if status hasn't changed (idempotency)
+      .select('id, status, removed_at, removed_by')
+      .single();
+
+    if (updateError || !updatedOrder) {
+      // Check if order was already updated (idempotency check)
+      const { data: checkOrder } = await dbClient
+        .from('orders')
+        .select('id, status')
+        .eq('id', orderId)
+        .single();
+
+      if (checkOrder && checkOrder.status === 'REMOVED_BY_ADMIN') {
+        console.log('⚠️ Order already removed (idempotent call)');
+        return res.status(200).json({
+          success: true,
+          message: 'Order already removed (idempotent call)',
+          orderId: orderId,
+          status: 'REMOVED_BY_ADMIN'
+        });
+      }
+
+      console.error('❌ Error updating order status:', updateError);
+      return res.status(500).json({
+        error: 'Failed to remove order',
+        details: updateError?.message || 'Unknown error'
+      });
+    }
+
+    console.log('✅ Order removed successfully:', {
+      orderId: updatedOrder.id,
+      oldStatus,
+      newStatus: updatedOrder.status,
+      removedAt: updatedOrder.removed_at,
+      removedBy: updatedOrder.removed_by
+    });
+
+    // Step 6: Release stock (decrease sold_quantity)
+    try {
+      await releaseOrderStock(orderId, `Removed by admin: ${adminEmail || 'Unknown admin'}`);
+      console.log('✅ Stock released successfully');
+    } catch (stockError) {
+      console.error('❌ Error releasing stock on admin remove:', stockError);
+      // Log but don't fail - order is removed, stock release is important but non-blocking
+    }
+
+    // Step 7: Log to order_logs (audit trail)
+    try {
+      await dbClient.from('order_logs').insert({
+        order_id: orderId,
+        action: 'admin_remove',
+        performed_by: adminId,
+        performed_by_type: 'admin',
+        details: {
+          old_status: oldStatus,
+          new_status: 'REMOVED_BY_ADMIN',
+          admin_email: adminEmail,
+          admin_action: true,
+          removed_at: updatedOrder.removed_at
+        }
+      });
+      console.log('✅ Audit log created');
+    } catch (logError) {
+      console.error('❌ Error creating audit log:', logError);
+    }
+
+    console.log('✅ ADMIN: Remove Order Completed');
+
+    return res.status(200).json({
+      success: true,
+      message: 'Order removed successfully',
+      orderId: orderId,
+      oldStatus,
+      newStatus: 'REMOVED_BY_ADMIN',
+      removedAt: updatedOrder.removed_at,
+      removedBy: updatedOrder.removed_by
+    });
+
+  } catch (error) {
+    console.error('❌ ADMIN: Remove Order Error:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+
+    return res.status(500).json({
+      error: 'Failed to remove order',
+      details: error.message
+    });
+  }
+});
+
 app.post('/api/admin/reject-order', requireAdminAuth, async (req, res) => {
   try {
     if (!supabase) {
@@ -4900,10 +5312,12 @@ app.get('/api/admin/ambassador-sales/overview', requireAdminAuth, async (req, re
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     // Get all ambassador cash orders
+    // Exclude REMOVED_BY_ADMIN orders from sales calculations (they should not appear in reports)
     const { data: allOrders, error: ordersError } = await supabase
       .from('orders')
       .select('id, total_price, ambassador_id, created_at, status, ambassadors!inner(full_name)')
-      .eq('payment_method', 'ambassador_cash');
+      .eq('payment_method', 'ambassador_cash')
+      .neq('status', 'REMOVED_BY_ADMIN'); // Exclude removed orders
 
     if (ordersError) {
       throw new Error(ordersError.message);
@@ -4983,7 +5397,7 @@ app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res)
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    const { status, ambassador_id, city, ville, date_from, date_to, limit = 50, offset = 0 } = req.query;
+    const { status, ambassador_id, city, ville, date_from, date_to, limit = 50, offset = 0, include_removed } = req.query;
 
     let query = supabase
       .from('orders')
@@ -4992,7 +5406,18 @@ app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res)
       .order('created_at', { ascending: false })
       .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
-    if (status) query = query.eq('status', status);
+    // Exclude REMOVED_BY_ADMIN orders by default (only show when explicitly filtering by that status)
+    // If status is REMOVED_BY_ADMIN, show only removed orders
+    // Otherwise, exclude removed orders from results
+    if (status === 'REMOVED_BY_ADMIN') {
+      query = query.eq('status', 'REMOVED_BY_ADMIN');
+    } else {
+      // Default: exclude removed orders from all queries
+      query = query.neq('status', 'REMOVED_BY_ADMIN');
+      if (status) {
+        query = query.eq('status', status);
+      }
+    }
     if (ambassador_id) query = query.eq('ambassador_id', ambassador_id);
     if (city) query = query.eq('city', city);
     if (ville) query = query.eq('ville', ville);

@@ -328,37 +328,39 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   const fetchData = async (ambassadorId: string) => {
     setLoading(true);
     try {
-      // Fetch new orders (PENDING_CASH - unpaid orders waiting for cash confirmation)
-      const { data: newOrdersData, error: newOrdersError } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          order_passes (*)
-        `)
-        .eq('ambassador_id', ambassadorId)
-        .eq('status', 'PENDING_CASH')
-        .order('created_at', { ascending: false });
+      const apiBase = getApiBaseUrl();
 
-      if (newOrdersError) throw newOrdersError;
-      setNewOrders(newOrdersData || []);
+      // Fetch new orders (PENDING_CASH) via API endpoint
+      const newOrdersUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_ORDERS, apiBase) + `?ambassadorId=${ambassadorId}&status=PENDING_CASH`;
+      const newOrdersResponse = await fetch(newOrdersUrl, {
+        credentials: 'include'
+      });
 
-      // Fetch history orders (all orders except PENDING_CASH which are in New Orders tab)
-      // Include: PAID, PENDING_ADMIN_APPROVAL, COMPLETED, CANCELLED, and all other final statuses
-      const { data: historyData, error: historyError } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          order_passes (*)
-        `)
-        .eq('ambassador_id', ambassadorId)
-        .not('status', 'eq', 'PENDING_CASH') // Exclude PENDING_CASH (those are in New Orders tab)
-        .order('updated_at', { ascending: false })
-        .limit(100);
+      if (!newOrdersResponse.ok) {
+        throw new Error('Failed to fetch new orders');
+      }
 
-      if (historyError) throw historyError;
-      setHistoryOrders(historyData || []);
+      const newOrdersResult = await newOrdersResponse.json();
+      setNewOrders(newOrdersResult.data || []);
 
-      // Fetch performance data
+      // Fetch history orders (all except PENDING_CASH) via API endpoint
+      // We'll fetch all orders and filter out PENDING_CASH on the frontend for display
+      // (API already excludes REMOVED_BY_ADMIN)
+      const historyUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_ORDERS, apiBase) + `?ambassadorId=${ambassadorId}&limit=100`;
+      const historyResponse = await fetch(historyUrl, {
+        credentials: 'include'
+      });
+
+      if (!historyResponse.ok) {
+        throw new Error('Failed to fetch history orders');
+      }
+
+      const historyResult = await historyResponse.json();
+      // Filter out PENDING_CASH orders (those are in New Orders tab)
+      const filteredHistory = (historyResult.data || []).filter((order: Order) => order.status !== 'PENDING_CASH');
+      setHistoryOrders(filteredHistory);
+
+      // Fetch performance data via API endpoint
       await fetchPerformance(ambassadorId);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -374,95 +376,36 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
   const fetchPerformance = async (ambassadorId: string) => {
     try {
-      // Fetch orders with order_passes relation to calculate accurate revenue and pass counts
-      const { data: allOrders, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          order_passes (*)
-        `)
-        .eq('ambassador_id', ambassadorId);
-
-      if (error) throw error;
-
-      const total = allOrders?.length || 0;
-      
-      // Use uppercase status values (database uses uppercase)
-      // Count PAID orders
-      const paid = allOrders?.filter((o: any) => o.status === 'PAID').length || 0;
-      // Count cancelled orders (new unified system uses 'CANCELLED' status with cancelled_by field)
-      const cancelled = allOrders?.filter((o: any) => 
-        o.status === 'CANCELLED' || 
-        o.status === 'CANCELLED_BY_AMBASSADOR' || 
-        o.status === 'CANCELLED_BY_ADMIN' // Backward compatibility with old statuses
-      ).length || 0;
-      
-      // Count rejected orders (admin rejected PENDING_ADMIN_APPROVAL orders)
-      const rejected = allOrders?.filter((o: any) => o.status === 'REJECTED').length || 0;
-      
-      // Ignored orders: PENDING that haven't been accepted for more than 15 minutes
-      const ignored = allOrders?.filter((o: any) => 
-        (o.status === 'PENDING') && 
-        o.assigned_at &&
-        new Date(o.assigned_at).getTime() < Date.now() - 15 * 60 * 1000 && // 15 minutes
-        !o.accepted_at // Not yet accepted
-      ).length || 0;
-      
-      // Total revenue: Count only PAID orders
-      // Calculate from order_passes for accuracy (recalculate instead of using stored total_price)
-      const revenueOrders = allOrders?.filter((o: any) => o.status === 'PAID') || [];
-      
-      // Calculate revenue and passes from order_passes table (accurate calculation)
-      let totalRevenue = 0;
-      let totalPassesSold = 0;
-      
-      revenueOrders.forEach((order: any) => {
-        if (order.order_passes && order.order_passes.length > 0) {
-          // New system: use order_passes (accurate calculation)
-          order.order_passes.forEach((pass: any) => {
-            const passRevenue = (pass.price || 0) * (pass.quantity || 0);
-            totalRevenue += passRevenue;
-            totalPassesSold += pass.quantity || 0;
-          });
-        } else {
-          // Fallback: try to parse from notes field (legacy orders)
-          let calculatedFromNotes = false;
-          if (order.notes) {
-            try {
-              const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
-              if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                notesData.all_passes.forEach((pass: any) => {
-                  const passPrice = pass.price || 0;
-                  const passQuantity = pass.quantity || 0;
-                  const passRevenue = passPrice * passQuantity;
-                  totalRevenue += passRevenue;
-                  totalPassesSold += passQuantity;
-                });
-                calculatedFromNotes = true;
-              }
-            } catch (e) {
-              console.error('Error parsing order notes:', e);
-            }
-          }
-          
-          // Final fallback: calculate from quantity and price per pass
-          // If we have quantity and can calculate price per pass, use that
-          if (!calculatedFromNotes && order.quantity && order.quantity > 0) {
-            // Calculate price per pass from total_price / quantity
-            const pricePerPass = (order.total_price || 0) / order.quantity;
-            // But this still uses the wrong total_price, so we need another approach
-            // For now, let's use the stored values but log a warning
-            console.warn(`Order ${order.id} has no order_passes or notes. Using stored total_price: ${order.total_price}, quantity: ${order.quantity}`);
-            totalRevenue += order.total_price || 0;
-            totalPassesSold += order.quantity || 0;
-          } else if (!calculatedFromNotes) {
-            totalRevenue += order.total_price || 0;
-            totalPassesSold += order.quantity || 0;
-          }
-        }
+      // Fetch performance data via API endpoint (excludes REMOVED_BY_ADMIN automatically)
+      const apiBase = getApiBaseUrl();
+      const performanceUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_PERFORMANCE, apiBase) + `?ambassadorId=${ambassadorId}`;
+      const performanceResponse = await fetch(performanceUrl, {
+        credentials: 'include'
       });
+
+      if (!performanceResponse.ok) {
+        throw new Error('Failed to fetch performance data');
+      }
+
+      const performanceResult = await performanceResponse.json();
       
-      // New Commission Calculation Rules:
+      if (!performanceResult.success) {
+        throw new Error(performanceResult.error || 'Failed to fetch performance data');
+      }
+
+      // Use data from API (already filtered and calculated)
+      const performanceData = performanceResult.data;
+      
+      const total = performanceData.total || 0;
+      const paid = performanceData.paid || 0;
+      const cancelled = performanceData.cancelled || 0;
+      const rejected = performanceData.rejected || 0;
+      const ignored = performanceData.ignored || 0;
+      const totalPassesSold = performanceData.totalPassesSold || 0;
+      const totalRevenue = performanceData.totalRevenue || 0;
+      const avgResponseTime = performanceData.averageResponseTime || 0;
+
+      // Commission Calculation Rules (calculated in frontend):
       // - No payment for passes 1-7 (0 DT)
       // - From pass 8 onwards: 3 DT per pass
       // - Bonuses: 15 passes = +15 DT, 25 passes = +20 DT, 35 passes = +20 DT (cumulative)
@@ -485,19 +428,6 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       if (totalPassesSold >= 35) {
         totalBonuses += 20; // 20 DT bonus at 35 passes
       }
-      
-      // Total commission = base + bonuses
-      const commission = baseCommission + totalBonuses;
-
-      // Calculate average response time (time from assigned to accepted)
-      const acceptedOrders = allOrders?.filter((o: any) => o.accepted_at && o.assigned_at) || [];
-      const avgResponseTime = acceptedOrders.length > 0
-        ? acceptedOrders.reduce((sum: number, o: any) => {
-            const assigned = new Date(o.assigned_at).getTime();
-            const accepted = new Date(o.accepted_at).getTime();
-            return sum + (accepted - assigned);
-          }, 0) / acceptedOrders.length / 1000 / 60 // Convert to minutes
-        : 0;
 
       setPerformance({
         total,
@@ -513,9 +443,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         cancellationRate: total > 0 ? ((cancelled / total) * 100).toFixed(1) : '0',
         rejectionRate: total > 0 ? ((rejected / total) * 100).toFixed(1) : '0',
         ignoreRate: total > 0 ? ((ignored / total) * 100).toFixed(1) : '0',
-        avgResponseTime: avgResponseTime.toFixed(1),
-        totalRevenue: totalRevenue.toFixed(2),
-        commission: commission.toFixed(2)
+        totalRevenue,
+        averageResponseTime: Math.round(avgResponseTime * 10) / 10
       });
     } catch (error) {
       console.error('Error fetching performance:', error);

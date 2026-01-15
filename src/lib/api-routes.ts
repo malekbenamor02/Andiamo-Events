@@ -41,6 +41,8 @@ export const API_ROUTES = {
   AMBASSADOR_LOGIN: '/api/ambassador-login',
   AMBASSADOR_APPLICATION: '/api/ambassador-application',
   AMBASSADOR_UPDATE_PASSWORD: '/api/ambassador-update-password',
+  AMBASSADOR_ORDERS: '/api/ambassador/orders',
+  AMBASSADOR_PERFORMANCE: '/api/ambassador/performance',
   
   // Tickets & QR Codes
   VALIDATE_TICKET: '/api/validate-ticket',
@@ -50,6 +52,7 @@ export const API_ROUTES = {
   // Admin Order Management
   ADMIN_SKIP_AMBASSADOR_CONFIRMATION: '/api/admin-skip-ambassador-confirmation',
   ADMIN_APPROVE_ORDER: '/api/admin-approve-order',
+  ADMIN_REMOVE_ORDER: '/api/admin-remove-order',
   ADMIN_RESEND_TICKET_EMAIL: '/api/admin-resend-ticket-email',
   ADMIN_UPDATE_ORDER_EMAIL: '/api/admin/update-order-email',
   

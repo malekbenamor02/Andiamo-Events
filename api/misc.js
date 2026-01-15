@@ -2693,6 +2693,305 @@ We Create Memories`;
       }
     }
     
+    // ============================================
+    // /api/admin-remove-order (POST)
+    // ============================================
+    if (path === '/api/admin-remove-order' && method === 'POST') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ 
+            error: 'Server configuration error',
+            details: 'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
+          });
+        }
+        
+        const bodyData = await parseBody(req);
+        const { orderId } = bodyData;
+        const adminId = authResult.admin?.id;
+        const adminEmail = authResult.admin?.email;
+        
+        if (!orderId) {
+          return res.status(400).json({ 
+            error: 'Order ID is required',
+            details: 'orderId must be provided'
+          });
+        }
+        
+        console.log('✅ ADMIN: Remove Order Request:', {
+          orderId,
+          adminId,
+          adminEmail: adminEmail ? `${adminEmail.substring(0, 3)}***` : 'NOT SET'
+        });
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        
+        // Use service role key if available (for RLS bypass)
+        let supabase;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        } else {
+          supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_ANON_KEY
+          );
+        }
+        
+        // Step 1: Verify order exists and get current status
+        const { data: order, error: orderError } = await supabase
+          .from('orders')
+          .select('id, status, payment_method, payment_status')
+          .eq('id', orderId)
+          .single();
+        
+        if (orderError || !order) {
+          console.error('❌ Order not found:', orderId);
+          return res.status(404).json({ 
+            error: 'Order not found',
+            details: `No order found with id: ${orderId}`
+          });
+        }
+        
+        console.log('✅ Order status check:', {
+          orderId: order.id,
+          currentStatus: order.status,
+          paymentMethod: order.payment_method
+        });
+        
+        // Step 2: Validate order status (must NOT be PAID)
+        if (order.status === 'PAID') {
+          console.error('❌ Cannot remove PAID order:', order.status);
+          
+          // Log security event
+          try {
+            await supabase.from('security_audit_logs').insert({
+              event_type: 'invalid_order_removal',
+              endpoint: '/api/admin-remove-order',
+              user_id: adminId,
+              ip_address: req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown',
+              user_agent: req.headers['user-agent'] || 'unknown',
+              request_method: req.method,
+              request_path: req.url,
+              details: {
+                reason: 'Cannot remove PAID orders',
+                order_id: orderId,
+                current_status: order.status,
+                attempted_action: 'remove_order'
+              },
+              severity: 'medium'
+            });
+          } catch (logError) {
+            console.error('Failed to log security event:', logError);
+          }
+          
+          return res.status(400).json({
+            error: 'Cannot remove paid order',
+            details: 'PAID orders cannot be removed. Only non-PAID orders can be removed.'
+          });
+        }
+        
+        // Step 3: Check if order is already removed
+        if (order.status === 'REMOVED_BY_ADMIN') {
+          console.log('⚠️ Order already removed (idempotent call)');
+          return res.status(200).json({
+            success: true,
+            message: 'Order already removed (idempotent call)',
+            orderId: orderId,
+            status: 'REMOVED_BY_ADMIN'
+          });
+        }
+        
+        // Step 4: Get order_passes to prepare for stock decrease (for future feature #2)
+        const { data: orderPasses, error: passesError } = await supabase
+          .from('order_passes')
+          .select('*')
+          .eq('order_id', orderId);
+        
+        if (passesError) {
+          console.error('⚠️ Error fetching order passes (non-critical):', passesError);
+          // Continue anyway - order_passes are preserved for audit
+        }
+        
+        // Step 5: Update order status to REMOVED_BY_ADMIN (soft delete)
+        const oldStatus = order.status;
+        const { data: updatedOrder, error: updateError } = await supabase
+          .from('orders')
+          .update({
+            status: 'REMOVED_BY_ADMIN',
+            removed_at: new Date().toISOString(),
+            removed_by: adminId,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', orderId)
+          .eq('status', oldStatus) // Only update if status hasn't changed (idempotency)
+          .select('id, status, removed_at, removed_by')
+          .single();
+        
+        if (updateError || !updatedOrder) {
+          // Check if order was already updated (idempotency check)
+          const { data: checkOrder } = await supabase
+            .from('orders')
+            .select('id, status')
+            .eq('id', orderId)
+            .single();
+          
+          if (checkOrder && checkOrder.status === 'REMOVED_BY_ADMIN') {
+            console.log('⚠️ Order already removed (idempotent call)');
+            return res.status(200).json({
+              success: true,
+              message: 'Order already removed (idempotent call)',
+              orderId: orderId,
+              status: 'REMOVED_BY_ADMIN'
+            });
+          }
+          
+          console.error('❌ Error updating order status:', updateError);
+          return res.status(500).json({
+            error: 'Failed to remove order',
+            details: updateError?.message || 'Unknown error'
+          });
+        }
+        
+        console.log('✅ Order removed successfully:', {
+          orderId: updatedOrder.id,
+          oldStatus,
+          newStatus: updatedOrder.status,
+          removedAt: updatedOrder.removed_at,
+          removedBy: updatedOrder.removed_by
+        });
+        
+        // Step 6: Release stock (decrease sold_quantity)
+        try {
+          // Step 6a: Atomically check and set stock_released flag (idempotency)
+          const { data: orderUpdate, error: updateError } = await supabase
+            .from('orders')
+            .update({ stock_released: true })
+            .eq('id', orderId)
+            .eq('stock_released', false)  // Only update if NOT already released
+            .select('id, status')
+            .single();
+
+          // If stock was already released, skip (idempotent)
+          if (!updateError && orderUpdate) {
+            // Step 6b: Fetch order_passes with pass_id
+            const { data: orderPasses, error: passesError } = await supabase
+              .from('order_passes')
+              .select('pass_id, quantity')
+              .eq('order_id', orderId)
+              .not('pass_id', 'is', null);
+
+            if (!passesError && orderPasses && orderPasses.length > 0) {
+              // Step 6c: Decrement sold_quantity for each pass
+              let releasedCount = 0;
+              for (const orderPass of orderPasses) {
+                if (!orderPass.pass_id) continue;
+
+                // Fetch current sold_quantity
+                const { data: currentPass, error: fetchError } = await supabase
+                  .from('event_passes')
+                  .select('sold_quantity')
+                  .eq('id', orderPass.pass_id)
+                  .single();
+
+                if (!fetchError && currentPass) {
+                  // Decrement stock atomically
+                  const newSoldQuantity = Math.max(0, currentPass.sold_quantity - orderPass.quantity);
+                  const { error: stockUpdateError } = await supabase
+                    .from('event_passes')
+                    .update({ sold_quantity: newSoldQuantity })
+                    .eq('id', orderPass.pass_id)
+                    .eq('sold_quantity', currentPass.sold_quantity);
+
+                  if (!stockUpdateError) {
+                    releasedCount++;
+                  }
+                }
+              }
+
+              // Step 6d: Log stock release
+              if (releasedCount > 0) {
+                await supabase.from('order_logs').insert({
+                  order_id: orderId,
+                  action: 'stock_released',
+                  performed_by: adminId,
+                  performed_by_type: 'system',
+                  details: {
+                    reason: `Removed by admin: ${adminEmail || 'Unknown admin'}`,
+                    passes_released: releasedCount,
+                    timestamp: new Date().toISOString()
+                  }
+                });
+                console.log(`✅ Stock released for ${releasedCount} pass(es)`);
+              }
+            }
+          } else {
+            console.log('⚠️ Stock already released or order not found (idempotent)');
+          }
+        } catch (stockError) {
+          console.error('❌ Error releasing stock on admin remove:', stockError);
+          // Log but don't fail - order is removed, stock release is important but non-blocking
+        }
+
+        // Step 7: Log to order_logs (audit trail)
+        try {
+          await supabase.from('order_logs').insert({
+            order_id: orderId,
+            action: 'admin_remove',
+            performed_by: adminId,
+            performed_by_type: 'admin',
+            details: {
+              old_status: oldStatus,
+              new_status: 'REMOVED_BY_ADMIN',
+              admin_email: adminEmail,
+              admin_action: true,
+              removed_at: updatedOrder.removed_at
+            }
+          });
+          console.log('✅ Audit log created');
+        } catch (logError) {
+          console.error('❌ Error creating audit log:', logError);
+          // Don't fail the request if logging fails
+        }
+        
+        console.log('✅ ADMIN: Remove Order Completed');
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Order removed successfully',
+          orderId: orderId,
+          oldStatus,
+          newStatus: 'REMOVED_BY_ADMIN',
+          removedAt: updatedOrder.removed_at,
+          removedBy: updatedOrder.removed_by
+        });
+        
+      } catch (error) {
+        console.error('❌ ADMIN: Remove Order Error:', error);
+        console.error('❌ Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+        
+        return res.status(500).json({
+          error: 'Failed to remove order',
+          details: error.message
+        });
+      }
+    }
+    
     // /api/admin/aio-events-submissions (GET)
     if (path === '/api/admin/aio-events-submissions' && method === 'GET') {
       try {

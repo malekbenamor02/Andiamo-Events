@@ -437,6 +437,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [isRemoveOrderDialogOpen, setIsRemoveOrderDialogOpen] = useState(false);
+  const [removingOrderId, setRemovingOrderId] = useState<string | null>(null);
+  const [removingOrder, setRemovingOrder] = useState(false);
   const [isMotivationDialogOpen, setIsMotivationDialogOpen] = useState(false);
   const [selectedMotivation, setSelectedMotivation] = useState<{application: AmbassadorApplication; motivation: string} | null>(null);
   const [orderLogs, setOrderLogs] = useState<any[]>([]);
@@ -1569,26 +1572,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         ambassadorNameMap.set(amb.id, amb.full_name);
       });
 
-      // Note: COD orders are now all ambassador_manual source (platform_cod is deprecated)
-      // Fetch manual orders (includes all COD orders created by ambassadors)
-      const { data: manualData, error: manualError } = await (supabase as any)
-        .from('orders')
-        .select('*')
-        .eq('source', 'ambassador_manual')
-        .order('created_at', { ascending: false });
+      // Use API endpoint instead of direct Supabase queries
+      // API endpoint automatically excludes REMOVED_BY_ADMIN orders
+      const apiBase = getApiBaseUrl();
+      const ordersUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_SALES_ORDERS, apiBase) + '?limit=1000';
+      const ordersResponse = await fetch(ordersUrl, {
+        credentials: 'include'
+      });
 
-      if (manualError) throw manualError;
+      if (!ordersResponse.ok) {
+        throw new Error('Failed to fetch ambassador orders');
+      }
 
-      // Fetch COD ambassador orders - unified system uses payment_method = 'ambassador_cash'
-      // Include order_passes for multiple pass types support
-      const { data: codAmbassadorData, error: codAmbassadorError } = await (supabase as any)
-        .from('orders')
-        .select('*, order_passes (*)')
-        .eq('payment_method', 'ambassador_cash')
-        .in('source', ['platform_cod', 'ambassador_manual'])
-        .order('created_at', { ascending: false });
+      const ordersResult = await ordersResponse.json();
+      const allOrdersData = ordersResult.data || [];
 
-      if (codAmbassadorError) throw codAmbassadorError;
+      // Filter by source for backward compatibility
+      const manualData = allOrdersData.filter((order: any) => order.source === 'ambassador_manual');
+      const codAmbassadorData = allOrdersData.filter((order: any) => 
+        order.payment_method === 'ambassador_cash' && 
+        ['platform_cod', 'ambassador_manual'].includes(order.source)
+      );
 
       // Enrich COD ambassador orders with pass info from order_passes
       const enrichedCodAmbassadorOrders = (codAmbassadorData || []).map((order: any) => {
@@ -1648,14 +1652,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setPreviousPendingAmbassadorOrdersCount(pendingAmbassadorOrdersCount);
       setPendingAmbassadorOrdersCount(pendingOrders.length);
 
-      // Fetch all ambassador orders (all COD orders are now ambassador_manual)
-      const { data: allData, error: allError } = await (supabase as any)
-        .from('orders')
-        .select('*')
-        .eq('source', 'ambassador_manual')
-        .order('created_at', { ascending: false });
-
-      if (allError) throw allError;
+      // All data already fetched from API above
+      const allData = allOrdersData.filter((order: any) => order.source === 'ambassador_manual');
 
       // Legacy: Keep codOrders state for backward compatibility (empty array since platform_cod is deprecated)
       // All COD orders are now in codAmbassadorOrders (ambassador_manual + payment_method = cod)
@@ -1705,6 +1703,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchOnlineOrders = async () => {
     setLoadingOnlineOrders(true);
     try {
+      // CRITICAL: This direct Supabase query should use API endpoint instead
+      // API endpoint MUST filter out REMOVED_BY_ADMIN orders automatically
+      // TODO: Create /api/admin/online-orders endpoint that excludes REMOVED_BY_ADMIN
       let query = (supabase as any)
         .from('orders')
         .select('*')
@@ -1759,6 +1760,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchOnlineOrdersWithFilters = async (filters: typeof onlineOrderFilters) => {
     setLoadingOnlineOrders(true);
     try {
+      // CRITICAL: This direct Supabase query should use API endpoint instead
+      // API endpoint MUST filter out REMOVED_BY_ADMIN orders automatically
+      // TODO: Create /api/admin/online-orders endpoint that excludes REMOVED_BY_ADMIN
       let query = (supabase as any)
         .from('orders')
         .select('*')
@@ -2488,6 +2492,59 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         description: error.message || (language === 'en' ? 'Failed to reject order' : 'Échec du rejet de la commande'),
         variant: 'destructive'
       });
+    }
+  };
+
+  // Admin Remove Order - NEW FEATURE
+  const handleRemoveOrder = async (orderId: string) => {
+    setRemovingOrder(true);
+    try {
+      const apiBase = getApiBaseUrl();
+      const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_REMOVE_ORDER, apiBase);
+      
+      if (!apiUrl) {
+        throw new Error('Invalid API URL configuration');
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ orderId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.details || 'Failed to remove order');
+      }
+
+      toast({
+        title: language === 'en' ? 'Order Removed' : 'Commande Retirée',
+        description: language === 'en' ? 'Order has been removed successfully' : 'La commande a été retirée avec succès',
+        variant: 'default'
+      });
+      
+      // Refresh order lists
+      fetchAmbassadorSalesData();
+      if (selectedOrder?.id === orderId) {
+        setIsOrderDetailsOpen(false);
+        setSelectedOrder(null);
+      }
+      
+      setIsRemoveOrderDialogOpen(false);
+      setRemovingOrderId(null);
+    } catch (error: any) {
+      console.error('Error removing order:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to remove order' : 'Échec du retrait de la commande'),
+        variant: 'destructive'
+      });
+    } finally {
+      setRemovingOrder(false);
     }
   };
 
@@ -17482,6 +17539,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                   "w-3 h-3 rounded-full cursor-help",
                                   selectedOrder.status === 'PAID' || selectedOrder.status === 'APPROVED' || selectedOrder.status === 'COMPLETED' ? 'bg-green-500' :
                                   selectedOrder.status === 'REJECTED' || selectedOrder.status?.includes('CANCELLED') ? 'bg-red-500' :
+                                  selectedOrder.status === 'REMOVED_BY_ADMIN' ? 'bg-gray-600' :
                                   selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'bg-yellow-500' :
                                   selectedOrder.status === 'PENDING_CASH' ? 'bg-gray-500' :
                                   'bg-gray-500'
@@ -17497,6 +17555,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           variant={
                             selectedOrder.status === 'PAID' || selectedOrder.status === 'APPROVED' || selectedOrder.status === 'COMPLETED' ? 'default' :
                             selectedOrder.status === 'REJECTED' || selectedOrder.status?.includes('CANCELLED') ? 'destructive' :
+                            selectedOrder.status === 'REMOVED_BY_ADMIN' ? 'secondary' :
                             selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'secondary' :
                             selectedOrder.status === 'PENDING_CASH' ? 'secondary' :
                             'secondary'
@@ -17504,6 +17563,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           className={
                             selectedOrder.status === 'PAID' || selectedOrder.status === 'APPROVED' || selectedOrder.status === 'COMPLETED' ? 'bg-green-500 text-white border-green-600' :
                             selectedOrder.status === 'REJECTED' || selectedOrder.status?.includes('CANCELLED') ? 'bg-red-500 text-white border-red-600' :
+                            selectedOrder.status === 'REMOVED_BY_ADMIN' ? 'bg-gray-600 text-white border-gray-700' :
                             selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'bg-yellow-500 text-white border-yellow-600' :
                             selectedOrder.status === 'PENDING_CASH' ? 'bg-gray-500 text-white border-gray-600' :
                             ''
@@ -18270,6 +18330,39 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </Card>
               )}
 
+              {/* Remove Order Action - Show for all non-PAID orders */}
+              {selectedOrder.status !== 'PAID' && selectedOrder.status !== 'REMOVED_BY_ADMIN' && (
+                <Card className="bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
+                      {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        {language === 'en' 
+                          ? 'Remove this order (soft delete). The order will be hidden from reports but data will be preserved for audit purposes.'
+                          : 'Retirer cette commande (suppression douce). La commande sera masquée des rapports mais les données seront conservées à des fins d\'audit.'}
+                      </p>
+                      <Button
+                        onClick={() => {
+                          setRemovingOrderId(selectedOrder.id);
+                          setIsRemoveOrderDialogOpen(true);
+                        }}
+                        variant="destructive"
+                        size="sm"
+                        className="w-full sm:w-auto"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Admin Actions */}
               {(selectedOrder.status === 'PENDING_CASH' || 
                 (selectedOrder.status === 'PENDING_ADMIN_APPROVAL' && selectedOrder.payment_method === 'ambassador_cash')) && (
@@ -18399,6 +18492,66 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Order Dialog */}
+      <Dialog open={isRemoveOrderDialogOpen} onOpenChange={(open) => {
+        setIsRemoveOrderDialogOpen(open);
+        if (!open) {
+          setRemovingOrderId(null);
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-red-500" />
+              {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {language === 'en' 
+                  ? 'Are you sure you want to remove this order? This action will hide the order from reports and calculations, but all data will be preserved for audit purposes. This action cannot be undone.'
+                  : 'Êtes-vous sûr de vouloir retirer cette commande ? Cette action masquera la commande des rapports et calculs, mais toutes les données seront conservées à des fins d\'audit. Cette action ne peut pas être annulée.'}
+              </AlertDescription>
+            </Alert>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsRemoveOrderDialogOpen(false);
+                  setRemovingOrderId(null);
+                }}
+                disabled={removingOrder}
+              >
+                {language === 'en' ? 'Cancel' : 'Annuler'}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (removingOrderId) {
+                    handleRemoveOrder(removingOrderId);
+                  }
+                }}
+                disabled={removingOrder}
+              >
+                {removingOrder ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    {language === 'en' ? 'Removing...' : 'Retrait en cours...'}
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

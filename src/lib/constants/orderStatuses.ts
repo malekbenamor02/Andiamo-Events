@@ -8,7 +8,8 @@ export enum OrderStatus {
   REDIRECTED = 'REDIRECTED',              // External app payment - user redirected
   PENDING_CASH = 'PENDING_CASH',          // Ambassador cash payment pending
   PAID = 'PAID',                          // Payment confirmed
-  CANCELLED = 'CANCELLED'                 // Cancelled (with reason)
+  CANCELLED = 'CANCELLED',                // Cancelled (with reason)
+  REMOVED_BY_ADMIN = 'REMOVED_BY_ADMIN'   // Removed by admin (soft delete)
 }
 
 export enum PaymentMethod {
@@ -42,7 +43,8 @@ export function getOrderStatusLabel(status: OrderStatus, language: 'en' | 'fr' =
     [OrderStatus.REDIRECTED]: { en: 'Redirected to Payment App', fr: 'Redirigé vers l\'application de paiement' },
     [OrderStatus.PENDING_CASH]: { en: 'Pending Cash Payment', fr: 'Paiement en espèces en attente' },
     [OrderStatus.PAID]: { en: 'Paid', fr: 'Payé' },
-    [OrderStatus.CANCELLED]: { en: 'Cancelled', fr: 'Annulé' }
+    [OrderStatus.CANCELLED]: { en: 'Cancelled', fr: 'Annulé' },
+    [OrderStatus.REMOVED_BY_ADMIN]: { en: 'Removed by Admin', fr: 'Retiré par l\'administrateur' }
   };
   return labels[status]?.[language] || status;
 }
@@ -85,10 +87,12 @@ export function getValidNextStatuses(currentStatus: OrderStatus): OrderStatus[] 
     case OrderStatus.PENDING_ONLINE:
     case OrderStatus.REDIRECTED:
     case OrderStatus.PENDING_CASH:
-      return [OrderStatus.PAID, OrderStatus.CANCELLED];
+      return [OrderStatus.PAID, OrderStatus.CANCELLED, OrderStatus.REMOVED_BY_ADMIN];
     case OrderStatus.PAID:
-      return [OrderStatus.CANCELLED]; // Can cancel even if paid (refund scenario)
+      return [OrderStatus.CANCELLED]; // Can cancel even if paid (refund scenario), but cannot remove
     case OrderStatus.CANCELLED:
+      return []; // Final state
+    case OrderStatus.REMOVED_BY_ADMIN:
       return []; // Final state
     default:
       return [];

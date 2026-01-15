@@ -19,6 +19,9 @@ export async function getSalesOverview(): Promise<AmbassadorSalesOverview> {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   
   // Get all ambassador cash orders
+  // CRITICAL: This service should use API endpoint instead of direct Supabase query
+  // Filtering of REMOVED_BY_ADMIN orders MUST be handled in API endpoints, not frontend
+  // TODO: Use /api/admin/ambassador-sales/overview endpoint instead
   const { data: allOrders, error: allError } = await supabase
     .from('orders')
     .select('id, total_price, ambassador_id, created_at, status, ambassadors!inner(full_name)')
@@ -111,6 +114,9 @@ export async function getSalesOverview(): Promise<AmbassadorSalesOverview> {
  * Get analytics (time series, charts data)
  */
 export async function getSalesAnalytics(): Promise<AmbassadorSalesAnalytics> {
+  // CRITICAL: This service should use API endpoint instead of direct Supabase query
+  // Filtering of REMOVED_BY_ADMIN orders MUST be handled in API endpoints, not frontend
+  // TODO: Use /api/admin/ambassador-sales/overview or create analytics endpoint
   const { data: orders, error } = await supabase
     .from('orders')
     .select('id, total_price, city, status, payment_method, created_at, completed_at, ambassador_id, ambassadors!inner(full_name)')
