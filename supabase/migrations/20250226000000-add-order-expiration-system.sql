@@ -74,56 +74,96 @@ COMMENT ON TABLE public.order_expiration_settings IS 'Global default expiration 
 ALTER TABLE public.order_expiration_settings ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Admins can view all settings
-CREATE POLICY IF NOT EXISTS "Admins can view expiration settings"
-  ON public.order_expiration_settings
-  FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.admins
-      WHERE admins.id = auth.uid()
-      AND admins.is_active = true
-    )
-  );
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'order_expiration_settings' 
+    AND policyname = 'Admins can view expiration settings'
+  ) THEN
+    CREATE POLICY "Admins can view expiration settings"
+      ON public.order_expiration_settings
+      FOR SELECT
+      USING (
+        EXISTS (
+          SELECT 1 FROM public.admins
+          WHERE admins.id = auth.uid()
+          AND admins.is_active = true
+        )
+      );
+  END IF;
+END $$;
 
 -- Policy: Admins can insert settings
-CREATE POLICY IF NOT EXISTS "Admins can insert expiration settings"
-  ON public.order_expiration_settings
-  FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.admins
-      WHERE admins.id = auth.uid()
-      AND admins.is_active = true
-    )
-  );
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'order_expiration_settings' 
+    AND policyname = 'Admins can insert expiration settings'
+  ) THEN
+    CREATE POLICY "Admins can insert expiration settings"
+      ON public.order_expiration_settings
+      FOR INSERT
+      WITH CHECK (
+        EXISTS (
+          SELECT 1 FROM public.admins
+          WHERE admins.id = auth.uid()
+          AND admins.is_active = true
+        )
+      );
+  END IF;
+END $$;
 
 -- Policy: Admins can update settings
-CREATE POLICY IF NOT EXISTS "Admins can update expiration settings"
-  ON public.order_expiration_settings
-  FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.admins
-      WHERE admins.id = auth.uid()
-      AND admins.is_active = true
-    )
-  )
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.admins
-      WHERE admins.id = auth.uid()
-      AND admins.is_active = true
-    )
-  );
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'order_expiration_settings' 
+    AND policyname = 'Admins can update expiration settings'
+  ) THEN
+    CREATE POLICY "Admins can update expiration settings"
+      ON public.order_expiration_settings
+      FOR UPDATE
+      USING (
+        EXISTS (
+          SELECT 1 FROM public.admins
+          WHERE admins.id = auth.uid()
+          AND admins.is_active = true
+        )
+      )
+      WITH CHECK (
+        EXISTS (
+          SELECT 1 FROM public.admins
+          WHERE admins.id = auth.uid()
+          AND admins.is_active = true
+        )
+      );
+  END IF;
+END $$;
 
 -- Policy: Admins can delete settings
-CREATE POLICY IF NOT EXISTS "Admins can delete expiration settings"
-  ON public.order_expiration_settings
-  FOR DELETE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.admins
-      WHERE admins.id = auth.uid()
-      AND admins.is_active = true
-    )
-  );
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'public' 
+    AND tablename = 'order_expiration_settings' 
+    AND policyname = 'Admins can delete expiration settings'
+  ) THEN
+    CREATE POLICY "Admins can delete expiration settings"
+      ON public.order_expiration_settings
+      FOR DELETE
+      USING (
+        EXISTS (
+          SELECT 1 FROM public.admins
+          WHERE admins.id = auth.uid()
+          AND admins.is_active = true
+        )
+      );
+  END IF;
+END $$;
