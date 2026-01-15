@@ -81,6 +81,18 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/order-expiration-settings",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/set-order-expiration",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/clear-order-expiration",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/logs",
       "destination": "/api/admin/logs.js"
     },

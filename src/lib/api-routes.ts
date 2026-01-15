@@ -81,6 +81,11 @@ export const API_ROUTES = {
   AMBASSADOR_SALES_ORDERS: '/api/admin/ambassador-sales/orders',
   AMBASSADOR_SALES_LOGS: '/api/admin/ambassador-sales/logs',
   
+  // Order Expiration Management
+  ORDER_EXPIRATION_SETTINGS: '/api/admin/order-expiration-settings',
+  SET_ORDER_EXPIRATION: '/api/admin/set-order-expiration',
+  CLEAR_ORDER_EXPIRATION: '/api/admin/clear-order-expiration',
+  
   // Admin Logs & Analytics
   ADMIN_LOGS: '/api/admin/logs',
   

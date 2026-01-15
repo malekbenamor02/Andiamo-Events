@@ -5409,6 +5409,8 @@ app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res)
       .eq('payment_method', 'ambassador_cash')
       .order('created_at', { ascending: false })
       .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+    
+    // Include expiration fields in the select (they're part of *)
 
     // Exclude REMOVED_BY_ADMIN orders by default (only show when explicitly filtering by that status)
     // If status is REMOVED_BY_ADMIN, show only removed orders
@@ -5494,6 +5496,242 @@ app.get('/api/admin/ambassador-sales/logs', requireAdminAuth, async (req, res) =
   } catch (error) {
     console.error('Error in ambassador-sales/logs endpoint:', error);
     res.status(500).json({ error: error.message || 'Failed to fetch order logs' });
+  }
+});
+
+// ============================================
+// Order Expiration Management Endpoints
+// ============================================
+
+// GET /api/admin/order-expiration-settings - Get global expiration settings
+app.get('/api/admin/order-expiration-settings', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const dbClient = supabaseService || supabase;
+    const { data, error } = await dbClient
+      .from('order_expiration_settings')
+      .select('*')
+      .order('order_status');
+
+    if (error) {
+      console.error('Error fetching expiration settings:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({
+      success: true,
+      data: data || []
+    });
+  } catch (error) {
+    console.error('Error in order-expiration-settings GET:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch expiration settings' });
+  }
+});
+
+// POST /api/admin/order-expiration-settings - Update global expiration settings
+app.post('/api/admin/order-expiration-settings', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { settings } = req.body; // Array of { order_status, default_expiration_hours, is_active }
+
+    if (!Array.isArray(settings)) {
+      return res.status(400).json({ error: 'Settings must be an array' });
+    }
+
+    const dbClient = supabaseService || supabase;
+    const adminId = req.admin?.id;
+
+    // Update each setting
+    const results = await Promise.all(
+      settings.map(async (setting) => {
+        const { order_status, default_expiration_hours, is_active } = setting;
+
+        if (!order_status || !default_expiration_hours || default_expiration_hours <= 0) {
+          throw new Error(`Invalid setting for ${order_status}`);
+        }
+
+        const { data, error } = await dbClient
+          .from('order_expiration_settings')
+          .upsert({
+            order_status,
+            default_expiration_hours,
+            is_active: is_active !== undefined ? is_active : true,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'order_status'
+          })
+          .select()
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        return data;
+      })
+    );
+
+    res.json({
+      success: true,
+      data: results,
+      message: 'Expiration settings updated successfully'
+    });
+  } catch (error) {
+    console.error('Error in order-expiration-settings POST:', error);
+    res.status(500).json({ error: error.message || 'Failed to update expiration settings' });
+  }
+});
+
+// POST /api/admin/set-order-expiration - Set expiration for specific order
+app.post('/api/admin/set-order-expiration', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId, expiresAt, reason } = req.body;
+    const adminId = req.admin?.id;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    if (!expiresAt) {
+      return res.status(400).json({ error: 'Expiration date is required' });
+    }
+
+    // Validate expiresAt is a valid future date
+    const expirationDate = new Date(expiresAt);
+    if (isNaN(expirationDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid expiration date format' });
+    }
+
+    if (expirationDate <= new Date()) {
+      return res.status(400).json({ error: 'Expiration date must be in the future' });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // Verify order exists
+    const { data: order, error: orderError } = await dbClient
+      .from('orders')
+      .select('id, status')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    // Update order with expiration
+    const { data: updatedOrder, error: updateError } = await dbClient
+      .from('orders')
+      .update({
+        expires_at: expirationDate.toISOString(),
+        expiration_set_by: adminId,
+        expiration_notes: reason || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select('id, expires_at, expiration_set_by, expiration_notes')
+      .single();
+
+    if (updateError) {
+      console.error('Error updating order expiration:', updateError);
+      return res.status(500).json({ error: updateError.message });
+    }
+
+    // Log to order_logs
+    try {
+      await dbClient.from('order_logs').insert({
+        order_id: orderId,
+        action: 'expiration_set',
+        performed_by: adminId,
+        performed_by_type: 'admin',
+        details: {
+          expires_at: expirationDate.toISOString(),
+          reason: reason || null,
+          admin_action: true
+        }
+      });
+    } catch (logError) {
+      console.error('Error logging expiration set:', logError);
+      // Don't fail the request if logging fails
+    }
+
+    res.json({
+      success: true,
+      data: updatedOrder,
+      message: 'Order expiration set successfully'
+    });
+  } catch (error) {
+    console.error('Error in set-order-expiration:', error);
+    res.status(500).json({ error: error.message || 'Failed to set order expiration' });
+  }
+});
+
+// DELETE /api/admin/clear-order-expiration - Clear expiration for specific order
+app.delete('/api/admin/clear-order-expiration', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { orderId } = req.body;
+    const adminId = req.admin?.id;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    const dbClient = supabaseService || supabase;
+
+    // Update order to clear expiration
+    const { data: updatedOrder, error: updateError } = await dbClient
+      .from('orders')
+      .update({
+        expires_at: null,
+        expiration_set_by: null,
+        expiration_notes: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select('id')
+      .single();
+
+    if (updateError) {
+      console.error('Error clearing order expiration:', updateError);
+      return res.status(500).json({ error: updateError.message });
+    }
+
+    // Log to order_logs
+    try {
+      await dbClient.from('order_logs').insert({
+        order_id: orderId,
+        action: 'expiration_cleared',
+        performed_by: adminId,
+        performed_by_type: 'admin',
+        details: {
+          admin_action: true
+        }
+      });
+    } catch (logError) {
+      console.error('Error logging expiration clear:', logError);
+    }
+
+    res.json({
+      success: true,
+      message: 'Order expiration cleared successfully'
+    });
+  } catch (error) {
+    console.error('Error in clear-order-expiration:', error);
+    res.status(500).json({ error: error.message || 'Failed to clear order expiration' });
   }
 });
 
