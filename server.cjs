@@ -5260,7 +5260,8 @@ app.get('/api/ambassadors/active', async (req, res) => {
       query = query.eq('ville', normalizedVille);
     }
     
-    query = query.order('full_name');
+    // Remove alphabetical ordering - will randomize instead
+    // query = query.order('full_name'); // REMOVED: Now using random order
 
     const { data: ambassadors, error } = await query;
 
@@ -5269,9 +5270,12 @@ app.get('/api/ambassadors/active', async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
+    // Shuffle ambassadors array using Fisher-Yates algorithm for random display
+    const shuffledAmbassadors = shuffleArray(ambassadors || []);
+
     // Fetch social_link from ambassador_applications for each ambassador
     const ambassadorsWithSocial = await Promise.all(
-      (ambassadors || []).map(async (ambassador) => {
+      shuffledAmbassadors.map(async (ambassador) => {
         // Try to find matching application by phone
         const { data: application } = await supabase
           .from('ambassador_applications')
@@ -10642,6 +10646,16 @@ app.get('/api', (req, res) => {
 // ============================================
 // Single source of truth for stock release
 // Idempotent - uses stock_released flag to prevent double-release
+// Fisher-Yates shuffle algorithm for randomizing array order
+function shuffleArray(array) {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 async function releaseOrderStock(orderId, reason) {
   if (!supabase) {
     throw new Error('Supabase not configured');

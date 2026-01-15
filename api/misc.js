@@ -151,6 +151,16 @@ function setCORSHeaders(res, req) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
+// Fisher-Yates shuffle algorithm for randomizing array order
+function shuffleArray(array) {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 export default async (req, res) => {
   // Get path from URL, handling both /api/... and /... formats (Vercel may strip /api prefix)
   let path = req.url.split('?')[0]; // Remove query string
@@ -669,7 +679,8 @@ export default async (req, res) => {
           query = query.eq('ville', normalizedVille);
         }
         
-        query = query.order('full_name');
+        // Remove alphabetical ordering - will randomize instead
+        // query = query.order('full_name'); // REMOVED: Now using random order
 
         const { data: ambassadors, error } = await query;
 
@@ -678,8 +689,11 @@ export default async (req, res) => {
           return res.status(500).json({ error: error.message });
         }
 
+        // Shuffle ambassadors array using Fisher-Yates algorithm for random display
+        const shuffledAmbassadors = shuffleArray(ambassadors || []);
+
         const ambassadorsWithSocial = await Promise.all(
-          (ambassadors || []).map(async (ambassador) => {
+          shuffledAmbassadors.map(async (ambassador) => {
             const { data: application } = await dbClient
               .from('ambassador_applications')
               .select('social_link')

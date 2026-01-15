@@ -8,8 +8,21 @@ import { Ambassador } from '@/types/orders';
 import { AmbassadorStatus } from '@/lib/constants/orderStatuses';
 
 /**
+ * Fisher-Yates shuffle algorithm for randomizing array order
+ */
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+/**
  * Get active ambassadors filtered by city and ville
  * Used for user selection during order creation
+ * Returns ambassadors in random order for fair distribution
  */
 export async function getActiveAmbassadorsByLocation(
   city: string,
@@ -19,8 +32,8 @@ export async function getActiveAmbassadorsByLocation(
     .from('ambassadors')
     .select('id, full_name, phone, email, city, ville, status, commission_rate')
     .eq('status', 'approved')
-    .eq('city', city)
-    .order('full_name');
+    .eq('city', city);
+    // Removed .order('full_name') - now using random order
   
   if (ville) {
     query = query.eq('ville', ville);
@@ -32,7 +45,10 @@ export async function getActiveAmbassadorsByLocation(
     throw new Error(`Failed to fetch active ambassadors: ${error.message}`);
   }
   
-  return (data || []) as Ambassador[];
+  // Shuffle the results for random display order
+  const shuffled = shuffleArray(data || []);
+  
+  return shuffled as Ambassador[];
 }
 
 /**
