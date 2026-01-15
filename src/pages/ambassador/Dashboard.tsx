@@ -23,6 +23,7 @@ import { format } from "date-fns";
 import { fetchSalesSettings, subscribeToSalesSettings } from "@/lib/salesSettings";
 import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
 import { logger } from "@/lib/logger";
+import { cn } from "@/lib/utils";
 
 interface AmbassadorDashboardProps {
   language: 'en' | 'fr';
@@ -55,6 +56,8 @@ interface Order {
   cancelled_at?: string;
   created_at: string;
   updated_at: string;
+  expires_at?: string; // Expiration timestamp
+  expiration_notes?: string; // Optional expiration reason
 }
 
 interface Ambassador {
@@ -67,6 +70,100 @@ interface Ambassador {
   status: string;
   commission_rate: number;
 }
+
+// Countdown Timer Component for Order Expiration
+const OrderExpirationTimer = ({ expiresAt, language }: { expiresAt: string; language: 'en' | 'fr' }) => {
+  const [timeRemaining, setTimeRemaining] = useState<{
+    days: number;
+    hours: number;
+    minutes: number;
+    seconds: number;
+    isExpired: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!expiresAt) return;
+
+    const calculateTimeRemaining = () => {
+      const expirationDate = new Date(expiresAt);
+      const now = new Date();
+      const diff = expirationDate.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setTimeRemaining({
+          days: 0,
+          hours: 0,
+          minutes: 0,
+          seconds: 0,
+          isExpired: true
+        });
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setTimeRemaining({
+        days,
+        hours,
+        minutes,
+        seconds,
+        isExpired: false
+      });
+    };
+
+    calculateTimeRemaining();
+    const interval = setInterval(calculateTimeRemaining, 1000);
+
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  if (!timeRemaining) return null;
+
+  if (timeRemaining.isExpired) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/30">
+        <Clock className="w-4 h-4 text-red-500 animate-pulse" />
+        <span className="text-xs font-semibold text-red-500">
+          {language === 'en' ? 'Expired' : 'Expiré'}
+        </span>
+      </div>
+    );
+  }
+
+  const isUrgent = timeRemaining.days === 0 && timeRemaining.hours < 2;
+  const isWarning = timeRemaining.days === 0 && timeRemaining.hours < 6;
+
+  return (
+    <div className={cn(
+      "flex items-center gap-2 px-3 py-1.5 rounded-lg border",
+      isUrgent 
+        ? "bg-red-500/20 border-red-500/30" 
+        : isWarning
+        ? "bg-orange-500/20 border-orange-500/30"
+        : "bg-yellow-500/20 border-yellow-500/30"
+    )}>
+      <Clock className={cn(
+        "w-4 h-4",
+        isUrgent ? "text-red-500 animate-pulse" : isWarning ? "text-orange-500" : "text-yellow-500"
+      )} />
+      <div className="flex items-center gap-1 text-xs font-semibold">
+        {timeRemaining.days > 0 && (
+          <span className={isUrgent ? "text-red-500" : isWarning ? "text-orange-500" : "text-yellow-500"}>
+            {timeRemaining.days}d
+          </span>
+        )}
+        <span className={isUrgent ? "text-red-500" : isWarning ? "text-orange-500" : "text-yellow-500"}>
+          {String(timeRemaining.hours).padStart(2, '0')}:
+          {String(timeRemaining.minutes).padStart(2, '0')}:
+          {String(timeRemaining.seconds).padStart(2, '0')}
+        </span>
+      </div>
+    </div>
+  );
+};
 
 const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   const [ambassador, setAmbassador] = useState<Ambassador | null>(null);
@@ -1003,6 +1100,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                             <TableHead className="font-semibold text-foreground/90">{t.passType}</TableHead>
                             <TableHead className="font-semibold text-foreground/90">{t.quantity}</TableHead>
                             <TableHead className="font-semibold text-foreground/90">{t.totalPrice}</TableHead>
+                            <TableHead className="font-semibold text-foreground/90">{language === 'en' ? 'Time Remaining' : 'Temps Restant'}</TableHead>
                             <TableHead className="font-semibold text-foreground/90">{t.status}</TableHead>
                             <TableHead className="font-semibold text-foreground/90">{t.actions}</TableHead>
                           </TableRow>
@@ -1081,6 +1179,13 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                               </TableCell>
                               <TableCell className="font-semibold">
                                 <span className="text-green-400 font-bold">{order.total_price.toFixed(2)} TND</span>
+                              </TableCell>
+                              <TableCell>
+                                {order.expires_at && ['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].includes(order.status) ? (
+                                  <OrderExpirationTimer expiresAt={order.expires_at} language={language} />
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">-</span>
+                                )}
                               </TableCell>
                               <TableCell>{getStatusBadge(order.status)}</TableCell>
                               <TableCell>
@@ -1208,6 +1313,21 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                               <p className="text-xs text-green-300/80 mb-1">{t.totalPrice}</p>
                               <p className="text-2xl font-bold text-green-400">{order.total_price.toFixed(2)} TND</p>
                             </div>
+
+                            {/* Expiration Timer - Show for pending orders with expiration */}
+                            {order.expires_at && ['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].includes(order.status) && (
+                              <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
+                                <p className="text-xs text-muted-foreground mb-2">
+                                  {language === 'en' ? 'Time Remaining' : 'Temps Restant'}
+                                </p>
+                                <OrderExpirationTimer expiresAt={order.expires_at} language={language} />
+                                {order.expiration_notes && (
+                                  <p className="text-xs text-muted-foreground mt-2 italic">
+                                    {order.expiration_notes}
+                                  </p>
+                                )}
+                              </div>
+                            )}
 
                             {/* Action Buttons */}
                             <div className="pt-2 border-t border-border/30">
