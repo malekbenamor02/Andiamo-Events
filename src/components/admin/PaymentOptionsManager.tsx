@@ -296,7 +296,7 @@ export function PaymentOptionsManager({ language = 'en' }: PaymentOptionsManager
                           app_name: e.target.value
                         }
                       }))}
-                      placeholder="AIO Events"
+                      placeholder="Online Payment By AIO Events"
                     />
                   </div>
                   <div>

@@ -716,8 +716,11 @@ export default async (req, res) => {
               </html>
             `;
             
+            // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
+            // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
             await transporter.sendMail({
-              from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+              from: '"Andiamo Events" <contact@andiamoevents.com>',
+              replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
               to: fullOrder.user_email,
               subject: 'Your Digital Tickets Are Ready - Andiamo Events',
               html: emailHtml

@@ -409,7 +409,7 @@ export const createApprovalEmail = (ambassador: AmbassadorData, loginUrl: string
   }
 
   return {
-    from: 'Andiamo Events <support@andiamoevents.com>',
+    from: '"Andiamo Events" <contact@andiamoevents.com>',
     to: ambassador.email,
     subject,
     html
@@ -708,7 +708,7 @@ export const createRejectionEmail = (ambassador: AmbassadorData): EmailConfig =>
   `;
 
   return {
-    from: 'Andiamo Events <support@andiamoevents.com>',
+    from: '"Andiamo Events" <contact@andiamoevents.com>',
     to: ambassador.email || 'support@andiamoevents.com',
     subject,
     html
@@ -768,7 +768,7 @@ export const createPasswordResetEmail = (ambassador: AmbassadorData, resetToken:
   `;
 
   return {
-    from: 'Andiamo Events <support@andiamoevents.com>',
+    from: '"Andiamo Events" <contact@andiamoevents.com>',
     to: ambassador.email || 'support@andiamoevents.com',
     subject,
     html
@@ -1198,7 +1198,7 @@ export const createAdminCredentialsEmail = (admin: AdminData, loginUrl: string):
   `;
 
   return {
-    from: 'Andiamo Events <support@andiamoevents.com>',
+    from: '"Andiamo Events" <contact@andiamoevents.com>',
     to: admin.email,
     subject,
     html
@@ -1634,7 +1634,7 @@ export const createOrderCompletionEmail = (orderData: OrderCompletionData): Emai
   `;
 
   return {
-    from: 'Andiamo Events <support@andiamoevents.com>',
+    from: '"Andiamo Events" <contact@andiamoevents.com>',
     to: '', // Will be set by the caller
     subject,
     html
@@ -2172,7 +2172,7 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
   `;
 
   return {
-    from: 'Andiamo Events <support@andiamoevents.com>',
+    from: '"Andiamo Events" <contact@andiamoevents.com>',
     to: orderData.customerEmail,
     subject,
     html

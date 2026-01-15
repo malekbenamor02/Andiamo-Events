@@ -1595,11 +1595,14 @@ async function sendOrderConfirmationEmailToRecipient(order, orderPasses, recipie
     const subject = recipientType === 'client' ? 'Payment Processing – Andiamo Events' : 'New Order - Andiamo Events';
 
     // Send email
+    // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
+    // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
     console.log(`📧 Creating email transporter for ${recipientType}...`);
     const emailTransporter = getEmailTransporter();
     console.log(`📧 Sending email to ${recipientType}...`);
     const emailResult = await emailTransporter.sendMail({
-      from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+      from: '"Andiamo Events" <contact@andiamoevents.com>',
+      replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
       to: recipientEmail,
       subject: subject,
       html: emailHtml

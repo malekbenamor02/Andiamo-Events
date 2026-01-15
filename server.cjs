@@ -414,8 +414,11 @@ const checkSuspiciousActivity = async (eventType, details, req) => {
       const ALERT_EMAIL = process.env.SECURITY_ALERT_EMAIL;
       if (ALERT_EMAIL && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
         try {
+          // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
+          // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
           await transporter.sendMail({
-            from: `Andiamo Events Security <${process.env.EMAIL_USER}>`,
+            from: '"Andiamo Events Security" <contact@andiamoevents.com>',
+            replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
             to: ALERT_EMAIL,
             subject: `🚨 Security Alert: Suspicious Activity Detected - ${eventType}`,
             html: `
@@ -616,8 +619,11 @@ app.post('/api/send-email', requireAdminAuth, async (req, res) => {
       });
     }
     
+    // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
+    // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
     await transporter.sendMail({
-      from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+      from: '"Andiamo Events" <contact@andiamoevents.com>',
+      replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
       to,
       subject,
       html,
@@ -5921,9 +5927,12 @@ app.post('/api/send-order-completion-email', async (req, res) => {
     }
 
     // Send email
+    // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
+    // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
     try {
       await transporter.sendMail({
-        from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+        from: '"Andiamo Events" <contact@andiamoevents.com>',
+        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
         to: order.user_email,
         subject: '✅ Order Confirmation - Your Pass Purchase is Complete!',
         html: emailHtml
@@ -6166,9 +6175,12 @@ app.post('/api/resend-order-completion-email', requireAdminAuth, async (req, res
       .select()
       .single();
 
+    // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
+    // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
     try {
       await transporter.sendMail({
-        from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+        from: '"Andiamo Events" <contact@andiamoevents.com>',
+        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
         to: order.user_email,
         subject: '✅ Order Confirmation - Your Pass Purchase is Complete!',
         html: emailHtml
@@ -7173,9 +7185,12 @@ async function sendOrderConfirmationEmailToRecipient(order, orderPasses, recipie
     const subject = recipientType === 'client' ? 'Payment Processing – Andiamo Events' : 'New Order - Andiamo Events';
 
     // Send email
+    // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
+    // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
     const emailTransporter = getEmailTransporter();
     await emailTransporter.sendMail({
-      from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+      from: '"Andiamo Events" <contact@andiamoevents.com>',
+      replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
       to: recipientEmail,
       subject: subject,
       html: emailHtml
@@ -8720,16 +8735,19 @@ async function generateTicketsAndSendEmail(orderId) {
         `;
 
         // Send email
+        // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
+        // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
         console.log('📤 Attempting to send email...');
         console.log('📤 Email Details:', {
-          from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+          from: '"Andiamo Events" <contact@andiamoevents.com>',
           to: order.user_email,
           subject: 'Your Digital Tickets Are Ready - Andiamo Events',
           htmlLength: emailHtml.length
         });
         
         const emailResult = await transporter.sendMail({
-          from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+          from: '"Andiamo Events" <contact@andiamoevents.com>',
+          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
           to: order.user_email,
           subject: 'Your Digital Tickets Are Ready - Andiamo Events',
           html: emailHtml
@@ -10007,9 +10025,12 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLi
         throw new Error('Email service not configured');
       }
 
+      // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
+      // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
       console.log('📤 Sending email to:', order.user_email);
       const emailResult = await transporter.sendMail({
-        from: `Andiamo Events <${process.env.EMAIL_USER}>`,
+        from: '"Andiamo Events" <contact@andiamoevents.com>',
+        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
         to: order.user_email,
         subject: 'Your Digital Tickets Are Ready - Andiamo Events',
         html: emailHtml
