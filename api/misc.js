@@ -2694,6 +2694,101 @@ We Create Memories`;
     }
     
     // ============================================
+    // /api/admin/ambassador-sales/orders (GET)
+    // ============================================
+    if (path === '/api/admin/ambassador-sales/orders' && method === 'GET') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ 
+            error: 'Server configuration error',
+            details: 'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
+          });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        
+        // Use service role key if available (for RLS bypass)
+        let supabase;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        } else {
+          supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_ANON_KEY
+          );
+        }
+        
+        // Parse query parameters from req.url
+        const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
+        const searchParams = new URLSearchParams(queryString);
+        const status = searchParams.get('status');
+        const ambassador_id = searchParams.get('ambassador_id');
+        const city = searchParams.get('city');
+        const ville = searchParams.get('ville');
+        const date_from = searchParams.get('date_from');
+        const date_to = searchParams.get('date_to');
+        const limit = parseInt(searchParams.get('limit') || '50');
+        const offset = parseInt(searchParams.get('offset') || '0');
+        const include_removed = searchParams.get('include_removed');
+        
+        let query = supabase
+          .from('orders')
+          .select('*, order_passes (*), ambassadors (id, full_name, phone, email)', { count: 'exact' })
+          .eq('payment_method', 'ambassador_cash')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + limit - 1);
+        
+        // Exclude REMOVED_BY_ADMIN orders by default (only show when explicitly filtering by that status)
+        if (status === 'REMOVED_BY_ADMIN') {
+          query = query.eq('status', 'REMOVED_BY_ADMIN');
+        } else {
+          // Default: exclude removed orders from all queries
+          query = query.neq('status', 'REMOVED_BY_ADMIN');
+          if (status) {
+            query = query.eq('status', status);
+          }
+        }
+        
+        if (ambassador_id) query = query.eq('ambassador_id', ambassador_id);
+        if (city) query = query.eq('city', city);
+        if (ville) query = query.eq('ville', ville);
+        if (date_from) query = query.gte('created_at', date_from);
+        if (date_to) query = query.lte('created_at', date_to);
+        
+        const { data, error, count } = await query;
+        
+        if (error) {
+          console.error('Error fetching ambassador orders:', error);
+          return res.status(500).json({ error: error.message });
+        }
+        
+        return res.status(200).json({
+          success: true,
+          data: data || [],
+          count: count || 0
+        });
+        
+      } catch (error) {
+        console.error('Error in ambassador-sales/orders endpoint:', error);
+        return res.status(500).json({ 
+          error: error.message || 'Failed to fetch ambassador orders' 
+        });
+      }
+    }
+
     // /api/admin-remove-order (POST)
     // ============================================
     if (path === '/api/admin-remove-order' && method === 'POST') {

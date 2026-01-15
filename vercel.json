@@ -73,6 +73,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/ambassador-sales/orders",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/logs",
       "destination": "/api/admin/logs.js"
     },
