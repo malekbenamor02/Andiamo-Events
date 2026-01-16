@@ -3140,6 +3140,7 @@ We Create Memories`;
         const { data, error } = await dbClient
           .from('order_expiration_settings')
           .select('*')
+          .eq('order_status', 'PENDING_CASH')
           .order('order_status');
         
         if (error) {
@@ -3147,9 +3148,12 @@ We Create Memories`;
           return res.status(500).json({ error: error.message });
         }
         
+        // Only return PENDING_CASH settings (filter out others if any)
+        const filteredData = (data || []).filter(setting => setting.order_status === 'PENDING_CASH');
+        
         return res.status(200).json({
           success: true,
-          data: data || []
+          data: filteredData
         });
       } catch (error) {
         console.error('Error in order-expiration-settings GET:', error);

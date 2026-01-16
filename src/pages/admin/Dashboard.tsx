@@ -1334,7 +1334,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       const result = await response.json();
       if (result.success && result.data) {
-        setExpirationSettings(result.data);
+        // Only keep PENDING_CASH settings (filter out others)
+        const filteredData = result.data.filter((setting: any) => setting.order_status === 'PENDING_CASH');
+        setExpirationSettings(filteredData);
       }
     } catch (error) {
       console.error('Error fetching expiration settings:', error);
@@ -1374,7 +1376,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
       
       if (result.success) {
-        setExpirationSettings(result.data);
+        // Only keep PENDING_CASH settings
+        const filteredData = (result.data || []).filter((setting: any) => setting.order_status === 'PENDING_CASH');
+        setExpirationSettings(filteredData);
         toast({
           title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
           description: language === 'en' ? 'Expiration settings updated successfully' : 'Paramètres d\'expiration mis à jour avec succès',
@@ -16990,7 +16994,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                             is_active: checked
                                           });
                                         }
-                                        updateExpirationSettings(updated);
+                                        // Only send PENDING_CASH settings
+                                        const pendingCashOnly = updated.filter(s => s.order_status === 'PENDING_CASH');
+                                        updateExpirationSettings(pendingCashOnly);
                                       }}
                                       disabled={loadingExpirationSettings}
                                     />
@@ -17019,7 +17025,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                               is_active: setting?.is_active !== false
                                             });
                                           }
-                                          updateExpirationSettings(updated);
+                                          // Only send PENDING_CASH settings
+                                          const pendingCashOnly = updated.filter(s => s.order_status === 'PENDING_CASH');
+                                          updateExpirationSettings(pendingCashOnly);
                                         }}
                                         disabled={loadingExpirationSettings}
                                         className="w-20"
