@@ -3315,6 +3315,21 @@ We Create Memories`;
                 console.error('Error calling apply_expiration_to_existing_pending_cash_orders:', rpcError);
                 // Don't fail the whole request if this fails
               }
+            } else if (order_status === 'PENDING_CASH' && wasActive && !isNowActive) {
+              // Deactivated: Clear expiration from all existing PENDING_CASH orders
+              try {
+                const { data: clearResult, error: clearError } = await dbClient
+                  .rpc('clear_expiration_from_existing_pending_cash_orders');
+                
+                if (clearError) {
+                  console.error('Error clearing expiration from existing orders:', clearError);
+                } else {
+                  console.log(`Cleared expiration from ${clearResult?.[0]?.cleared_count || 0} existing PENDING_CASH orders`);
+                }
+              } catch (rpcError) {
+                console.error('Error calling clear_expiration_from_existing_pending_cash_orders:', rpcError);
+                // Don't fail the whole request if this fails
+              }
             } else if (order_status === 'PENDING_CASH' && wasActive && isNowActive && currentSetting?.default_expiration_hours !== default_expiration_hours) {
               // Hours changed while active - update existing orders with new expiration
               try {
