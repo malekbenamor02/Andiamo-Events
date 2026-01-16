@@ -448,11 +448,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [isRemoveOrderDialogOpen, setIsRemoveOrderDialogOpen] = useState(false);
   const [removingOrderId, setRemovingOrderId] = useState<string | null>(null);
   const [removingOrder, setRemovingOrder] = useState(false);
-  const [isExpirationDialogOpen, setIsExpirationDialogOpen] = useState(false);
-  const [expirationDate, setExpirationDate] = useState<Date | undefined>(undefined);
-  const [expirationTime, setExpirationTime] = useState<string>('');
-  const [expirationReason, setExpirationReason] = useState('');
-  const [settingExpiration, setSettingExpiration] = useState(false);
   const [isMotivationDialogOpen, setIsMotivationDialogOpen] = useState(false);
   const [selectedMotivation, setSelectedMotivation] = useState<{application: AmbassadorApplication; motivation: string} | null>(null);
   const [orderLogs, setOrderLogs] = useState<any[]>([]);
@@ -1381,8 +1376,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setExpirationSettings(result.data);
         toast({
           title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
-          description: language === 'en' ? 'Expiration settings updated successfully' : 'Paramètres d\'expiration mis à jour avec succès',
+          description: language === 'en' ? 'Expiration settings updated successfully. Refreshing orders...' : 'Paramètres d\'expiration mis à jour avec succès. Actualisation des commandes...',
         });
+        
+        // Wait a moment for database updates to complete, then refresh order data
+        setTimeout(async () => {
+          try {
+            await fetchAmbassadorSalesData();
+            
+            // If an order is currently selected, refresh its data too
+            if (selectedOrder) {
+              setTimeout(() => {
+                const refreshedOrder = codAmbassadorOrders.find((o: any) => o.id === selectedOrder.id);
+                if (refreshedOrder) {
+                  setSelectedOrder(refreshedOrder);
+                }
+              }, 500);
+            }
+          } catch (error) {
+            console.error('Error refreshing orders after expiration settings update:', error);
+          }
+        }, 1000);
       }
     } catch (error: any) {
       console.error('Error updating expiration settings:', error);
@@ -14737,6 +14751,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Total Price' : 'Prix Total'}</TableHead>
                                 <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Ambassador' : 'Ambassadeur'}</TableHead>
                                 <TableHead className="py-2 whitespace-nowrap text-center w-16">{language === 'en' ? 'Status' : 'Statut'}</TableHead>
+                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Expires At' : 'Expire Le'}</TableHead>
                                 <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Created' : 'Créé'}</TableHead>
                                 <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
                               </TableRow>
@@ -14744,7 +14759,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             <TableBody>
                               {filteredCodOrders.length === 0 ? (
                                 <TableRow>
-                                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                                     {language === 'en' ? 'No COD ambassador orders found' : 'Aucune commande COD ambassadeur trouvée'}
                                   </TableCell>
                                 </TableRow>
@@ -14943,6 +14958,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                               </TooltipProvider>
                                             )}
                                           </div>
+                                        </TableCell>
+                                        <TableCell className="py-2 text-center whitespace-nowrap text-xs">
+                                          {order.expires_at && order.status === 'PENDING_CASH' ? (
+                                            <div className="flex flex-col items-center gap-1">
+                                              <span className={cn(
+                                                "text-xs",
+                                                new Date(order.expires_at) <= new Date() ? "text-red-500 font-semibold" : 
+                                                (new Date(order.expires_at).getTime() - new Date().getTime()) < (2 * 60 * 60 * 1000) ? "text-orange-500 font-semibold" :
+                                                "text-yellow-500"
+                                              )}>
+                                                {new Date(order.expires_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
+                                                  month: 'short',
+                                                  day: 'numeric',
+                                                  hour: '2-digit',
+                                                  minute: '2-digit'
+                                                })}
+                                              </span>
+                                              {new Date(order.expires_at) <= new Date() && (
+                                                <Badge variant="destructive" className="text-xs px-1 py-0">
+                                                  {language === 'en' ? 'Expired' : 'Expiré'}
+                                                </Badge>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <span className="text-muted-foreground text-xs">-</span>
+                                          )}
                                         </TableCell>
                                         <TableCell className="py-2 text-center whitespace-nowrap text-xs">
                                           {new Date(order.created_at).toLocaleDateString(language)}
@@ -16931,8 +16972,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {language === 'en' 
-                            ? 'Set default expiration times for pending orders' 
-                            : 'Définir les délais d\'expiration par défaut pour les commandes en attente'}
+                            ? 'Set default expiration time for PENDING_CASH orders. Expiration starts from order creation date. When activated, applies to all existing orders.' 
+                            : 'Définir le délai d\'expiration par défaut pour les commandes PENDING_CASH. L\'expiration commence à partir de la date de création de la commande. Lors de l\'activation, s\'applique à toutes les commandes existantes.'}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
@@ -16942,12 +16983,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           </div>
                         ) : (
                           <>
-                            {['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].map((status) => {
+                            {['PENDING_CASH'].map((status) => {
                               const setting = expirationSettings.find(s => s.order_status === status);
                               const statusLabel = {
-                                'PENDING_CASH': language === 'en' ? 'Pending Cash' : 'Espèces en Attente',
-                                'PENDING_ONLINE': language === 'en' ? 'Pending Online' : 'En Ligne en Attente',
-                                'PENDING_ADMIN_APPROVAL': language === 'en' ? 'Pending Admin Approval' : 'En Attente d\'Approbation'
+                                'PENDING_CASH': language === 'en' ? 'Pending Cash Orders' : 'Commandes Espèces en Attente'
                               }[status] || status;
                               
                               return (
@@ -18014,8 +18053,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </CardContent>
               </Card>
 
-              {/* Order Expiration Management */}
-              {['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].includes(selectedOrder.status) && (
+              {/* Order Expiration Display (Read-Only) */}
+              {selectedOrder.status === 'PENDING_CASH' && selectedOrder.expires_at && (
                 <Card className="bg-muted/30">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -18024,95 +18063,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {selectedOrder.expires_at ? (
-                      <div className="space-y-4">
-                        <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Clock className="w-4 h-4 text-yellow-500" />
-                            <Label className="text-sm font-semibold text-foreground">
-                              {language === 'en' ? 'Expires At' : 'Expire Le'}
-                            </Label>
-                          </div>
-                          <p className="text-sm text-foreground">
-                            {new Date(selectedOrder.expires_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}
-                          </p>
-                          {selectedOrder.expiration_notes && (
-                            <p className="text-xs text-muted-foreground mt-2">
-                              {language === 'en' ? 'Reason' : 'Raison'}: {selectedOrder.expiration_notes}
-                            </p>
-                          )}
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={async () => {
-                            try {
-                              const apiBase = getApiBaseUrl();
-                              const url = buildFullApiUrl(API_ROUTES.CLEAR_ORDER_EXPIRATION, apiBase);
-                              const response = await fetch(url, {
-                                method: 'DELETE',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                },
-                                credentials: 'include',
-                                body: JSON.stringify({ orderId: selectedOrder.id })
-                              });
-                              
-                              if (!response.ok) {
-                                throw new Error('Failed to clear expiration');
-                              }
-                              
-                              toast({
-                                title: language === 'en' ? 'Success' : 'Succès',
-                                description: language === 'en' ? 'Expiration cleared' : 'Expiration supprimée',
-                              });
-                              
-                              setSelectedOrder({
-                                ...selectedOrder,
-                                expires_at: null,
-                                expiration_set_by: null,
-                                expiration_notes: null
-                              });
-                              
-                              fetchAmbassadorSalesData();
-                            } catch (error: any) {
-                              toast({
-                                title: language === 'en' ? 'Error' : 'Erreur',
-                                description: error.message || (language === 'en' ? 'Failed to clear expiration' : 'Échec de la suppression de l\'expiration'),
-                                variant: 'destructive'
-                              });
-                            }
-                          }}
-                        >
-                          <X className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Clear Expiration' : 'Supprimer l\'Expiration'}
-                        </Button>
+                    <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Clock className="w-4 h-4 text-yellow-500" />
+                        <Label className="text-sm font-semibold text-foreground">
+                          {language === 'en' ? 'Expires At' : 'Expire Le'}
+                        </Label>
                       </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <p className="text-sm text-muted-foreground">
-                          {language === 'en' 
-                            ? 'No expiration set. Set an expiration date to automatically manage this pending order.' 
-                            : 'Aucune expiration définie. Définissez une date d\'expiration pour gérer automatiquement cette commande en attente.'}
-                        </p>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={() => {
-                            setIsExpirationDialogOpen(true);
-                            // Set default to 24 hours from now
-                            const defaultDate = new Date();
-                            defaultDate.setHours(defaultDate.getHours() + 24);
-                            setExpirationDate(defaultDate);
-                            setExpirationTime(format(defaultDate, 'HH:mm'));
-                            setExpirationReason('');
-                          }}
-                        >
-                          <Clock className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Set Expiration' : 'Définir l\'Expiration'}
-                        </Button>
-                      </div>
-                    )}
+                      <p className="text-sm text-foreground">
+                        {new Date(selectedOrder.expires_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {language === 'en' 
+                          ? 'This order will be automatically rejected when the expiration date is reached.' 
+                          : 'Cette commande sera automatiquement rejetée lorsque la date d\'expiration sera atteinte.'}
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -18897,180 +18863,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   <>
                     <Trash2 className="w-4 h-4 mr-2" />
                     {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Set Order Expiration Dialog */}
-      <Dialog open={isExpirationDialogOpen} onOpenChange={(open) => {
-        setIsExpirationDialogOpen(open);
-        if (!open) {
-          setExpirationDate(undefined);
-          setExpirationTime('');
-          setExpirationReason('');
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-primary" />
-              {language === 'en' ? 'Set Order Expiration' : 'Définir l\'Expiration de la Commande'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>{language === 'en' ? 'Expiration Date' : 'Date d\'Expiration'} *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !expirationDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {expirationDate ? format(expirationDate, "PPP", { locale: language === 'en' ? undefined : require('date-fns/locale/fr') }) : (
-                      <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={expirationDate}
-                    onSelect={setExpirationDate}
-                    disabled={(date) => date < new Date()}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div>
-              <Label>{language === 'en' ? 'Expiration Time' : 'Heure d\'Expiration'} *</Label>
-              <Input
-                type="time"
-                value={expirationTime}
-                onChange={(e) => setExpirationTime(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <Label>{language === 'en' ? 'Reason (Optional)' : 'Raison (Optionnel)'}</Label>
-              <Textarea
-                value={expirationReason}
-                onChange={(e) => setExpirationReason(e.target.value)}
-                placeholder={language === 'en' ? 'Enter reason for setting expiration...' : 'Entrez la raison de la définition de l\'expiration...'}
-                rows={3}
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsExpirationDialogOpen(false);
-                  setExpirationDate(undefined);
-                  setExpirationTime('');
-                  setExpirationReason('');
-                }}
-                disabled={settingExpiration}
-              >
-                {language === 'en' ? 'Cancel' : 'Annuler'}
-              </Button>
-              <Button
-                variant="default"
-                onClick={async () => {
-                  if (!expirationDate || !expirationTime) {
-                    toast({
-                      title: language === 'en' ? 'Error' : 'Erreur',
-                      description: language === 'en' ? 'Date and time are required' : 'La date et l\'heure sont requises',
-                      variant: 'destructive'
-                    });
-                    return;
-                  }
-                  
-                  // Combine date and time
-                  const [hours, minutes] = expirationTime.split(':');
-                  const expirationDateTime = new Date(expirationDate);
-                  expirationDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                  
-                  if (expirationDateTime <= new Date()) {
-                    toast({
-                      title: language === 'en' ? 'Error' : 'Erreur',
-                      description: language === 'en' ? 'Expiration must be in the future' : 'L\'expiration doit être dans le futur',
-                      variant: 'destructive'
-                    });
-                    return;
-                  }
-                  
-                  setSettingExpiration(true);
-                  try {
-                    const apiBase = getApiBaseUrl();
-                    const url = buildFullApiUrl(API_ROUTES.SET_ORDER_EXPIRATION, apiBase);
-                    const response = await fetch(url, {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                      },
-                      credentials: 'include',
-                      body: JSON.stringify({
-                        orderId: selectedOrder?.id,
-                        expiresAt: expirationDateTime.toISOString(),
-                        reason: expirationReason.trim() || null
-                      })
-                    });
-                    
-                    if (!response.ok) {
-                      const error = await response.json();
-                      throw new Error(error.error || 'Failed to set expiration');
-                    }
-                    
-                    const result = await response.json();
-                    if (result.success) {
-                      toast({
-                        title: language === 'en' ? 'Success' : 'Succès',
-                        description: language === 'en' ? 'Expiration set successfully' : 'Expiration définie avec succès',
-                      });
-                      
-                      setSelectedOrder({
-                        ...selectedOrder,
-                        expires_at: expirationDateTime.toISOString(),
-                        expiration_notes: expirationReason.trim() || null
-                      });
-                      
-                      setIsExpirationDialogOpen(false);
-                      setExpirationDate(undefined);
-                      setExpirationTime('');
-                      setExpirationReason('');
-                      
-                      fetchAmbassadorSalesData();
-                    }
-                  } catch (error: any) {
-                    console.error('Error setting expiration:', error);
-                    toast({
-                      title: language === 'en' ? 'Error' : 'Erreur',
-                      description: error.message || (language === 'en' ? 'Failed to set expiration' : 'Échec de la définition de l\'expiration'),
-                      variant: 'destructive'
-                    });
-                  } finally {
-                    setSettingExpiration(false);
-                  }
-                }}
-                disabled={settingExpiration || !expirationDate || !expirationTime}
-              >
-                {settingExpiration ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    {language === 'en' ? 'Setting...' : 'Définition...'}
-                  </>
-                ) : (
-                  <>
-                    <Clock className="w-4 h-4 mr-2" />
-                    {language === 'en' ? 'Set Expiration' : 'Définir l\'Expiration'}
                   </>
                 )}
               </Button>

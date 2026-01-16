@@ -93,6 +93,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/auto-reject-expired-orders",
+      "destination": "/api/auto-reject-expired-orders.js"
+    },
+    {
       "source": "/api/admin/logs",
       "destination": "/api/admin/logs.js"
     },
@@ -125,6 +129,15 @@
     },
     "api/admin/logs.js": {
       "maxDuration": 60
+    },
+    "api/auto-reject-expired-orders.js": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/auto-reject-expired-orders",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

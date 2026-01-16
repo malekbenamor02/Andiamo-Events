@@ -5547,6 +5547,13 @@ app.post('/api/admin/order-expiration-settings', requireAdminAuth, async (req, r
     const dbClient = supabaseService || supabase;
     const adminId = req.admin?.id;
 
+    // Get current settings to detect changes
+    const { data: currentSettings } = await dbClient
+      .from('order_expiration_settings')
+      .select('*')
+      .eq('order_status', 'PENDING_CASH')
+      .single();
+    
     // Update each setting
     const results = await Promise.all(
       settings.map(async (setting) => {
@@ -5555,13 +5562,21 @@ app.post('/api/admin/order-expiration-settings', requireAdminAuth, async (req, r
         if (!order_status || !default_expiration_hours || default_expiration_hours <= 0) {
           throw new Error(`Invalid setting for ${order_status}`);
         }
+        
+        // Only allow PENDING_CASH
+        if (order_status !== 'PENDING_CASH') {
+          throw new Error(`Only PENDING_CASH expiration is supported`);
+        }
+        
+        const wasActive = currentSettings?.is_active;
+        const isNowActive = is_active !== undefined ? is_active : true;
 
         const { data, error } = await dbClient
           .from('order_expiration_settings')
           .upsert({
             order_status,
             default_expiration_hours,
-            is_active: is_active !== undefined ? is_active : true,
+            is_active: isNowActive,
             updated_at: new Date().toISOString()
           }, {
             onConflict: 'order_status'
@@ -5571,6 +5586,41 @@ app.post('/api/admin/order-expiration-settings', requireAdminAuth, async (req, r
 
         if (error) {
           throw error;
+        }
+        
+        // If activation status changed, apply/clear expiration to existing orders
+        if (wasActive !== isNowActive && order_status === 'PENDING_CASH') {
+          if (isNowActive) {
+            // Activated: Apply expiration to all existing PENDING_CASH orders
+            const { data: applyResult, error: applyError } = await dbClient
+              .rpc('apply_expiration_to_existing_pending_cash_orders');
+            
+            if (applyError) {
+              console.error('Error applying expiration to existing orders:', applyError);
+            } else {
+              console.log(`Applied expiration to ${applyResult?.[0]?.updated_count || 0} existing orders`);
+            }
+          } else {
+            // Deactivated: Clear expiration from all existing PENDING_CASH orders
+            const { data: clearResult, error: clearError } = await dbClient
+              .rpc('clear_expiration_from_existing_pending_cash_orders');
+            
+            if (clearError) {
+              console.error('Error clearing expiration from existing orders:', clearError);
+            } else {
+              console.log(`Cleared expiration from ${clearResult?.[0]?.cleared_count || 0} existing orders`);
+            }
+          }
+        } else if (isNowActive && wasActive && order_status === 'PENDING_CASH') {
+          // Hours changed but still active: Update expiration for existing orders
+          const { data: applyResult, error: applyError } = await dbClient
+            .rpc('apply_expiration_to_existing_pending_cash_orders');
+          
+          if (applyError) {
+            console.error('Error updating expiration for existing orders:', applyError);
+          } else {
+            console.log(`Updated expiration for ${applyResult?.[0]?.updated_count || 0} existing orders`);
+          }
         }
 
         return data;
