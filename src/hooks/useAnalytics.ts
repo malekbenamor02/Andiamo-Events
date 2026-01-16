@@ -12,6 +12,9 @@ export type DateRange = 'ALL_TIME' | 'LAST_30_DAYS' | 'LAST_7_DAYS';
 
 export interface AnalyticsData {
   // KPIs
+  pendingCashAndApprovalOrders: number; // Number of orders with PENDING_CASH or PENDING_ADMIN_APPROVAL status
+  pendingCashAndApprovalPasses: number; // Number of passes in pending cash and approval orders
+  pendingCashAndApprovalRevenue: number; // Revenue from pending cash and approval orders
   totalTicketsSold: number;
   totalRevenue: number;
   totalOrders: number;
@@ -197,6 +200,61 @@ async function fetchAnalyticsData(
   }
   
   const ordersList = (orders || []) as any[];
+  
+  // Fetch pending cash and approval orders for the new metrics
+  let pendingOrdersQuery = supabase
+    .from('orders')
+    .select(`
+      *,
+      order_passes (*)
+    `)
+    .in('status', ['PENDING_CASH', 'PENDING_ADMIN_APPROVAL']);
+  
+  if (eventId) {
+    pendingOrdersQuery = pendingOrdersQuery.eq('event_id', eventId);
+  }
+  
+  if (startDate) {
+    pendingOrdersQuery = pendingOrdersQuery.gte('created_at', startDate.toISOString());
+  }
+  
+  if (endDate) {
+    pendingOrdersQuery = pendingOrdersQuery.lte('created_at', endDate.toISOString());
+  }
+  
+  const { data: pendingOrders, error: pendingError } = await pendingOrdersQuery;
+  
+  if (pendingError) {
+    throw new Error(`Failed to fetch pending orders data: ${pendingError.message}`);
+  }
+  
+  const pendingOrdersList = (pendingOrders || []) as any[];
+  
+  // Calculate pending cash and approval metrics
+  let pendingCashAndApprovalOrders = pendingOrdersList.length;
+  let pendingCashAndApprovalPasses = 0;
+  let pendingCashAndApprovalRevenue = 0;
+  
+  pendingOrdersList.forEach((order: any) => {
+    let orderRevenue = 0;
+    let orderTickets = 0;
+    
+    if (order.order_passes && order.order_passes.length > 0) {
+      order.order_passes.forEach((op: OrderPass) => {
+        const tickets = op.quantity || 0;
+        const revenue = (op.price || 0) * tickets;
+        orderTickets += tickets;
+        orderRevenue += revenue;
+      });
+    } else {
+      // Fallback: use order quantity and total_price
+      orderTickets = order.quantity || 0;
+      orderRevenue = parseFloat(order.total_price) || 0;
+    }
+    
+    pendingCashAndApprovalPasses += orderTickets;
+    pendingCashAndApprovalRevenue += orderRevenue;
+  });
   
   // Calculate KPIs
   let totalTicketsSold = 0;
@@ -476,6 +534,9 @@ async function fetchAnalyticsData(
     : 'N/A';
   
   return {
+    pendingCashAndApprovalOrders,
+    pendingCashAndApprovalPasses,
+    pendingCashAndApprovalRevenue,
     totalTicketsSold,
     totalRevenue,
     totalOrders: totalOrdersPaid,

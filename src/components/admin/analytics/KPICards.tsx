@@ -5,12 +5,15 @@
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, Ticket, DollarSign, ShoppingCart, Target, Calendar, Users, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, Ticket, DollarSign, ShoppingCart, Target, Calendar, Users, Info, Clock, Package } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface KPICardsProps {
   data: {
+    pendingCashAndApprovalOrders: number;
+    pendingCashAndApprovalPasses: number;
+    pendingCashAndApprovalRevenue: number;
     totalTicketsSold: number;
     totalRevenue: number;
     totalOrders: number;
@@ -78,6 +81,10 @@ function KPICard({ title, value, suffix = '', icon, trend, color, delay }: KPICa
     if (val >= 1000) {
       return (val / 1000).toFixed(1) + 'K';
     }
+    // For currency values, show up to 2 decimal places
+    if (suffix.includes('TND')) {
+      return val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
     return val.toLocaleString();
   };
 
@@ -89,6 +96,8 @@ function KPICard({ title, value, suffix = '', icon, trend, color, delay }: KPICa
     if (color.includes('purple')) return 'bg-purple-500/10 group-hover:bg-purple-500/20';
     if (color.includes('cyan')) return 'bg-cyan-500/10 group-hover:bg-cyan-500/20';
     if (color.includes('pink')) return 'bg-pink-500/10 group-hover:bg-pink-500/20';
+    if (color.includes('yellow')) return 'bg-yellow-500/10 group-hover:bg-yellow-500/20';
+    if (color.includes('amber')) return 'bg-amber-500/10 group-hover:bg-amber-500/20';
     return 'bg-primary/10 group-hover:bg-primary/20';
   };
 
@@ -145,7 +154,7 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {[1, 2, 3, 4, 5, 6].map((i) => (
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
           <KPICardSkeleton key={i} />
         ))}
       </div>
@@ -175,12 +184,37 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <KPICard
+        title="Pending Cash & Approval Orders"
+        value={data.pendingCashAndApprovalOrders}
+        icon={<Clock className="w-6 h-6 text-yellow-500" />}
+        trend={null}
+        color="text-yellow-500"
+        delay={100}
+      />
+      <KPICard
+        title="Pending Cash & Approval Passes"
+        value={data.pendingCashAndApprovalPasses}
+        icon={<Package className="w-6 h-6 text-amber-500" />}
+        trend={null}
+        color="text-amber-500"
+        delay={150}
+      />
+      <KPICard
+        title="Pending Cash & Approval Revenue"
+        value={data.pendingCashAndApprovalRevenue}
+        suffix=" TND"
+        icon={<DollarSign className="w-6 h-6 text-orange-600" />}
+        trend={null}
+        color="text-orange-600"
+        delay={200}
+      />
+      <KPICard
         title="Total Tickets Sold"
         value={data.totalTicketsSold}
         icon={<Ticket className="w-6 h-6 text-green-500" />}
         trend={data.trends.tickets}
         color="text-green-500"
-        delay={100}
+        delay={250}
       />
       <KPICard
         title="Total Revenue"
@@ -189,7 +223,7 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<DollarSign className="w-6 h-6 text-orange-500" />}
         trend={data.trends.revenue}
         color="text-orange-500"
-        delay={200}
+        delay={300}
       />
       <KPICard
         title="Total Orders"
@@ -197,7 +231,7 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<ShoppingCart className="w-6 h-6 text-blue-500" />}
         trend={data.trends.orders}
         color="text-blue-500"
-        delay={300}
+        delay={350}
       />
       <TooltipProvider>
         <Tooltip>
@@ -234,7 +268,7 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<Calendar className="w-6 h-6 text-cyan-500" />}
         trend={data.trends.avgTickets}
         color="text-cyan-500"
-        delay={500}
+        delay={450}
       />
       <KPICard
         title="Ambassadors Involved"
@@ -242,7 +276,7 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<Users className="w-6 h-6 text-pink-500" />}
         trend={data.trends.ambassadors}
         color="text-pink-500"
-        delay={600}
+        delay={500}
       />
     </div>
   );

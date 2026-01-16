@@ -125,6 +125,9 @@ export function ReportsAnalytics({ language = 'en' }: ReportsAnalyticsProps) {
       <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-300">
         <KPICards
           data={analyticsData ? {
+            pendingCashAndApprovalOrders: analyticsData.pendingCashAndApprovalOrders,
+            pendingCashAndApprovalPasses: analyticsData.pendingCashAndApprovalPasses,
+            pendingCashAndApprovalRevenue: analyticsData.pendingCashAndApprovalRevenue,
             totalTicketsSold: analyticsData.totalTicketsSold,
             totalRevenue: analyticsData.totalRevenue,
             totalOrders: analyticsData.totalOrders,
