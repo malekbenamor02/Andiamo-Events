@@ -1182,7 +1182,14 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                               </TableCell>
                               <TableCell>
                                 {order.expires_at && order.status === 'PENDING_CASH' ? (
-                                  <OrderExpirationTimer expiresAt={order.expires_at} language={language} />
+                                  <span className="text-xs text-muted-foreground">
+                                    {new Date(order.expires_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
                                 ) : (
                                   <span className="text-xs text-muted-foreground">-</span>
                                 )}
@@ -1314,13 +1321,15 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                               <p className="text-2xl font-bold text-green-400">{order.total_price.toFixed(2)} TND</p>
                             </div>
 
-                            {/* Expiration Timer - Show for PENDING_CASH orders with expiration */}
+                            {/* Expiration Date - Show for PENDING_CASH orders with expiration */}
                             {order.expires_at && order.status === 'PENDING_CASH' && (
                               <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
-                                <p className="text-xs text-muted-foreground mb-2">
-                                  {language === 'en' ? 'Time Remaining' : 'Temps Restant'}
+                                <p className="text-xs text-muted-foreground mb-1">
+                                  {language === 'en' ? 'Expires At' : 'Expire Le'}
                                 </p>
-                                <OrderExpirationTimer expiresAt={order.expires_at} language={language} />
+                                <p className="text-sm text-foreground font-medium">
+                                  {new Date(order.expires_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}
+                                </p>
                                 {order.expiration_notes && (
                                   <p className="text-xs text-muted-foreground mt-2 italic">
                                     {order.expiration_notes}
