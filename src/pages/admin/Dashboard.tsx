@@ -1381,8 +1381,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setExpirationSettings(filteredData);
         toast({
           title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
-          description: language === 'en' ? 'Expiration settings updated successfully' : 'Paramètres d\'expiration mis à jour avec succès',
+          description: language === 'en' ? 'Expiration settings updated successfully. Refreshing orders...' : 'Paramètres d\'expiration mis à jour avec succès. Actualisation des commandes...',
         });
+        
+        // Wait a moment for database updates to complete, then refresh order data
+        setTimeout(async () => {
+          try {
+            await fetchAmbassadorSalesData();
+            
+            // If an order is currently selected, refresh its data too
+            if (selectedOrder) {
+              setTimeout(() => {
+                const refreshedOrder = codAmbassadorOrders.find((o: any) => o.id === selectedOrder.id);
+                if (refreshedOrder) {
+                  setSelectedOrder(refreshedOrder);
+                }
+              }, 500);
+            }
+          } catch (error) {
+            console.error('Error refreshing orders after expiration settings update:', error);
+          }
+        }, 1000);
       }
     } catch (error: any) {
       console.error('Error updating expiration settings:', error);

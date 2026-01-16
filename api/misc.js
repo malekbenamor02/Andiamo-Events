@@ -3219,6 +3219,15 @@ We Create Memories`;
             
             const isNowActive = is_active !== undefined ? is_active : true;
             
+            // Get current setting to detect if activation status changed
+            const { data: currentSetting } = await dbClient
+              .from('order_expiration_settings')
+              .select('*')
+              .eq('order_status', order_status)
+              .single();
+            
+            const wasActive = currentSetting?.is_active;
+            
             // Update the setting
             const { data, error } = await dbClient
               .from('order_expiration_settings')
@@ -3235,6 +3244,37 @@ We Create Memories`;
             
             if (error) {
               throw error;
+            }
+            
+            // If activation status changed from false to true, apply expiration to existing orders
+            if (order_status === 'PENDING_CASH' && !wasActive && isNowActive) {
+              try {
+                const { data: applyResult, error: applyError } = await dbClient
+                  .rpc('apply_expiration_to_existing_pending_cash_orders');
+                
+                if (applyError) {
+                  console.error('Error applying expiration to existing orders:', applyError);
+                } else {
+                  console.log(`Applied expiration to ${applyResult?.[0]?.updated_count || 0} existing PENDING_CASH orders`);
+                }
+              } catch (rpcError) {
+                console.error('Error calling apply_expiration_to_existing_pending_cash_orders:', rpcError);
+                // Don't fail the whole request if this fails
+              }
+            } else if (order_status === 'PENDING_CASH' && wasActive && isNowActive && currentSetting?.default_expiration_hours !== default_expiration_hours) {
+              // Hours changed while active - update existing orders with new expiration
+              try {
+                const { data: applyResult, error: applyError } = await dbClient
+                  .rpc('apply_expiration_to_existing_pending_cash_orders');
+                
+                if (applyError) {
+                  console.error('Error updating expiration for existing orders:', applyError);
+                } else {
+                  console.log(`Updated expiration for ${applyResult?.[0]?.updated_count || 0} existing PENDING_CASH orders`);
+                }
+              } catch (rpcError) {
+                console.error('Error calling apply_expiration_to_existing_pending_cash_orders:', rpcError);
+              }
             }
             
             return data;
