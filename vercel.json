@@ -97,6 +97,14 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/ambassador/orders",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/ambassador/performance",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/logs",
       "destination": "/api/admin/logs.js"
     },
