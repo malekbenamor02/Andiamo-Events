@@ -14915,53 +14915,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                                 </TooltipContent>
                                               </Tooltip>
                                             </TooltipProvider>
-                                            {/* Expiration Indicator */}
-                                            {hasExpiration && (
-                                              <TooltipProvider>
-                                                <Tooltip>
-                                                  <TooltipTrigger asChild>
-                                                    <div className={cn(
-                                                      "flex items-center gap-1 px-1.5 py-0.5 rounded text-xs",
-                                                      isExpired 
-                                                        ? "bg-red-500/20 text-red-500 border border-red-500/30"
-                                                        : isExpiringWithin2Hours
-                                                        ? "bg-orange-500/20 text-orange-500 border border-orange-500/30"
-                                                        : "bg-yellow-500/20 text-yellow-500 border border-yellow-500/30"
-                                                    )}>
-                                                      <Clock className="w-3 h-3" />
-                                                      {isExpired ? (
-                                                        <span>{language === 'en' ? 'Expired' : 'Expiré'}</span>
-                                                      ) : isExpiringWithin2Hours ? (
-                                                        <span>
-                                                          {isExpiringSoon?.hours > 0 
-                                                            ? `${isExpiringSoon.hours}h ${isExpiringSoon.minutes}m`
-                                                            : `${isExpiringSoon?.minutes}m`
-                                                          }
-                                                        </span>
-                                                      ) : (
-                                                        <span>
-                                                          {isExpiringSoon && isExpiringSoon.hours > 0 
-                                                            ? `${isExpiringSoon.hours}h`
-                                                            : `${isExpiringSoon?.minutes}m`
-                                                          }
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                  </TooltipTrigger>
-                                                  <TooltipContent>
-                                                    <p className="text-xs">
-                                                      {isExpired 
-                                                        ? (language === 'en' ? 'Order expired' : 'Commande expirée')
-                                                        : (language === 'en' 
-                                                          ? `Expires: ${expirationDate?.toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}`
-                                                          : `Expire : ${expirationDate?.toLocaleString('fr-FR')}`
-                                                        )
-                                                      }
-                                                    </p>
-                                                  </TooltipContent>
-                                                </Tooltip>
-                                              </TooltipProvider>
-                                            )}
                                           </div>
                                         </TableCell>
                                         <TableCell className="py-2 text-center whitespace-nowrap text-xs">
