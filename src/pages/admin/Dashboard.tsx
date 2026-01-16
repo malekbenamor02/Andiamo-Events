@@ -1376,27 +1376,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setExpirationSettings(result.data);
         toast({
           title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
-          description: language === 'en' ? 'Expiration settings updated successfully. Refreshing orders...' : 'Paramètres d\'expiration mis à jour avec succès. Actualisation des commandes...',
+          description: language === 'en' ? 'Expiration settings updated successfully' : 'Paramètres d\'expiration mis à jour avec succès',
         });
-        
-        // Wait a moment for database updates to complete, then refresh order data
-        setTimeout(async () => {
-          try {
-            await fetchAmbassadorSalesData();
-            
-            // If an order is currently selected, refresh its data too
-            if (selectedOrder) {
-              setTimeout(() => {
-                const refreshedOrder = codAmbassadorOrders.find((o: any) => o.id === selectedOrder.id);
-                if (refreshedOrder) {
-                  setSelectedOrder(refreshedOrder);
-                }
-              }, 500);
-            }
-          } catch (error) {
-            console.error('Error refreshing orders after expiration settings update:', error);
-          }
-        }, 1000);
       }
     } catch (error: any) {
       console.error('Error updating expiration settings:', error);
@@ -14960,7 +14941,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                           </div>
                                         </TableCell>
                                         <TableCell className="py-2 text-center whitespace-nowrap text-xs">
-                                          {order.expires_at && order.status === 'PENDING_CASH' ? (
+                                          {order.expires_at && ['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].includes(order.status) ? (
                                             <div className="flex flex-col items-center gap-1">
                                               <span className={cn(
                                                 "text-xs",
@@ -16972,8 +16953,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {language === 'en' 
-                            ? 'Set default expiration time for PENDING_CASH orders. Expiration starts from order creation date. When activated, applies to all existing orders.' 
-                            : 'Définir le délai d\'expiration par défaut pour les commandes PENDING_CASH. L\'expiration commence à partir de la date de création de la commande. Lors de l\'activation, s\'applique à toutes les commandes existantes.'}
+                            ? 'Set default expiration times for pending orders. Expiration is informational only and serves as a deadline reminder.' 
+                            : 'Définir les délais d\'expiration par défaut pour les commandes en attente. L\'expiration est uniquement informative et sert de rappel de délai.'}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
@@ -16983,10 +16964,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           </div>
                         ) : (
                           <>
-                            {['PENDING_CASH'].map((status) => {
+                            {['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].map((status) => {
                               const setting = expirationSettings.find(s => s.order_status === status);
                               const statusLabel = {
-                                'PENDING_CASH': language === 'en' ? 'Pending Cash Orders' : 'Commandes Espèces en Attente'
+                                'PENDING_CASH': language === 'en' ? 'Pending Cash' : 'Espèces en Attente',
+                                'PENDING_ONLINE': language === 'en' ? 'Pending Online' : 'En Ligne en Attente',
+                                'PENDING_ADMIN_APPROVAL': language === 'en' ? 'Pending Admin Approval' : 'En Attente d\'Approbation'
                               }[status] || status;
                               
                               return (
@@ -18054,7 +18037,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </Card>
 
               {/* Order Expiration Display (Read-Only) */}
-              {selectedOrder.status === 'PENDING_CASH' && selectedOrder.expires_at && (
+              {['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].includes(selectedOrder.status) && selectedOrder.expires_at && (
                 <Card className="bg-muted/30">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -18075,8 +18058,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       </p>
                       <p className="text-xs text-muted-foreground mt-2">
                         {language === 'en' 
-                          ? 'This order will be automatically rejected when the expiration date is reached.' 
-                          : 'Cette commande sera automatiquement rejetée lorsque la date d\'expiration sera atteinte.'}
+                          ? 'Expiration serves as a deadline reminder. No automatic action will be taken when the expiration date is reached.' 
+                          : 'L\'expiration sert de rappel de délai. Aucune action automatique ne sera prise lorsque la date d\'expiration sera atteinte.'}
                       </p>
                     </div>
                   </CardContent>
