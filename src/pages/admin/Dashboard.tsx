@@ -14965,7 +14965,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                           </div>
                                         </TableCell>
                                         <TableCell className="py-2 text-center whitespace-nowrap text-xs">
-                                          {order.expires_at && ['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].includes(order.status) ? (
+                                          {order.expires_at && order.status === 'PENDING_CASH' ? (
                                             <div className="flex flex-col items-center gap-1">
                                               <span className={cn(
                                                 "text-xs",
@@ -16977,7 +16977,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {language === 'en' 
-                            ? 'Set default expiration time for Pending Cash orders. Expiration is informational only and serves as a deadline reminder.' 
+                            ? 'Set default expiration time for Pending Cash orders. Orders will be automatically rejected when expired. Expired orders are checked when you view the orders list.' 
                             : 'Définir le délai d\'expiration par défaut pour les commandes Pending Cash. L\'expiration est uniquement informative et sert de rappel de délai.'}
                         </p>
                       </CardHeader>
@@ -18062,7 +18062,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </Card>
 
               {/* Order Expiration Display (Read-Only) */}
-              {['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].includes(selectedOrder.status) && selectedOrder.expires_at && (
+              {selectedOrder.status === 'PENDING_CASH' && selectedOrder.expires_at && (
                 <Card className="bg-muted/30">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -18083,8 +18083,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       </p>
                       <p className="text-xs text-muted-foreground mt-2">
                         {language === 'en' 
-                          ? 'Expiration serves as a deadline reminder. No automatic action will be taken when the expiration date is reached.' 
-                          : 'L\'expiration sert de rappel de délai. Aucune action automatique ne sera prise lorsque la date d\'expiration sera atteinte.'}
+                          ? 'This order will be automatically rejected when the expiration date is reached. Expired orders are checked when you view the orders list.' 
+                          : 'Cette commande sera automatiquement rejetée lorsque la date d\'expiration sera atteinte. Les commandes expirées sont vérifiées lorsque vous consultez la liste des commandes.'}
                       </p>
                     </div>
                   </CardContent>

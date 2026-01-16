@@ -4188,6 +4188,14 @@ app.get('/api/ambassador/orders', async (req, res) => {
       }
     }
 
+    // Check and auto-reject expired orders before fetching (on-demand checking)
+    try {
+      await dbClient.rpc('auto_reject_expired_pending_cash_orders');
+    } catch (rejectError) {
+      // Log but don't fail the request if auto-rejection fails
+      console.warn('Warning: Failed to auto-reject expired orders:', rejectError);
+    }
+
     const { data: orders, error: ordersError } = await query;
 
     if (ordersError) {
@@ -5430,6 +5438,15 @@ app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res)
     if (date_from) query = query.gte('created_at', date_from);
     if (date_to) query = query.lte('created_at', date_to);
 
+    // Check and auto-reject expired orders before fetching (on-demand checking)
+    const dbClient = supabaseService || supabase;
+    try {
+      await dbClient.rpc('auto_reject_expired_pending_cash_orders');
+    } catch (rejectError) {
+      // Log but don't fail the request if auto-rejection fails
+      console.warn('Warning: Failed to auto-reject expired orders:', rejectError);
+    }
+
     const { data, error, count } = await query;
 
     if (error) {
@@ -5502,6 +5519,47 @@ app.get('/api/admin/ambassador-sales/logs', requireAdminAuth, async (req, res) =
 // ============================================
 // Order Expiration Management Endpoints
 // ============================================
+
+// GET/POST /api/auto-reject-expired-orders - Manual trigger for external cron services
+app.get('/api/auto-reject-expired-orders', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const dbClient = supabaseService || supabase;
+    const { data, error } = await dbClient.rpc('auto_reject_expired_pending_cash_orders');
+
+    if (error) {
+      console.error('Error auto-rejecting expired orders:', error);
+      return res.status(500).json({
+        error: 'Failed to auto-reject expired orders',
+        details: error.message
+      });
+    }
+
+    const result = data && data[0] ? data[0] : { rejected_count: 0, rejected_order_ids: [] };
+
+    res.json({
+      success: true,
+      rejected_count: result.rejected_count || 0,
+      rejected_order_ids: result.rejected_order_ids || [],
+      message: `Auto-rejected ${result.rejected_count || 0} expired order(s)`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error in auto-reject-expired-orders:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+app.post('/api/auto-reject-expired-orders', async (req, res) => {
+  // Same handler as GET
+  return app._router.handle({ ...req, method: 'GET' }, res);
+});
 
 // GET /api/admin/order-expiration-settings - Get global expiration settings
 app.get('/api/admin/order-expiration-settings', requireAdminAuth, async (req, res) => {

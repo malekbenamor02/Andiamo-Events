@@ -1181,7 +1181,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                                 <span className="text-green-400 font-bold">{order.total_price.toFixed(2)} TND</span>
                               </TableCell>
                               <TableCell>
-                                {order.expires_at && ['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].includes(order.status) ? (
+                                {order.expires_at && order.status === 'PENDING_CASH' ? (
                                   <OrderExpirationTimer expiresAt={order.expires_at} language={language} />
                                 ) : (
                                   <span className="text-xs text-muted-foreground">-</span>
@@ -1314,8 +1314,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                               <p className="text-2xl font-bold text-green-400">{order.total_price.toFixed(2)} TND</p>
                             </div>
 
-                            {/* Expiration Timer - Show for pending orders with expiration */}
-                            {order.expires_at && ['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].includes(order.status) && (
+                            {/* Expiration Timer - Show for PENDING_CASH orders with expiration */}
+                            {order.expires_at && order.status === 'PENDING_CASH' && (
                               <div className="p-3 rounded-lg bg-muted/20 border border-border/30">
                                 <p className="text-xs text-muted-foreground mb-2">
                                   {language === 'en' ? 'Time Remaining' : 'Temps Restant'}

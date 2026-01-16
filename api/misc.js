@@ -2708,6 +2708,52 @@ We Create Memories`;
     }
     
     // ============================================
+    // /api/auto-reject-expired-orders (GET/POST) - Manual trigger for external cron services
+    // ============================================
+    if (path === '/api/auto-reject-expired-orders' && (method === 'GET' || method === 'POST')) {
+      try {
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(500).json({
+            error: 'Server configuration error',
+            details: 'Supabase not configured'
+          });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+
+        // Call the database function to auto-reject expired orders
+        const { data, error } = await supabase.rpc('auto_reject_expired_pending_cash_orders');
+
+        if (error) {
+          console.error('Error auto-rejecting expired orders:', error);
+          return res.status(500).json({
+            error: 'Failed to auto-reject expired orders',
+            details: error.message
+          });
+        }
+
+        const result = data && data[0] ? data[0] : { rejected_count: 0, rejected_order_ids: [] };
+
+        return res.status(200).json({
+          success: true,
+          rejected_count: result.rejected_count || 0,
+          rejected_order_ids: result.rejected_order_ids || [],
+          message: `Auto-rejected ${result.rejected_count || 0} expired order(s)`,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Error in auto-reject-expired-orders:', error);
+        return res.status(500).json({
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+
     // /api/admin/ambassador-sales/orders (GET)
     // ============================================
     if (path === '/api/admin/ambassador-sales/orders' && method === 'GET') {
@@ -2781,6 +2827,14 @@ We Create Memories`;
         if (ville) query = query.eq('ville', ville);
         if (date_from) query = query.gte('created_at', date_from);
         if (date_to) query = query.lte('created_at', date_to);
+        
+        // Check and auto-reject expired orders before fetching (on-demand checking)
+        try {
+          await supabase.rpc('auto_reject_expired_pending_cash_orders');
+        } catch (rejectError) {
+          // Log but don't fail the request if auto-rejection fails
+          console.warn('Warning: Failed to auto-reject expired orders:', rejectError);
+        }
         
         const { data, error, count } = await query;
         
