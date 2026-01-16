@@ -5558,19 +5558,11 @@ app.post('/api/admin/order-expiration-settings', requireAdminAuth, async (req, r
           throw new Error(`Invalid setting for ${order_status}`);
         }
         
-        // Allow all pending statuses
-        if (!['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].includes(order_status)) {
-          throw new Error(`Invalid order status for expiration: ${order_status}`);
+        // Only allow PENDING_CASH
+        if (order_status !== 'PENDING_CASH') {
+          throw new Error(`Only PENDING_CASH expiration is supported. Invalid status: ${order_status}`);
         }
         
-        // Get current setting for this order status
-        const { data: currentSetting } = await dbClient
-          .from('order_expiration_settings')
-          .select('*')
-          .eq('order_status', order_status)
-          .single();
-        
-        const wasActive = currentSetting?.is_active;
         const isNowActive = is_active !== undefined ? is_active : true;
 
         const { data, error } = await dbClient
@@ -5589,9 +5581,6 @@ app.post('/api/admin/order-expiration-settings', requireAdminAuth, async (req, r
         if (error) {
           throw error;
         }
-        
-        // Note: Automatic application/clearing of expiration is currently disabled
-        // Expiration is informational only. Manual management by admins is expected.
 
         return data;
       })
