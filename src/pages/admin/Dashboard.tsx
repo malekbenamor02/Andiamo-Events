@@ -16953,8 +16953,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {language === 'en' 
-                            ? 'Set default expiration times for pending orders. Expiration is informational only and serves as a deadline reminder.' 
-                            : 'Définir les délais d\'expiration par défaut pour les commandes en attente. L\'expiration est uniquement informative et sert de rappel de délai.'}
+                            ? 'Set default expiration time for Pending Cash orders. Expiration is informational only and serves as a deadline reminder.' 
+                            : 'Définir le délai d\'expiration par défaut pour les commandes Pending Cash. L\'expiration est uniquement informative et sert de rappel de délai.'}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
@@ -16964,12 +16964,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           </div>
                         ) : (
                           <>
-                            {['PENDING_CASH', 'PENDING_ONLINE', 'PENDING_ADMIN_APPROVAL'].map((status) => {
+                            {['PENDING_CASH'].map((status) => {
                               const setting = expirationSettings.find(s => s.order_status === status);
                               const statusLabel = {
-                                'PENDING_CASH': language === 'en' ? 'Pending Cash' : 'Espèces en Attente',
-                                'PENDING_ONLINE': language === 'en' ? 'Pending Online' : 'En Ligne en Attente',
-                                'PENDING_ADMIN_APPROVAL': language === 'en' ? 'Pending Admin Approval' : 'En Attente d\'Approbation'
+                                'PENDING_CASH': language === 'en' ? 'Pending Cash' : 'Espèces en Attente'
                               }[status] || status;
                               
                               return (
@@ -16987,7 +16985,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                         if (!updated.find(s => s.order_status === status)) {
                                           updated.push({
                                             order_status: status,
-                                            default_expiration_hours: 24,
+                                            default_expiration_hours: setting?.default_expiration_hours || 48,
                                             is_active: checked
                                           });
                                         }
@@ -16996,41 +16994,40 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                       disabled={loadingExpirationSettings}
                                     />
                                   </div>
-                                  {setting?.is_active !== false && (
-                                    <div className="space-y-2">
-                                      <Label className="text-xs text-foreground/70">
-                                        {language === 'en' ? 'Default Expiration (hours)' : 'Expiration par Défaut (heures)'}
-                                      </Label>
-                                      <div className="flex items-center gap-2">
-                                        <Input
-                                          type="number"
-                                          min="1"
-                                          value={setting?.default_expiration_hours || 24}
-                                          onChange={(e) => {
-                                            const hours = parseInt(e.target.value) || 24;
-                                            const updated = expirationSettings.map(s =>
-                                              s.order_status === status
-                                                ? { ...s, default_expiration_hours: hours }
-                                                : s
-                                            );
-                                            if (!updated.find(s => s.order_status === status)) {
-                                              updated.push({
-                                                order_status: status,
-                                                default_expiration_hours: hours,
-                                                is_active: true
-                                              });
-                                            }
-                                            updateExpirationSettings(updated);
-                                          }}
-                                          disabled={loadingExpirationSettings}
-                                          className="w-20"
-                                        />
-                                        <span className="text-xs text-foreground/60">
-                                          {language === 'en' ? 'hours' : 'heures'}
-                                        </span>
-                                      </div>
+                                  {/* Always show time input, even when inactive */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs text-foreground/70">
+                                      {language === 'en' ? 'Default Expiration (hours)' : 'Expiration par Défaut (heures)'}
+                                    </Label>
+                                    <div className="flex items-center gap-2">
+                                      <Input
+                                        type="number"
+                                        min="1"
+                                        value={setting?.default_expiration_hours || 48}
+                                        onChange={(e) => {
+                                          const hours = parseInt(e.target.value) || 48;
+                                          const updated = expirationSettings.map(s =>
+                                            s.order_status === status
+                                              ? { ...s, default_expiration_hours: hours }
+                                              : s
+                                          );
+                                          if (!updated.find(s => s.order_status === status)) {
+                                            updated.push({
+                                              order_status: status,
+                                              default_expiration_hours: hours,
+                                              is_active: setting?.is_active !== false
+                                            });
+                                          }
+                                          updateExpirationSettings(updated);
+                                        }}
+                                        disabled={loadingExpirationSettings}
+                                        className="w-20"
+                                      />
+                                      <span className="text-xs text-foreground/60">
+                                        {language === 'en' ? 'hours' : 'heures'}
+                                      </span>
                                     </div>
-                                  )}
+                                  </div>
                                 </div>
                               );
                             })}
