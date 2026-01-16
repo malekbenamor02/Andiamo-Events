@@ -1367,11 +1367,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         body: JSON.stringify({ settings })
       });
       
+      const result = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Failed to update expiration settings');
+        throw new Error(result.error || 'Failed to update expiration settings');
       }
       
-      const result = await response.json();
       if (result.success) {
         setExpirationSettings(result.data);
         toast({
