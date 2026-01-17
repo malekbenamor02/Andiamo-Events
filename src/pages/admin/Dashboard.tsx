@@ -15028,7 +15028,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                           </div>
                                         </TableCell>
                                         <TableCell className="py-2 text-center whitespace-nowrap text-xs">
-                                          {order.expires_at && order.status === 'PENDING_CASH' ? (
+                                          {order.status === 'REJECTED' && order.rejected_at ? (
+                                            <div className="flex flex-col items-center gap-1">
+                                              <Badge variant="destructive" className="text-xs px-1 py-0">
+                                                {language === 'en' ? 'Rejected' : 'Rejeté'}
+                                              </Badge>
+                                              {order.expires_at && (
+                                                <span className="text-xs text-muted-foreground">
+                                                  {new Date(order.expires_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                  })}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ) : order.expires_at && order.status === 'PENDING_CASH' ? (
                                             <div className="flex flex-col items-center gap-1">
                                               <span className={cn(
                                                 "text-xs",
@@ -17045,38 +17061,53 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
-                        {/* Manual trigger button */}
-                        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-foreground mb-1">
-                                {language === 'en' ? 'Manual Reject Expired Orders' : 'Rejeter Manuellement les Commandes Expirées'}
-                              </p>
-                              <p className="text-xs text-foreground/60">
-                                {language === 'en' 
-                                  ? 'Manually trigger rejection of expired orders. For automatic rejection, set up an external cron service (see CRON_SETUP.md).' 
-                                  : 'Déclencher manuellement le rejet des commandes expirées. Pour un rejet automatique, configurez un service cron externe (voir CRON_SETUP.md).'}
-                              </p>
+                        {/* Manual trigger section - Improved Design */}
+                        <div className="mb-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-lg border-2 border-blue-200 dark:border-blue-800 shadow-sm">
+                          <div className="flex items-start gap-4">
+                            <div className="flex-shrink-0 mt-1">
+                              <div className="w-10 h-10 rounded-full bg-blue-500 dark:bg-blue-600 flex items-center justify-center shadow-md">
+                                <Clock className="w-5 h-5 text-white" />
+                              </div>
                             </div>
-                            <Button
-                              onClick={triggerAutoRejectExpired}
-                              disabled={rejectingExpired}
-                              variant="outline"
-                              size="sm"
-                              className="ml-4"
-                            >
-                              {rejectingExpired ? (
-                                <>
-                                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                                  {language === 'en' ? 'Processing...' : 'Traitement...'}
-                                </>
-                              ) : (
-                                <>
-                                  <Clock className="w-4 h-4 mr-2" />
-                                  {language === 'en' ? 'Reject Expired' : 'Rejeter Expirées'}
-                                </>
-                              )}
-                            </Button>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-sm font-semibold text-foreground">
+                                  {language === 'en' ? 'Manual Rejection' : 'Rejet Manuel'}
+                                </h4>
+                                <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">
+                                  {language === 'en' ? 'Instant Action' : 'Action Immédiate'}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-foreground/70 mb-3 leading-relaxed">
+                                {language === 'en' 
+                                  ? 'Click the button below to immediately reject all expired PENDING_CASH orders. Stock will be automatically released and orders will be marked as REJECTED.' 
+                                  : 'Cliquez sur le bouton ci-dessous pour rejeter immédiatement toutes les commandes PENDING_CASH expirées. Le stock sera automatiquement libéré et les commandes seront marquées comme REJETÉES.'}
+                              </p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Button
+                                  onClick={triggerAutoRejectExpired}
+                                  disabled={rejectingExpired}
+                                  variant="default"
+                                  size="sm"
+                                  className="bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                                >
+                                  {rejectingExpired ? (
+                                    <>
+                                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                      {language === 'en' ? 'Processing...' : 'Traitement...'}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <XCircle className="w-4 h-4 mr-2" />
+                                      {language === 'en' ? 'Reject Expired Orders' : 'Rejeter les Commandes Expirées'}
+                                    </>
+                                  )}
+                                </Button>
+                                <span className="text-xs text-foreground/50">
+                                  {language === 'en' ? 'For automatic rejection every 5 minutes, set up an external cron service' : 'Pour un rejet automatique toutes les 5 minutes, configurez un service cron externe'}
+                                </span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                         {loadingExpirationSettings ? (
