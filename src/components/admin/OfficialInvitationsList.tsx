@@ -798,8 +798,8 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
                 <Button
                   variant="destructive"
                   onClick={() => {
-                    handleDelete(selectedInvitation.id, selectedInvitation.invitation_number);
                     setDetailsOpen(false);
+                    handleDeleteClick(selectedInvitation.id, selectedInvitation.invitation_number);
                   }}
                   className="flex-1"
                 >
@@ -811,6 +811,45 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
           ) : null}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              {language === 'en' ? 'Delete Invitation' : 'Supprimer l\'Invitation'}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="pt-2">
+              {language === 'en' 
+                ? `Are you sure you want to delete invitation ${invitationToDelete?.number}? This action cannot be undone and will permanently delete the invitation and all associated QR codes.`
+                : `Êtes-vous sûr de vouloir supprimer l'invitation ${invitationToDelete?.number}? Cette action est irréversible et supprimera définitivement l'invitation et tous les codes QR associés.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>
+              {language === 'en' ? 'Cancel' : 'Annuler'}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {language === 'en' ? 'Deleting...' : 'Suppression...'}
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {language === 'en' ? 'Delete' : 'Supprimer'}
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
