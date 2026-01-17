@@ -49,6 +49,8 @@ import { useInvalidateEvents } from "@/hooks/useEvents";
 import { useInvalidateSiteContent } from "@/hooks/useSiteContent";
 import { logger } from "@/lib/logger";
 import { ReportsAnalytics } from "@/components/admin/analytics/ReportsAnalytics";
+import { OfficialInvitationForm } from "@/components/admin/OfficialInvitationForm";
+import { OfficialInvitationsList } from "@/components/admin/OfficialInvitationsList";
 
 
 interface AdminDashboardProps {
@@ -9882,6 +9884,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   <span>{language === 'en' ? 'Admins' : 'Administrateurs'}</span>
                 </button>
               )}
+              {currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => setActiveTab("official-invitations")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-750 ${
+                    activeTab === "official-invitations" 
+                      ? "shadow-lg" 
+                      : ""
+                  }`}
+                  style={{
+                    color: activeTab === "official-invitations" ? '#E21836' : '#B8B8B8',
+                    background: activeTab === "official-invitations" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                  }}
+                >
+                  <Mail className={`w-4 h-4 transition-transform duration-300 ${activeTab === "official-invitations" ? "animate-pulse" : ""}`} />
+                  <span>{language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}</span>
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab("contact")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-${currentAdminRole === 'super_admin' ? '800' : '700'} ${
@@ -10090,7 +10109,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               value={activeTab} 
               onValueChange={(value) => {
                 // Prevent regular admins from accessing super_admin-only tabs
-                if (currentAdminRole !== 'super_admin' && (value === 'logs' || value === 'settings' || value === 'admins')) {
+                if (currentAdminRole !== 'super_admin' && (value === 'logs' || value === 'settings' || value === 'admins' || value === 'official-invitations')) {
                   return; // Don't allow tab change
                 }
                 setActiveTab(value);
@@ -12446,6 +12465,37 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       </Table>
                     </CardContent>
                   </Card>
+                </TabsContent>
+              )}
+
+              {/* Official Invitations Tab - Only visible to super_admin */}
+              {currentAdminRole === 'super_admin' && (
+                <TabsContent value="official-invitations" className="space-y-6">
+                  <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
+                    <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+                      {language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}
+                    </h2>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Create Invitation Form */}
+                    <div className="lg:col-span-1">
+                      <OfficialInvitationForm 
+                        onSuccess={() => {
+                          // Refresh list will be handled by the list component
+                          if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new Event('invitation-created'));
+                          }
+                        }}
+                        language={language}
+                      />
+                    </div>
+                    
+                    {/* Invitations List */}
+                    <div className="lg:col-span-2">
+                      <OfficialInvitationsList language={language} />
+                    </div>
+                  </div>
                 </TabsContent>
               )}
 

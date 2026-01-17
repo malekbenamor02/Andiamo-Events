@@ -92,6 +92,13 @@ export const API_ROUTES = {
   // AIO Events Submissions (Admin) - via misc.js
   ADMIN_AIO_EVENTS_SUBMISSIONS: '/api/admin/aio-events-submissions',
   
+  // Official Invitations (Super Admin Only)
+  CREATE_OFFICIAL_INVITATION: '/api/admin/official-invitations/create',
+  GET_OFFICIAL_INVITATIONS: '/api/admin/official-invitations',
+  GET_OFFICIAL_INVITATION: (id: string) => `/api/admin/official-invitations/${id}`,
+  RESEND_INVITATION_EMAIL: (id: string) => `/api/admin/official-invitations/${id}/resend`,
+  DELETE_OFFICIAL_INVITATION: (id: string) => `/api/admin/official-invitations/${id}`,
+  
   // Testing & Diagnostics
   TEST: '/api/test',
   TEST_SUPABASE: '/api/test-supabase',

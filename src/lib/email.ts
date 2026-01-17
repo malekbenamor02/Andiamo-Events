@@ -2244,3 +2244,724 @@ export const sendEmailWithDetails = async (emailConfig: EmailConfig): Promise<Em
     };
   }
 };
+
+/**
+ * Official Invitation Email Data
+ */
+interface OfficialInvitationEmailData {
+  guestName: string;
+  guestPhone: string;
+  guestEmail: string;
+  event: {
+    name: string;
+    date: string;
+    venue: string;
+    city?: string;
+  };
+  passType: string;
+  invitationNumber: string;
+  zoneName?: string;
+  zoneDescription?: string;
+  qrCodes: Array<{
+    secure_token: string;
+    qr_code_url: string;
+  }>;
+  customMessage?: string;
+}
+
+/**
+ * Create Official Invitation Email Template
+ * Uses the same template style as official-invitation-email-preview.html
+ */
+export const createOfficialInvitationEmail = (data: OfficialInvitationEmailData): EmailConfig => {
+  const subject = "Official Invitation – Andiamo Events";
+  
+  // Format event date
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  // Format event time
+  const formatTime = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    } catch {
+      return '';
+    }
+  };
+
+  const eventDate = formatDate(data.event.date);
+  const eventTime = formatTime(data.event.date);
+
+  // Build QR codes HTML (support multiple QR codes)
+  const qrCodesHtml = data.qrCodes.map((qr, index) => {
+    if (data.qrCodes.length === 1) {
+      // Single QR code - show it centered
+      return `
+        <img src="${qr.qr_code_url}" alt="Invitation QR Code" class="qr-code-image" />
+      `;
+    } else {
+      // Multiple QR codes - show them in a grid
+      return `
+        <div style="margin: 20px 0; padding: 20px; background: #FFFFFF; border: 2px solid #E21836; border-radius: 12px; display: inline-block; margin: 10px;">
+          <p style="margin: 0 0 15px 0; color: #E21836; font-size: 14px; font-weight: 600;">QR Code ${index + 1}</p>
+          <img src="${qr.qr_code_url}" alt="Invitation QR Code ${index + 1}" style="max-width: 250px; height: auto; display: block; margin: 0 auto; border-radius: 8px;" />
+        </div>
+      `;
+    }
+  }).join('');
+
+  const qrCodeSectionTitle = data.qrCodes.length > 1 
+    ? `Your QR Codes (${data.qrCodes.length})` 
+    : "Your QR Code";
+
+  const qrCodeInstruction = data.qrCodes.length > 1
+    ? "Scan any of these QR codes at the entrance to access your assigned zone"
+    : "Scan this QR code at the entrance to access your assigned zone";
+
+  // Build zone table HTML
+  const zoneTableHtml = data.zoneName && data.zoneDescription ? `
+    <table class="zone-table">
+      <thead>
+        <tr>
+          <th>Zone</th>
+          <th>Access Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${data.zoneName}</td>
+          <td>${data.zoneDescription}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="message" style="margin-top: 20px; font-size: 14px;">
+      Access is valid only for the zone mentioned above.<br>
+      Zone changes are not permitted on-site.
+    </p>
+  ` : '';
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
+      <title>Official Invitation – Andiamo Events</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+          line-height: 1.6; 
+          color: #1A1A1A; 
+          background: #FFFFFF;
+          padding: 0;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+        @media (prefers-color-scheme: dark) {
+          body {
+            color: #FFFFFF;
+            background: #1A1A1A;
+          }
+        }
+        a {
+          color: #E21836 !important;
+          text-decoration: none;
+        }
+        .email-wrapper {
+          max-width: 600px;
+          margin: 0 auto;
+          background: #FFFFFF;
+        }
+        @media (prefers-color-scheme: dark) {
+          .email-wrapper {
+            background: #1A1A1A;
+          }
+        }
+        .content-card {
+          background: #F5F5F5;
+          margin: 0 20px 30px;
+          border-radius: 12px;
+          padding: 50px 40px;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .content-card {
+            background: #1F1F1F;
+            border: 1px solid rgba(42, 42, 42, 0.5);
+          }
+        }
+        .title-section {
+          text-align: center;
+          margin-bottom: 40px;
+          padding-bottom: 30px;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .title-section {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          }
+        }
+        .title {
+          font-size: 32px;
+          font-weight: 700;
+          color: #1A1A1A;
+          margin-bottom: 12px;
+          letter-spacing: -0.5px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .title {
+            color: #FFFFFF;
+          }
+        }
+        .subtitle {
+          font-size: 16px;
+          color: #666666;
+          font-weight: 400;
+        }
+        @media (prefers-color-scheme: dark) {
+          .subtitle {
+            color: #B0B0B0;
+          }
+        }
+        .greeting {
+          font-size: 18px;
+          color: #1A1A1A;
+          margin-bottom: 30px;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .greeting {
+            color: #FFFFFF;
+          }
+        }
+        .greeting strong {
+          color: #E21836;
+          font-weight: 600;
+        }
+        .message {
+          font-size: 16px;
+          color: #666666;
+          margin-bottom: 25px;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .message {
+            color: #B0B0B0;
+          }
+        }
+        .info-block {
+          background: #E8E8E8;
+          border: 1px solid rgba(0, 0, 0, 0.15);
+          border-radius: 8px;
+          padding: 30px;
+          margin: 40px 0;
+        }
+        @media (prefers-color-scheme: dark) {
+          .info-block {
+            background: #252525;
+            border: 1px solid rgba(42, 42, 42, 0.8);
+          }
+        }
+        .info-row {
+          margin-bottom: 25px;
+        }
+        .info-row:last-child {
+          margin-bottom: 0;
+        }
+        .info-label {
+          font-size: 11px;
+          color: #999999;
+          text-transform: uppercase;
+          letter-spacing: 1.2px;
+          margin-bottom: 10px;
+          font-weight: 600;
+        }
+        @media (prefers-color-scheme: dark) {
+          .info-label {
+            color: #6B6B6B;
+          }
+        }
+        .info-value {
+          font-size: 18px;
+          color: #1A1A1A;
+          font-weight: 500;
+          letter-spacing: 0.5px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .info-value {
+            color: #FFFFFF;
+          }
+        }
+        .event-details-block {
+          background: #E8E8E8;
+          border: 1px solid rgba(0, 0, 0, 0.15);
+          border-radius: 8px;
+          padding: 30px;
+          margin: 40px 0;
+        }
+        @media (prefers-color-scheme: dark) {
+          .event-details-block {
+            background: #252525;
+            border: 1px solid rgba(42, 42, 42, 0.8);
+          }
+        }
+        .event-details-title {
+          font-size: 18px;
+          color: #E21836;
+          font-weight: 600;
+          margin-bottom: 20px;
+        }
+        .event-detail-row {
+          margin-bottom: 15px;
+        }
+        .event-detail-row:last-child {
+          margin-bottom: 0;
+        }
+        .event-detail-label {
+          font-size: 11px;
+          color: #999999;
+          text-transform: uppercase;
+          letter-spacing: 1.2px;
+          margin-bottom: 5px;
+          font-weight: 600;
+        }
+        @media (prefers-color-scheme: dark) {
+          .event-detail-label {
+            color: #6B6B6B;
+          }
+        }
+        .event-detail-value {
+          font-size: 16px;
+          color: #1A1A1A;
+          font-weight: 500;
+        }
+        @media (prefers-color-scheme: dark) {
+          .event-detail-value {
+            color: #FFFFFF;
+          }
+        }
+        .zone-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 20px;
+        }
+        .zone-table th {
+          background: #1A1A1A;
+          color: #FFFFFF;
+          padding: 12px;
+          text-align: left;
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 1.2px;
+          font-weight: 600;
+        }
+        @media (prefers-color-scheme: dark) {
+          .zone-table th {
+            background: #2A2A2A;
+          }
+        }
+        .zone-table td {
+          padding: 12px;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+          font-size: 14px;
+          color: #1A1A1A;
+        }
+        @media (prefers-color-scheme: dark) {
+          .zone-table td {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: #FFFFFF;
+          }
+        }
+        .zone-table tr:last-child td {
+          border-bottom: none;
+        }
+        .qr-code-section {
+          text-align: center;
+          margin: 40px 0;
+          padding: 30px;
+          background: #FFFFFF;
+          border: 2px solid #E21836;
+          border-radius: 12px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .qr-code-section {
+            background: #1F1F1F;
+          }
+        }
+        .qr-code-title {
+          font-size: 20px;
+          color: #1A1A1A;
+          font-weight: 600;
+          margin-bottom: 15px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .qr-code-title {
+            color: #FFFFFF;
+          }
+        }
+        .qr-code-instruction {
+          font-size: 15px;
+          color: #666666;
+          margin-bottom: 25px;
+          line-height: 1.6;
+        }
+        @media (prefers-color-scheme: dark) {
+          .qr-code-instruction {
+            color: #B0B0B0;
+          }
+        }
+        .qr-code-image {
+          max-width: 300px;
+          height: auto;
+          display: block;
+          margin: 0 auto 20px;
+          border-radius: 8px;
+        }
+        .rules-section {
+          background: #FFF9E6;
+          border-left: 3px solid #E21836;
+          padding: 20px 25px;
+          margin: 35px 0;
+          border-radius: 4px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .rules-section {
+            background: #2A2419;
+            border-left: 3px solid #E21836;
+          }
+        }
+        .rules-title {
+          font-size: 16px;
+          color: #E21836;
+          font-weight: 600;
+          margin-bottom: 15px;
+        }
+        .rules-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+        }
+        .rules-list li {
+          font-size: 14px;
+          color: #666666;
+          line-height: 1.8;
+          margin-bottom: 10px;
+          padding-left: 25px;
+          position: relative;
+        }
+        @media (prefers-color-scheme: dark) {
+          .rules-list li {
+            color: #B0B0B0;
+          }
+        }
+        .rules-list li:before {
+          content: "⚠️";
+          position: absolute;
+          left: 0;
+        }
+        .rules-list li:last-child {
+          margin-bottom: 0;
+        }
+        .arrival-note {
+          font-size: 14px;
+          color: #666666;
+          margin-top: 15px;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .arrival-note {
+            color: #B0B0B0;
+          }
+        }
+        .support-section {
+          background: #E8E8E8;
+          border-left: 3px solid rgba(226, 24, 54, 0.3);
+          padding: 20px 25px;
+          margin: 35px 0;
+          border-radius: 4px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .support-section {
+            background: #252525;
+          }
+        }
+        .support-text {
+          font-size: 14px;
+          color: #666666;
+          line-height: 1.7;
+          margin-bottom: 10px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .support-text {
+            color: #B0B0B0;
+          }
+        }
+        .support-contact {
+          font-size: 14px;
+          color: #666666;
+          line-height: 1.8;
+        }
+        @media (prefers-color-scheme: dark) {
+          .support-contact {
+            color: #B0B0B0;
+          }
+        }
+        .support-email {
+          color: #E21836 !important;
+          text-decoration: none;
+          font-weight: 500;
+        }
+        .closing-section {
+          text-align: center;
+          margin: 50px 0 40px;
+          padding-top: 40px;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .closing-section {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+          }
+        }
+        .slogan {
+          font-size: 24px;
+          font-style: italic;
+          color: #E21836;
+          font-weight: 300;
+          letter-spacing: 1px;
+          margin-bottom: 30px;
+        }
+        .signature {
+          font-size: 16px;
+          color: #666666;
+          line-height: 1.7;
+        }
+        @media (prefers-color-scheme: dark) {
+          .signature {
+            color: #B0B0B0;
+          }
+        }
+        .footer {
+          margin-top: 50px;
+          padding: 40px 20px 30px;
+          text-align: center;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer {
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+          }
+        }
+        .footer-text {
+          font-size: 12px;
+          color: #999999;
+          margin-bottom: 20px;
+          line-height: 1.6;
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer-text {
+            color: #6B6B6B;
+          }
+        }
+        .footer-links {
+          margin: 15px auto 0;
+          text-align: center;
+        }
+        .footer-link {
+          color: #999999;
+          text-decoration: none;
+          font-size: 13px;
+          margin: 0 8px;
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer-link {
+            color: #6B6B6B;
+          }
+        }
+        .footer-link:hover {
+          color: #E21836 !important;
+        }
+        @media only screen and (max-width: 600px) {
+          .content-card {
+            margin: 0 15px 20px;
+            padding: 35px 25px;
+          }
+          .title {
+            font-size: 26px;
+          }
+          .info-block, .event-details-block {
+            padding: 25px 20px;
+          }
+          .zone-table {
+            font-size: 12px;
+          }
+          .zone-table th,
+          .zone-table td {
+            padding: 8px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="email-wrapper">
+        <!-- Main Content Card -->
+        <div class="content-card">
+          <!-- Title Section -->
+          <div class="title-section">
+            <h1 class="title">Official Invitation</h1>
+            <p class="subtitle">Andiamo Events</p>
+          </div>
+          
+          <!-- Greeting -->
+          <p class="greeting">Dear <strong>${data.guestName}</strong>,</p>
+          
+          <!-- Invitation Message -->
+          <p class="message">
+            Mouayed Chakir has the pleasure to invite you to the <strong>${data.event.name}</strong>, proudly organized by Andiamo Events.
+          </p>
+          
+          <p class="message">
+            We are pleased to confirm that your invitation has been successfully registered.
+            This email serves as your official entry pass to the event.
+          </p>
+          
+          <p class="message">
+            Please find your personal QR code${data.qrCodes.length > 1 ? 's' : ''} included below. ${data.qrCodes.length > 1 ? 'They' : 'It'} will be required for access control and validation at the venue.
+          </p>
+          
+          <p class="message">
+            Kindly keep this invitation available on your phone or printed on the day of the event.
+          </p>
+          
+          ${data.customMessage ? `
+          <div class="info-block" style="background: #FFF9E6; border-left: 3px solid #E21836;">
+            <p class="message" style="margin: 0; font-style: italic;">
+              ${data.customMessage}
+            </p>
+          </div>
+          ` : ''}
+          
+          <!-- Event Details -->
+          <div class="event-details-block">
+            <div class="event-details-title">Event Details</div>
+            <div class="event-detail-row">
+              <div class="event-detail-label">Date</div>
+              <div class="event-detail-value">${eventDate}</div>
+            </div>
+            ${eventTime ? `
+            <div class="event-detail-row">
+              <div class="event-detail-label">Show Time</div>
+              <div class="event-detail-value">${eventTime}</div>
+            </div>
+            ` : ''}
+            <div class="event-detail-row">
+              <div class="event-detail-label">Venue</div>
+              <div class="event-detail-value">${data.event.venue}</div>
+            </div>
+          </div>
+          
+          <!-- Invitation Details -->
+          <div class="info-block">
+            <div class="info-row">
+              <div class="info-label">Invitation</div>
+              <div class="info-value">#${data.invitationNumber}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Guest Name</div>
+              <div class="info-value">${data.guestName}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Phone Number</div>
+              <div class="info-value">${data.guestPhone}</div>
+            </div>
+          </div>
+          
+          ${zoneTableHtml ? `
+          <!-- Zone & Access Details -->
+          <div class="info-block">
+            <div class="info-label" style="margin-bottom: 15px;">Zone & Access Details</div>
+            ${zoneTableHtml}
+          </div>
+          ` : ''}
+          
+          <!-- QR Code Section -->
+          <div class="qr-code-section">
+            <h3 class="qr-code-title">${qrCodeSectionTitle}</h3>
+            <p class="qr-code-instruction">
+              ${qrCodeInstruction}
+            </p>
+            ${qrCodesHtml}
+          </div>
+          
+          <!-- Important Access Rules -->
+          <div class="rules-section">
+            <div class="rules-title">Important Access Rules</div>
+            <ul class="rules-list">
+              <li>Each QR code is valid for one (1) person only and for a single entry.</li>
+              <li>Reproduction, sharing, or duplication of the QR code is strictly prohibited.</li>
+              <li>Once scanned, the QR code becomes invalid.</li>
+            </ul>
+            <p class="arrival-note">
+              Please arrive at least 1h30mn before the show time to ensure smooth check-in.
+            </p>
+          </div>
+          
+          <!-- Support Section -->
+          <div class="support-section">
+            <p class="support-text">
+              For any assistance or additional information, please contact us at
+            </p>
+            <p class="support-contact">
+              <a href="mailto:contact@andiamoevents.com" class="support-email">contact@andiamoevents.com</a> or <strong style="color: #E21836 !important;">+216 28 070 128</strong>
+            </p>
+          </div>
+          
+          <!-- Closing Section -->
+          <div class="closing-section">
+            <p class="slogan">We Create Memories</p>
+            <p class="signature">
+              Best regards,<br>
+              Andiamo Events Team
+            </p>
+          </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+          <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+          <div class="footer-links">
+            <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
+            <span style="color: #999999;">•</span>
+            <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return {
+    from: '"Andiamo Events" <contact@andiamoevents.com>',
+    to: data.guestEmail,
+    subject,
+    html
+  };
+};
