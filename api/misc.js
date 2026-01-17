@@ -2861,27 +2861,52 @@ We Create Memories`;
 
         console.log('Calling auto_reject_expired_pending_cash_orders function...');
         
+        // First, check how many expired orders exist (for diagnostics)
+        const { count: expiredCount, error: checkError } = await supabase
+          .from('orders')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'PENDING_CASH')
+          .not('expires_at', 'is', null)
+          .lt('expires_at', new Date().toISOString())
+          .is('rejected_at', null);
+        
+        const expiredCountValue = expiredCount || 0;
+        console.log(`Found ${expiredCountValue} expired PENDING_CASH orders before rejection`);
+        
         // Call the database function to auto-reject expired orders
         // This function automatically releases stock BEFORE rejecting orders
         const { data, error } = await supabase.rpc('auto_reject_expired_pending_cash_orders');
 
         if (error) {
-          console.error('Error auto-rejecting expired orders:', error);
+          console.error('❌ Error auto-rejecting expired orders:', error);
+          console.error('Error details:', JSON.stringify(error, null, 2));
           return res.status(500).json({
             error: 'Failed to auto-reject expired orders',
-            details: error.message
+            details: error.message,
+            expired_orders_found: expiredCountValue
           });
         }
 
         const result = data && data[0] ? data[0] : { rejected_count: 0, rejected_order_ids: [] };
         
-        console.log(`Auto-reject completed: ${result.rejected_count || 0} orders rejected`);
+        console.log(`✅ Auto-reject completed: ${result.rejected_count || 0} orders rejected`);
+        console.log(`   Rejected order IDs:`, result.rejected_order_ids || []);
+        
+        // If we found expired orders but none were rejected, log a warning
+        if (expiredCountValue > 0 && (result.rejected_count || 0) === 0) {
+          console.warn(`⚠️ WARNING: Found ${expiredCountValue} expired orders but none were rejected. Check database function logic.`);
+        }
 
         return res.status(200).json({
           success: true,
           rejected_count: result.rejected_count || 0,
           rejected_order_ids: result.rejected_order_ids || [],
-          message: `Auto-rejected ${result.rejected_count || 0} expired order(s). Stock has been automatically released.`,
+          expired_orders_found: expiredCountValue,
+          message: result.rejected_count > 0 
+            ? `Auto-rejected ${result.rejected_count} expired order(s). Stock has been automatically released.`
+            : expiredCountValue > 0
+              ? `Found ${expiredCountValue} expired order(s) but none were rejected. Check order conditions.`
+              : `No expired orders found.`,
           timestamp: new Date().toISOString()
         });
       } catch (error) {
