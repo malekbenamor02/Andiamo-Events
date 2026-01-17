@@ -24,7 +24,7 @@ DECLARE
   expired_order RECORD;
   rejected_ids UUID[] := ARRAY[]::UUID[];
   rejected_total INTEGER := 0;
-  stock_released BOOLEAN;
+  stock_release_result BOOLEAN;
   update_count INTEGER;
 BEGIN
   -- Find all expired PENDING_CASH orders that haven't been rejected yet
@@ -47,9 +47,9 @@ BEGIN
     BEGIN
       -- CRITICAL: Release stock first (before status change)
       -- This uses the enhanced version with pass_type fallback
-      SELECT release_order_stock_internal(expired_order.id) INTO stock_released;
+      SELECT release_order_stock_internal(expired_order.id) INTO stock_release_result;
       
-      IF NOT stock_released THEN
+      IF NOT stock_release_result THEN
         -- If stock release failed, log warning but continue
         -- The trigger will catch it as a safety net
         RAISE WARNING 'Stock release failed for order % (may already be released or pass_id missing)', expired_order.id;
@@ -90,7 +90,7 @@ BEGIN
               'reason', 'Order expired automatically',
               'expires_at', expired_order.expires_at,
               'created_at', expired_order.created_at,
-              'stock_released', stock_released,
+              'stock_released', stock_release_result,
               'previous_stock_released', expired_order.current_stock_released,
               'auto_action', true,
               'rejected_at', NOW()
@@ -102,7 +102,7 @@ BEGIN
         END;
         
         RAISE NOTICE 'Auto-rejected expired order % (expired at %, stock_released: %)', 
-          expired_order.id, expired_order.expires_at, stock_released;
+          expired_order.id, expired_order.expires_at, stock_release_result;
       ELSE
         -- Status update failed - order may have been changed by another process
         RAISE WARNING 'Failed to update status for order % (may have been changed by another process)', expired_order.id;
