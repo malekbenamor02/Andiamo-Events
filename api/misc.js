@@ -2880,10 +2880,26 @@ We Create Memories`;
         if (error) {
           console.error('❌ Error auto-rejecting expired orders:', error);
           console.error('Error details:', JSON.stringify(error, null, 2));
+          
+          // Provide helpful error message based on error type
+          let errorMessage = error.message || 'Unknown error';
+          let helpfulMessage = errorMessage;
+          
+          // Check if function doesn't exist
+          if (errorMessage.includes('does not exist') || errorMessage.includes('function') && errorMessage.includes('not found')) {
+            helpfulMessage = 'Database function not found. Please run migration 20250301000003-fix-auto-reject-expired-orders.sql in Supabase SQL Editor.';
+          } else if (errorMessage.includes('permission denied') || errorMessage.includes('permission')) {
+            helpfulMessage = 'Permission denied. Please grant EXECUTE permission to service_role.';
+          } else if (errorMessage.includes('release_order_stock_internal')) {
+            helpfulMessage = 'Missing dependency. Please run migration 20250301000002-enhance-stock-release-with-fallback.sql first.';
+          }
+          
           return res.status(500).json({
             error: 'Failed to auto-reject expired orders',
-            details: error.message,
-            expired_orders_found: expiredCountValue
+            details: helpfulMessage,
+            technical_error: errorMessage,
+            expired_orders_found: expiredCountValue,
+            troubleshooting: 'See TROUBLESHOOT_REJECT_ERROR.md for detailed steps'
           });
         }
 
@@ -2911,9 +2927,11 @@ We Create Memories`;
         });
       } catch (error) {
         console.error('Error in auto-reject-expired-orders:', error);
+        console.error('Stack trace:', error.stack);
         return res.status(500).json({
           error: 'Internal server error',
-          details: error.message
+          details: error.message || 'An unexpected error occurred',
+          troubleshooting: 'Check server logs for details. See TROUBLESHOOT_REJECT_ERROR.md for help.'
         });
       }
     }
