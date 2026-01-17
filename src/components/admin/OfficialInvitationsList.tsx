@@ -105,16 +105,45 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
         credentials: 'include'
       });
 
-      const result = await response.json();
-
+      // Check content type first
+      const contentType = response.headers.get('content-type');
+      
+      // Check if response is ok before parsing
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch invitations');
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        
+        // Read response as text first (can only read once)
+        const textResponse = await response.text();
+        
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const errorData = JSON.parse(textResponse);
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } catch (e) {
+            errorMessage = textResponse || errorMessage;
+          }
+        } else {
+          errorMessage = `Server returned non-JSON response. ${errorMessage}`;
+          console.error('Non-JSON response received:', textResponse.substring(0, 200));
+        }
+        
+        throw new Error(errorMessage);
       }
+
+      // Parse JSON response safely
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        throw new Error(`Expected JSON response but received ${contentType || 'unknown content type'}. Response: ${textResponse.substring(0, 200)}`);
+      }
+
+      const result = await response.json();
 
       if (result.success) {
         setInvitations(result.data || []);
         setTotalCount(result.count || 0);
         setTotalQrCount(result.qr_count || 0);
+      } else {
+        throw new Error(result.error || 'Failed to fetch invitations');
       }
     } catch (error) {
       console.error('Error fetching invitations:', error);
@@ -176,15 +205,44 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
         credentials: 'include'
       });
 
-      const result = await response.json();
-
+      // Check content type first
+      const contentType = response.headers.get('content-type');
+      
+      // Check if response is ok before parsing
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch invitation details');
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        
+        // Read response as text first (can only read once)
+        const textResponse = await response.text();
+        
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const errorData = JSON.parse(textResponse);
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } catch (e) {
+            errorMessage = textResponse || errorMessage;
+          }
+        } else {
+          errorMessage = `Server returned non-JSON response. ${errorMessage}`;
+          console.error('Non-JSON response received:', textResponse.substring(0, 200));
+        }
+        
+        throw new Error(errorMessage);
       }
+
+      // Parse JSON response safely
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        throw new Error(`Expected JSON response but received ${contentType || 'unknown content type'}`);
+      }
+
+      const result = await response.json();
 
       if (result.success) {
         setSelectedInvitation(result.invitation);
         setQrTickets(result.qr_tickets || []);
+      } else {
+        throw new Error(result.error || 'Failed to fetch invitation details');
       }
     } catch (error) {
       console.error('Error fetching invitation details:', error);
@@ -221,11 +279,38 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
         credentials: 'include'
       });
 
-      const result = await response.json();
-
+      // Check content type first
+      const contentType = response.headers.get('content-type');
+      
+      // Check if response is ok before parsing
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to resend email');
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        
+        // Read response as text first (can only read once)
+        const textResponse = await response.text();
+        
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const errorData = JSON.parse(textResponse);
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } catch (e) {
+            errorMessage = textResponse || errorMessage;
+          }
+        } else {
+          errorMessage = `Server returned non-JSON response. ${errorMessage}`;
+          console.error('Non-JSON response received:', textResponse.substring(0, 200));
+        }
+        
+        throw new Error(errorMessage);
       }
+
+      // Parse JSON response safely
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        throw new Error(`Expected JSON response but received ${contentType || 'unknown content type'}`);
+      }
+
+      const result = await response.json();
 
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
@@ -270,11 +355,38 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
         credentials: 'include'
       });
 
-      const result = await response.json();
-
+      // Check content type first
+      const contentType = response.headers.get('content-type');
+      
+      // Check if response is ok before parsing
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to delete invitation');
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        
+        // Read response as text first (can only read once)
+        const textResponse = await response.text();
+        
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const errorData = JSON.parse(textResponse);
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } catch (e) {
+            errorMessage = textResponse || errorMessage;
+          }
+        } else {
+          errorMessage = `Server returned non-JSON response. ${errorMessage}`;
+          console.error('Non-JSON response received:', textResponse.substring(0, 200));
+        }
+        
+        throw new Error(errorMessage);
       }
+
+      // Parse JSON response safely
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        throw new Error(`Expected JSON response but received ${contentType || 'unknown content type'}`);
+      }
+
+      const result = await response.json();
 
       toast({
         title: language === 'en' ? 'Success' : 'Succès',
