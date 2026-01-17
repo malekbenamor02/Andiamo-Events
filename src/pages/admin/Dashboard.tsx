@@ -1357,6 +1357,50 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
   
+  // Manually trigger auto-reject expired orders
+  const [rejectingExpired, setRejectingExpired] = useState(false);
+  const triggerAutoRejectExpired = async () => {
+    setRejectingExpired(true);
+    try {
+      const apiBase = getApiBaseUrl();
+      const url = `${apiBase}/api/auto-reject-expired-orders`;
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to reject expired orders');
+      }
+      
+      if (result.success) {
+        const count = result.rejected_count || 0;
+        toast({
+          title: language === 'en' ? 'Expired Orders Processed' : 'Commandes Expirées Traitées',
+          description: language === 'en' 
+            ? `Successfully rejected ${count} expired order(s).` 
+            : `${count} commande(s) expirée(s) rejetée(s) avec succès.`,
+        });
+        
+        // Refresh orders after a short delay
+        setTimeout(() => {
+          fetchAmbassadorSalesData();
+        }, 1000);
+      }
+    } catch (error: any) {
+      console.error('Error triggering auto-reject:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to reject expired orders' : 'Échec du rejet des commandes expirées'),
+        variant: 'destructive'
+      });
+    } finally {
+      setRejectingExpired(false);
+    }
+  };
+
   // Update order expiration settings
   const updateExpirationSettings = async (settings: Array<{
     order_status: string;
@@ -16996,11 +17040,45 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {language === 'en' 
-                            ? 'Set default expiration time for Pending Cash orders. Orders will be automatically rejected when expired. Expired orders are checked when you view the orders list.' 
-                            : 'Définir le délai d\'expiration par défaut pour les commandes Pending Cash. L\'expiration est uniquement informative et sert de rappel de délai.'}
+                            ? 'Set default expiration time for Pending Cash orders. Orders will be automatically rejected when expired. Use external cron service to call /api/auto-reject-expired-orders every 5 minutes.' 
+                            : 'Définir le délai d\'expiration par défaut pour les commandes Pending Cash. Les commandes seront automatiquement rejetées à l\'expiration. Utilisez un service cron externe pour appeler /api/auto-reject-expired-orders toutes les 5 minutes.'}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
+                        {/* Manual trigger button */}
+                        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-foreground mb-1">
+                                {language === 'en' ? 'Manual Reject Expired Orders' : 'Rejeter Manuellement les Commandes Expirées'}
+                              </p>
+                              <p className="text-xs text-foreground/60">
+                                {language === 'en' 
+                                  ? 'Manually trigger rejection of expired orders. For automatic rejection, set up an external cron service (see CRON_SETUP.md).' 
+                                  : 'Déclencher manuellement le rejet des commandes expirées. Pour un rejet automatique, configurez un service cron externe (voir CRON_SETUP.md).'}
+                              </p>
+                            </div>
+                            <Button
+                              onClick={triggerAutoRejectExpired}
+                              disabled={rejectingExpired}
+                              variant="outline"
+                              size="sm"
+                              className="ml-4"
+                            >
+                              {rejectingExpired ? (
+                                <>
+                                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                  {language === 'en' ? 'Processing...' : 'Traitement...'}
+                                </>
+                              ) : (
+                                <>
+                                  <Clock className="w-4 h-4 mr-2" />
+                                  {language === 'en' ? 'Reject Expired' : 'Rejeter Expirées'}
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
                         {loadingExpirationSettings ? (
                           <div className="flex items-center justify-center py-8">
                             <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />

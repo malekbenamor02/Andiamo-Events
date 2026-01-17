@@ -1,0 +1,22 @@
+-- Auto-Reject Expired Orders - API-Based Solution
+-- 
+-- This migration is a placeholder. The auto-reject functionality is handled entirely
+-- through the API endpoint: /api/auto-reject-expired-orders
+--
+-- SETUP REQUIRED:
+-- Use an external cron service (cron-job.org, EasyCron, etc.) to call:
+--   GET/POST https://your-domain.com/api/auto-reject-expired-orders?secret=YOUR_SECRET
+--   Schedule: Every 5 minutes (*/5 * * * *)
+--
+-- The API endpoint calls the database function: auto_reject_expired_pending_cash_orders()
+-- which automatically rejects expired PENDING_CASH orders.
+--
+-- See CRON_SETUP.md for detailed setup instructions.
+--
+-- PRODUCTION-SAFE MIGRATION:
+-- - This file is idempotent and safe to run multiple times
+-- - It serves as documentation only - no database changes needed
+
+-- No database changes required - API handles everything
+-- The function auto_reject_expired_pending_cash_orders() is already created in:
+-- supabase/migrations/20250227000000-restrict-expiration-to-pending-cash-only.sql

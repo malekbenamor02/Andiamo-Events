@@ -1,13 +1,13 @@
 // API endpoint to auto-reject expired PENDING_CASH orders
-// This can be called by Vercel Cron Jobs or external cron services
+// This endpoint can be called by external cron services or Supabase pg_cron
 // 
-// Vercel Cron Job configuration (add to vercel.json):
-// {
-//   "crons": [{
-//     "path": "/api/auto-reject-expired-orders",
-//     "schedule": "*/5 * * * *"  // Every 5 minutes
-//   }]
-// }
+// Setup Options:
+// 1. Supabase pg_cron (Recommended): Run migration 20250228000001-setup-auto-reject-cron.sql
+// 2. External Cron Service: Use cron-job.org, EasyCron, or similar to call this endpoint
+//    URL: https://your-domain.com/api/auto-reject-expired-orders?secret=YOUR_SECRET
+//    Schedule: Every 5 minutes (*/5 * * * *)
+// 
+// See CRON_SETUP.md for detailed setup instructions
 
 export default async function handler(req, res) {
   // Only allow POST or GET (for cron jobs)
