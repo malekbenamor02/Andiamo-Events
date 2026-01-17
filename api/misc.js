@@ -4127,6 +4127,660 @@ We Create Memories`;
       }
     }
     
+    // Helper function to create official invitation email HTML
+    function createOfficialInvitationEmailHTML(data) {
+      if (!data || !data.event || !data.qrCodes || !Array.isArray(data.qrCodes) || data.qrCodes.length === 0) {
+        throw new Error('Invalid email data: missing required fields or empty QR codes array');
+      }
+      const formatDate = (dateString) => {
+        try {
+          if (!dateString) return 'TBD';
+          const date = new Date(dateString);
+          if (isNaN(date.getTime())) return dateString;
+          return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        } catch { return dateString || 'TBD'; }
+      };
+      const formatTime = (dateString) => {
+        try {
+          if (!dateString) return '';
+          const date = new Date(dateString);
+          if (isNaN(date.getTime())) return '';
+          return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        } catch { return ''; }
+      };
+      const eventDate = formatDate(data.event?.date);
+      const eventTime = formatTime(data.event?.date);
+      const qrCodesHtml = data.qrCodes.map((qr, index) => {
+        if (data.qrCodes.length === 1) {
+          return `<img src="${qr.qr_code_url}" alt="Invitation QR Code" style="max-width: 300px; height: auto; display: block; margin: 0 auto 20px; border-radius: 8px;" />`;
+        } else {
+          return `<div style="margin: 10px; padding: 20px; background: #FFFFFF; border: 2px solid #E21836; border-radius: 12px; display: inline-block;"><p style="margin: 0 0 15px 0; color: #E21836; font-size: 14px; font-weight: 600;">QR Code ${index + 1}</p><img src="${qr.qr_code_url}" alt="Invitation QR Code ${index + 1}" style="max-width: 250px; height: auto; display: block; margin: 0 auto; border-radius: 8px;" /></div>`;
+        }
+      }).join('');
+      const qrCodeSectionTitle = data.qrCodes.length > 1 ? `Your QR Codes (${data.qrCodes.length})` : "Your QR Code";
+      const qrCodeInstruction = data.qrCodes.length > 1 ? "Scan any of these QR codes at the entrance to access your assigned zone" : "Scan this QR code at the entrance to access your assigned zone";
+      const zoneTableHtml = data.zoneName && data.zoneDescription ? `<table style="width: 100%; border-collapse: collapse; margin-top: 20px;"><thead><tr><th style="background: #1A1A1A; color: #FFFFFF; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600;">Zone</th><th style="background: #1A1A1A; color: #FFFFFF; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600;">Access Details</th></tr></thead><tbody><tr><td style="padding: 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); font-size: 14px; color: #1A1A1A;">${data.zoneName}</td><td style="padding: 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); font-size: 14px; color: #1A1A1A;">${data.zoneDescription}</td></tr></tbody></table><p style="margin-top: 20px; font-size: 14px; color: #666666; line-height: 1.7;">Access is valid only for the zone mentioned above.<br>Zone changes are not permitted on-site.</p>` : '';
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="color-scheme" content="light dark"><title>Official Invitation – Andiamo Events</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;line-height:1.6;color:#1A1A1A;background:#FFFFFF}@media(prefers-color-scheme:dark){body{color:#FFFFFF;background:#1A1A1A}}a{color:#E21836!important;text-decoration:none}.email-wrapper{max-width:600px;margin:0 auto;background:#FFFFFF}@media(prefers-color-scheme:dark){.email-wrapper{background:#1A1A1A}}.content-card{background:#F5F5F5;margin:0 20px 30px;border-radius:12px;padding:50px 40px;border:1px solid rgba(0,0,0,0.1)}@media(prefers-color-scheme:dark){.content-card{background:#1F1F1F;border:1px solid rgba(42,42,42,0.5)}}.title-section{text-align:center;margin-bottom:40px;padding-bottom:30px;border-bottom:1px solid rgba(0,0,0,0.1)}.title{font-size:32px;font-weight:700;color:#1A1A1A;margin-bottom:12px}@media(prefers-color-scheme:dark){.title{color:#FFFFFF}}.subtitle{font-size:16px;color:#666666;font-weight:400}@media(prefers-color-scheme:dark){.subtitle{color:#B0B0B0}}.greeting{font-size:18px;color:#1A1A1A;margin-bottom:30px;line-height:1.7}@media(prefers-color-scheme:dark){.greeting{color:#FFFFFF}}.greeting strong{color:#E21836;font-weight:600}.message{font-size:16px;color:#666666;margin-bottom:25px;line-height:1.7}@media(prefers-color-scheme:dark){.message{color:#B0B0B0}}.info-block{background:#E8E8E8;border:1px solid rgba(0,0,0,0.15);border-radius:8px;padding:30px;margin:40px 0}@media(prefers-color-scheme:dark){.info-block{background:#252525;border:1px solid rgba(42,42,42,0.8)}}.info-row{margin-bottom:25px}.info-row:last-child{margin-bottom:0}.info-label{font-size:11px;color:#999999;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px;font-weight:600}@media(prefers-color-scheme:dark){.info-label{color:#6B6B6B}}.info-value{font-size:18px;color:#1A1A1A;font-weight:500;letter-spacing:0.5px}@media(prefers-color-scheme:dark){.info-value{color:#FFFFFF}}.event-details-block{background:#E8E8E8;border:1px solid rgba(0,0,0,0.15);border-radius:8px;padding:30px;margin:40px 0}@media(prefers-color-scheme:dark){.event-details-block{background:#252525;border:1px solid rgba(42,42,42,0.8)}}.event-details-title{font-size:18px;color:#E21836;font-weight:600;margin-bottom:20px}.event-detail-row{margin-bottom:15px}.event-detail-row:last-child{margin-bottom:0}.event-detail-label{font-size:11px;color:#999999;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:5px;font-weight:600}@media(prefers-color-scheme:dark){.event-detail-label{color:#6B6B6B}}.event-detail-value{font-size:16px;color:#1A1A1A;font-weight:500}@media(prefers-color-scheme:dark){.event-detail-value{color:#FFFFFF}}.qr-code-section{text-align:center;margin:40px 0;padding:30px;background:#FFFFFF;border:2px solid #E21836;border-radius:12px}@media(prefers-color-scheme:dark){.qr-code-section{background:#1F1F1F}}.qr-code-title{font-size:20px;color:#1A1A1A;font-weight:600;margin-bottom:15px}@media(prefers-color-scheme:dark){.qr-code-title{color:#FFFFFF}}.qr-code-instruction{font-size:15px;color:#666666;margin-bottom:25px;line-height:1.6}@media(prefers-color-scheme:dark){.qr-code-instruction{color:#B0B0B0}}.rules-section{background:#FFF9E6;border-left:3px solid #E21836;padding:20px 25px;margin:35px 0;border-radius:4px}@media(prefers-color-scheme:dark){.rules-section{background:#2A2419;border-left:3px solid #E21836}}.rules-title{font-size:16px;color:#E21836;font-weight:600;margin-bottom:15px}.rules-list{list-style:none;padding:0;margin:0}.rules-list li{font-size:14px;color:#666666;line-height:1.8;margin-bottom:10px;padding-left:25px;position:relative}@media(prefers-color-scheme:dark){.rules-list li{color:#B0B0B0}}.rules-list li:before{content:"⚠️";position:absolute;left:0}.rules-list li:last-child{margin-bottom:0}.arrival-note{font-size:14px;color:#666666;margin-top:15px;line-height:1.7}@media(prefers-color-scheme:dark){.arrival-note{color:#B0B0B0}}.support-section{background:#E8E8E8;border-left:3px solid rgba(226,24,54,0.3);padding:20px 25px;margin:35px 0;border-radius:4px}@media(prefers-color-scheme:dark){.support-section{background:#252525}}.support-text{font-size:14px;color:#666666;line-height:1.7;margin-bottom:10px}@media(prefers-color-scheme:dark){.support-text{color:#B0B0B0}}.support-contact{font-size:14px;color:#666666;line-height:1.8}@media(prefers-color-scheme:dark){.support-contact{color:#B0B0B0}}.support-email{color:#E21836!important;text-decoration:none;font-weight:500}.closing-section{text-align:center;margin:50px 0 40px;padding-top:40px;border-top:1px solid rgba(0,0,0,0.1)}@media(prefers-color-scheme:dark){.closing-section{border-top:1px solid rgba(255,255,255,0.1)}}.slogan{font-size:24px;font-style:italic;color:#E21836;font-weight:300;letter-spacing:1px;margin-bottom:30px}.signature{font-size:16px;color:#666666;line-height:1.7}@media(prefers-color-scheme:dark){.signature{color:#B0B0B0}}.footer{margin-top:50px;padding:40px 20px 30px;text-align:center;border-top:1px solid rgba(0,0,0,0.1)}@media(prefers-color-scheme:dark){.footer{border-top:1px solid rgba(255,255,255,0.05)}}.footer-text{font-size:12px;color:#999999;margin-bottom:20px;line-height:1.6}@media(prefers-color-scheme:dark){.footer-text{color:#6B6B6B}}.footer-links{margin:15px auto 0;text-align:center}.footer-link{color:#999999;text-decoration:none;font-size:13px;margin:0 8px}@media(prefers-color-scheme:dark){.footer-link{color:#6B6B6B}}.footer-link:hover{color:#E21836!important}</style></head><body><div class="email-wrapper"><div class="content-card"><div class="title-section"><h1 class="title">Official Invitation</h1><p class="subtitle">Andiamo Events</p></div><p class="greeting">Dear <strong>${data.guestName}</strong>,</p><p class="message">Mouayed Chakir has the pleasure to invite you to the <strong>${data.event.name}</strong>, proudly organized by Andiamo Events.</p><p class="message">We are pleased to confirm that your invitation has been successfully registered. This email serves as your official entry pass to the event.</p><p class="message">Please find your personal QR code${data.qrCodes.length > 1 ? 's' : ''} included below. ${data.qrCodes.length > 1 ? 'They' : 'It'} will be required for access control and validation at the venue.</p><p class="message">Kindly keep this invitation available on your phone or printed on the day of the event.</p><div class="event-details-block"><div class="event-details-title">Event Details</div><div class="event-detail-row"><div class="event-detail-label">Date</div><div class="event-detail-value">${eventDate}</div></div>${eventTime ? `<div class="event-detail-row"><div class="event-detail-label">Show Time</div><div class="event-detail-value">${eventTime}</div></div>` : ''}<div class="event-detail-row"><div class="event-detail-label">Venue</div><div class="event-detail-value">${data.event.venue}</div></div></div><div class="info-block"><div class="info-row"><div class="info-label">Invitation</div><div class="info-value">#${data.invitationNumber}</div></div><div class="info-row"><div class="info-label">Guest Name</div><div class="info-value">${data.guestName}</div></div><div class="info-row"><div class="info-label">Phone Number</div><div class="info-value">${data.guestPhone}</div></div></div>${zoneTableHtml ? `<div class="info-block"><div class="info-label" style="margin-bottom:15px;">Zone & Access Details</div>${zoneTableHtml}</div>` : ''}<div class="qr-code-section"><h3 class="qr-code-title">${qrCodeSectionTitle}</h3><p class="qr-code-instruction">${qrCodeInstruction}</p>${qrCodesHtml}</div><div class="rules-section"><div class="rules-title">Important Access Rules</div><ul class="rules-list"><li>Each QR code is valid for one (1) person only and for a single entry.</li><li>Reproduction, sharing, or duplication of the QR code is strictly prohibited.</li><li>Once scanned, the QR code becomes invalid.</li></ul><p class="arrival-note">Please arrive at least 1h30mn before the show time to ensure smooth check-in.</p></div><div class="support-section"><p class="support-text">For any assistance or additional information, please contact us at</p><p class="support-contact"><a href="mailto:contact@andiamoevents.com" class="support-email">contact@andiamoevents.com</a> or <strong style="color:#E21836!important">+216 28 070 128</strong></p></div><div class="closing-section"><p class="slogan">We Create Memories</p><p class="signature">Best regards,<br>Andiamo Events Team</p></div></div><div class="footer"><p class="footer-text">Developed by <span style="color:#E21836!important">Malek Ben Amor</span></p><div class="footer-links"><a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a><span style="color:#999999">•</span><a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a></div></div></div></body></html>`;
+      return { from: '"Andiamo Events" <contact@andiamoevents.com>', to: data.guestEmail, subject: 'Official Invitation – Andiamo Events', html: html };
+    }
+    
+    // Helper function to log invitation actions
+    async function logInvitationAction(dbClient, action, invitationId, adminId, details = {}) {
+      try {
+        await dbClient.from('site_logs').insert({
+          log_type: 'action',
+          category: 'official_invitation',
+          message: `Official Invitation: ${action}`,
+          details: {
+            invitation_id: invitationId,
+            action,
+            ...details
+          },
+          user_id: adminId,
+          user_type: 'admin',
+          request_method: 'POST',
+          request_path: '/api/admin/official-invitations'
+        });
+      } catch (error) {
+        console.error('Failed to log invitation action:', error);
+      }
+    }
+    
+    // POST /api/admin/official-invitations/create - Create official invitation
+    if (path === '/api/admin/official-invitations/create' && method === 'POST') {
+      try {
+        const superAdminResult = await verifySuperAdmin(req);
+        if (!superAdminResult.valid) {
+          return res.status(superAdminResult.statusCode || 401).json({
+            error: superAdminResult.error,
+            details: superAdminResult.details
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const body = await parseBody(req);
+        const { guest_name, guest_phone, guest_email, event_id, pass_type_id, quantity } = body;
+        
+        // Validate required fields
+        if (!guest_name || !guest_phone || !guest_email || !event_id || !pass_type_id || !quantity) {
+          return res.status(400).json({ 
+            error: 'Missing required fields',
+            details: 'guest_name, guest_phone, guest_email, event_id, pass_type_id, and quantity are required'
+          });
+        }
+        
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(guest_email)) {
+          return res.status(400).json({ 
+            error: 'Invalid email address',
+            details: `The email address "${guest_email}" is not valid`
+          });
+        }
+        
+        // Validate quantity
+        const quantityNum = parseInt(quantity, 10);
+        if (isNaN(quantityNum) || quantityNum < 1 || quantityNum > 100) {
+          return res.status(400).json({ 
+            error: 'Invalid quantity',
+            details: 'Quantity must be between 1 and 100'
+          });
+        }
+        
+        // Use service role client for all database operations (bypasses RLS)
+        let dbClient;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        } else {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_ANON_KEY
+          );
+        }
+        
+        // Fetch event details
+        const { data: event, error: eventError } = await dbClient
+          .from('events')
+          .select('id, name, date, venue, city')
+          .eq('id', event_id)
+          .single();
+        
+        if (eventError || !event) {
+          return res.status(404).json({ 
+            error: 'Event not found',
+            details: 'The specified event does not exist'
+          });
+        }
+        
+        // Fetch pass type details
+        const { data: passType, error: passError } = await dbClient
+          .from('event_passes')
+          .select('id, name, description, price, event_id')
+          .eq('id', pass_type_id)
+          .eq('event_id', event_id)
+          .single();
+        
+        if (passError || !passType) {
+          return res.status(404).json({ 
+            error: 'Pass type not found',
+            details: 'The specified pass type does not exist for this event'
+          });
+        }
+        
+        // Create invitation record
+        const { data: invitation, error: invitationError } = await dbClient
+          .from('official_invitations')
+          .insert({
+            recipient_name: guest_name.trim(),
+            recipient_phone: guest_phone.trim(),
+            recipient_email: guest_email.trim().toLowerCase(),
+            event_id: event_id,
+            pass_type: passType.name,
+            pass_type_id: pass_type_id,
+            quantity: quantityNum,
+            zone_name: passType.name,
+            zone_description: passType.description || '',
+            status: 'pending',
+            created_by: superAdminResult.admin.id
+          })
+          .select()
+          .single();
+        
+        if (invitationError) {
+          console.error('Error creating invitation:', invitationError);
+          return res.status(500).json({ 
+            error: 'Failed to create invitation',
+            details: invitationError.message
+          });
+        }
+        
+        // Generate QR codes
+        const QRCode = (await import('qrcode')).default;
+        const { v4: uuidv4 } = await import('uuid');
+        const qrCodes = [];
+        const qrTicketsEntries = [];
+        
+        for (let i = 0; i < quantityNum; i++) {
+          const secureToken = uuidv4();
+          const qrCodeBuffer = await QRCode.toBuffer(secureToken, { 
+            type: 'png', 
+            width: 300,
+            errorCorrectionLevel: 'M'
+          });
+          
+          const fileName = `invitations/${invitation.id}/${secureToken}.png`;
+          const storageClient = process.env.SUPABASE_SERVICE_ROLE_KEY 
+            ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+            : dbClient;
+          
+          const { error: uploadError } = await storageClient.storage
+            .from('tickets')
+            .upload(fileName, qrCodeBuffer, {
+              contentType: 'image/png',
+              upsert: true
+            });
+          
+          if (uploadError) {
+            console.error(`Error uploading QR code ${i + 1}:`, uploadError);
+            continue;
+          }
+          
+          const { data: urlData } = storageClient.storage
+            .from('tickets')
+            .getPublicUrl(fileName);
+          
+          const qrCodeUrl = urlData?.publicUrl;
+          if (!qrCodeUrl) {
+            console.error(`Failed to get public URL for QR code ${i + 1}`);
+            continue;
+          }
+          
+          qrCodes.push({
+            secure_token: secureToken,
+            qr_code_url: qrCodeUrl
+          });
+          
+          qrTicketsEntries.push({
+            secure_token: secureToken,
+            ticket_id: null,
+            order_id: null,
+            invitation_id: invitation.id,
+            source: 'official_invitation',
+            payment_method: 'external_app',
+            buyer_name: guest_name.trim(),
+            buyer_phone: guest_phone.trim(),
+            buyer_email: guest_email.trim().toLowerCase(),
+            buyer_city: event.city || 'N/A',
+            event_id: event_id,
+            event_name: event.name,
+            event_date: event.date,
+            event_venue: event.venue,
+            event_city: event.city,
+            order_pass_id: null,
+            pass_type: passType.name,
+            pass_price: passType.price || 0,
+            ticket_status: 'VALID',
+            qr_code_url: qrCodeUrl,
+            generated_at: new Date().toISOString()
+          });
+        }
+        
+        // Insert all qr_tickets entries
+        if (qrTicketsEntries.length > 0) {
+          const { error: qrTicketsError } = await dbClient
+            .from('qr_tickets')
+            .insert(qrTicketsEntries);
+          
+          if (qrTicketsError) {
+            console.error('Error creating qr_tickets entries:', qrTicketsError);
+            return res.status(500).json({ 
+              error: 'Failed to create QR tickets',
+              details: qrTicketsError.message
+            });
+          }
+        }
+        
+        if (qrCodes.length === 0) {
+          return res.status(500).json({ 
+            error: 'Failed to generate QR codes',
+            details: 'No QR codes could be generated or uploaded. Please try again.'
+          });
+        }
+        
+        // Send email
+        const emailConfig = createOfficialInvitationEmailHTML({
+          guestName: guest_name.trim(),
+          guestPhone: guest_phone.trim(),
+          guestEmail: guest_email.trim().toLowerCase(),
+          event: {
+            name: event.name,
+            date: event.date,
+            venue: event.venue,
+            city: event.city
+          },
+          passType: passType.name,
+          invitationNumber: invitation.invitation_number,
+          zoneName: passType.name,
+          zoneDescription: passType.description || '',
+          qrCodes: qrCodes
+        });
+        
+        let emailSent = false;
+        let emailError = null;
+        
+        try {
+          const nodemailer = (await import('nodemailer')).default;
+          const transporter = nodemailer.createTransport({
+            host: process.env.EMAIL_HOST,
+            port: parseInt(process.env.EMAIL_PORT || '587', 10),
+            secure: process.env.EMAIL_PORT === '465',
+            auth: {
+              user: process.env.EMAIL_USER,
+              pass: process.env.EMAIL_PASS
+            }
+          });
+          
+          await transporter.sendMail({
+            from: emailConfig.from,
+            to: emailConfig.to,
+            subject: emailConfig.subject,
+            html: emailConfig.html
+          });
+          
+          emailSent = true;
+        } catch (emailErr) {
+          console.error('Error sending invitation email:', emailErr);
+          emailError = emailErr.message;
+        }
+        
+        // Update invitation status
+        const updateData = {
+          status: emailSent ? 'sent' : 'failed',
+          sent_at: emailSent ? new Date().toISOString() : null,
+          email_delivery_status: emailSent ? 'sent' : 'failed'
+        };
+        
+        await dbClient
+          .from('official_invitations')
+          .update(updateData)
+          .eq('id', invitation.id);
+        
+        // Log action
+        await logInvitationAction(dbClient, 'created', invitation.id, superAdminResult.admin.id, {
+          guest_name,
+          guest_email,
+          event_id,
+          pass_type: passType.name,
+          quantity: quantityNum,
+          qr_codes_generated: qrCodes.length,
+          email_sent: emailSent
+        });
+        
+        return res.json({
+          success: true,
+          invitation: {
+            ...invitation,
+            ...updateData
+          },
+          qr_codes_count: qrCodes.length,
+          email_sent: emailSent,
+          email_error: emailError
+        });
+        
+      } catch (error) {
+        console.error('Error creating official invitation:', error);
+        return res.status(500).json({ 
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+    
+    // Handle routes with path parameters (/:id)
+    const officialInvitationsIdMatch = path.match(/^\/api\/admin\/official-invitations\/([^\/]+)$/);
+    const officialInvitationsResendMatch = path.match(/^\/api\/admin\/official-invitations\/([^\/]+)\/resend$/);
+    
+    // GET /api/admin/official-invitations/:id - Get single invitation details
+    if (officialInvitationsIdMatch && method === 'GET') {
+      try {
+        const superAdminResult = await verifySuperAdmin(req);
+        if (!superAdminResult.valid) {
+          return res.status(superAdminResult.statusCode || 401).json({
+            error: superAdminResult.error,
+            details: superAdminResult.details
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const id = officialInvitationsIdMatch[1];
+        
+        let dbClient;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        } else {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_ANON_KEY
+          );
+        }
+        
+        const { data: invitation, error: invitationError } = await dbClient
+          .from('official_invitations')
+          .select(`
+            *,
+            events (
+              id,
+              name,
+              date,
+              venue,
+              city
+            )
+          `)
+          .eq('id', id)
+          .single();
+        
+        if (invitationError || !invitation) {
+          return res.status(404).json({ 
+            error: 'Invitation not found'
+          });
+        }
+        
+        const { data: qrTickets, error: qrError } = await dbClient
+          .from('qr_tickets')
+          .select('*')
+          .eq('invitation_id', id)
+          .order('generated_at', { ascending: true });
+        
+        return res.json({
+          success: true,
+          invitation,
+          qr_tickets: qrTickets || []
+        });
+        
+      } catch (error) {
+        console.error('Error fetching invitation details:', error);
+        return res.status(500).json({ 
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+    
+    // POST /api/admin/official-invitations/:id/resend - Resend invitation email
+    if (officialInvitationsResendMatch && method === 'POST') {
+      try {
+        const superAdminResult = await verifySuperAdmin(req);
+        if (!superAdminResult.valid) {
+          return res.status(superAdminResult.statusCode || 401).json({
+            error: superAdminResult.error,
+            details: superAdminResult.details
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const id = officialInvitationsResendMatch[1];
+        
+        let dbClient;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        } else {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_ANON_KEY
+          );
+        }
+        
+        const { data: invitation, error: invitationError } = await dbClient
+          .from('official_invitations')
+          .select(`
+            *,
+            events (
+              id,
+              name,
+              date,
+              venue,
+              city
+            )
+          `)
+          .eq('id', id)
+          .single();
+        
+        if (invitationError || !invitation) {
+          return res.status(404).json({ 
+            error: 'Invitation not found'
+          });
+        }
+        
+        const { data: qrTickets, error: qrError } = await dbClient
+          .from('qr_tickets')
+          .select('secure_token, qr_code_url')
+          .eq('invitation_id', id);
+        
+        if (qrError || !qrTickets || qrTickets.length === 0) {
+          return res.status(404).json({ 
+            error: 'QR codes not found for this invitation'
+          });
+        }
+        
+        const emailConfig = createOfficialInvitationEmailHTML({
+          guestName: invitation.recipient_name,
+          guestPhone: invitation.recipient_phone,
+          guestEmail: invitation.recipient_email,
+          event: {
+            name: invitation.events.name,
+            date: invitation.events.date,
+            venue: invitation.events.venue,
+            city: invitation.events.city
+          },
+          passType: invitation.pass_type,
+          invitationNumber: invitation.invitation_number,
+          zoneName: invitation.zone_name,
+          zoneDescription: invitation.zone_description,
+          qrCodes: qrTickets.map(qt => ({
+            secure_token: qt.secure_token,
+            qr_code_url: qt.qr_code_url
+          }))
+        });
+        
+        let emailSent = false;
+        let emailError = null;
+        
+        try {
+          const nodemailer = (await import('nodemailer')).default;
+          const transporter = nodemailer.createTransport({
+            host: process.env.EMAIL_HOST,
+            port: parseInt(process.env.EMAIL_PORT || '587', 10),
+            secure: process.env.EMAIL_PORT === '465',
+            auth: {
+              user: process.env.EMAIL_USER,
+              pass: process.env.EMAIL_PASS
+            }
+          });
+          
+          await transporter.sendMail({
+            from: emailConfig.from,
+            to: emailConfig.to,
+            subject: emailConfig.subject,
+            html: emailConfig.html
+          });
+          
+          emailSent = true;
+        } catch (emailErr) {
+          console.error('Error resending invitation email:', emailErr);
+          emailError = emailErr.message;
+        }
+        
+        await dbClient
+          .from('official_invitations')
+          .update({
+            status: emailSent ? 'sent' : 'failed',
+            sent_at: emailSent ? new Date().toISOString() : invitation.sent_at,
+            email_delivery_status: emailSent ? 'sent' : 'failed'
+          })
+          .eq('id', id);
+        
+        await logInvitationAction(dbClient, 'resend_email', id, superAdminResult.admin.id, {
+          email_sent: emailSent,
+          email_error: emailError
+        });
+        
+        return res.json({
+          success: emailSent,
+          email_sent: emailSent,
+          email_error: emailError
+        });
+        
+      } catch (error) {
+        console.error('Error resending invitation email:', error);
+        return res.status(500).json({ 
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+    
+    // DELETE /api/admin/official-invitations/:id - Delete invitation
+    if (officialInvitationsIdMatch && method === 'DELETE') {
+      try {
+        const superAdminResult = await verifySuperAdmin(req);
+        if (!superAdminResult.valid) {
+          return res.status(superAdminResult.statusCode || 401).json({
+            error: superAdminResult.error,
+            details: superAdminResult.details
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const id = officialInvitationsIdMatch[1];
+        
+        let dbClient;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        } else {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_ANON_KEY
+          );
+        }
+        
+        const { data: invitation, error: invitationError } = await dbClient
+          .from('official_invitations')
+          .select('id, invitation_number')
+          .eq('id', id)
+          .single();
+        
+        if (invitationError || !invitation) {
+          return res.status(404).json({ 
+            error: 'Invitation not found'
+          });
+        }
+        
+        // Delete QR codes first
+        const { error: qrDeleteError } = await dbClient
+          .from('qr_tickets')
+          .delete()
+          .eq('invitation_id', id);
+        
+        if (qrDeleteError) {
+          console.error('Error deleting QR tickets:', qrDeleteError);
+        }
+        
+        // Delete invitation
+        const { error: deleteError } = await dbClient
+          .from('official_invitations')
+          .delete()
+          .eq('id', id);
+        
+        if (deleteError) {
+          throw deleteError;
+        }
+        
+        await logInvitationAction(dbClient, 'deleted', id, superAdminResult.admin.id, {
+          invitation_number: invitation.invitation_number
+        });
+        
+        return res.json({
+          success: true,
+          message: 'Invitation deleted successfully'
+        });
+        
+      } catch (error) {
+        console.error('Error deleting invitation:', error);
+        return res.status(500).json({ 
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+    
     // 404 for unknown routes
     return res.status(404).json({
       error: 'Not Found',
