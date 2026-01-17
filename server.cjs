@@ -11799,12 +11799,11 @@ async function releaseOrderStock(orderId, reason) {
     return { released: false, message: 'Stock already released or order not found' };
   }
 
-  // Step 2: Fetch order_passes with pass_id
+  // Step 2: Fetch order_passes (with or without pass_id)
   const { data: orderPasses, error: passesError } = await dbClient
     .from('order_passes')
-    .select('pass_id, quantity')
-    .eq('order_id', orderId)
-    .not('pass_id', 'is', null);  // Only passes with pass_id
+    .select('pass_id, pass_type, quantity')
+    .eq('order_id', orderId);
 
   if (passesError) {
     console.error('Error fetching order_passes:', passesError);
@@ -11812,26 +11811,63 @@ async function releaseOrderStock(orderId, reason) {
   }
 
   if (!orderPasses || orderPasses.length === 0) {
-    // No passes with pass_id - might be old order (backward compatible)
-    console.warn(`Order ${orderId} has no order_passes with pass_id - cannot release stock`);
-    return { released: false, message: 'No passes with pass_id found (old order format)' };
+    // No passes found
+    console.warn(`Order ${orderId} has no order_passes - cannot release stock`);
+    return { released: false, message: 'No order_passes found' };
+  }
+
+  // Step 2b: Get event_id for fallback matching
+  const { data: order, error: orderError } = await dbClient
+    .from('orders')
+    .select('event_id')
+    .eq('id', orderId)
+    .single();
+
+  if (orderError || !order) {
+    console.error('Error fetching order:', orderError);
+    throw new Error(`Failed to fetch order: ${orderError?.message || 'Order not found'}`);
   }
 
   // Step 3: Decrement sold_quantity for each pass
   // Use atomic UPDATE to prevent negative stock
+  // Handles both pass_id and pass_type matching (fallback)
   let releasedCount = 0;
   for (const orderPass of orderPasses) {
-    if (!orderPass.pass_id) continue;
+    let passIdToUse = orderPass.pass_id;
+
+    // If pass_id is NULL, try to find it by matching pass_type
+    if (!passIdToUse && orderPass.pass_type && order.event_id) {
+      const { data: matchedPass, error: matchError } = await dbClient
+        .from('event_passes')
+        .select('id')
+        .eq('name', orderPass.pass_type)
+        .eq('event_id', order.event_id)
+        .limit(1)
+        .single();
+
+      if (!matchError && matchedPass) {
+        passIdToUse = matchedPass.id;
+        console.log(`Found pass_id ${passIdToUse} by matching pass_type "${orderPass.pass_type}"`);
+      } else {
+        console.warn(`Cannot find pass_id for pass_type "${orderPass.pass_type}" in event ${order.event_id} - skipping`);
+        continue;
+      }
+    }
+
+    if (!passIdToUse) {
+      console.warn(`Order pass has no pass_id and cannot match by pass_type - skipping`);
+      continue;
+    }
 
     // Fetch current sold_quantity first
     const { data: currentPass, error: fetchError } = await dbClient
       .from('event_passes')
       .select('sold_quantity')
-      .eq('id', orderPass.pass_id)
+      .eq('id', passIdToUse)
       .single();
 
     if (fetchError || !currentPass) {
-      console.error(`Error fetching pass ${orderPass.pass_id} for stock release:`, fetchError);
+      console.error(`Error fetching pass ${passIdToUse} for stock release:`, fetchError);
       continue;
     }
 
@@ -11840,11 +11876,11 @@ async function releaseOrderStock(orderId, reason) {
     const { error: updateError } = await dbClient
       .from('event_passes')
       .update({ sold_quantity: newSoldQuantity })
-      .eq('id', orderPass.pass_id)
+      .eq('id', passIdToUse)
       .eq('sold_quantity', currentPass.sold_quantity);  // Ensure no one else updated it
 
     if (updateError) {
-      console.error(`Error releasing stock for pass ${orderPass.pass_id}:`, updateError);
+      console.error(`Error releasing stock for pass ${passIdToUse}:`, updateError);
       // Continue with other passes even if one fails
       continue;
     }

@@ -1364,36 +1364,53 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       const apiBase = getApiBaseUrl();
       const url = `${apiBase}/api/auto-reject-expired-orders`;
+      
+      console.log('Triggering auto-reject expired orders:', url);
+      
       const response = await fetch(url, {
         method: 'GET',
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
       
-      const result = await response.json();
-      
+      // Check if response is ok before parsing JSON
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to reject expired orders');
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || `HTTP ${response.status}` };
+        }
+        throw new Error(errorData.error || errorData.details || `Failed with status ${response.status}`);
       }
+      
+      const result = await response.json();
+      console.log('Auto-reject response:', result);
       
       if (result.success) {
         const count = result.rejected_count || 0;
         toast({
           title: language === 'en' ? 'Expired Orders Processed' : 'Commandes Expirées Traitées',
           description: language === 'en' 
-            ? `Successfully rejected ${count} expired order(s).` 
-            : `${count} commande(s) expirée(s) rejetée(s) avec succès.`,
+            ? `Successfully rejected ${count} expired order(s). Stock has been released.` 
+            : `${count} commande(s) expirée(s) rejetée(s) avec succès. Le stock a été libéré.`,
         });
         
         // Refresh orders after a short delay
         setTimeout(() => {
           fetchAmbassadorSalesData();
         }, 1000);
+      } else {
+        throw new Error(result.error || 'Unknown error occurred');
       }
     } catch (error: any) {
       console.error('Error triggering auto-reject:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to reject expired orders' : 'Échec du rejet des commandes expirées'),
+        description: error.message || (language === 'en' ? 'Failed to reject expired orders. Check console for details.' : 'Échec du rejet des commandes expirées. Vérifiez la console pour plus de détails.'),
         variant: 'destructive'
       });
     } finally {
@@ -17061,12 +17078,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
-                        {/* Manual trigger section - Improved Design */}
-                        <div className="mb-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-lg border-2 border-blue-200 dark:border-blue-800 shadow-sm">
+                        {/* Manual trigger section - Dark theme compatible */}
+                        <div className="mb-4 p-4 bg-muted/50 dark:bg-muted/30 rounded-lg border border-border">
                           <div className="flex items-start gap-4">
                             <div className="flex-shrink-0 mt-1">
-                              <div className="w-10 h-10 rounded-full bg-blue-500 dark:bg-blue-600 flex items-center justify-center shadow-md">
-                                <Clock className="w-5 h-5 text-white" />
+                              <div className="w-10 h-10 rounded-full bg-red-500/20 dark:bg-red-500/30 flex items-center justify-center border border-red-500/30">
+                                <XCircle className="w-5 h-5 text-red-500 dark:text-red-400" />
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
@@ -17074,7 +17091,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 <h4 className="text-sm font-semibold text-foreground">
                                   {language === 'en' ? 'Manual Rejection' : 'Rejet Manuel'}
                                 </h4>
-                                <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">
+                                <Badge variant="outline" className="text-xs bg-red-500/10 dark:bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/30">
                                   {language === 'en' ? 'Instant Action' : 'Action Immédiate'}
                                 </Badge>
                               </div>
@@ -17087,9 +17104,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 <Button
                                   onClick={triggerAutoRejectExpired}
                                   disabled={rejectingExpired}
-                                  variant="default"
+                                  variant="destructive"
                                   size="sm"
-                                  className="bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                                  className="shadow-md hover:shadow-lg transition-all duration-200"
                                 >
                                   {rejectingExpired ? (
                                     <>

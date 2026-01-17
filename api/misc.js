@@ -161,6 +161,114 @@ function shuffleArray(array) {
   return shuffled;
 }
 
+// Helper function to manually release stock with fallback (pass_type matching)
+async function manualReleaseStockWithFallback(orderId, adminId, adminEmail, supabaseClient) {
+  const supabase = supabaseClient;
+  try {
+    // Step 1: Atomically set stock_released flag
+    const { data: orderUpdate, error: updateError } = await supabase
+      .from('orders')
+      .update({ stock_released: true })
+      .eq('id', orderId)
+      .eq('stock_released', false)
+      .select('id, status, event_id')
+      .single();
+
+    if (updateError || !orderUpdate) {
+      console.log('⚠️ Stock already released or order not found (idempotent)');
+      return;
+    }
+
+    // Step 2: Fetch order_passes (with or without pass_id)
+    const { data: orderPasses, error: passesError } = await supabase
+      .from('order_passes')
+      .select('pass_id, pass_type, quantity')
+      .eq('order_id', orderId);
+
+    if (passesError || !orderPasses || orderPasses.length === 0) {
+      console.warn(`⚠️ No order_passes found for order ${orderId}`);
+      return;
+    }
+
+    // Step 3: Release stock for each pass
+    let releasedCount = 0;
+    for (const orderPass of orderPasses) {
+      let passIdToUse = orderPass.pass_id;
+
+      // Fallback: If pass_id is NULL, try to find it by matching pass_type
+      if (!passIdToUse && orderPass.pass_type && orderUpdate.event_id) {
+        const { data: matchedPass, error: matchError } = await supabase
+          .from('event_passes')
+          .select('id')
+          .eq('name', orderPass.pass_type)
+          .eq('event_id', orderUpdate.event_id)
+          .limit(1)
+          .single();
+
+        if (!matchError && matchedPass) {
+          passIdToUse = matchedPass.id;
+          console.log(`✅ Found pass_id ${passIdToUse} by matching pass_type "${orderPass.pass_type}"`);
+        } else {
+          console.warn(`⚠️ Cannot find pass_id for pass_type "${orderPass.pass_type}" - skipping`);
+          continue;
+        }
+      }
+
+      if (!passIdToUse) {
+        console.warn(`⚠️ Order pass has no pass_id and cannot match by pass_type - skipping`);
+        continue;
+      }
+
+      // Fetch current sold_quantity
+      const { data: currentPass, error: fetchError } = await supabase
+        .from('event_passes')
+        .select('sold_quantity')
+        .eq('id', passIdToUse)
+        .single();
+
+      if (fetchError || !currentPass) {
+        console.error(`❌ Error fetching pass ${passIdToUse}:`, fetchError);
+        continue;
+      }
+
+      // Decrement stock atomically
+      const newSoldQuantity = Math.max(0, currentPass.sold_quantity - orderPass.quantity);
+      const { error: stockUpdateError } = await supabase
+        .from('event_passes')
+        .update({ sold_quantity: newSoldQuantity })
+        .eq('id', passIdToUse)
+        .eq('sold_quantity', currentPass.sold_quantity);
+
+      if (!stockUpdateError) {
+        releasedCount++;
+        console.log(`✅ Released ${orderPass.quantity} units for pass ${passIdToUse}`);
+      } else {
+        console.error(`❌ Error releasing stock for pass ${passIdToUse}:`, stockUpdateError);
+      }
+    }
+
+    // Step 4: Log stock release
+    if (releasedCount > 0) {
+      await supabase.from('order_logs').insert({
+        order_id: orderId,
+        action: 'stock_released',
+        performed_by: adminId,
+        performed_by_type: 'system',
+        details: {
+          reason: `Removed by admin: ${adminEmail || 'Unknown admin'}`,
+          passes_released: releasedCount,
+          timestamp: new Date().toISOString(),
+          method: 'manual_fallback'
+        }
+      });
+      console.log(`✅ Stock released for ${releasedCount} pass(es) via fallback method`);
+    }
+  } catch (error) {
+    console.error('❌ Error in manualReleaseStockWithFallback:', error);
+    throw error;
+  }
+}
+
 export default async (req, res) => {
   // Get path from URL, handling both /api/... and /... formats (Vercel may strip /api prefix)
   let path = req.url.split('?')[0]; // Remove query string
@@ -2712,6 +2820,32 @@ We Create Memories`;
     // ============================================
     if (path === '/api/auto-reject-expired-orders' && (method === 'GET' || method === 'POST')) {
       try {
+        // Optional: Check for CRON_SECRET (for external cron services)
+        const cronSecret = process.env.CRON_SECRET;
+        if (cronSecret) {
+          const providedSecret = req.headers['x-cron-secret'] || req.query.secret;
+          if (providedSecret !== cronSecret) {
+            // If secret is provided but doesn't match, require admin auth instead
+            // This allows manual triggers from admin dashboard
+            const authResult = await verifyAdminAuth(req);
+            if (!authResult.valid) {
+              return res.status(401).json({
+                error: 'Unauthorized',
+                details: 'Invalid cron secret or admin authentication required'
+              });
+            }
+          }
+        } else {
+          // If no CRON_SECRET is set, require admin authentication for security
+          const authResult = await verifyAdminAuth(req);
+          if (!authResult.valid) {
+            return res.status(authResult.statusCode || 401).json({
+              error: authResult.error || 'Unauthorized',
+              details: authResult.reason || 'Admin authentication required'
+            });
+          }
+        }
+
         if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
           return res.status(500).json({
             error: 'Server configuration error',
@@ -2725,7 +2859,10 @@ We Create Memories`;
           process.env.SUPABASE_SERVICE_ROLE_KEY
         );
 
+        console.log('Calling auto_reject_expired_pending_cash_orders function...');
+        
         // Call the database function to auto-reject expired orders
+        // This function automatically releases stock BEFORE rejecting orders
         const { data, error } = await supabase.rpc('auto_reject_expired_pending_cash_orders');
 
         if (error) {
@@ -2737,12 +2874,14 @@ We Create Memories`;
         }
 
         const result = data && data[0] ? data[0] : { rejected_count: 0, rejected_order_ids: [] };
+        
+        console.log(`Auto-reject completed: ${result.rejected_count || 0} orders rejected`);
 
         return res.status(200).json({
           success: true,
           rejected_count: result.rejected_count || 0,
           rejected_order_ids: result.rejected_order_ids || [],
-          message: `Auto-rejected ${result.rejected_count || 0} expired order(s)`,
+          message: `Auto-rejected ${result.rejected_count || 0} expired order(s). Stock has been automatically released.`,
           timestamp: new Date().toISOString()
         });
       } catch (error) {
@@ -3290,75 +3429,27 @@ We Create Memories`;
         });
         
         // Step 6: Release stock (decrease sold_quantity)
+        // Use database function for reliability (handles pass_id NULL cases)
         try {
-          // Step 6a: Atomically check and set stock_released flag (idempotency)
-          const { data: orderUpdate, error: updateError } = await supabase
-            .from('orders')
-            .update({ stock_released: true })
-            .eq('id', orderId)
-            .eq('stock_released', false)  // Only update if NOT already released
-            .select('id, status')
-            .single();
+          const { data: releaseResult, error: releaseError } = await supabase
+            .rpc('release_order_stock_internal', { order_id_param: orderId });
 
-          // If stock was already released, skip (idempotent)
-          if (!updateError && orderUpdate) {
-            // Step 6b: Fetch order_passes with pass_id
-            const { data: orderPasses, error: passesError } = await supabase
-              .from('order_passes')
-              .select('pass_id, quantity')
-              .eq('order_id', orderId)
-              .not('pass_id', 'is', null);
-
-            if (!passesError && orderPasses && orderPasses.length > 0) {
-              // Step 6c: Decrement sold_quantity for each pass
-              let releasedCount = 0;
-              for (const orderPass of orderPasses) {
-                if (!orderPass.pass_id) continue;
-
-                // Fetch current sold_quantity
-                const { data: currentPass, error: fetchError } = await supabase
-                  .from('event_passes')
-                  .select('sold_quantity')
-                  .eq('id', orderPass.pass_id)
-                  .single();
-
-                if (!fetchError && currentPass) {
-                  // Decrement stock atomically
-                  const newSoldQuantity = Math.max(0, currentPass.sold_quantity - orderPass.quantity);
-                  const { error: stockUpdateError } = await supabase
-                    .from('event_passes')
-                    .update({ sold_quantity: newSoldQuantity })
-                    .eq('id', orderPass.pass_id)
-                    .eq('sold_quantity', currentPass.sold_quantity);
-
-                  if (!stockUpdateError) {
-                    releasedCount++;
-                  }
-                }
-              }
-
-              // Step 6d: Log stock release
-              if (releasedCount > 0) {
-                await supabase.from('order_logs').insert({
-                  order_id: orderId,
-                  action: 'stock_released',
-                  performed_by: adminId,
-                  performed_by_type: 'system',
-                  details: {
-                    reason: `Removed by admin: ${adminEmail || 'Unknown admin'}`,
-                    passes_released: releasedCount,
-                    timestamp: new Date().toISOString()
-                  }
-                });
-                console.log(`✅ Stock released for ${releasedCount} pass(es)`);
-              }
-            }
+          if (releaseError) {
+            console.error('❌ Error calling release_order_stock_internal:', releaseError);
+            // Fallback: Manual release with pass_type matching
+            await manualReleaseStockWithFallback(orderId, adminId, adminEmail, supabase);
           } else {
-            console.log('⚠️ Stock already released or order not found (idempotent)');
+            console.log(`✅ Stock released via database function`);
           }
         } catch (stockError) {
           console.error('❌ Error releasing stock on admin remove:', stockError);
-          // Log but don't fail - order is removed, stock release is important but non-blocking
+          // Try fallback manual release
+          try {
+            await manualReleaseStockWithFallback(orderId, adminId, adminEmail, supabase);
+          } catch (fallbackError) {
+            console.error('❌ Fallback stock release also failed:', fallbackError);
+            // Log but don't fail - database trigger will handle it as safety net
+          }
         }
 
         // Step 7: Log to order_logs (audit trail)
