@@ -540,6 +540,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           ? (language === 'en' ? 'Approved' : 'Approuvé')
           : order.status === 'REJECTED'
           ? (language === 'en' ? 'Rejected' : 'Rejeté')
+          : order.status === 'REMOVED_BY_ADMIN'
+          ? (language === 'en' ? 'Removed by Admin' : 'Retiré par l\'administrateur')
           : order.status || 'N/A';
 
         const row = worksheet.addRow({
@@ -648,10 +650,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     };
   }, [codAmbassadorOrders]);
 
+
   // Filter COD orders based on filter criteria
   useEffect(() => {
     let filtered = [...codAmbassadorOrders];
 
+    // Status filter is already applied at API level, but we still need to filter here
+    // in case other filters are applied after status filter
     if (orderFilters.status) {
       filtered = filtered.filter(order => order.status === orderFilters.status);
     }
@@ -1669,7 +1674,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   // Fetch Ambassador Sales System data
-  const fetchAmbassadorSalesData = async () => {
+  const fetchAmbassadorSalesData = async (statusFilter?: string) => {
     setLoadingOrders(true);
     try {
       // First, fetch all ambassadors to create name mapping
@@ -1687,9 +1692,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
 
       // Use API endpoint instead of direct Supabase queries
-      // API endpoint automatically excludes REMOVED_BY_ADMIN orders
+      // API endpoint excludes REMOVED_BY_ADMIN orders by default, but includes them when status=REMOVED_BY_ADMIN
       const apiBase = getApiBaseUrl();
-      const ordersUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_SALES_ORDERS, apiBase) + '?limit=1000';
+      let ordersUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_SALES_ORDERS, apiBase) + '?limit=1000';
+      if (statusFilter) {
+        ordersUrl += `&status=${encodeURIComponent(statusFilter)}`;
+      }
       const ordersResponse = await fetch(ordersUrl, {
         credentials: 'include'
       });
@@ -14692,7 +14700,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               <Download className="w-4 h-4 mr-2" />
                               {language === 'en' ? 'Export Excel' : 'Exporter Excel'}
                             </Button>
-                            <Button onClick={fetchAmbassadorSalesData} variant="outline" size="sm">
+                            <Button 
+                              onClick={() => {
+                                // Refresh with current status filter (includes REMOVED_BY_ADMIN if selected)
+                                const statusToFetch = orderFilters.status || undefined;
+                                fetchAmbassadorSalesData(statusToFetch);
+                              }} 
+                              variant="outline" 
+                              size="sm"
+                            >
                               <RefreshCw className="w-4 h-4 mr-2" />
                               {language === 'en' ? 'Refresh' : 'Actualiser'}
                             </Button>
@@ -14725,7 +14741,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             <Select
                               value={orderFilters.status || undefined}
                               onValueChange={(value) => {
-                                setOrderFilters({ ...orderFilters, status: value });
+                                const newStatus = value === 'all' || value === '' ? '' : value;
+                                setOrderFilters({ ...orderFilters, status: newStatus });
+                                // Immediately refetch when status changes, especially for REMOVED_BY_ADMIN
+                                const statusToFetch = newStatus || undefined;
+                                fetchAmbassadorSalesData(statusToFetch);
                               }}
                             >
                               <SelectTrigger className="h-8 text-xs">
@@ -14737,6 +14757,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 <SelectItem value="PAID">{language === 'en' ? 'Paid' : 'Payé'}</SelectItem>
                                 <SelectItem value="REJECTED">{language === 'en' ? 'Rejected' : 'Rejeté'}</SelectItem>
                                 <SelectItem value="CANCELLED">{language === 'en' ? 'Cancelled' : 'Annulé'}</SelectItem>
+                                <SelectItem value="REMOVED_BY_ADMIN">{language === 'en' ? 'Removed by Admin' : 'Retiré par l\'administrateur'}</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -14782,6 +14803,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 ville: '',
                                 orderId: '',
                               });
+                              // Refetch data to exclude REMOVED_BY_ADMIN orders after clearing filters
+                              fetchAmbassadorSalesData();
                             }}
                             className="h-8 text-xs"
                           >
@@ -14820,16 +14843,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 </TableRow>
                               ) : (
                                 filteredCodOrders
-                                  .filter(order => 
-                                    // New unified status system
-                                    order.status === 'PENDING_CASH' || 
-                                    order.status === 'PAID' || 
-                                    order.status === 'CANCELLED' ||
-                                    // Legacy status values (for backward compatibility)
-                                    order.status === 'PENDING_ADMIN_APPROVAL' || 
-                                    order.status === 'APPROVED' || 
-                                    order.status === 'REJECTED'
-                                  )
                                   .map((order) => {
                                     // Get passes array (already enriched in fetchAmbassadorSalesData)
                                     const passes = order.passes || [];
@@ -14840,6 +14853,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                       if (order.status === 'CANCELLED' || order.status === 'REJECTED') return 'bg-red-500';
                                       if (order.status === 'PENDING_ADMIN_APPROVAL') return 'bg-yellow-500';
                                       if (order.status === 'PENDING_CASH') return 'bg-gray-500'; // Grey for pending cash
+                                      if (order.status === 'REMOVED_BY_ADMIN') return 'bg-gray-600'; // Dark grey for removed orders
                                       return 'bg-gray-500';
                                     };
                                     
@@ -14959,6 +14973,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                                       ? (language === 'en' ? 'Approved' : 'Approuvé')
                                                       : order.status === 'REJECTED'
                                                       ? (language === 'en' ? 'Rejected' : 'Rejeté')
+                                                      : order.status === 'REMOVED_BY_ADMIN'
+                                                      ? (language === 'en' ? 'Removed by Admin' : 'Retiré par l\'administrateur')
                                                       : order.status
                                                     }
                                                   </p>
