@@ -6,6 +6,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from '@/components/ui/alert-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -80,6 +90,11 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [qrTickets, setQrTickets] = useState<any[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  
+  // Delete confirmation dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [invitationToDelete, setInvitationToDelete] = useState<{ id: string; number: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Fetch invitations
   const fetchInvitations = async () => {
@@ -334,15 +349,17 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
     }
   };
 
-  const handleDelete = async (id: string, invitationNumber: string) => {
-    if (!confirm(language === 'en' 
-      ? `Are you sure you want to delete invitation ${invitationNumber}? This action cannot be undone.`
-      : `Êtes-vous sûr de vouloir supprimer l'invitation ${invitationNumber}? Cette action ne peut pas être annulée.`)) {
-      return;
-    }
+  const handleDeleteClick = (id: string, invitationNumber: string) => {
+    setInvitationToDelete({ id, number: invitationNumber });
+    setDeleteDialogOpen(true);
+  };
 
+  const handleDeleteConfirm = async () => {
+    if (!invitationToDelete) return;
+    
+    setDeleting(true);
     try {
-      const apiUrl = buildFullApiUrl(API_ROUTES.DELETE_OFFICIAL_INVITATION, undefined, id);
+      const apiUrl = buildFullApiUrl(API_ROUTES.DELETE_OFFICIAL_INVITATION, undefined, invitationToDelete.id);
       if (!apiUrl) {
         throw new Error('Failed to build API URL');
       }
@@ -394,7 +411,9 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
         variant: 'default'
       });
 
-      // Refresh list
+      // Close dialog and refresh list
+      setDeleteDialogOpen(false);
+      setInvitationToDelete(null);
       fetchInvitations();
     } catch (error) {
       console.error('Error deleting invitation:', error);
@@ -405,6 +424,8 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
           : (language === 'en' ? 'Failed to delete invitation' : 'Échec de la suppression de l\'invitation'),
         variant: 'destructive'
       });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -569,15 +590,15 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
                             >
                               <Mail className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(invitation.id, invitation.invitation_number)}
-                              className="text-destructive hover:text-destructive"
-                              title={language === 'en' ? 'Delete' : 'Supprimer'}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteClick(invitation.id, invitation.invitation_number)}
+                            className="text-destructive hover:text-destructive"
+                            title={language === 'en' ? 'Delete' : 'Supprimer'}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                           </div>
                         </TableCell>
                       </TableRow>
