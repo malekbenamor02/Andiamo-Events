@@ -109,6 +109,22 @@
       "destination": "/api/admin/logs.js"
     },
     {
+      "source": "/api/admin/official-invitations",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/official-invitations/:id",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/official-invitations/create",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/official-invitations/:id/resend",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }

@@ -3962,6 +3962,171 @@ We Create Memories`;
       }
     }
     
+    // ============================================
+    // OFFICIAL INVITATIONS API ENDPOINTS (Super Admin Only)
+    // ============================================
+    
+    // Helper to verify super admin
+    async function verifySuperAdmin(req) {
+      const authResult = await verifyAdminAuth(req);
+      if (!authResult.valid) {
+        return { valid: false, ...authResult };
+      }
+      if (authResult.admin.role !== 'super_admin') {
+        return {
+          valid: false,
+          error: 'Forbidden',
+          details: 'This endpoint requires super admin privileges',
+          statusCode: 403
+        };
+      }
+      return { valid: true, admin: authResult.admin };
+    }
+    
+    // GET /api/admin/official-invitations - List all invitations
+    if (path === '/api/admin/official-invitations' && method === 'GET') {
+      try {
+        const superAdminResult = await verifySuperAdmin(req);
+        if (!superAdminResult.valid) {
+          return res.status(superAdminResult.statusCode || 401).json({
+            error: superAdminResult.error,
+            details: superAdminResult.details
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        
+        // Use service role key if available (for RLS bypass)
+        let dbClient;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        } else {
+          dbClient = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_ANON_KEY
+          );
+        }
+        
+        // Parse query parameters
+        const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
+        const searchParams = new URLSearchParams(queryString);
+        const event_id = searchParams.get('event_id');
+        const status = searchParams.get('status');
+        const search = searchParams.get('search');
+        const limit = searchParams.get('limit') || '50';
+        const offset = searchParams.get('offset') || '0';
+        
+        let query = dbClient
+          .from('official_invitations')
+          .select(`
+            *,
+            events (
+              id,
+              name,
+              date,
+              venue,
+              city
+            )
+          `)
+          .order('created_at', { ascending: false });
+        
+        // Apply filters
+        if (event_id) {
+          query = query.eq('event_id', event_id);
+        }
+        if (status) {
+          query = query.eq('status', status);
+        }
+        if (search) {
+          query = query.or(`recipient_name.ilike.%${search}%,recipient_phone.ilike.%${search}%,recipient_email.ilike.%${search}%,invitation_number.ilike.%${search}%`);
+        }
+        
+        // Apply pagination
+        const limitNum = Math.min(parseInt(limit, 10) || 50, 200);
+        const offsetNum = Math.max(parseInt(offset, 10) || 0, 0);
+        query = query.range(offsetNum, offsetNum + limitNum - 1);
+        
+        const { data: invitations, error, count } = await query;
+        
+        if (error) {
+          throw error;
+        }
+        
+        // Get count
+        let countQuery = dbClient
+          .from('official_invitations')
+          .select('*', { count: 'exact', head: true });
+        
+        if (event_id) {
+          countQuery = countQuery.eq('event_id', event_id);
+        }
+        if (status) {
+          countQuery = countQuery.eq('status', status);
+        }
+        if (search) {
+          countQuery = countQuery.or(`recipient_name.ilike.%${search}%,recipient_phone.ilike.%${search}%,recipient_email.ilike.%${search}%,invitation_number.ilike.%${search}%`);
+        }
+        
+        const { count: totalCount } = await countQuery;
+        
+        // Get total QR codes count
+        let totalQrCount = 0;
+        if (event_id || status || search) {
+          let filterQuery = dbClient
+            .from('official_invitations')
+            .select('id');
+          
+          if (event_id) {
+            filterQuery = filterQuery.eq('event_id', event_id);
+          }
+          if (status) {
+            filterQuery = filterQuery.eq('status', status);
+          }
+          if (search) {
+            filterQuery = filterQuery.or(`recipient_name.ilike.%${search}%,recipient_phone.ilike.%${search}%,recipient_email.ilike.%${search}%,invitation_number.ilike.%${search}%`);
+          }
+          
+          const { data: filteredInvitations } = await filterQuery;
+          const invitationIds = filteredInvitations?.map(inv => inv.id) || [];
+          
+          if (invitationIds.length > 0) {
+            const { count: qrCount } = await dbClient
+              .from('qr_tickets')
+              .select('*', { count: 'exact', head: true })
+              .in('invitation_id', invitationIds);
+            totalQrCount = qrCount || 0;
+          }
+        } else {
+          const { count: qrCount } = await dbClient
+            .from('qr_tickets')
+            .select('*', { count: 'exact', head: true })
+            .not('invitation_id', 'is', null);
+          totalQrCount = qrCount || 0;
+        }
+        
+        return res.json({
+          success: true,
+          data: invitations || [],
+          count: totalCount || 0,
+          qr_count: totalQrCount || 0
+        });
+        
+      } catch (error) {
+        console.error('Error fetching invitations:', error);
+        return res.status(500).json({ 
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+    
     // 404 for unknown routes
     return res.status(404).json({
       error: 'Not Found',
