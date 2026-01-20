@@ -349,7 +349,16 @@ function getEmailTransporter() {
 }
 
 // Create default transporter (for backward compatibility)
-const transporter = getEmailTransporter();
+// Wrap in try/catch so require(server.cjs) does not throw when email env is missing
+// (e.g. in Vercel serverless api/scan.js); scan routes do not use email.
+let transporter = null;
+try {
+  transporter = getEmailTransporter();
+} catch (e) {
+  if (process.env.VERCEL !== '1' && !process.env.VERCEL_URL) {
+    console.warn('Email not configured (transporter null):', e.message);
+  }
+}
 
 // Security: Monitoring and alerting for suspicious activity
 const checkSuspiciousActivity = async (eventType, details, req) => {
