@@ -45,10 +45,8 @@ self.addEventListener('fetch', (event) => {
     // Always fetch from network for HTML, scripts, styles, and API calls
     // Don't catch errors - let them propagate naturally, but handle gracefully
     event.respondWith(
-      fetch(event.request).catch(err => {
-        // Log error but don't block - return a proper error response
-        console.warn('Service worker fetch error (non-critical):', err);
-        // Return a proper HTTP error response (503 Service Unavailable)
+      fetch(event.request).catch(() => {
+        // Underlying error (CORS, 401, network) already in console; avoid duplicate log
         return new Response('Network Error', { 
           status: 503, 
           statusText: 'Service Unavailable',

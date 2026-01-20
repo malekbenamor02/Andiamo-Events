@@ -29,7 +29,7 @@ import {
   PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
   Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Database,
   Search, Filter, MoreVertical, ExternalLink, Ticket, TrendingDown, Percent, Target, Package, Pause,
-  Zap, MailCheck, ArrowRight, Shield
+  Zap, MailCheck, ArrowRight, Shield, QrCode, Store
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
@@ -51,6 +51,8 @@ import { logger } from "@/lib/logger";
 import { ReportsAnalytics } from "@/components/admin/analytics/ReportsAnalytics";
 import { OfficialInvitationForm } from "@/components/admin/OfficialInvitationForm";
 import { OfficialInvitationsList } from "@/components/admin/OfficialInvitationsList";
+import { ScannersTab } from "@/components/admin/ScannersTab";
+import { PosTab } from "@/components/admin/PosTab";
 
 
 interface AdminDashboardProps {
@@ -444,6 +446,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [editingEmailValue, setEditingEmailValue] = useState('');
   const [updatingEmail, setUpdatingEmail] = useState(false);
+  const [isEditingAdminNotes, setIsEditingAdminNotes] = useState(false);
+  const [editingAdminNotesValue, setEditingAdminNotesValue] = useState('');
+  const [updatingAdminNotes, setUpdatingAdminNotes] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -6059,7 +6064,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   useEffect(() => {
     if (currentAdminRole && currentAdminRole !== 'super_admin') {
       // If regular admin tries to access super_admin-only tabs, redirect to overview
-      if (activeTab === 'logs' || activeTab === 'settings' || activeTab === 'admins') {
+      if (activeTab === 'logs' || activeTab === 'settings' || activeTab === 'admins' || activeTab === 'official-invitations' || activeTab === 'scanners') {
         setActiveTab('overview');
       }
     }
@@ -9970,6 +9975,34 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   <span>{language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}</span>
                 </button>
               )}
+              {currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => setActiveTab("scanners")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-755 ${
+                    activeTab === "scanners" ? "shadow-lg" : ""
+                  }`}
+                  style={{
+                    color: activeTab === "scanners" ? '#E21836' : '#B8B8B8',
+                    background: activeTab === "scanners" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                  }}
+                >
+                  <QrCode className={`w-4 h-4 transition-transform duration-300 ${activeTab === "scanners" ? "animate-pulse" : ""}`} />
+                  <span>{language === 'en' ? 'Scanners' : 'Scanners'}</span>
+                </button>
+              )}
+              <button
+                onClick={() => setActiveTab("pos")}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-760 ${
+                  activeTab === "pos" ? "shadow-lg" : ""
+                }`}
+                style={{
+                  color: activeTab === "pos" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "pos" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
+              >
+                <Store className={`w-4 h-4 transition-transform duration-300 ${activeTab === "pos" ? "animate-pulse" : ""}`} />
+                <span>{language === 'en' ? 'Point de Vente' : 'Point de Vente'}</span>
+              </button>
               <button
                 onClick={() => setActiveTab("contact")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-${currentAdminRole === 'super_admin' ? '800' : '700'} ${
@@ -10178,7 +10211,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               value={activeTab} 
               onValueChange={(value) => {
                 // Prevent regular admins from accessing super_admin-only tabs
-                if (currentAdminRole !== 'super_admin' && (value === 'logs' || value === 'settings' || value === 'admins' || value === 'official-invitations')) {
+                if (currentAdminRole !== 'super_admin' && (value === 'logs' || value === 'settings' || value === 'admins' || value === 'official-invitations' || value === 'scanners')) {
                   return; // Don't allow tab change
                 }
                 setActiveTab(value);
@@ -12568,8 +12601,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </TabsContent>
               )}
 
+              {currentAdminRole === 'super_admin' && (
+                <TabsContent value="scanners" className="space-y-6">
+                  <ScannersTab language={language} />
+                </TabsContent>
+              )}
 
-              
+              <TabsContent value="pos" className="space-y-6">
+                <PosTab language={language} />
+              </TabsContent>
 
               {/* Ambassadors Tab */}
               <TabsContent value="ambassadors" className="space-y-6">
@@ -17939,6 +17979,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           setEmailDeliveryLogs([]);
           setIsEditingEmail(false);
           setEditingEmailValue('');
+          setIsEditingAdminNotes(false);
+          setEditingAdminNotesValue('');
         }
       }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -18444,6 +18486,139 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   )}
                 </div>
               </div>
+
+              {/* Admin Notes */}
+              <Card className="bg-muted/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-primary" />
+                    {language === 'en' ? 'Admin Notes' : 'Notes Administrateur'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {isEditingAdminNotes ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={editingAdminNotesValue}
+                        onChange={(e) => setEditingAdminNotesValue(e.target.value)}
+                        className="min-h-[100px] text-base"
+                        placeholder={language === 'en' ? 'Enter admin notes...' : 'Entrez les notes administrateur...'}
+                        disabled={updatingAdminNotes}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="default"
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setUpdatingAdminNotes(true);
+                            try {
+                              const apiBase = getApiBaseUrl();
+                              const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_UPDATE_ORDER_NOTES, apiBase);
+                              
+                              if (!apiUrl) {
+                                throw new Error('Invalid API URL configuration');
+                              }
+                              
+                              console.log('Updating admin notes:', { orderId: selectedOrder.id, apiUrl });
+                              
+                              const response = await fetch(apiUrl, {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                },
+                                credentials: 'include',
+                                body: JSON.stringify({
+                                  orderId: selectedOrder.id,
+                                  adminNotes: editingAdminNotesValue.trim() || null
+                                }),
+                              });
+                              
+                              const data = await response.json();
+                              
+                              if (!response.ok) {
+                                throw new Error(data.error || data.details || 'Failed to update admin notes');
+                              }
+                              
+                              toast({
+                                title: language === 'en' ? 'Success' : 'Succès',
+                                description: language === 'en' 
+                                  ? 'Admin notes updated successfully' 
+                                  : 'Notes administrateur mises à jour avec succès',
+                                variant: 'default'
+                              });
+                              
+                              // Update local state
+                              setSelectedOrder({
+                                ...selectedOrder,
+                                admin_notes: editingAdminNotesValue.trim() || null
+                              });
+                              
+                              setIsEditingAdminNotes(false);
+                              setEditingAdminNotesValue('');
+                              
+                              // Refresh orders list
+                              const statusToFetch = orderFilters.status || undefined;
+                              fetchAmbassadorSalesData(statusToFetch);
+                            } catch (error: any) {
+                              console.error('Error updating admin notes:', error);
+                              toast({
+                                title: language === 'en' ? 'Error' : 'Erreur',
+                                description: error.message || (language === 'en' ? 'Failed to update admin notes' : 'Échec de la mise à jour des notes administrateur'),
+                                variant: 'destructive'
+                              });
+                            } finally {
+                              setUpdatingAdminNotes(false);
+                            }
+                          }}
+                          disabled={updatingAdminNotes}
+                        >
+                          <Save className="w-4 h-4 mr-1" />
+                          {language === 'en' ? 'Save' : 'Enregistrer'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setIsEditingAdminNotes(false);
+                            setEditingAdminNotesValue('');
+                          }}
+                          disabled={updatingAdminNotes}
+                        >
+                          <X className="w-4 h-4 mr-1" />
+                          {language === 'en' ? 'Cancel' : 'Annuler'}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="min-h-[100px] p-3 bg-background border rounded-md">
+                        {selectedOrder.admin_notes ? (
+                          <p className="text-base whitespace-pre-wrap">{selectedOrder.admin_notes}</p>
+                        ) : (
+                          <p className="text-base text-muted-foreground italic">
+                            {language === 'en' ? 'No admin notes added yet' : 'Aucune note administrateur ajoutée pour le moment'}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingAdminNotesValue(selectedOrder.admin_notes || '');
+                          setIsEditingAdminNotes(true);
+                        }}
+                        className="h-8"
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        {language === 'en' ? 'Edit Notes' : 'Modifier les Notes'}
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
               {/* Order Logs */}
               <Card className="bg-muted/30">

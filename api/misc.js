@@ -284,6 +284,11 @@ export default async (req, res) => {
   }
   const method = req.method;
   
+  // Debug logging for admin/update-order-notes route
+  if (path.includes('update-order-notes')) {
+    console.log('[api/misc.js] Request received:', { method, originalUrl: req.url, normalizedPath: path });
+  }
+  
   // Set CORS headers
   setCORSHeaders(res, req);
   
@@ -2372,6 +2377,132 @@ We Create Memories`;
         });
       } catch (error) {
         console.error('Error in /api/admin/update-order-email:', error);
+        return res.status(500).json({
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+
+    // ============================================
+    // /api/admin/update-order-notes (POST)
+    // ============================================
+    if ((path === '/api/admin/update-order-notes' || path === '/admin/update-order-notes') && method === 'POST') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        
+        const bodyData = await parseBody(req);
+        const { orderId, adminNotes } = bodyData;
+        const adminId = authResult.admin?.id;
+        const adminEmail = authResult.admin?.email;
+        
+        if (!orderId) {
+          return res.status(400).json({ error: 'Order ID is required' });
+        }
+        
+        // adminNotes can be null or string
+        if (adminNotes !== null && adminNotes !== undefined && typeof adminNotes !== 'string') {
+          return res.status(400).json({ error: 'Admin notes must be a string or null' });
+        }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+        
+        let supabaseService = null;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabaseService = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        }
+        
+        const dbClient = supabaseService || supabase;
+        
+        // Step 1: Verify order exists
+        const { data: order, error: orderError } = await dbClient
+          .from('orders')
+          .select('id, admin_notes')
+          .eq('id', orderId)
+          .single();
+        
+        if (orderError || !order) {
+          return res.status(404).json({ error: 'Order not found' });
+        }
+        
+        const oldNotes = order.admin_notes || null;
+        const trimmedNotes = adminNotes !== null && adminNotes !== undefined ? adminNotes.trim() : null;
+        
+        // Step 2: Check if notes are actually changing
+        if (oldNotes === trimmedNotes) {
+          return res.status(200).json({
+            success: true,
+            message: 'Admin notes unchanged',
+            orderId: orderId,
+            admin_notes: trimmedNotes
+          });
+        }
+        
+        // Step 3: Update only admin_notes field
+        const { data: updatedOrder, error: updateError } = await dbClient
+          .from('orders')
+          .update({
+            admin_notes: trimmedNotes,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', orderId)
+          .select('id, admin_notes')
+          .single();
+        
+        if (updateError || !updatedOrder) {
+          console.error('Error updating order admin notes:', updateError);
+          return res.status(500).json({
+            error: 'Failed to update admin notes',
+            details: updateError?.message || 'Unknown error'
+          });
+        }
+        
+        // Step 4: Log to order_logs (audit trail)
+        try {
+          await dbClient.from('order_logs').insert({
+            order_id: orderId,
+            action: 'admin_notes_updated',
+            performed_by: adminId,
+            performed_by_type: 'admin',
+            details: {
+              old_notes: oldNotes,
+              new_notes: trimmedNotes,
+              admin_email: adminEmail,
+              admin_id: adminId
+            }
+          });
+        } catch (logError) {
+          // Log error but don't fail the request
+          console.error('Failed to log admin notes update:', logError);
+        }
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Admin notes updated successfully',
+          orderId: orderId,
+          admin_notes: updatedOrder.admin_notes
+        });
+      } catch (error) {
+        console.error('Error in /api/admin/update-order-notes:', error);
         return res.status(500).json({
           error: 'Internal server error',
           details: error.message

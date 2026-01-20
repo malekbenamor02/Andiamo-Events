@@ -50,11 +50,12 @@ export const usePhoneCapture = (pathname: string) => {
       '/contact',
       '/pass-purchase',
       '/cod-order',
-      '/payment-processing'
+      '/payment-processing',
+      '/pos'
     ];
     
     const isExcluded = excludedPaths.some(path => {
-      if (path === '/admin' || path === '/ambassador') {
+      if (path === '/admin' || path === '/ambassador' || path === '/pos') {
         return pathname.startsWith(path);
       }
       return pathname === path;

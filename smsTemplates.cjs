@@ -145,10 +145,33 @@ Billets envoyés par email (Check SPAM).
 We Create Memories`;
 }
 
+/**
+ * 4️⃣ POS – Client SMS on order create (French only, no ambassador)
+ * Commande #{order_number} reçue – {outlet_name}
+ * Pass: {passes_text} | Total: {total_price} DT
+ * En attente de validation
+ * We Create Memories
+ */
+function buildPosClientOrderReceivedSMS(data) {
+  const { order, passes, outletName } = data;
+  if (!order) throw new Error('Order is required');
+  if (!passes || passes.length === 0) throw new Error('Passes are required');
+  if (!outletName) throw new Error('outletName (Point de vente name) is required');
+  if (order.total_price == null) throw new Error('Order total_price is required');
+  const orderNumber = formatOrderNumber(order);
+  const passesText = formatPassesText(passes);
+  const totalPrice = parseFloat(order.total_price).toFixed(0);
+  return `Commande #${orderNumber} reçue – ${outletName}
+Pass: ${passesText} | Total: ${totalPrice} DT
+En attente de validation
+We Create Memories`;
+}
+
 module.exports = {
   buildClientOrderConfirmationSMS,
   buildAmbassadorNewOrderSMS,
   buildClientAdminApprovalSMS,
+  buildPosClientOrderReceivedSMS,
   formatPassesText,
   formatOrderNumber
 };

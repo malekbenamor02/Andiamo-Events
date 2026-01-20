@@ -31,6 +31,8 @@ import CODOrder from "./pages/CODOrder";
 import GalleryEvent from "./pages/GalleryEvent";
 import UpcomingEvent from "./pages/UpcomingEvent";
 import PaymentProcessing from "./pages/PaymentProcessing";
+import ScannerApp from "./pages/scanner/ScannerApp";
+import PosApp from "./pages/pos/PosApp";
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { FaviconLoader } from "./components/FaviconLoader";
@@ -55,6 +57,8 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
   const location = useLocation();
   const shouldShowPhonePopup = usePhoneCapture(location.pathname);
   const [isPhonePopupOpen, setIsPhonePopupOpen] = useState(false);
+  const isScanner = location.pathname.startsWith("/scanner");
+  const isPos = location.pathname.startsWith("/pos");
 
   // Sync hook state with popup state
   useEffect(() => {
@@ -72,8 +76,10 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
       <ScrollToTop />
       <MaintenanceMode language={language}>
         <div className="min-h-screen bg-background">
-          <Navigation language={language} toggleLanguage={toggleLanguage} />
+          {!isScanner && !isPos && <Navigation language={language} toggleLanguage={toggleLanguage} />}
           <Routes>
+            <Route path="/scanner/*" element={<ScannerApp language={language} />} />
+            <Route path="/pos/:outletSlug/*" element={<PosApp language={language} />} />
             <Route path="/" element={<Index language={language} />} />
             <Route path="/events" element={<Events language={language} />} />
             <Route path="/gallery/:eventSlug" element={<GalleryEvent language={language} />} />
@@ -104,7 +110,7 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
             <Route path="/:eventSlug" element={<PassPurchase language={language} />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
-          <Footer language={language} />
+          {!isScanner && !isPos && <Footer language={language} />}
         </div>
       </MaintenanceMode>
       <PhoneCapturePopup

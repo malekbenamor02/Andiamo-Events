@@ -58,6 +58,7 @@ export interface Order {
   cancellation_reason?: string | null;
   cancelled_by?: CancelledBy | null;
   notes?: string | null;  // JSON string
+  admin_notes?: string | null;  // Admin notes/comments for the order
   assigned_at?: string | null;
   accepted_at?: string | null;
   completed_at?: string | null;

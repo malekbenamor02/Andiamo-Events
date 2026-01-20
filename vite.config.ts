@@ -42,7 +42,18 @@ export default defineConfig(({ mode }) => {
       },
     }, // ✅ server fully closed here
 
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: "favicon-rewrite",
+        configureServer(server) {
+          server.middlewares.use((req, _res, next) => {
+            if (req.url === "/favicon.ico") req.url = "/logo.svg";
+            next();
+          });
+        },
+      },
+    ],
 
     resolve: {
       alias: {

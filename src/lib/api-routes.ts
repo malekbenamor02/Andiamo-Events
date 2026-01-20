@@ -55,6 +55,7 @@ export const API_ROUTES = {
   ADMIN_REMOVE_ORDER: '/api/admin-remove-order',
   ADMIN_RESEND_TICKET_EMAIL: '/api/admin-resend-ticket-email',
   ADMIN_UPDATE_ORDER_EMAIL: '/api/admin/update-order-email',
+  ADMIN_UPDATE_ORDER_NOTES: '/api/admin/update-order-notes',
   
   // Sales Settings
   UPDATE_SALES_SETTINGS: '/api/update-sales-settings',
@@ -98,6 +99,40 @@ export const API_ROUTES = {
   GET_OFFICIAL_INVITATION: (id: string) => `/api/admin/official-invitations/${id}`,
   RESEND_INVITATION_EMAIL: (id: string) => `/api/admin/official-invitations/${id}/resend`,
   DELETE_OFFICIAL_INVITATION: (id: string) => `/api/admin/official-invitations/${id}`,
+  
+  // Admin POS (Point de Vente)
+  ADMIN_POS_OUTLETS: '/api/admin/pos-outlets',
+  ADMIN_POS_OUTLET: (id: string) => `/api/admin/pos-outlets/${id}`,
+  ADMIN_POS_USERS: '/api/admin/pos-users',
+  ADMIN_POS_USER: (id: string) => `/api/admin/pos-users/${id}`,
+  ADMIN_POS_STOCK: '/api/admin/pos-stock',
+  ADMIN_POS_STOCK_ITEM: (id: string) => `/api/admin/pos-stock/${id}`,
+  ADMIN_POS_ORDERS: '/api/admin/pos-orders',
+  ADMIN_POS_ORDER: (id: string) => `/api/admin/pos-orders/${id}`,
+  ADMIN_POS_ORDER_APPROVE: (id: string) => `/api/admin/pos-orders/${id}/approve`,
+  ADMIN_POS_ORDER_REJECT: (id: string) => `/api/admin/pos-orders/${id}/reject`,
+  ADMIN_POS_ORDER_REMOVE: (id: string) => `/api/admin/pos-orders/${id}/remove`,
+  ADMIN_POS_ORDER_RESEND_RECEIVED: (id: string) => `/api/admin/pos-orders/${id}/resend-order-received`,
+  ADMIN_POS_ORDER_RESEND_TICKETS: (id: string) => `/api/admin/pos-orders/${id}/resend-tickets-email`,
+  ADMIN_POS_AUDIT_LOG: '/api/admin/pos-audit-log',
+  ADMIN_POS_EVENTS: '/api/admin/pos-events',
+  ADMIN_POS_STATISTICS: '/api/admin/pos-statistics',
+
+  // Scanner system (never trust frontend: scanner_id, role, etc. from verified JWT only)
+  SCAN_SYSTEM_STATUS: '/api/scan-system-status',
+  SCANNER_LOGIN: '/api/scanner-login',
+  SCANNER_LOGOUT: '/api/scanner-logout',
+  SCANNER_VALIDATE_TICKET: '/api/scanner/validate-ticket',
+  SCANNER_EVENTS: '/api/scanner/events',
+  SCANNER_SCANS: '/api/scanner/scans',
+  SCANNER_STATISTICS: '/api/scanner/statistics',
+  ADMIN_SCAN_SYSTEM_CONFIG: '/api/admin/scan-system-config',
+  ADMIN_SCANNERS: '/api/admin/scanners',
+  ADMIN_SCANNER: (id: string) => `/api/admin/scanners/${id}`,
+  ADMIN_SCANNER_SCANS: (id: string) => `/api/admin/scanners/${id}/scans`,
+  ADMIN_SCANNER_STATISTICS: (id: string) => `/api/admin/scanners/${id}/statistics`,
+  ADMIN_SCAN_HISTORY: '/api/admin/scan-history',
+  ADMIN_SCAN_STATISTICS: '/api/admin/scan-statistics',
   
   // Testing & Diagnostics
   TEST: '/api/test',
@@ -165,36 +200,14 @@ export function getApiBaseUrl(): string {
     
     // If we're on a production domain, ALWAYS use same-origin (empty string)
     if (isProductionDomain) {
-      const apiBase = '';
-      console.log('🌐 getApiBaseUrl(): Production domain detected', {
-        hostname,
-        apiBase,
-        mode: import.meta.env.MODE,
-        dev: import.meta.env.DEV
-      });
-      return apiBase;
+      return '';
     }
   }
   
-  // Build-time check: In development mode, use localhost
-  if (import.meta.env.DEV) {
-    const apiBase = 'http://localhost:8082';
-    console.log('🔧 getApiBaseUrl(): Development mode', {
-      apiBase,
-      mode: import.meta.env.MODE
-    });
-    return apiBase;
-  }
-  
-  // In production/preview builds, use same-origin (empty string)
-  // This allows relative URLs like /api/admin-approve-order
-  const apiBase = '';
-  console.log('📦 getApiBaseUrl(): Production build', {
-    apiBase,
-    mode: import.meta.env.MODE,
-    dev: import.meta.env.DEV
-  });
-  return apiBase;
+  // DEV: use '' so /api uses Vite proxy (localhost:3000 -> 8082), avoids CORS
+  if (import.meta.env.DEV) return '';
+  // Production: same-origin
+  return '';
 }
 
 /**

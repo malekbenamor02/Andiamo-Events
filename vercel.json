@@ -73,6 +73,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/update-order-notes",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/aio-events-submissions",
       "destination": "/api/misc.js"
     },
@@ -109,6 +113,10 @@
       "destination": "/api/admin/logs.js"
     },
     {
+      "source": "/api/pos/:path*",
+      "destination": "/api/pos.js"
+    },
+    {
       "source": "/api/admin/official-invitations",
       "destination": "/api/misc.js"
     },
@@ -123,6 +131,70 @@
     {
       "source": "/api/admin/official-invitations/:id/resend",
       "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/pos-outlets",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-outlets/:id",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-users",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-users/:id",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-stock",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-stock/:id",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-orders",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-orders/:id/approve",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-orders/:id/reject",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-orders/:id/remove",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-orders/:id/resend-order-received",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-orders/:id/resend-tickets-email",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-orders/:id",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-statistics",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-audit-log",
+      "destination": "/api/admin-pos.js"
+    },
+    {
+      "source": "/api/admin/pos-events",
+      "destination": "/api/admin-pos.js"
     },
     {
       "source": "/((?!api).*)",
@@ -152,6 +224,12 @@
       "maxDuration": 60
     },
     "api/admin/logs.js": {
+      "maxDuration": 60
+    },
+    "api/pos.js": {
+      "maxDuration": 30
+    },
+    "api/admin-pos.js": {
       "maxDuration": 60
     }
   }

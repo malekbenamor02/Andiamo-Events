@@ -1,7 +1,8 @@
 -- Create scans table for tracking QR code scans
+-- ticket_id: plain UUID (optionally pass_purchases.id when that table exists). Scanner flow uses qr_ticket_id.
 CREATE TABLE IF NOT EXISTS scans (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  ticket_id UUID REFERENCES pass_purchases(id) ON DELETE CASCADE,
+  ticket_id UUID,
   event_id UUID REFERENCES events(id) ON DELETE CASCADE,
   ambassador_id UUID REFERENCES ambassadors(id) ON DELETE SET NULL,
   scan_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -47,24 +48,27 @@ CREATE POLICY "Admins can manage all scans" ON scans
     )
   );
 
--- Add QR code field to pass_purchases table
-ALTER TABLE pass_purchases ADD COLUMN IF NOT EXISTS qr_code TEXT UNIQUE;
-ALTER TABLE pass_purchases ADD COLUMN IF NOT EXISTS qr_code_generated_at TIMESTAMP WITH TIME ZONE;
-
--- Create function to generate QR codes
-CREATE OR REPLACE FUNCTION generate_qr_code()
-RETURNS TRIGGER AS $$
+-- Add QR code field and trigger to pass_purchases only if that table exists
+DO $$
 BEGIN
-  -- Generate a unique QR code based on ticket ID and event
-  NEW.qr_code := encode(gen_random_bytes(16), 'hex') || '-' || NEW.id::text;
-  NEW.qr_code_generated_at := NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'pass_purchases') THEN
+    ALTER TABLE pass_purchases ADD COLUMN IF NOT EXISTS qr_code TEXT UNIQUE;
+    ALTER TABLE pass_purchases ADD COLUMN IF NOT EXISTS qr_code_generated_at TIMESTAMP WITH TIME ZONE;
 
--- Create trigger to auto-generate QR codes
-CREATE TRIGGER generate_qr_code_trigger
-  BEFORE INSERT ON pass_purchases
-  FOR EACH ROW
-  WHEN (NEW.qr_code IS NULL)
-  EXECUTE FUNCTION generate_qr_code(); 
+    CREATE OR REPLACE FUNCTION generate_qr_code()
+    RETURNS TRIGGER AS $fn$
+    BEGIN
+      NEW.qr_code := encode(gen_random_bytes(16), 'hex') || '-' || NEW.id::text;
+      NEW.qr_code_generated_at := NOW();
+      RETURN NEW;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS generate_qr_code_trigger ON pass_purchases;
+    CREATE TRIGGER generate_qr_code_trigger
+      BEFORE INSERT ON pass_purchases
+      FOR EACH ROW
+      WHEN (NEW.qr_code IS NULL)
+      EXECUTE FUNCTION generate_qr_code();
+  END IF;
+END $$; 
