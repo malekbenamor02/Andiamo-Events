@@ -336,14 +336,22 @@ async function auditList(sb, q, res) {
 // --- Orders list ---
 async function ordersList(sb, q, res) {
   let query = sb.from('orders').select(`
-    id, order_number, user_name, user_phone, user_email, city, ville, quantity, total_price, status, payment_method, source, event_id, pos_outlet_id, pos_user_id, approved_by, rejected_by, removed_by, created_at,
+    id, order_number, user_name, user_phone, user_email, city, ville, quantity, total_price, status, payment_method, source, event_id, pos_outlet_id, pos_user_id, approved_by, rejected_by, removed_by, cancellation_reason, created_at,
     pos_outlets(id, name, slug),
     events(id, name, date, venue),
-    order_passes(id, pass_id, pass_type, quantity, price)
+    order_passes(id, pass_id, pass_type, quantity, price),
+    approver:admins!approved_by(email),
+    rejector:admins!rejected_by(email),
+    remover:admins!removed_by(email)
   `).eq('source', 'point_de_vente').order('created_at', { ascending: false });
   if (q.status) query = query.eq('status', q.status);
   if (q.event_id) query = query.eq('event_id', q.event_id);
   if (q.pos_outlet_id) query = query.eq('pos_outlet_id', q.pos_outlet_id);
+  if (q.from) query = query.gte('created_at', q.from);
+  if (q.to) {
+    const toVal = /^\d{4}-\d{2}-\d{2}$/.test(String(q.to)) ? `${q.to}T23:59:59.999Z` : q.to;
+    query = query.lte('created_at', toVal);
+  }
   const limit = Math.min(100, Math.max(1, parseInt(q.limit, 10) || 50));
   const offset = Math.max(0, parseInt(q.offset, 10) || 0);
   query = query.range(offset, offset + limit - 1);
@@ -450,7 +458,7 @@ async function ordersReject(sb, id, body, auth, req, res) {
   return res.status(200).json({ success: true });
 }
 
-// --- Orders: remove (decrement pos_pass_stock, return stock) ---
+// --- Orders: remove (decrement pos_pass_stock, return stock, delete qr_tickets for PAID) ---
 async function ordersRemove(sb, id, auth, req, res) {
   const { data: order, error: e0 } = await sb.from('orders').select('id, status, pos_outlet_id, event_id').eq('id', id).single();
   if (e0 || !order) return res.status(404).json({ error: 'Order not found' });
@@ -460,6 +468,8 @@ async function ordersRemove(sb, id, auth, req, res) {
     const { data: r } = await sb.from('pos_pass_stock').select('sold_quantity').eq('pos_outlet_id', order.pos_outlet_id).eq('event_id', order.event_id).eq('pass_id', p.pass_id).single();
     if (r) await sb.from('pos_pass_stock').update({ sold_quantity: Math.max(0, (r.sold_quantity || 0) - p.quantity), updated_at: new Date().toISOString() }).eq('pos_outlet_id', order.pos_outlet_id).eq('event_id', order.event_id).eq('pass_id', p.pass_id);
   }
+  // Remove from qr_tickets so those QR codes can no longer be scanned (PAID orders had qr_tickets; PENDING had none)
+  await sb.from('qr_tickets').delete().eq('order_id', id);
   await sb.from('orders').update({ status: 'REMOVED_BY_ADMIN', removed_by: auth.admin.id, updated_at: new Date().toISOString() }).eq('id', id);
   await posAuditLog(sb, { action: 'remove_pos_order', performed_by_type: 'admin', performed_by_id: auth.admin.id, performed_by_email: auth.admin.email, pos_outlet_id: order.pos_outlet_id, target_type: 'order', target_id: id, details: {}, req });
   return res.status(200).json({ success: true });

@@ -67,9 +67,13 @@ interface PosOrder {
   total_price: number;
   status: string;
   created_at: string;
+  cancellation_reason?: string | null;
   pos_outlets?: { id: string; name: string; slug: string } | null;
   events?: { id: string; name: string; date?: string; venue?: string } | null;
   order_passes?: { pass_type: string; quantity: number; price: number }[];
+  approver?: { email?: string } | null;
+  rejector?: { email?: string } | null;
+  remover?: { email?: string } | null;
 }
 
 interface AuditRow {
@@ -113,6 +117,9 @@ export function PosTab({ language }: PosTabProps) {
   const [outletFilter, setOutletFilter] = useState<string>("__all__");
   const [eventFilter, setEventFilter] = useState<string>("__all__");
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("__all__");
+  const [orderEventFilter, setOrderEventFilter] = useState<string>("__all__");
+  const [orderFrom, setOrderFrom] = useState("");
+  const [orderTo, setOrderTo] = useState("");
   const [createOutlet, setCreateOutlet] = useState(false);
   const [editOutlet, setEditOutlet] = useState<Outlet | null>(null);
   const [createUser, setCreateUser] = useState(false);
@@ -156,6 +163,9 @@ export function PosTab({ language }: PosTabProps) {
     const q = new URLSearchParams();
     if (orderStatusFilter && orderStatusFilter !== "__all__") q.set("status", orderStatusFilter);
     if (outletId) q.set("pos_outlet_id", outletId);
+    if (orderEventFilter && orderEventFilter !== "__all__") q.set("event_id", orderEventFilter);
+    if (orderFrom) q.set("from", orderFrom);
+    if (orderTo) q.set("to", orderTo);
     const r = await fetcher(`${API_ROUTES.ADMIN_POS_ORDERS}?${q}`);
     if (r.ok) setOrders(await r.json()); else setOrders([]);
   };
@@ -204,7 +214,7 @@ export function PosTab({ language }: PosTabProps) {
   }, [addStock, editStock, form.pos_outlet_id, form.event_id]);
   useEffect(() => { loadUsers(); }, [outletId]);
   useEffect(() => { loadStock(); }, [outletId, eventFilter]);
-  useEffect(() => { loadOrders(); }, [outletId, orderStatusFilter]);
+  useEffect(() => { loadOrders(); }, [outletId, orderStatusFilter, orderEventFilter, orderFrom, orderTo]);
   useEffect(() => { if (subTab === "audit") loadAudit(); }, [subTab]);
   useEffect(() => { const e = form.event_id; if (e && String(e).length) loadPasses(String(e)); }, [form.event_id]);
 
@@ -533,6 +543,15 @@ export function PosTab({ language }: PosTabProps) {
                     <SelectItem value="REMOVED_BY_ADMIN">REMOVED_BY_ADMIN</SelectItem>
                   </SelectContent>
                 </Select>
+                <Select value={orderEventFilter} onValueChange={setOrderEventFilter}>
+                  <SelectTrigger className="w-[180px] bg-[#252525] border-[#2A2A2A] text-white"><SelectValue placeholder={t.event} /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">{language === "en" ? "All events" : "Tous"}</SelectItem>
+                    {events.map(ev => <SelectItem key={ev.id} value={ev.id}>{ev.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Input type="date" className="w-[140px] bg-[#252525] border-[#2A2A2A] text-white" value={orderFrom} onChange={e => setOrderFrom(e.target.value)} />
+                <Input type="date" className="w-[140px] bg-[#252525] border-[#2A2A2A] text-white" value={orderTo} onChange={e => setOrderTo(e.target.value)} />
                 <Button size="sm" variant="ghost" onClick={loadOrders}><RefreshCw className="w-4 h-4" /></Button>
               </div>
             </CardHeader>
@@ -854,6 +873,23 @@ export function PosTab({ language }: PosTabProps) {
                 <div className="text-[#B0B0B0]">{(selectedOrder.order_passes || []).map(p => `${p.pass_type} x${p.quantity} — ${(p.price * p.quantity).toFixed(2)} DT`).join(" | ") || "—"}</div>
               </div>
               <p className="text-white font-semibold">{t.total}: {selectedOrder.total_price} DT</p>
+              {(selectedOrder.status === "PAID" && selectedOrder.approver) || (selectedOrder.status === "REJECTED" && (selectedOrder.rejector || selectedOrder.cancellation_reason)) || (selectedOrder.status === "REMOVED_BY_ADMIN" && selectedOrder.remover) ? (
+                <div>
+                  <p className="text-[#E21836] font-semibold mb-1">{language === "en" ? "Action by" : "Action par"}</p>
+                  {selectedOrder.status === "PAID" && selectedOrder.approver && (
+                    <p className="text-[#B0B0B0]">{(language === "en" ? "Approved by" : "Approuvé par")}: {selectedOrder.approver?.email || "—"}</p>
+                  )}
+                  {selectedOrder.status === "REJECTED" && (
+                    <>
+                      {selectedOrder.rejector && <p className="text-[#B0B0B0]">{(language === "en" ? "Rejected by" : "Rejeté par")}: {selectedOrder.rejector?.email || "—"}</p>}
+                      {selectedOrder.cancellation_reason && <p className="text-[#B0B0B0] mt-0.5">{(language === "en" ? "Reason" : "Raison")}: {selectedOrder.cancellation_reason}</p>}
+                    </>
+                  )}
+                  {selectedOrder.status === "REMOVED_BY_ADMIN" && selectedOrder.remover && (
+                    <p className="text-[#B0B0B0]">{(language === "en" ? "Removed by" : "Supprimé par")}: {selectedOrder.remover?.email || "—"}</p>
+                  )}
+                </div>
+              ) : null}
               <div>
                 <Label className="text-[#B0B0B0]">{t.email}</Label>
                 <div className="flex gap-2 mt-1">
