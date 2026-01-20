@@ -105,7 +105,7 @@ type ConfirmTarget = { kind: "delete-outlet"; o: Outlet } | { kind: "delete-user
 
 export function PosTab({ language }: PosTabProps) {
   const { toast } = useToast();
-  const [subTab, setSubTab] = useState("outlets");
+  const [subTab, setSubTab] = useState("orders");
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [users, setUsers] = useState<PosUser[]>([]);
   const [stock, setStock] = useState<StockRow[]>([]);
@@ -376,11 +376,11 @@ export function PosTab({ language }: PosTabProps) {
       </div>
       <Tabs value={subTab} onValueChange={setSubTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-6 gap-1 h-auto flex-wrap bg-[#1F1F1F] border-[#2A2A2A]">
+          <TabsTrigger value="orders" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><ShoppingCart className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.orders}</span></TabsTrigger>
+          <TabsTrigger value="statistics" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><BarChart3 className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.statistics}</span></TabsTrigger>
           <TabsTrigger value="outlets" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><Building2 className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.outlets}</span></TabsTrigger>
           <TabsTrigger value="users" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><Users className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.users}</span></TabsTrigger>
-          <TabsTrigger value="orders" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><ShoppingCart className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.orders}</span></TabsTrigger>
           <TabsTrigger value="stock" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><Package className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.stock}</span></TabsTrigger>
-          <TabsTrigger value="statistics" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><BarChart3 className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.statistics}</span></TabsTrigger>
           <TabsTrigger value="audit" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><Activity className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.audit}</span></TabsTrigger>
         </TabsList>
 
