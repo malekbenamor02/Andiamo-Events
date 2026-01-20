@@ -459,7 +459,7 @@ async function ordersRemove(sb, id, auth, req, res) {
 // --- Orders: approve (tickets, email, SMS) — simplified version of admin-approve-order for POS ---
 async function ordersApprove(sb, id, auth, req, res) {
   const { data: order, error: e0 } = await sb.from('orders').select(`
-    id, order_number, status, source, payment_method, user_name, user_phone, user_email, total_price, event_id, pos_outlet_id,
+    id, order_number, status, source, payment_method, user_name, user_phone, user_email, total_price, event_id, pos_outlet_id, city, ville,
     events(id, name, date, venue)
   `).eq('id', id).single();
   if (e0 || !order) return res.status(404).json({ error: 'Order not found' });
@@ -503,7 +503,7 @@ async function ordersApprove(sb, id, auth, req, res) {
           secure_token: secureToken,
           ticket_id: t.id,
           order_id: id,
-          source: order.source || 'point_de_vente',
+          source: 'point_de_vente',
           payment_method: order.payment_method || 'pos',
           ambassador_id: null,
           ambassador_name: null,
@@ -511,8 +511,8 @@ async function ordersApprove(sb, id, auth, req, res) {
           buyer_name: order.user_name,
           buyer_phone: order.user_phone,
           buyer_email: order.user_email || null,
-          buyer_city: order.city,
-          buyer_ville: order.ville || null,
+          buyer_city: order.city ?? '',
+          buyer_ville: order.ville ?? null,
           event_id: order.event_id,
           event_name: order.events?.name || null,
           event_date: order.events?.date || null,
