@@ -278,23 +278,24 @@ async function posStatistics(sb, q, res) {
     const price = parseFloat(o.total_price) || 0;
     const ticketCount = (o.order_passes || []).reduce((s, p) => s + (p.quantity || 0), 0);
     if (!byOutlet[oid]) byOutlet[oid] = { outlet_id: oid, outlet_name: out.name || '—', total_orders: 0, total_revenue: 0, by_status: {}, by_pass_type: {} };
-    byOutlet[oid].total_orders += 1;
-    byOutlet[oid].total_revenue += price;
     statuses[o.status] = (statuses[o.status] || 0) + 1;
     byOutlet[oid].by_status[o.status] = (byOutlet[oid].by_status[o.status] || 0) + 1;
-    const d = (o.created_at || '').slice(0, 10);
-    if (d) { if (!daily[d]) daily[d] = { date: d, orders: 0, revenue: 0 }; daily[d].orders += 1; daily[d].revenue += price; }
     totalOrders += 1;
     totalRevenue += price;
-    if (o.status === 'PAID') { paidOrders += 1; paidRevenue += price; paidTickets += ticketCount; }
-    else if (o.status === 'PENDING_ADMIN_APPROVAL') { pendingOrders += 1; pendingRevenue += price; pendingTickets += ticketCount; }
+    if (o.status === 'PAID') {
+      paidOrders += 1; paidRevenue += price; paidTickets += ticketCount;
+      byOutlet[oid].total_orders += 1;
+      byOutlet[oid].total_revenue += price;
+      const d = (o.created_at || '').slice(0, 10);
+      if (d) { if (!daily[d]) daily[d] = { date: d, orders: 0, revenue: 0 }; daily[d].orders += 1; daily[d].revenue += price; }
+      for (const p of o.order_passes || []) {
+        const pt = p.pass_type || 'Standard';
+        byPassType[pt] = (byPassType[pt] || 0) + (p.quantity || 0);
+        byOutlet[oid].by_pass_type[pt] = (byOutlet[oid].by_pass_type[pt] || 0) + (p.quantity || 0);
+      }
+    } else if (o.status === 'PENDING_ADMIN_APPROVAL') { pendingOrders += 1; pendingRevenue += price; pendingTickets += ticketCount; }
     else if (o.status === 'REJECTED') { rejectedOrders += 1; rejectedTickets += ticketCount; }
     else if (o.status === 'REMOVED_BY_ADMIN') { removedOrders += 1; removedTickets += ticketCount; }
-    for (const p of o.order_passes || []) {
-      const pt = p.pass_type || 'Standard';
-      byPassType[pt] = (byPassType[pt] || 0) + (p.quantity || 0);
-      byOutlet[oid].by_pass_type[pt] = (byOutlet[oid].by_pass_type[pt] || 0) + (p.quantity || 0);
-    }
   }
   return res.status(200).json({
     byOutlet: Object.values(byOutlet),

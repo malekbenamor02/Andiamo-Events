@@ -667,7 +667,7 @@ export function PosTab({ language }: PosTabProps) {
                   </div>
                   {stats.daily && stats.daily.length > 0 && (
                     <div>
-                      <p className="text-[#E21836] font-semibold mb-2">{t.daily}</p>
+                      <p className="text-[#E21836] font-semibold mb-2">{t.daily} ({language === "en" ? "paid only" : "payés uniquement"})</p>
                       <ResponsiveContainer width="100%" height={240}>
                         <LineChart data={stats.daily}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" />
@@ -675,20 +675,20 @@ export function PosTab({ language }: PosTabProps) {
                           <YAxis stroke="#B0B0B0" tick={{ fill: "#B0B0B0" }} />
                           <Tooltip contentStyle={{ background: "#1F1F1F", border: "1px solid #2A2A2A" }} labelStyle={{ color: "#fff" }} />
                           <Legend />
-                          <Line type="monotone" dataKey="orders" stroke="#E21836" name="Orders" strokeWidth={2} />
-                          <Line type="monotone" dataKey="revenue" stroke="#10B981" name="Revenue (DT)" strokeWidth={2} />
+                          <Line type="monotone" dataKey="orders" stroke="#E21836" name={language === "en" ? "Paid orders" : "Commandes payées"} strokeWidth={2} />
+                          <Line type="monotone" dataKey="revenue" stroke="#10B981" name={language === "en" ? "Paid revenue (DT)" : "Chiffre payé (DT)"} strokeWidth={2} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
                   )}
                   {stats.byOutlet && stats.byOutlet.length > 0 && (
                     <div>
-                      <p className="text-[#E21836] font-semibold mb-2">{t.byOutlet}</p>
+                      <p className="text-[#E21836] font-semibold mb-2">{t.byOutlet} ({language === "en" ? "paid only" : "payés uniquement"})</p>
                       <Table>
                         <TableHeader><TableRow className="border-[#2A2A2A]">
                           <TableHead className="text-[#B0B0B0]">{t.outlet}</TableHead>
-                          <TableHead className="text-[#B0B0B0]">{t.totalOrders}</TableHead>
-                          <TableHead className="text-[#B0B0B0]">{t.totalRevenue}</TableHead>
+                          <TableHead className="text-[#B0B0B0]">{t.paidOrders}</TableHead>
+                          <TableHead className="text-[#B0B0B0]">{t.paidRevenue}</TableHead>
                         </TableRow></TableHeader>
                         <TableBody>
                           {stats.byOutlet.map((x: { outlet_id: string; outlet_name: string; total_orders: number; total_revenue: number }) => (
@@ -704,14 +704,14 @@ export function PosTab({ language }: PosTabProps) {
                   )}
                   {stats.byPassType && Object.keys(stats.byPassType).length > 0 && (
                     <div>
-                      <p className="text-[#E21836] font-semibold mb-2">{t.byPassType}</p>
+                      <p className="text-[#E21836] font-semibold mb-2">{t.byPassType} ({language === "en" ? "paid tickets only" : "billets payés uniquement"})</p>
                       <ResponsiveContainer width="100%" height={220}>
                         <BarChart data={Object.entries(stats.byPassType).map(([k, v]) => ({ name: k, count: v }))} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" />
                           <XAxis dataKey="name" stroke="#B0B0B0" tick={{ fill: "#B0B0B0" }} />
                           <YAxis stroke="#B0B0B0" tick={{ fill: "#B0B0B0" }} />
                           <Tooltip contentStyle={{ background: "#1F1F1F", border: "1px solid #2A2A2A" }} />
-                          <Bar dataKey="count" fill="#E21836" name="Tickets" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="count" fill="#E21836" name={language === "en" ? "Paid tickets" : "Billets payés"} radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
