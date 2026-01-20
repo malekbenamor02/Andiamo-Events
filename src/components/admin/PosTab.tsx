@@ -628,7 +628,7 @@ export function PosTab({ language }: PosTabProps) {
                       <p className="text-2xl font-bold text-white">{stats.totalOrders}</p>
                     </div>
                     <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
-                      <p className="text-[#B0B0B0] text-sm">{t.totalRevenue}</p>
+                      <p className="text-[#B0B0B0] text-sm">{t.totalRevenue} ({language === "en" ? "paid only" : "payé uniquement"})</p>
                       <p className="text-2xl font-bold text-[#E21836]">{(stats.totalRevenue ?? 0).toFixed(2)} DT</p>
                     </div>
                   </div>

@@ -281,8 +281,8 @@ async function posStatistics(sb, q, res) {
     statuses[o.status] = (statuses[o.status] || 0) + 1;
     byOutlet[oid].by_status[o.status] = (byOutlet[oid].by_status[o.status] || 0) + 1;
     totalOrders += 1;
-    totalRevenue += price;
     if (o.status === 'PAID') {
+      totalRevenue += price;
       paidOrders += 1; paidRevenue += price; paidTickets += ticketCount;
       byOutlet[oid].total_orders += 1;
       byOutlet[oid].total_revenue += price;
