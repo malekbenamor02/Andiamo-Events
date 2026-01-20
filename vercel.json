@@ -133,6 +133,62 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/scan-system-status",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/scanner-login",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/scanner-logout",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/admin/scan-system-config",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/admin/scanners/:id/scans",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/admin/scanners/:id/statistics",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/admin/scanners/:id",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/admin/scanners",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/admin/scan-history",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/admin/scan-statistics",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/scanner/validate-ticket",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/scanner/events",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/scanner/scans",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/scanner/statistics",
+      "destination": "/api/scan.js"
+    },
+    {
       "source": "/api/admin/pos-outlets",
       "destination": "/api/admin-pos.js"
     },
@@ -231,6 +287,9 @@
     },
     "api/admin-pos.js": {
       "maxDuration": 60
+    },
+    "api/scan.js": {
+      "maxDuration": 30
     }
   }
 }
