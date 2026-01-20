@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ReasonDialog } from "@/components/ui/reason-dialog";
 import { Switch } from "@/components/ui/switch";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
@@ -95,6 +97,8 @@ interface EventPass {
   price: number;
 }
 
+type ConfirmTarget = { kind: "delete-outlet"; o: Outlet } | { kind: "delete-user"; u: PosUser } | { kind: "remove-order"; o: PosOrder };
+
 export function PosTab({ language }: PosTabProps) {
   const { toast } = useToast();
   const [subTab, setSubTab] = useState("outlets");
@@ -120,13 +124,17 @@ export function PosTab({ language }: PosTabProps) {
   const [orderDetailEmail, setOrderDetailEmail] = useState("");
   const [orderDetailSaving, setOrderDetailSaving] = useState(false);
   const [orderDetailResendLoading, setOrderDetailResendLoading] = useState(false);
-  const [stats, setStats] = useState<{ byOutlet: { outlet_id: string; outlet_name: string; total_orders: number; total_revenue: number; by_status: Record<string, number>; by_pass_type: Record<string, number> }[]; daily: { date: string; orders: number; revenue: number }[]; totalOrders: number; totalRevenue: number; byPassType: Record<string, number>; byStatus: Record<string, number> } | null>(null);
+  const [stats, setStats] = useState<{ byOutlet: { outlet_id: string; outlet_name: string; total_orders: number; total_revenue: number; by_status: Record<string, number>; by_pass_type: Record<string, number> }[]; daily: { date: string; orders: number; revenue: number }[]; totalOrders: number; totalRevenue: number; paidOrders?: number; paidRevenue?: number; pendingOrders?: number; pendingRevenue?: number; rejectedOrders?: number; removedOrders?: number; byPassType: Record<string, number>; byStatus: Record<string, number> } | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsOutletFilter, setStatsOutletFilter] = useState<string>("__all__");
   const [statsFrom, setStatsFrom] = useState("");
   const [statsTo, setStatsTo] = useState("");
   const [addStockExistingPassIds, setAddStockExistingPassIds] = useState<string[]>([]);
   const [togglingStockId, setTogglingStockId] = useState<string | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [rejectOrder, setRejectOrder] = useState<PosOrder | null>(null);
+  const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
 
   const loadOutlets = async () => {
     const r = await fetcher(API_ROUTES.ADMIN_POS_OUTLETS);
@@ -217,10 +225,9 @@ export function PosTab({ language }: PosTabProps) {
       if (r.ok) { setCreateOutlet(false); setForm({}); loadOutlets(); toast({ title: "Created" }); } else { const e = await r.json(); toast({ title: "Error", description: e.error, variant: "destructive" }); }
     }
   };
-  const onDeleteOutlet = async (o: Outlet) => {
-    if (!confirm(language === "en" ? "Delete this outlet?" : "Supprimer ce point de vente ?")) return;
-    const r = await fetcher(API_ROUTES.ADMIN_POS_OUTLET(o.id), { method: "DELETE" });
-    if (r.ok) { loadOutlets(); setOutletFilter("__all__"); toast({ title: "Deleted" }); } else { const e = await r.json(); toast({ title: "Error", description: e.error, variant: "destructive" }); }
+  const onDeleteOutlet = (o: Outlet) => {
+    setConfirmTarget({ kind: "delete-outlet", o });
+    setConfirmOpen(true);
   };
 
   const onSaveUser = async () => {
@@ -238,10 +245,9 @@ export function PosTab({ language }: PosTabProps) {
       if (r.ok) { setCreateUser(false); setForm({}); loadUsers(); toast({ title: "Created" }); } else { const e = await r.json(); toast({ title: "Error", description: e.error, variant: "destructive" }); }
     }
   };
-  const onDeleteUser = async (u: PosUser) => {
-    if (!confirm(language === "en" ? "Delete this user?" : "Supprimer cet utilisateur ?")) return;
-    const r = await fetcher(API_ROUTES.ADMIN_POS_USER(u.id), { method: "DELETE" });
-    if (r.ok) { loadUsers(); toast({ title: "Deleted" }); } else { const e = await r.json(); toast({ title: "Error", description: e.error, variant: "destructive" }); }
+  const onDeleteUser = (u: PosUser) => {
+    setConfirmTarget({ kind: "delete-user", u });
+    setConfirmOpen(true);
   };
 
   const onSaveStock = async () => {
@@ -285,19 +291,42 @@ export function PosTab({ language }: PosTabProps) {
     setLoading(false);
     if (r.ok) { loadOrders(); toast({ title: "Approved", description: "Tickets & email sent" }); } else { const e = await r.json(); toast({ title: "Error", description: e.error, variant: "destructive" }); }
   };
-  const onReject = async (o: PosOrder) => {
-    const reason = prompt(language === "en" ? "Reason (optional):" : "Raison (optionnel) :") || undefined;
-    setLoading(true);
-    const r = await fetcher(API_ROUTES.ADMIN_POS_ORDER_REJECT(o.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
-    setLoading(false);
-    if (r.ok) { loadOrders(); toast({ title: "Rejected" }); } else { const e = await r.json(); toast({ title: "Error", description: e.error, variant: "destructive" }); }
+  const onReject = (o: PosOrder) => {
+    setRejectOrder(o);
+    setReasonDialogOpen(true);
   };
-  const onRemove = async (o: PosOrder) => {
-    if (!confirm(language === "en" ? "Remove this order?" : "Supprimer cette commande ?")) return;
+  const onRemove = (o: PosOrder) => {
+    setConfirmTarget({ kind: "remove-order", o });
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmAction = () => {
+    if (!confirmTarget) return;
+    if (confirmTarget.kind === "delete-outlet") {
+      fetcher(API_ROUTES.ADMIN_POS_OUTLET(confirmTarget.o.id), { method: "DELETE" }).then(r => {
+        if (r.ok) { loadOutlets(); setOutletFilter("__all__"); toast({ title: "Deleted" }); } else r.json().then((e: { error?: string }) => toast({ title: "Error", description: e.error, variant: "destructive" }));
+      });
+    } else if (confirmTarget.kind === "delete-user") {
+      fetcher(API_ROUTES.ADMIN_POS_USER(confirmTarget.u.id), { method: "DELETE" }).then(r => {
+        if (r.ok) { loadUsers(); toast({ title: "Deleted" }); } else r.json().then((e: { error?: string }) => toast({ title: "Error", description: e.error, variant: "destructive" }));
+      });
+    } else if (confirmTarget.kind === "remove-order") {
+      setLoading(true);
+      fetcher(API_ROUTES.ADMIN_POS_ORDER_REMOVE(confirmTarget.o.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(r => {
+        setLoading(false);
+        if (r.ok) { loadOrders(); setSelectedOrder(null); toast({ title: "Removed" }); } else r.json().then((e: { error?: string }) => toast({ title: "Error", description: e.error, variant: "destructive" }));
+      });
+    }
+  };
+
+  const handleRejectWithReason = async (reason: string | undefined) => {
+    const order = rejectOrder;
+    setRejectOrder(null);
+    if (!order) return;
     setLoading(true);
-    const r = await fetcher(API_ROUTES.ADMIN_POS_ORDER_REMOVE(o.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const r = await fetcher(API_ROUTES.ADMIN_POS_ORDER_REJECT(order.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
     setLoading(false);
-    if (r.ok) { loadOrders(); setSelectedOrder(null); toast({ title: "Removed" }); } else { const e = await r.json(); toast({ title: "Error", description: e.error, variant: "destructive" }); }
+    if (r.ok) { loadOrders(); toast({ title: "Rejected" }); } else { const e = await r.json().catch(() => ({})); toast({ title: "Error", description: (e as { error?: string }).error, variant: "destructive" }); }
   };
 
   useEffect(() => { if (selectedOrder) setOrderDetailEmail(selectedOrder.user_email || ""); }, [selectedOrder?.id, selectedOrder?.user_email]);
@@ -327,8 +356,8 @@ export function PosTab({ language }: PosTabProps) {
   };
 
   const t = language === "en"
-    ? { title: "Point de Vente (POS)", outlets: "Outlets", users: "Users", orders: "Orders", stock: "Stock", audit: "Audit", statistics: "Statistics", add: "Add", edit: "Edit", delete: "Delete", view: "View", name: "Name", email: "Email", password: "Password", slug: "Slug", active: "Active", paused: "Paused", link: "Link", copy: "Copy", outlet: "Outlet", event: "Event", pass: "Pass", maxQ: "Max", sold: "Sold", remaining: "Remaining", customer: "Customer", total: "Total", status: "Status", actions: "Actions", approve: "Approve", reject: "Reject", remove: "Remove", createOutlet: "Create outlet", createUser: "Create user", addStock: "Add stock", noOutlets: "No outlets", noUsers: "No users", noStock: "Select outlet and optionally event", noOrders: "No orders", noAudit: "No audit", clientInfo: "Client information", phone: "Phone", city: "City", ville: "Ville", saveEmail: "Save email", resendOrderReceived: "Resend order-received email", resendTickets: "Resend tickets email", totalOrders: "Total orders", totalRevenue: "Total revenue", byOutlet: "By outlet", byPassType: "By pass type", byStatus: "By status", daily: "Daily" }
-    : { title: "Point de Vente (POS)", outlets: "Points de vente", users: "Utilisateurs", orders: "Commandes", stock: "Stock", audit: "Audit", statistics: "Statistiques", add: "Ajouter", edit: "Modifier", delete: "Supprimer", view: "Voir", name: "Nom", email: "Email", password: "Mot de passe", slug: "Slug", active: "Actif", paused: "En pause", link: "Lien", copy: "Copier", outlet: "Point de vente", event: "Événement", pass: "Pass", maxQ: "Max", sold: "Vendu", remaining: "Reste", customer: "Client", total: "Total", status: "Statut", actions: "Actions", approve: "Approuver", reject: "Rejeter", remove: "Supprimer", createOutlet: "Créer un point de vente", createUser: "Créer un utilisateur", addStock: "Ajouter du stock", noOutlets: "Aucun point de vente", noUsers: "Aucun utilisateur", noStock: "Choisir un point de vente et optionnellement un événement", noOrders: "Aucune commande", noAudit: "Aucun audit", clientInfo: "Informations client", phone: "Téléphone", city: "Ville", ville: "Ville", saveEmail: "Enregistrer l'email", resendOrderReceived: "Renvoyer email « reçu »", resendTickets: "Renvoyer email billets", totalOrders: "Total commandes", totalRevenue: "Chiffre d'affaires", byOutlet: "Par point de vente", byPassType: "Par type de pass", byStatus: "Par statut", daily: "Journalier" };
+    ? { title: "Point de Vente (POS)", outlets: "Outlets", users: "Users", orders: "Orders", stock: "Stock", audit: "Audit", statistics: "Statistics", add: "Add", edit: "Edit", delete: "Delete", view: "View", name: "Name", email: "Email", password: "Password", slug: "Slug", active: "Active", paused: "Paused", link: "Link", copy: "Copy", outlet: "Outlet", event: "Event", pass: "Pass", maxQ: "Max", sold: "Sold", remaining: "Remaining", customer: "Customer", total: "Total", status: "Status", actions: "Actions", approve: "Approve", reject: "Reject", remove: "Remove", createOutlet: "Create outlet", createUser: "Create user", addStock: "Add stock", noOutlets: "No outlets", noUsers: "No users", noStock: "Select outlet and optionally event", noOrders: "No orders", noAudit: "No audit", clientInfo: "Client information", phone: "Phone", city: "City", ville: "Ville", saveEmail: "Save email", resendOrderReceived: "Resend order-received email", resendTickets: "Resend tickets email", totalOrders: "Total orders", totalRevenue: "Total revenue", byOutlet: "By outlet", byPassType: "By pass type", byStatus: "By status", daily: "Daily", confirm: "Confirm", cancel: "Cancel", rejectReason: "Reason (optional):", rejectTitle: "Reject order", paidOrders: "Paid orders", paidRevenue: "Paid revenue", pendingOrders: "Pending orders", pendingRevenue: "Pending revenue", rejectedOrders: "Rejected orders", removedOrders: "Removed orders" }
+    : { title: "Point de Vente (POS)", outlets: "Points de vente", users: "Utilisateurs", orders: "Commandes", stock: "Stock", audit: "Audit", statistics: "Statistiques", add: "Ajouter", edit: "Modifier", delete: "Supprimer", view: "Voir", name: "Nom", email: "Email", password: "Mot de passe", slug: "Slug", active: "Actif", paused: "En pause", link: "Lien", copy: "Copier", outlet: "Point de vente", event: "Événement", pass: "Pass", maxQ: "Max", sold: "Vendu", remaining: "Reste", customer: "Client", total: "Total", status: "Statut", actions: "Actions", approve: "Approuver", reject: "Rejeter", remove: "Supprimer", createOutlet: "Créer un point de vente", createUser: "Créer un utilisateur", addStock: "Ajouter du stock", noOutlets: "Aucun point de vente", noUsers: "Aucun utilisateur", noStock: "Choisir un point de vente et optionnellement un événement", noOrders: "Aucune commande", noAudit: "Aucun audit", clientInfo: "Informations client", phone: "Téléphone", city: "Ville", ville: "Ville", saveEmail: "Enregistrer l'email", resendOrderReceived: "Renvoyer email « reçu »", resendTickets: "Renvoyer email billets", totalOrders: "Total commandes", totalRevenue: "Chiffre d'affaires", byOutlet: "Par point de vente", byPassType: "Par type de pass", byStatus: "Par statut", daily: "Journalier", confirm: "Confirmer", cancel: "Annuler", rejectReason: "Raison (optionnel) :", rejectTitle: "Rejeter la commande", paidOrders: "Commandes payées", paidRevenue: "Chiffre payé", pendingOrders: "Commandes en attente", pendingRevenue: "Chiffre en attente", rejectedOrders: "Commandes rejetées", removedOrders: "Commandes supprimées" };
 
   return (
     <div className="space-y-6">
@@ -581,7 +610,32 @@ export function PosTab({ language }: PosTabProps) {
                     </div>
                     <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
                       <p className="text-[#B0B0B0] text-sm">{t.totalRevenue}</p>
-                      <p className="text-2xl font-bold text-[#E21836]">{stats.totalRevenue.toFixed(2)} DT</p>
+                      <p className="text-2xl font-bold text-[#E21836]">{(stats.totalRevenue ?? 0).toFixed(2)} DT</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[#E21836] font-semibold mb-2">{language === "en" ? "By status" : "Par statut"}</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
+                        <p className="text-[#B0B0B0] text-sm">{t.paidOrders}</p>
+                        <p className="text-xl font-bold text-white">{stats.paidOrders ?? 0}</p>
+                        <p className="text-[#B0B0B0] text-sm mt-0.5">{t.paidRevenue}</p>
+                        <p className="text-lg font-bold text-[#10B981]">{(stats.paidRevenue ?? 0).toFixed(2)} DT</p>
+                      </div>
+                      <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
+                        <p className="text-[#B0B0B0] text-sm">{t.pendingOrders}</p>
+                        <p className="text-xl font-bold text-white">{stats.pendingOrders ?? 0}</p>
+                        <p className="text-[#B0B0B0] text-sm mt-0.5">{t.pendingRevenue}</p>
+                        <p className="text-lg font-bold text-[#F59E0B]">{(stats.pendingRevenue ?? 0).toFixed(2)} DT</p>
+                      </div>
+                      <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
+                        <p className="text-[#B0B0B0] text-sm">{t.rejectedOrders}</p>
+                        <p className="text-xl font-bold text-[#EF4444]">{stats.rejectedOrders ?? 0}</p>
+                      </div>
+                      <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
+                        <p className="text-[#B0B0B0] text-sm">{t.removedOrders}</p>
+                        <p className="text-xl font-bold text-[#6B7280]">{stats.removedOrders ?? 0}</p>
+                      </div>
                     </div>
                   </div>
                   {stats.daily && stats.daily.length > 0 && (
@@ -810,6 +864,28 @@ export function PosTab({ language }: PosTabProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      {confirmTarget && (
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={(open) => { setConfirmOpen(open); if (!open) setConfirmTarget(null); }}
+          title={confirmTarget.kind === "delete-outlet" ? (language === "en" ? "Delete this outlet?" : "Supprimer ce point de vente ?") : confirmTarget.kind === "delete-user" ? (language === "en" ? "Delete this user?" : "Supprimer cet utilisateur ?") : (language === "en" ? "Remove this order?" : "Supprimer cette commande ?")}
+          confirmLabel={t.confirm}
+          cancelLabel={t.cancel}
+          onConfirm={handleConfirmAction}
+          variant="danger"
+        />
+      )}
+
+      <ReasonDialog
+        open={reasonDialogOpen}
+        onOpenChange={(open) => { setReasonDialogOpen(open); if (!open) setRejectOrder(null); }}
+        title={t.rejectTitle}
+        inputLabel={t.rejectReason}
+        confirmLabel={t.confirm}
+        cancelLabel={t.cancel}
+        onConfirm={handleRejectWithReason}
+      />
     </div>
   );
 }

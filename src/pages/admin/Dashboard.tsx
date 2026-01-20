@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
@@ -156,6 +157,8 @@ interface PassPurchase {
   };
 }
 
+type ConfirmDeleteTarget = { kind: "delete-admin"; adminId: string } | { kind: "delete-pass"; passId: string; passName: string; eventId: string };
+
 const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // All hooks must be called before any conditional returns (Rules of Hooks)
   const isMobile = useIsMobile();
@@ -215,6 +218,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [passesForManagement, setPassesForManagement] = useState<EventPass[]>([]);
   const [isPassManagementLoading, setIsPassManagementLoading] = useState(false);
   const [newPassForm, setNewPassForm] = useState<{ name: string; price: number; description: string; is_primary: boolean; allowed_payment_methods: string[] } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteTarget | null>(null);
   const [isAmbassadorDialogOpen, setIsAmbassadorDialogOpen] = useState(false);
   const [isAmbassadorInfoDialogOpen, setIsAmbassadorInfoDialogOpen] = useState(false);
   
@@ -6000,56 +6004,71 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       return;
     }
 
-    // Confirm deletion
-    const confirmMessage = language === 'en' 
-      ? 'Are you sure you want to delete this admin? This action cannot be undone.'
-      : 'Êtes-vous sûr de vouloir supprimer cet admin? Cette action ne peut pas être annulée.';
-    
-    if (!confirm(confirmMessage)) {
-      return;
-    }
+    setConfirmDelete({ kind: 'delete-admin', adminId });
+  };
 
+  const doDeleteAdmin = async (adminId: string) => {
     setProcessingId(`delete-admin-${adminId}`);
-    
     try {
       const { error: deleteError } = await supabase
         .from('admins')
         .delete()
         .eq('id', adminId);
       
-      if (deleteError) {
-        throw deleteError;
-      }
+      if (deleteError) throw deleteError;
 
       toast({
         title: language === 'en' ? 'Admin Deleted' : 'Admin Supprimé',
-        description: language === 'en' 
-          ? 'Admin account deleted successfully'
-          : 'Compte admin supprimé avec succès',
+        description: language === 'en' ? 'Admin account deleted successfully' : 'Compte admin supprimé avec succès',
       });
-      
-      // Refresh admins list
       await fetchAdmins();
     } catch (error: any) {
       console.error('Error deleting admin:', error);
-      
       let errorMessage = language === 'en' ? 'Failed to delete admin account' : 'Échec de la suppression du compte admin';
-      
       if (error?.code === '42501' || error?.message?.includes('policy') || error?.message?.includes('permission')) {
-        errorMessage = language === 'en' 
-          ? 'Permission denied. Please check your admin permissions.'
-          : 'Permission refusée. Veuillez vérifier vos permissions d\'admin.';
+        errorMessage = language === 'en' ? 'Permission denied. Please check your admin permissions.' : 'Permission refusée. Veuillez vérifier vos permissions d\'admin.';
       } else if (error?.message) {
         errorMessage = error.message;
       }
-      
-      toast({
-        title: language === 'en' ? 'Error' : 'Erreur',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+      toast({ title: language === 'en' ? 'Error' : 'Erreur', description: errorMessage, variant: 'destructive' });
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  const doDeletePass = async (passId: string, eventId: string) => {
+    try {
+      const { error: deleteError } = await supabase.from('event_passes').delete().eq('id', passId);
+      if (deleteError) throw deleteError;
+      const apiBase = getApiBaseUrl();
+      const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventId}`, { credentials: 'include' });
+      if (passesResponse.ok) {
+        const passesResult = await passesResponse.json();
+        const passesWithStock = (passesResult.passes || []).map((p: any) => ({
+          id: p.id,
+          name: p.name || '',
+          price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+          description: p.description || '',
+          is_primary: p.is_primary || false,
+          max_quantity: p.max_quantity,
+          sold_quantity: p.sold_quantity || 0,
+          remaining_quantity: p.remaining_quantity,
+          is_unlimited: p.is_unlimited || false,
+          is_active: p.is_active !== undefined ? p.is_active : true,
+          is_sold_out: p.is_sold_out || false
+        }));
+        setPassesForManagement(passesWithStock);
+      }
+      toast({
+        title: language === 'en' ? 'Success' : 'Succès',
+        description: language === 'en' ? 'Pass deleted successfully' : 'Pass supprimé avec succès',
+      });
+    } catch (error: any) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error?.message || (language === 'en' ? 'Failed to delete pass' : 'Échec de la suppression du pass'),
+        variant: "destructive",
+      });
     }
   };
 
@@ -11571,60 +11590,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                           return;
                                         }
                                         
-                                        // Confirm deletion
-                                        if (!confirm(
-                                          language === 'en' 
-                                            ? `Are you sure you want to delete "${pass.name}"? This action cannot be undone.`
-                                            : `Êtes-vous sûr de vouloir supprimer "${pass.name}" ? Cette action est irréversible.`
-                                        )) {
-                                          return;
-                                        }
-                                        
-                                        try {
-                                          // Delete pass from database
-                                          const { error: deleteError } = await supabase
-                                            .from('event_passes')
-                                            .delete()
-                                            .eq('id', pass.id);
-                                          
-                                          if (deleteError) throw deleteError;
-                                          
-                                          // Refresh passes list
-                                          // Use getApiBaseUrl() for consistent API routing
-                                          const apiBase = getApiBaseUrl();
-                                          const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventForPassManagement.id}`, {
-                                            credentials: 'include'
-                                          });
-                                          
-                                          if (passesResponse.ok) {
-                                            const passesResult = await passesResponse.json();
-                                            const passesWithStock = (passesResult.passes || []).map((p: any) => ({
-                                              id: p.id,
-                                              name: p.name || '',
-                                              price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
-                                              description: p.description || '',
-                                              is_primary: p.is_primary || false,
-                                              max_quantity: p.max_quantity,
-                                              sold_quantity: p.sold_quantity || 0,
-                                              remaining_quantity: p.remaining_quantity,
-                                              is_unlimited: p.is_unlimited || false,
-                                              is_active: p.is_active !== undefined ? p.is_active : true,
-                                              is_sold_out: p.is_sold_out || false
-                                            }));
-                                            setPassesForManagement(passesWithStock);
-                                          }
-                                          
-                                          toast({
-                                            title: t.success || (language === 'en' ? 'Success' : 'Succès'),
-                                            description: language === 'en' ? 'Pass deleted successfully' : 'Pass supprimé avec succès',
-                                          });
-                                        } catch (error: any) {
-                                          toast({
-                                            title: t.error,
-                                            description: error.message || (language === 'en' ? 'Failed to delete pass' : 'Échec de la suppression du pass'),
-                                            variant: "destructive",
-                                          });
-                                        }
+                                        setConfirmDelete({ kind: 'delete-pass', passId: pass.id, passName: pass.name, eventId: eventForPassManagement.id });
                                       }}
                                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
                                     >
@@ -19807,6 +19773,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           )}
         </DialogContent>
       </Dialog>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          open={!!confirmDelete}
+          onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}
+          title={confirmDelete.kind === 'delete-admin'
+            ? (language === 'en' ? 'Are you sure you want to delete this admin? This action cannot be undone.' : 'Êtes-vous sûr de vouloir supprimer cet admin? Cette action ne peut pas être annulée.')
+            : (language === 'en' ? `Are you sure you want to delete "${confirmDelete.passName}"? This action cannot be undone.` : `Êtes-vous sûr de vouloir supprimer "${confirmDelete.passName}" ? Cette action est irréversible.`)}
+          confirmLabel={language === 'en' ? 'Confirm' : 'Confirmer'}
+          cancelLabel={language === 'en' ? 'Cancel' : 'Annuler'}
+          onConfirm={() => {
+            if (confirmDelete.kind === 'delete-admin') doDeleteAdmin(confirmDelete.adminId);
+            else doDeletePass(confirmDelete.passId, confirmDelete.eventId);
+            setConfirmDelete(null);
+          }}
+          variant="danger"
+        />
+      )}
     </div>
   );
 };

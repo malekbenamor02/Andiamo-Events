@@ -260,20 +260,31 @@ async function posStatistics(sb, q, res) {
   const daily = {};
   let totalOrders = 0;
   let totalRevenue = 0;
+  let paidOrders = 0;
+  let paidRevenue = 0;
+  let pendingOrders = 0;
+  let pendingRevenue = 0;
+  let rejectedOrders = 0;
+  let removedOrders = 0;
   const byPassType = {};
   const statuses = {};
   for (const o of list) {
     const out = o.pos_outlets || {};
     const oid = o.pos_outlet_id || '_none';
+    const price = parseFloat(o.total_price) || 0;
     if (!byOutlet[oid]) byOutlet[oid] = { outlet_id: oid, outlet_name: out.name || '—', total_orders: 0, total_revenue: 0, by_status: {}, by_pass_type: {} };
     byOutlet[oid].total_orders += 1;
-    byOutlet[oid].total_revenue += parseFloat(o.total_price) || 0;
+    byOutlet[oid].total_revenue += price;
     statuses[o.status] = (statuses[o.status] || 0) + 1;
     byOutlet[oid].by_status[o.status] = (byOutlet[oid].by_status[o.status] || 0) + 1;
     const d = (o.created_at || '').slice(0, 10);
-    if (d) { if (!daily[d]) daily[d] = { date: d, orders: 0, revenue: 0 }; daily[d].orders += 1; daily[d].revenue += parseFloat(o.total_price) || 0; }
+    if (d) { if (!daily[d]) daily[d] = { date: d, orders: 0, revenue: 0 }; daily[d].orders += 1; daily[d].revenue += price; }
     totalOrders += 1;
-    totalRevenue += parseFloat(o.total_price) || 0;
+    totalRevenue += price;
+    if (o.status === 'PAID') { paidOrders += 1; paidRevenue += price; }
+    else if (o.status === 'PENDING_ADMIN_APPROVAL') { pendingOrders += 1; pendingRevenue += price; }
+    else if (o.status === 'REJECTED') rejectedOrders += 1;
+    else if (o.status === 'REMOVED_BY_ADMIN') removedOrders += 1;
     for (const p of o.order_passes || []) {
       const pt = p.pass_type || 'Standard';
       byPassType[pt] = (byPassType[pt] || 0) + (p.quantity || 0);
@@ -285,6 +296,12 @@ async function posStatistics(sb, q, res) {
     daily: Object.values(daily).sort((a, b) => a.date.localeCompare(b.date)),
     totalOrders,
     totalRevenue,
+    paidOrders,
+    paidRevenue,
+    pendingOrders,
+    pendingRevenue,
+    rejectedOrders,
+    removedOrders,
     byPassType,
     byStatus: statuses
   });
