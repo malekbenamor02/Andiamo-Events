@@ -4,7 +4,8 @@
  */
 
 // CORS configuration - allow all origins in development, specific origins in production
-const isDevelopment = process.env.NODE_ENV !== 'production';
+// On Vercel, VERCEL === '1' indicates production, even if NODE_ENV is not set
+const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.VERCEL !== '1' && !process.env.VERCEL_URL;
 
 // Default production origins (can be overridden via ALLOWED_ORIGINS env var)
 const defaultProductionOrigins = [
@@ -130,11 +131,20 @@ function setCORSHeaders(res, req, options = {}) {
  */
 function handlePreflight(req, res, options = {}) {
   if (req.method === 'OPTIONS') {
-    if (setCORSHeaders(res, req, options)) {
-      res.status(200).end();
-      return true;
+    const hasOrigin = !!req.headers?.origin;
+    if (hasOrigin) {
+      // CORS preflight request - check if origin is allowed
+      if (setCORSHeaders(res, req, options)) {
+        res.status(200).end();
+        return true;
+      } else {
+        // Origin present but not allowed
+        res.status(403).json({ error: 'CORS policy: Origin not allowed' });
+        return true;
+      }
     } else {
-      res.status(403).json({ error: 'CORS policy: Origin not allowed' });
+      // OPTIONS request without Origin - not a CORS preflight, just return 200
+      res.status(200).end();
       return true;
     }
   }

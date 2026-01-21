@@ -290,10 +290,13 @@ export default async (req, res) => {
   }
   
   // Set CORS headers for actual requests
-  if (!setCORSHeadersUtil(res, req, { methods: 'GET, POST, PUT, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
-    // Origin not allowed
+  // If no Origin header (same-origin request), don't set CORS headers but allow the request
+  const hasOrigin = !!req.headers?.origin;
+  if (hasOrigin && !setCORSHeadersUtil(res, req, { methods: 'GET, POST, PUT, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
+    // Origin present but not allowed - reject
     return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
   }
+  // No origin (same-origin) or origin allowed - proceed
   
   // Route based on path and method
   try {

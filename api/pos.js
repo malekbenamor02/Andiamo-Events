@@ -18,10 +18,15 @@ async function setCORSHeaders(res, req) {
   if (req.method === 'OPTIONS') {
     return handlePreflight(req, res, { methods: 'GET, POST, PUT, PATCH, DELETE, OPTIONS', headers: 'Content-Type, Authorization' });
   }
-  if (!setCORSHeadersUtil(res, req, { methods: 'GET, POST, PUT, PATCH, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
+  // Set CORS headers if Origin is present and allowed
+  // If no Origin header (same-origin request), don't set CORS headers but allow the request
+  const hasOrigin = !!req.headers?.origin;
+  if (hasOrigin && !setCORSHeadersUtil(res, req, { methods: 'GET, POST, PUT, PATCH, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
+    // Origin present but not allowed - reject
     res.status(403).json({ error: 'CORS policy: Origin not allowed' });
     return false;
   }
+  // No origin (same-origin) or origin allowed - proceed
   return true;
 }
 
