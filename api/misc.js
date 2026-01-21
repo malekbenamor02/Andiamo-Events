@@ -1992,6 +1992,11 @@ export default async (req, res) => {
                       .closing-section { text-align: center; margin: 50px 0 40px; padding-top: 40px; border-top: 1px solid rgba(0, 0, 0, 0.1); }
                       .slogan { font-size: 24px; font-style: italic; color: #E21836; font-weight: 300; margin-bottom: 30px; }
                       .signature { font-size: 16px; color: #666666; line-height: 1.7; }
+                      .footer { margin-top: 50px; padding: 40px 20px 30px; text-align: center; border-top: 1px solid rgba(0, 0, 0, 0.1); }
+                      .footer-text { font-size: 12px; color: #999999; margin-bottom: 20px; line-height: 1.6; }
+                      .footer-links { margin: 15px auto 0; text-align: center; }
+                      .footer-link { color: #999999; text-decoration: none; font-size: 13px; margin: 0 8px; }
+                      .footer-link:hover { color: #E21836 !important; }
                     </style>
                   </head>
                   <body>
@@ -2062,12 +2067,20 @@ export default async (req, res) => {
                           ${ticketsHtml}
                         </div>
                         <div class="support-section">
-                          <p class="support-text">Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>.</p>
+                          <p class="support-text">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a> or in our Instagram page <a href="https://www.instagram.com/andiamo.events/" target="_blank" class="support-email">@andiamo.events</a> or contact with <a href="tel:28070128" class="support-email">28070128</a>.</p>
                         </div>
                         <div class="closing-section">
                           <p class="slogan">We Create Memories</p>
                           <p class="signature">Best regards,<br>The Andiamo Events Team</p>
                         </div>
+                      </div>
+                    </div>
+                    <div class="footer">
+                      <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+                      <div class="footer-links">
+                        <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
+                        <span style="color: #999999;">•</span>
+                        <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
                       </div>
                     </div>
                   </body>

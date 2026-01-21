@@ -11442,7 +11442,7 @@ async function generateTicketsAndSendEmail(orderId) {
 
                 <div class="support-section">
                   <p class="support-text">
-                    Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a> or visit <a href="${supportUrl}" class="support-email">our support page</a>.
+                    Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a> or in our Instagram page <a href="https://www.instagram.com/andiamo.events/" target="_blank" class="support-email">@andiamo.events</a> or contact with <a href="tel:28070128" class="support-email">28070128</a>.
                   </p>
                 </div>
                 
