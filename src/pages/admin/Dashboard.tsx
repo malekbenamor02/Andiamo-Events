@@ -42,6 +42,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerTrigger } from "@/components/ui/drawer";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { apiFetch, handleApiResponse } from "@/lib/api-client";
 import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
@@ -754,6 +755,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }, stepDuration);
     return () => clearInterval(interval);
   }, [activeTab, hasCountUpAnimated, dashboardOrderStats.totalRevenue, dashboardOrderStats.paidRevenue, dashboardOrderStats.pendingRevenue, dashboardOrderStats.soldTickets]);
+
+  const [onlineOrdersForChart, setOnlineOrdersForChart] = useState<any[]>([]);
+
+  // Activity chart: last 7 days with Applications, Orders (ambassador + online), Revenue (ambassador + online)
+  const activityChartData = useMemo(() => {
+    const out: { name: string; applications: number; orders: number; revenue: number }[] = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = format(d, 'yyyy-MM-dd');
+      const dayLabel = format(d, 'EEE');
+      const appCount = applications.filter((a: { created_at?: string }) => format(new Date(a.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
+      const dayAmbassador = codAmbassadorOrders.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
+      const dayOnline = onlineOrdersForChart.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
+      const ambassadorRevenue = dayAmbassador.reduce((s: number, o: { total_price?: number }) => s + (Number(o.total_price) || 0), 0);
+      const onlineRevenue = dayOnline.reduce((s: number, o: { total_price?: number; total?: number }) => s + (Number(o.total_price) ?? Number(o.total) ?? 0), 0);
+      out.push({
+        name: dayLabel,
+        applications: appCount,
+        orders: dayAmbassador.length + dayOnline.length,
+        revenue: Math.round(ambassadorRevenue + onlineRevenue),
+      });
+    }
+    return out;
+  }, [applications, codAmbassadorOrders, onlineOrdersForChart]);
 
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingPerformance, setLoadingPerformance] = useState(false);
@@ -6380,6 +6407,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await loadFaviconSettings();
       await loadOGImageUrl();
 
+      // Online orders (last 7 days) for Activity chart
+      try {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const { data: onlineForChart } = await (supabase as any)
+          .from('orders')
+          .select('id, created_at, total_price, total')
+          .eq('source', 'platform_online')
+          .gte('created_at', sevenDaysAgo.toISOString());
+        setOnlineOrdersForChart(onlineForChart || []);
+      } catch {
+        setOnlineOrdersForChart([]);
+      }
+
     } catch (error) {
       console.error('Error fetching data:', error);
       toast({
@@ -10628,23 +10669,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="h-64 flex items-end justify-between gap-2">
-                        {[12, 18, 15, 22, 19, 25, applications.length].map((value, index) => (
-                          <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
-                            <div className="relative w-full">
-                              <div 
-                                className="w-full bg-gradient-to-t from-primary to-primary/80 rounded-t transition-all duration-300 group-hover:opacity-80 cursor-pointer"
-                                style={{ height: `${(value / 30) * 100}%` }}
-                              />
-                              <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-background border border-border px-2 py-1 rounded text-xs font-heading whitespace-nowrap">
-                                {value}
-                              </div>
-                            </div>
-                            <span className="text-xs text-muted-foreground font-heading">
-                              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index]}
-                            </span>
-                          </div>
-                        ))}
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={activityChartData} margin={{ top: 8, right: 30, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" />
+                            <XAxis dataKey="name" stroke="#B0B0B0" tick={{ fill: '#B0B0B0', fontSize: 12 }} />
+                            <YAxis yAxisId="left" stroke="#B0B0B0" tick={{ fill: '#B0B0B0', fontSize: 12 }} />
+                            <YAxis yAxisId="right" orientation="right" stroke="#B0B0B0" tick={{ fill: '#B0B0B0', fontSize: 12 }} />
+                            <RechartsTooltip
+                              contentStyle={{ background: '#1F1F1F', border: '1px solid #2A2A2A', borderRadius: 8 }}
+                              labelStyle={{ color: '#fff' }}
+                              formatter={(value: number, name: string) => {
+                                const labels: Record<string, string> = { applications: language === 'en' ? 'Applications' : 'Candidatures', orders: language === 'en' ? 'Orders' : 'Commandes', revenue: language === 'en' ? 'Revenue (TND)' : 'Chiffre (TND)' };
+                                return [name === 'revenue' ? `${Number(value).toLocaleString()} TND` : value, labels[name] || name];
+                              }}
+                            />
+                            <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value) => (value === 'revenue' ? (language === 'en' ? 'Revenue (TND)' : 'Chiffre (TND)') : value === 'applications' ? (language === 'en' ? 'Applications' : 'Candidatures') : (language === 'en' ? 'Orders' : 'Commandes'))} />
+                            <Line type="monotone" dataKey="applications" stroke="#E21836" strokeWidth={2} dot={{ fill: '#E21836', r: 4 }} yAxisId="left" name="applications" />
+                            <Line type="monotone" dataKey="orders" stroke="#10B981" strokeWidth={2} dot={{ fill: '#10B981', r: 4 }} yAxisId="left" name="orders" />
+                            <Line type="monotone" dataKey="revenue" stroke="#F59E0B" strokeWidth={2} dot={{ fill: '#F59E0B', r: 4 }} yAxisId="right" name="revenue" />
+                          </LineChart>
+                        </ResponsiveContainer>
                       </div>
                     </CardContent>
                   </Card>
