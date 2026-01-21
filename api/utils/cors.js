@@ -4,8 +4,9 @@
  */
 
 // CORS configuration - allow all origins in development, specific origins in production
-// On Vercel, VERCEL === '1' indicates production, even if NODE_ENV is not set
-const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.VERCEL !== '1' && !process.env.VERCEL_URL;
+// Production detection: prioritize Vercel env vars, then NODE_ENV
+// On Vercel production, VERCEL === '1' or VERCEL_URL is set
+const isDevelopment = !(process.env.VERCEL === '1' || process.env.VERCEL_URL) && process.env.NODE_ENV !== 'production';
 
 // Default production origins (can be overridden via ALLOWED_ORIGINS env var)
 const defaultProductionOrigins = [
