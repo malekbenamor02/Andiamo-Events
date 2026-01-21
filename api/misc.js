@@ -144,7 +144,7 @@ async function parseBody(req) {
 }
 
 // Import shared CORS utility
-const { setCORSHeaders: setCORSHeadersUtil, handlePreflight } = require('./utils/cors.js');
+import { setCORSHeaders as setCORSHeadersUtil, handlePreflight } from './utils/cors.js';
 
 // Fisher-Yates shuffle algorithm for randomizing array order
 function shuffleArray(array) {

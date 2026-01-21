@@ -46,7 +46,7 @@ async function parseBody(req) {
 }
 
 // Import shared CORS utility
-const { setCORSHeaders: setCORSHeadersUtil, handlePreflight } = require('./utils/cors.js');
+import { setCORSHeaders as setCORSHeadersUtil, handlePreflight } from './utils/cors.js';
 
 function setCORS(res, req) {
   // Handle preflight requests
