@@ -696,6 +696,65 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
     setFilteredCodOrders(filtered);
   }, [codAmbassadorOrders, orderFilters]);
+
+  // Dashboard overview stats from COD ambassador orders (revenue + sold tickets)
+  // Sold tickets = paid tickets from ambassador orders only (PAID/COMPLETED), no pending, no online, no POS
+  const dashboardOrderStats = useMemo(() => {
+    const PAID = ['PAID', 'COMPLETED'];
+    const PENDING = ['PENDING_CASH', 'PENDING_ADMIN_APPROVAL', 'PENDING_AMBASSADOR_CONFIRMATION', 'APPROVED'];
+    const tickets = (o: any) => (o.passes || []).reduce((s: number, p: any) => s + (p.quantity || 0), 0) || (o.quantity || 1);
+    const paid = codAmbassadorOrders.filter((o: any) => PAID.includes(o.status));
+    const pending = codAmbassadorOrders.filter((o: any) => PENDING.includes(o.status));
+    const paidRevenue = paid.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
+    const pendingRevenue = pending.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
+    return {
+      totalRevenue: paidRevenue + pendingRevenue,
+      paidRevenue,
+      pendingRevenue,
+      soldTickets: paid.reduce((s, o) => s + tickets(o), 0),
+    };
+  }, [codAmbassadorOrders]);
+
+  // Compteur (count-up) animation for welcome block metrics
+  const [displayStats, setDisplayStats] = useState({ totalRevenue: 0, paidRevenue: 0, pendingRevenue: 0, soldTickets: 0 });
+  const [hasCountUpAnimated, setHasCountUpAnimated] = useState(false);
+  useEffect(() => {
+    if (activeTab !== 'overview') {
+      setHasCountUpAnimated(false);
+      return;
+    }
+    const { totalRevenue, paidRevenue, pendingRevenue, soldTickets } = dashboardOrderStats;
+    if (hasCountUpAnimated) {
+      setDisplayStats({ totalRevenue, paidRevenue, pendingRevenue, soldTickets });
+      return;
+    }
+    const hasData = totalRevenue > 0 || paidRevenue > 0 || pendingRevenue > 0 || soldTickets > 0;
+    if (!hasData) {
+      setDisplayStats({ totalRevenue: 0, paidRevenue: 0, pendingRevenue: 0, soldTickets: 0 });
+      return;
+    }
+    const duration = 1200;
+    const steps = 60;
+    const stepDuration = duration / steps;
+    let step = 0;
+    const interval = setInterval(() => {
+      step++;
+      const p = Math.min(1, step / steps);
+      setDisplayStats({
+        totalRevenue: Math.round(totalRevenue * p),
+        paidRevenue: Math.round(paidRevenue * p),
+        pendingRevenue: Math.round(pendingRevenue * p),
+        soldTickets: Math.round(soldTickets * p),
+      });
+      if (step >= steps) {
+        clearInterval(interval);
+        setDisplayStats({ totalRevenue, paidRevenue, pendingRevenue, soldTickets });
+        setHasCountUpAnimated(true);
+      }
+    }, stepDuration);
+    return () => clearInterval(interval);
+  }, [activeTab, hasCountUpAnimated, dashboardOrderStats.totalRevenue, dashboardOrderStats.paidRevenue, dashboardOrderStats.pendingRevenue, dashboardOrderStats.soldTickets]);
+
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingPerformance, setLoadingPerformance] = useState(false);
 
@@ -6263,7 +6322,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               name: p.name || '',
               price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
               description: p.description || '',
-              is_primary: p.is_primary || false
+              is_primary: p.is_primary || false,
+              sold_quantity: p.sold_quantity ?? 0
             }));
 
             return { ...event, passes: mappedPasses, instagram_link: event.whatsapp_link }; // Map database field to UI field
@@ -10260,22 +10320,40 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               : 'Voici ce qui se passe avec vos événements aujourd\'hui'}
                           </p>
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex flex-wrap items-center gap-4">
                           <div className="text-right">
                             <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>
-                              {language === 'en' ? 'Active Events' : 'Événements Actifs'}
+                              {language === 'en' ? 'Total Revenue' : 'Revenus Totaux'}
                             </p>
-                            <p className="text-2xl font-bold font-heading" style={{ color: '#E21836' }}>
-                              {events.filter(e => e.event_type === 'upcoming' && new Date(e.date) >= new Date()).length}
+                            <p className="text-lg font-bold font-heading" style={{ color: '#E21836' }}>
+                              {displayStats.totalRevenue.toLocaleString()} TND
                             </p>
                           </div>
                           <div className="h-12 w-px" style={{ backgroundColor: '#2A2A2A' }} />
                           <div className="text-right">
                             <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>
-                              {language === 'en' ? 'Total Revenue' : 'Revenus Totaux'}
+                              {language === 'en' ? 'Paid Revenue' : 'Revenus Payés'}
                             </p>
-                            <p className="text-2xl font-bold font-heading" style={{ color: '#E21836' }}>
-                              {passPurchases.reduce((sum, p) => sum + (p.total_price || 0), 0).toLocaleString()} TND
+                            <p className="text-lg font-bold font-heading" style={{ color: '#10B981' }}>
+                              {displayStats.paidRevenue.toLocaleString()} TND
+                            </p>
+                          </div>
+                          <div className="h-12 w-px" style={{ backgroundColor: '#2A2A2A' }} />
+                          <div className="text-right">
+                            <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>
+                              {language === 'en' ? 'Pending Revenue' : 'Revenus en Attente'}
+                            </p>
+                            <p className="text-lg font-bold font-heading" style={{ color: '#F59E0B' }}>
+                              {displayStats.pendingRevenue.toLocaleString()} TND
+                            </p>
+                          </div>
+                          <div className="h-12 w-px" style={{ backgroundColor: '#2A2A2A' }} />
+                          <div className="text-right">
+                            <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>
+                              {language === 'en' ? 'Sold Tickets' : 'Billets Vendus'}
+                            </p>
+                            <p className="text-lg font-bold font-heading" style={{ color: '#E21836' }}>
+                              {displayStats.soldTickets.toLocaleString()}
                             </p>
                           </div>
                         </div>
