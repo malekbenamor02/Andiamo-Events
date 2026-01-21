@@ -503,14 +503,6 @@ const emailLimiter = createRateLimiter({
   legacyHeaders: false,
 });
 
-const ogImageLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per 15 minutes (allows social media crawlers)
-  message: { error: 'Too many requests, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 const verifyAdminLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 30, // 30 requests per 15 minutes (called frequently for session checks)
@@ -12137,76 +12129,6 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLi
 
     res.status(500).json({
       error: 'Failed to resend ticket email',
-      details: error.message
-    });
-  }
-});
-
-// OG Image endpoint - serves OG image from Supabase Storage
-app.get('/api/og-image', ogImageLimiter, async (req, res) => {
-  try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase not configured' });
-    }
-
-    // Try to get the image - check PNG first, then JPG
-    const extensions = ['png', 'jpg'];
-    let imageData = null;
-    let contentType = 'image/png';
-    
-    for (const ext of extensions) {
-      const filePath = `og-image/current.${ext}`;
-      
-      try {
-        const { data, error } = await supabase.storage
-          .from('images')
-          .download(filePath);
-        
-        if (!error && data) {
-          imageData = await data.arrayBuffer();
-          contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
-          break;
-        }
-      } catch (err) {
-        // Continue to next extension
-        console.warn(`Failed to load ${ext} image:`, err.message);
-      }
-    }
-    
-    // If no image found, return 404 with no-cache headers
-    if (!imageData) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-      return res.status(404).json({ 
-        error: 'OG image not found',
-        message: 'Please upload an OG image from the admin dashboard'
-      });
-    }
-    
-    // Set headers for image response
-    res.setHeader('Content-Type', contentType);
-    // Facebook-friendly cache headers: short cache but allow revalidation
-    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600, must-revalidate');
-    res.setHeader('Content-Length', imageData.byteLength);
-    
-    // Generate ETag for cache validation
-    const crypto = require('crypto');
-    const etag = crypto.createHash('md5').update(Buffer.from(imageData)).digest('hex');
-    res.setHeader('ETag', `"${etag}"`);
-    
-    // Handle If-None-Match (304 Not Modified)
-    if (req.headers['if-none-match'] === `"${etag}"`) {
-      return res.status(304).end();
-    }
-    
-    // Return the image binary data with 200 status
-    return res.status(200).send(Buffer.from(imageData));
-    
-  } catch (error) {
-    console.error('OG image API error:', error);
-    return res.status(500).json({ 
-      error: 'Server error',
       details: error.message
     });
   }
