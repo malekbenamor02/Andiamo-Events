@@ -114,6 +114,7 @@ export function PosTab({ language }: PosTabProps) {
   const [events, setEvents] = useState<Event[]>([]);
   const [passesByEvent, setPassesByEvent] = useState<Record<string, EventPass[]>>({});
   const [loading, setLoading] = useState(false);
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const [outletFilter, setOutletFilter] = useState<string>("__all__");
   const [eventFilter, setEventFilter] = useState<string>("__all__");
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("__all__");
@@ -160,14 +161,19 @@ export function PosTab({ language }: PosTabProps) {
     if (r.ok) setStock(await r.json()); else setStock([]);
   };
   const loadOrders = async () => {
-    const q = new URLSearchParams();
-    if (orderStatusFilter && orderStatusFilter !== "__all__") q.set("status", orderStatusFilter);
-    if (outletId) q.set("pos_outlet_id", outletId);
-    if (orderEventFilter && orderEventFilter !== "__all__") q.set("event_id", orderEventFilter);
-    if (orderFrom) q.set("from", orderFrom);
-    if (orderTo) q.set("to", orderTo);
-    const r = await fetcher(`${API_ROUTES.ADMIN_POS_ORDERS}?${q}`);
-    if (r.ok) setOrders(await r.json()); else setOrders([]);
+    setOrdersLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (orderStatusFilter && orderStatusFilter !== "__all__") q.set("status", orderStatusFilter);
+      if (outletId) q.set("pos_outlet_id", outletId);
+      if (orderEventFilter && orderEventFilter !== "__all__") q.set("event_id", orderEventFilter);
+      if (orderFrom) q.set("from", orderFrom);
+      if (orderTo) q.set("to", orderTo);
+      const r = await fetcher(`${API_ROUTES.ADMIN_POS_ORDERS}?${q}`);
+      if (r.ok) setOrders(await r.json()); else setOrders([]);
+    } finally {
+      setOrdersLoading(false);
+    }
   };
   const loadAudit = async () => {
     const r = await fetcher(API_ROUTES.ADMIN_POS_AUDIT_LOG);
@@ -214,7 +220,7 @@ export function PosTab({ language }: PosTabProps) {
   }, [addStock, editStock, form.pos_outlet_id, form.event_id]);
   useEffect(() => { loadUsers(); }, [outletId]);
   useEffect(() => { loadStock(); }, [outletId, eventFilter]);
-  useEffect(() => { loadOrders(); }, [outletId, orderStatusFilter, orderEventFilter, orderFrom, orderTo]);
+  useEffect(() => { if (subTab === "orders") loadOrders(); }, [subTab, outletId, orderStatusFilter, orderEventFilter, orderFrom, orderTo]);
   useEffect(() => { if (subTab === "audit") loadAudit(); }, [subTab]);
   useEffect(() => { const e = form.event_id; if (e && String(e).length) loadPasses(String(e)); }, [form.event_id]);
 
@@ -557,7 +563,11 @@ export function PosTab({ language }: PosTabProps) {
             </CardHeader>
             <CardContent>
               {loading && <p className="text-[#B0B0B0] flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />...</p>}
-              {orders.length === 0 ? <p className="text-[#B0B0B0]">{t.noOrders}</p> : (
+              {ordersLoading ? (
+                <p className="text-[#B0B0B0] flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />{language === "en" ? "Loading orders…" : "Chargement des commandes…"}</p>
+              ) : orders.length === 0 ? (
+                <p className="text-[#B0B0B0]">{t.noOrders}</p>
+              ) : (
                 <Table>
                   <TableHeader><TableRow className="border-[#2A2A2A]">
                     <TableHead className="text-[#B0B0B0]">#</TableHead>
