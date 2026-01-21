@@ -1,0 +1,5 @@
+Contact: mailto:support@andiamoevents.com
+Expires: 2026-07-21T00:00:00.000Z
+Preferred-Languages: en, fr, ar
+Acknowledgments: https://www.andiamoevents.com/security-acknowledgments
+Policy: https://www.andiamoevents.com/security-policy

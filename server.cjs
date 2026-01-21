@@ -70,9 +70,77 @@ const app = express();
 
 // CORS configuration - allow all origins in development, specific origins in production
 const isDevelopment = process.env.NODE_ENV !== 'production';
+
+// Default production origins (can be overridden via ALLOWED_ORIGINS env var)
+const defaultProductionOrigins = [
+  'https://www.andiamoevents.com',
+  'https://andiamoevents.com'
+];
+
 const allowedOrigins = isDevelopment
   ? ['http://localhost:8080', 'http://localhost:3000', 'http://localhost:5173', 'http://192.168.1.*', 'http://10.0.*', 'http://127.0.0.1:3000', /^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/, /^http:\/\/192\.168\.\d+\.\d+:\d+$/]
-  : (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000']);
+  : (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : defaultProductionOrigins);
+
+// Shared CORS utility function for API routes
+// This function can be used by serverless functions that don't use the Express cors middleware
+function getCorsOrigin(req) {
+  const origin = req.headers.origin || req.headers.referer?.split('/').slice(0, 3).join('/');
+  
+  if (isDevelopment) {
+    return origin || '*';
+  }
+  
+  if (!origin) {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    return '*';
+  }
+  
+  // Check if origin matches allowed patterns
+  const isAllowed = allowedOrigins.some(allowed => {
+    if (typeof allowed === 'string') {
+      if (allowed.includes('*')) {
+        const pattern = allowed.replace(/\*/g, '.*');
+        return new RegExp(`^${pattern}$`).test(origin);
+      }
+      return origin === allowed;
+    }
+    if (allowed instanceof RegExp) {
+      return allowed.test(origin);
+    }
+    return false;
+  });
+  
+  if (isAllowed) {
+    return origin;
+  }
+  
+  // On Vercel, allow same-origin requests
+  const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_URL;
+  if (isVercel && origin && (origin.includes(process.env.VERCEL_URL || '') || origin.includes(process.env.VERCEL_BRANCH_URL || ''))) {
+    return origin;
+  }
+  
+  // Default: return null to indicate origin not allowed
+  return null;
+}
+
+// Shared function to set CORS headers (for use in API routes)
+function setCORSHeaders(res, req, options = {}) {
+  const origin = getCorsOrigin(req);
+  
+  if (origin === null) {
+    // Origin not allowed - don't set CORS headers
+    return false;
+  }
+  
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', options.methods || 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', options.headers || 'Content-Type, Authorization');
+  res.setHeader('Vary', 'Origin');
+  
+  return true;
+}
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -140,6 +208,37 @@ app.use('/api/flouci-webhook', bodyParser.raw({ type: 'application/json' }), (re
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Security: Security headers middleware
+// Adds security headers to all responses (for API routes)
+app.use((req, res, next) => {
+  // Set security headers
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+  res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
+  
+  // CSP Report-Only (will be switched to enforcing after monitoring)
+  const cspPolicy = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "img-src 'self' https: data:",
+    "font-src 'self' https: data:",
+    "style-src 'self' 'unsafe-inline' https:",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
+    "connect-src 'self' https: wss: *.supabase.co *.supabase.in *.flouci.com *.google.com *.gstatic.com *.vercel-analytics.com *.vercel-insights.com",
+    "frame-src 'self' https: *.google.com",
+    "report-uri /api/csp-report"
+  ].join('; ');
+  res.setHeader('Content-Security-Policy-Report-Only', cspPolicy);
+  
+  next();
+});
 
 // Security: Request logging middleware for security audit
 // Logs all requests to sensitive endpoints for security auditing
@@ -3848,6 +3947,636 @@ app.post('/api/send-ambassador-order-sms', smsLimiter, async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to send SMS'
+    });
+  }
+});
+
+// ============================================
+// GET /api/admin/phone-numbers/sources - Get phone numbers from selected sources with filters
+// ============================================
+app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Supabase not configured' });
+    }
+
+    const { sources, includeMetadata } = req.query;
+    
+    if (!sources) {
+      return res.status(400).json({ success: false, error: 'Sources parameter is required' });
+    }
+
+    let sourcesConfig;
+    try {
+      sourcesConfig = typeof sources === 'string' ? JSON.parse(sources) : sources;
+    } catch (e) {
+      return res.status(400).json({ success: false, error: 'Invalid sources JSON format' });
+    }
+
+    const allPhoneNumbers = [];
+    const sourceCounts = {};
+
+    // Helper function to normalize phone number (8 digits, no prefix)
+    const normalizePhone = (phone) => {
+      if (!phone) return null;
+      let cleaned = phone.replace(/\D/g, '');
+      if (cleaned.startsWith('216')) cleaned = cleaned.substring(3);
+      cleaned = cleaned.replace(/^0+/, '');
+      if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
+        return cleaned;
+      }
+      return null;
+    };
+
+    // Helper function to deduplicate
+    const deduplicate = (numbers) => {
+      const seen = new Map();
+      const duplicates = [];
+      
+      numbers.forEach(num => {
+        const normalized = normalizePhone(num.phone);
+        if (!normalized) return;
+        
+        if (seen.has(normalized)) {
+          const existing = seen.get(normalized);
+          duplicates.push({
+            phone: normalized,
+            sources: [existing.source, num.source]
+          });
+        } else {
+          seen.set(normalized, num);
+        }
+      });
+      
+      return {
+        unique: Array.from(seen.values()),
+        duplicates
+      };
+    };
+
+    // 1. Ambassador Applications
+    if (sourcesConfig.ambassador_applications?.enabled) {
+      let query = supabase
+        .from('ambassador_applications')
+        .select('id, phone_number, city, ville, status, full_name');
+      
+      const filters = sourcesConfig.ambassador_applications.filters || {};
+      
+      if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) {
+        query = query.in('status', filters.status);
+      }
+      if (filters.city) {
+        query = query.eq('city', filters.city);
+      }
+      if (filters.ville) {
+        query = query.eq('ville', filters.ville);
+      }
+      
+      const { data, error } = await query.not('phone_number', 'is', null);
+      
+      if (!error && data) {
+        const phones = data
+          .filter(app => app.phone_number)
+          .map(app => ({
+            phone: normalizePhone(app.phone_number),
+            source: 'ambassador_applications',
+            sourceId: app.id,
+            city: app.city || null,
+            ville: app.ville || null,
+            metadata: includeMetadata ? {
+              status: app.status,
+              full_name: app.full_name
+            } : undefined
+          }))
+          .filter(p => p.phone);
+        
+        allPhoneNumbers.push(...phones);
+        sourceCounts.ambassador_applications = phones.length;
+      }
+    }
+
+    // 2. Orders (Clients)
+    if (sourcesConfig.orders?.enabled) {
+      let query = supabase
+        .from('orders')
+        .select('id, user_phone, city, ville, status, payment_method, source, user_name, order_number');
+      
+      const filters = sourcesConfig.orders.filters || {};
+      
+      // City filter is required for orders
+      if (filters.city) {
+        query = query.eq('city', filters.city);
+      }
+      if (filters.ville) {
+        query = query.eq('ville', filters.ville);
+      }
+      if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) {
+        query = query.in('status', filters.status);
+      }
+      if (filters.payment_method) {
+        query = query.eq('payment_method', filters.payment_method);
+      }
+      if (filters.source) {
+        query = query.eq('source', filters.source);
+      }
+      
+      const { data, error } = await query.not('user_phone', 'is', null);
+      
+      if (!error && data) {
+        const phones = data
+          .filter(order => order.user_phone)
+          .map(order => ({
+            phone: normalizePhone(order.user_phone),
+            source: 'orders',
+            sourceId: order.id,
+            city: order.city || null,
+            ville: order.ville || null,
+            metadata: includeMetadata ? {
+              order_number: order.order_number,
+              user_name: order.user_name,
+              status: order.status,
+              payment_method: order.payment_method,
+              source: order.source
+            } : undefined
+          }))
+          .filter(p => p.phone);
+        
+        allPhoneNumbers.push(...phones);
+        sourceCounts.orders = phones.length;
+      }
+    }
+
+    // 3. AIO Events Submissions
+    if (sourcesConfig.aio_events_submissions?.enabled) {
+      let query = supabase
+        .from('aio_events_submissions')
+        .select('id, phone, city, ville, status, full_name, event_id');
+      
+      const filters = sourcesConfig.aio_events_submissions.filters || {};
+      
+      if (filters.city) {
+        query = query.eq('city', filters.city);
+      }
+      if (filters.ville) {
+        query = query.eq('ville', filters.ville);
+      }
+      if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) {
+        query = query.in('status', filters.status);
+      }
+      if (filters.event_id) {
+        query = query.eq('event_id', filters.event_id);
+      }
+      
+      const { data, error } = await query.not('phone', 'is', null);
+      
+      if (!error && data) {
+        const phones = data
+          .filter(sub => sub.phone)
+          .map(sub => ({
+            phone: normalizePhone(sub.phone),
+            source: 'aio_events_submissions',
+            sourceId: sub.id,
+            city: sub.city || null,
+            ville: sub.ville || null,
+            metadata: includeMetadata ? {
+              status: sub.status,
+              full_name: sub.full_name,
+              event_id: sub.event_id
+            } : undefined
+          }))
+          .filter(p => p.phone);
+        
+        allPhoneNumbers.push(...phones);
+        sourceCounts.aio_events_submissions = phones.length;
+      }
+    }
+
+    // 4. Approved Ambassadors
+    if (sourcesConfig.approved_ambassadors?.enabled) {
+      let query = supabase
+        .from('ambassadors')
+        .select('id, phone, city, ville, full_name, status')
+        .eq('status', 'approved');
+      
+      const filters = sourcesConfig.approved_ambassadors.filters || {};
+      
+      if (filters.city) {
+        query = query.eq('city', filters.city);
+      }
+      if (filters.ville) {
+        query = query.eq('ville', filters.ville);
+      }
+      
+      const { data, error } = await query.not('phone', 'is', null);
+      
+      if (!error && data) {
+        const phones = data
+          .filter(amb => amb.phone)
+          .map(amb => ({
+            phone: normalizePhone(amb.phone),
+            source: 'approved_ambassadors',
+            sourceId: amb.id,
+            city: amb.city || null,
+            ville: amb.ville || null,
+            metadata: includeMetadata ? {
+              full_name: amb.full_name,
+              status: amb.status
+            } : undefined
+          }))
+          .filter(p => p.phone);
+        
+        allPhoneNumbers.push(...phones);
+        sourceCounts.approved_ambassadors = phones.length;
+      }
+    }
+
+    // 5. Phone Subscribers
+    if (sourcesConfig.phone_subscribers?.enabled) {
+      let query = supabase
+        .from('phone_subscribers')
+        .select('id, phone_number, city, subscribed_at');
+      
+      const filters = sourcesConfig.phone_subscribers.filters || {};
+      
+      if (filters.city) {
+        query = query.eq('city', filters.city);
+      }
+      if (filters.dateFrom) {
+        query = query.gte('subscribed_at', filters.dateFrom);
+      }
+      if (filters.dateTo) {
+        query = query.lte('subscribed_at', filters.dateTo);
+      }
+      
+      const { data, error } = await query;
+      
+      if (!error && data) {
+        const phones = data
+          .filter(sub => sub.phone_number)
+          .map(sub => ({
+            phone: normalizePhone(sub.phone_number),
+            source: 'phone_subscribers',
+            sourceId: sub.id,
+            city: sub.city || null,
+            ville: null,
+            metadata: includeMetadata ? {
+              subscribed_at: sub.subscribed_at
+            } : undefined
+          }))
+          .filter(p => p.phone);
+        
+        allPhoneNumbers.push(...phones);
+        sourceCounts.phone_subscribers = phones.length;
+      }
+    }
+
+    // Deduplicate phone numbers
+    const { unique, duplicates } = deduplicate(allPhoneNumbers);
+
+    res.json({
+      success: true,
+      data: {
+        phoneNumbers: unique,
+        counts: {
+          total: allPhoneNumbers.length,
+          unique: unique.length,
+          duplicates: duplicates.length,
+          bySource: sourceCounts
+        },
+        duplicates
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching phone numbers:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch phone numbers'
+    });
+  }
+});
+
+// ============================================
+// GET /api/admin/phone-numbers/counts - Get quick counts per source
+// ============================================
+app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Supabase not configured' });
+    }
+
+    const { sources } = req.query;
+    const requestedSources = sources ? (typeof sources === 'string' ? sources.split(',') : sources) : 
+      ['ambassador_applications', 'orders', 'aio_events_submissions', 'approved_ambassadors', 'phone_subscribers'];
+
+    const counts = {};
+
+    // Ambassador Applications
+    if (requestedSources.includes('ambassador_applications')) {
+      const { count: total } = await supabase
+        .from('ambassador_applications')
+        .select('*', { count: 'exact', head: true });
+      
+      const { count: withPhone } = await supabase
+        .from('ambassador_applications')
+        .select('*', { count: 'exact', head: true })
+        .not('phone_number', 'is', null);
+
+      const { data: statusData } = await supabase
+        .from('ambassador_applications')
+        .select('status')
+        .not('phone_number', 'is', null);
+
+      const byStatus = {};
+      if (statusData) {
+        statusData.forEach(item => {
+          byStatus[item.status] = (byStatus[item.status] || 0) + 1;
+        });
+      }
+
+      counts.ambassador_applications = {
+        total: total || 0,
+        withPhone: withPhone || 0,
+        byStatus
+      };
+    }
+
+    // Orders
+    if (requestedSources.includes('orders')) {
+      const { count: total } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true });
+      
+      const { count: withPhone } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .not('user_phone', 'is', null);
+
+      const { data: cityData } = await supabase
+        .from('orders')
+        .select('city')
+        .not('user_phone', 'is', null);
+
+      const byCity = {};
+      if (cityData) {
+        cityData.forEach(item => {
+          if (item.city) {
+            byCity[item.city] = (byCity[item.city] || 0) + 1;
+          }
+        });
+      }
+
+      counts.orders = {
+        total: total || 0,
+        withPhone: withPhone || 0,
+        byCity
+      };
+    }
+
+    // AIO Events Submissions
+    if (requestedSources.includes('aio_events_submissions')) {
+      const { count: total } = await supabase
+        .from('aio_events_submissions')
+        .select('*', { count: 'exact', head: true });
+      
+      const { count: withPhone } = await supabase
+        .from('aio_events_submissions')
+        .select('*', { count: 'exact', head: true })
+        .not('phone', 'is', null);
+
+      counts.aio_events_submissions = {
+        total: total || 0,
+        withPhone: withPhone || 0
+      };
+    }
+
+    // Approved Ambassadors
+    if (requestedSources.includes('approved_ambassadors')) {
+      const { count: total } = await supabase
+        .from('ambassadors')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'approved');
+      
+      const { count: withPhone } = await supabase
+        .from('ambassadors')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'approved')
+        .not('phone', 'is', null);
+
+      counts.approved_ambassadors = {
+        total: total || 0,
+        withPhone: withPhone || 0
+      };
+    }
+
+    // Phone Subscribers
+    if (requestedSources.includes('phone_subscribers')) {
+      const { count: total } = await supabase
+        .from('phone_subscribers')
+        .select('*', { count: 'exact', head: true });
+      
+      const { count: withPhone } = await supabase
+        .from('phone_subscribers')
+        .select('*', { count: 'exact', head: true })
+        .not('phone_number', 'is', null);
+
+      counts.phone_subscribers = {
+        total: total || 0,
+        withPhone: withPhone || 0
+      };
+    }
+
+    res.json({
+      success: true,
+      data: counts
+    });
+
+  } catch (error) {
+    console.error('Error fetching phone number counts:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch phone number counts'
+    });
+  }
+});
+
+// ============================================
+// POST /api/admin/bulk-sms/send - Send bulk SMS to selected phone numbers
+// ============================================
+app.post('/api/admin/bulk-sms/send', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: 'Supabase not configured' });
+    }
+
+    if (!WINSMS_API_KEY) {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'SMS service not configured. WINSMS_API_KEY environment variable is required.' 
+      });
+    }
+
+    const { phoneNumbers, message, sources, filters, metadata } = req.body;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, error: 'Message is required' });
+    }
+
+    if (!phoneNumbers || !Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
+      return res.status(400).json({ success: false, error: 'Phone numbers array is required' });
+    }
+
+    // Get admin ID from JWT
+    let adminId = null;
+    try {
+      const token = req.cookies?.admin_token || req.headers.authorization?.replace('Bearer ', '');
+      if (token) {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret');
+        adminId = decoded.id || decoded.userId;
+      }
+    } catch (e) {
+      // Ignore token errors
+    }
+
+    const results = [];
+    const errors = [];
+    const smsLogIds = [];
+
+    // Process each phone number individually
+    for (const phoneData of phoneNumbers) {
+      // phoneData can be a string (phone number) or an object with phone, source, sourceId
+      const phoneNumber = typeof phoneData === 'string' ? phoneData : phoneData.phone;
+      const source = typeof phoneData === 'object' ? phoneData.source : null;
+      const sourceId = typeof phoneData === 'object' ? phoneData.sourceId : null;
+      
+      const formattedNumber = formatPhoneNumber(phoneNumber);
+      
+      if (!formattedNumber) {
+        const errorMsg = `Invalid phone number format: ${phoneNumber}`;
+        errors.push({ phone: phoneNumber, error: errorMsg });
+        
+        const { data: logData } = await supabase.from('sms_logs').insert({
+          phone_number: phoneNumber,
+          message: message.trim(),
+          status: 'failed',
+          error_message: errorMsg,
+          source: source || null,
+          source_id: sourceId || null,
+          campaign_name: metadata?.campaignName || null,
+          admin_id: adminId || null
+        }).select('id').single();
+        
+        if (logData) smsLogIds.push(logData.id);
+        continue;
+      }
+
+      try {
+        // Send SMS using clean helper function
+        const responseData = await sendSms(formattedNumber, message);
+        
+        // Check if response indicates success
+        const isSuccess = responseData.status === 200 && 
+                         responseData.data && 
+                         (responseData.data.code === 'ok' || 
+                          responseData.data.code === '200' ||
+                          (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
+
+        if (isSuccess) {
+          const { data: logData } = await supabase.from('sms_logs').insert({
+            phone_number: phoneNumber,
+            message: message.trim(),
+            status: 'sent',
+            api_response: JSON.stringify(responseData.data || responseData.raw),
+            sent_at: new Date().toISOString(),
+            source: source || null,
+            source_id: sourceId || null,
+            campaign_name: metadata?.campaignName || null,
+            admin_id: adminId || null
+          }).select('id').single();
+          
+          if (logData) smsLogIds.push(logData.id);
+          
+          results.push({ 
+            phone: phoneNumber, 
+            status: 'sent',
+            source: source || null,
+            sourceId: sourceId || null,
+            sentAt: new Date().toISOString(),
+            apiResponse: responseData.data || responseData.raw
+          });
+        } else {
+          const errorMsg = responseData.data?.message || 
+                          (responseData.data?.code ? `Error code ${responseData.data.code}` : 'SMS sending failed');
+          
+          const { data: logData } = await supabase.from('sms_logs').insert({
+            phone_number: phoneNumber,
+            message: message.trim(),
+            status: 'failed',
+            error_message: errorMsg,
+            api_response: JSON.stringify(responseData.data || responseData.raw),
+            source: source || null,
+            source_id: sourceId || null,
+            campaign_name: metadata?.campaignName || null,
+            admin_id: adminId || null
+          }).select('id').single();
+          
+          if (logData) smsLogIds.push(logData.id);
+          
+          errors.push({ 
+            phone: phoneNumber, 
+            status: 'failed',
+            source: source || null,
+            sourceId: sourceId || null,
+            error: errorMsg,
+            apiResponse: responseData.data || responseData.raw
+          });
+        }
+      } catch (error) {
+        const errorMsg = error.message || 'Unknown error';
+        
+        const { data: logData } = await supabase.from('sms_logs').insert({
+          phone_number: phoneNumber,
+          message: message.trim(),
+          status: 'failed',
+          error_message: errorMsg,
+          api_response: null,
+          source: source || null,
+          source_id: sourceId || null,
+          campaign_name: metadata?.campaignName || null,
+          admin_id: adminId || null
+        }).select('id').single();
+        
+        if (logData) smsLogIds.push(logData.id);
+        
+        errors.push({ 
+          phone: phoneNumber, 
+          status: 'failed',
+          source: source || null,
+          sourceId: sourceId || null,
+          error: errorMsg
+        });
+      }
+
+      // Small delay between requests to avoid overwhelming the API
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    res.json({
+      success: true,
+      data: {
+        total: phoneNumbers.length,
+        sent: results.length,
+        failed: errors.length,
+        results: [...results, ...errors],
+        smsLogIds
+      }
+    });
+
+  } catch (error) {
+    console.error('Error sending bulk SMS:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send bulk SMS'
     });
   }
 });

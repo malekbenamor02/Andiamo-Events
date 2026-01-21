@@ -143,13 +143,8 @@ async function parseBody(req) {
   }
 }
 
-// Helper to set CORS headers
-function setCORSHeaders(res, req) {
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
+// Import shared CORS utility
+const { setCORSHeaders: setCORSHeadersUtil, handlePreflight } = require('./utils/cors.js');
 
 // Fisher-Yates shuffle algorithm for randomizing array order
 function shuffleArray(array) {
@@ -289,12 +284,15 @@ export default async (req, res) => {
     console.log('[api/misc.js] Request received:', { method, originalUrl: req.url, normalizedPath: path });
   }
   
-  // Set CORS headers
-  setCORSHeaders(res, req);
+  // Handle preflight requests
+  if (handlePreflight(req, res, { methods: 'GET, POST, PUT, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
+    return; // Preflight handled
+  }
   
-  // Handle preflight
-  if (method === 'OPTIONS') {
-    return res.status(200).end();
+  // Set CORS headers for actual requests
+  if (!setCORSHeadersUtil(res, req, { methods: 'GET, POST, PUT, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
+    // Origin not allowed
+    return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
   }
   
   // Route based on path and method

@@ -4,11 +4,25 @@
 import https from 'https';
 import querystring from 'querystring';
 
-function setCORSHeaders(res, req) {
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+// Import shared CORS utility (using dynamic import for ES modules)
+let corsUtils = null;
+async function getCorsUtils() {
+  if (!corsUtils) {
+    corsUtils = await import('./utils/cors.js');
+  }
+  return corsUtils;
+}
+
+async function setCORSHeaders(res, req) {
+  const { setCORSHeaders: setCORSHeadersUtil, handlePreflight } = await getCorsUtils();
+  if (req.method === 'OPTIONS') {
+    return handlePreflight(req, res, { methods: 'GET, POST, PUT, PATCH, DELETE, OPTIONS', headers: 'Content-Type, Authorization' });
+  }
+  if (!setCORSHeadersUtil(res, req, { methods: 'GET, POST, PUT, PATCH, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
+    res.status(403).json({ error: 'CORS policy: Origin not allowed' });
+    return false;
+  }
+  return true;
 }
 
 async function parseBody(req) {
@@ -495,8 +509,11 @@ async function handleOrdersCreate(req, res, supabase, outletSlug) {
 // --- Main handler ---
 
 export default async (req, res) => {
-  setCORSHeaders(res, req);
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Handle CORS (including preflight)
+  const corsResult = await setCORSHeaders(res, req);
+  if (corsResult === false) {
+    return; // CORS error already handled
+  }
 
   const parsed = parsePosPath(req.url);
   if (!parsed) return res.status(404).json({ error: 'Not found' });

@@ -45,11 +45,21 @@ async function parseBody(req) {
   return JSON.parse(b || '{}');
 }
 
+// Import shared CORS utility
+const { setCORSHeaders: setCORSHeadersUtil, handlePreflight } = require('./utils/cors.js');
+
 function setCORS(res, req) {
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Handle preflight requests
+  if (handlePreflight(req, res, { methods: 'GET, POST, PUT, PATCH, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
+    return true; // Preflight handled
+  }
+  
+  // Set CORS headers for actual requests
+  if (!setCORSHeadersUtil(res, req, { methods: 'GET, POST, PUT, PATCH, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
+    res.status(403).json({ error: 'CORS policy: Origin not allowed' });
+    return false;
+  }
+  return true;
 }
 
 function getClientIp(req) {
@@ -611,8 +621,10 @@ function getQuery(url) {
 }
 
 export default async (req, res) => {
-  setCORS(res, req);
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Handle CORS (including preflight)
+  if (!setCORS(res, req)) {
+    return; // CORS error already handled
+  }
 
   const path = (req.url || '').split('?')[0];
   const method = req.method;

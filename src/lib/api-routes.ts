@@ -34,6 +34,11 @@ export const API_ROUTES = {
   SEND_ORDER_CONFIRMATION_SMS: '/api/send-order-confirmation-sms',
   SEND_AMBASSADOR_ORDER_SMS: '/api/send-ambassador-order-sms',
   
+  // Bulk SMS (Admin)
+  ADMIN_PHONE_NUMBERS_SOURCES: '/api/admin/phone-numbers/sources',
+  ADMIN_PHONE_NUMBERS_COUNTS: '/api/admin/phone-numbers/counts',
+  ADMIN_BULK_SMS_SEND: '/api/admin/bulk-sms/send',
+  
   // Phone Subscription
   PHONE_SUBSCRIBE: '/api/phone-subscribe',
   

@@ -36,11 +36,25 @@ function getCookie(req, name) {
   return m ? decodeURIComponent(m[1].trim()) : null;
 }
 
-function setCORS(res, req) {
-  res.setHeader('Access-Control-Allow-Origin', req.headers?.origin || '*');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+// Import shared CORS utility (using dynamic import for ES modules)
+let corsUtils = null;
+async function getCorsUtils() {
+  if (!corsUtils) {
+    corsUtils = await import('./utils/cors.js');
+  }
+  return corsUtils;
+}
+
+async function setCORS(res, req) {
+  const { setCORSHeaders, handlePreflight } = await getCorsUtils();
+  if (req.method === 'OPTIONS') {
+    return handlePreflight(req, res, { methods: 'GET, POST, PATCH, DELETE, OPTIONS', headers: 'Content-Type, Authorization' });
+  }
+  if (!setCORSHeaders(res, req, { methods: 'GET, POST, PATCH, DELETE, OPTIONS', headers: 'Content-Type, Authorization' })) {
+    res.status(403).json({ error: 'CORS policy: Origin not allowed' });
+    return false;
+  }
+  return true;
 }
 
 async function requireAdminAuth(req) {
@@ -71,12 +85,15 @@ async function requireScannerAuth(req) {
 }
 
 export default async function handler(req, res) {
+  // Handle CORS (including preflight)
+  const corsResult = await setCORS(res, req);
+  if (corsResult === false) {
+    return; // CORS error already handled
+  }
+  
   let path = (req.url || req.path || '/').split('?')[0];
   if (!path.startsWith('/api/')) path = '/api' + (path.startsWith('/') ? path : '/' + path);
   const method = req.method || 'GET';
-
-  setCORS(res, req);
-  if (method === 'OPTIONS') return res.status(200).end();
 
   const db = getDb();
 

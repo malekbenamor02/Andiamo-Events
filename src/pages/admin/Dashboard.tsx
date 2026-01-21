@@ -55,6 +55,9 @@ import { OfficialInvitationForm } from "@/components/admin/OfficialInvitationFor
 import { OfficialInvitationsList } from "@/components/admin/OfficialInvitationsList";
 import { ScannersTab } from "@/components/admin/ScannersTab";
 import { PosTab } from "@/components/admin/PosTab";
+import { BulkSmsSelector } from "@/components/admin/BulkSmsSelector";
+import { getSourceDisplayName } from "@/lib/phone-numbers";
+import { BulkSmsSelector } from "@/components/admin/BulkSmsSelector";
 
 
 interface AdminDashboardProps {
@@ -316,7 +319,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [addingBulkPhones, setAddingBulkPhones] = useState(false);
   const [smsBalance, setSmsBalance] = useState<any>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
-  const [smsLogs, setSmsLogs] = useState<Array<{id: string; phone_number: string; message: string; status: string; error_message?: string; sent_at?: string; created_at: string; api_response?: any}>>([]);
+  const [smsLogs, setSmsLogs] = useState<Array<{id: string; phone_number: string; message: string; status: string; error_message?: string; sent_at?: string; created_at: string; api_response?: any; source?: string; campaign_name?: string}>>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [siteLogs, setSiteLogs] = useState<Array<{id: string; log_type: string; category: string; message: string; details: any; user_type: string; created_at: string}>>([]);
   const [loadingSiteLogs, setLoadingSiteLogs] = useState(false);
@@ -4454,6 +4457,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Fetch SMS logs
   const fetchSmsLogs = async () => {
+    // Import getSourceDisplayName at the top if not already imported
     try {
       setLoadingLogs(true);
       // Note: sms_logs table may not exist in schema
@@ -4468,7 +4472,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setSmsLogs([]);
         return;
       }
-      setSmsLogs((data || []) as unknown as Array<{id: string; phone_number: string; message: string; status: string; error_message?: string; sent_at?: string; created_at: string; api_response?: any}>);
+      setSmsLogs((data || []) as unknown as Array<{id: string; phone_number: string; message: string; status: string; error_message?: string; sent_at?: string; created_at: string; api_response?: any; source?: string; campaign_name?: string}>);
     } catch (error) {
       console.error('Error fetching SMS logs:', error);
       setSmsLogs([]);
@@ -15606,18 +15610,29 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </Card>
                   </div>
 
-                  {/* Broadcast Mode Card - Popup Subscribers Only */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400">
+                  {/* Bulk SMS Selector - Replaces Broadcast and Targeted Mode */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400 lg:col-span-2">
+                    <BulkSmsSelector
+                      language={language}
+                      onSendComplete={() => {
+                        fetchSmsLogs();
+                        fetchPhoneSubscribers();
+                      }}
+                    />
+                  </div>
+
+                  {/* Export/Import Phone Subscribers Card - Keep for phone_subscribers source */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600">
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Send className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'Broadcast Mode' : 'Mode Diffusion'}
+                          <Download className="w-5 h-5 text-primary" />
+                          {language === 'en' ? 'Export/Import Phone Subscribers' : 'Exporter/Importer Abonnés'}
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {language === 'en' 
-                            ? `Send message to all popup subscribers`
-                            : `Envoyer un message à tous les abonnés popup`}
+                            ? `Export or import phone subscribers from Excel`
+                            : `Exporter ou importer des abonnés téléphone depuis Excel`}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
@@ -15628,11 +15643,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           </div>
                           <div className="text-2xl font-bold text-primary">
                             {phoneSubscribers.length}
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {language === 'en' 
-                              ? 'This message will be sent to all popup subscribers'
-                              : 'Ce message sera envoyé à tous les abonnés popup'}
                           </div>
                         </div>
 
@@ -15740,144 +15750,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             </DialogContent>
                           </Dialog>
                         </div>
-                        
-                        <div className="space-y-2">
-                          <Label>{language === 'en' ? 'Message' : 'Message'} *</Label>
-                          <Textarea
-                            value={broadcastMessage}
-                            onChange={(e) => setBroadcastMessage(e.target.value)}
-                            placeholder=""
-                            className="min-h-[200px] text-sm bg-background text-foreground"
-                          />
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{language === 'en' ? 'Characters' : 'Caractères'}: {broadcastMessage.length}</span>
-                            <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(broadcastMessage.length / 160)}</span>
-                          </div>
-                        </div>
-                        <Button
-                          onClick={handleSendBroadcast}
-                          disabled={sendingBroadcast || !broadcastMessage.trim() || phoneSubscribers.length === 0}
-                          className="w-full btn-gradient"
-                          size="lg"
-                        >
-                          {sendingBroadcast ? (
-                            <>
-                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                              {language === 'en' ? 'Sending SMS...' : 'Envoi SMS...'}
-                            </>
-                          ) : (
-                            <>
-                              <Send className="w-5 h-5 mr-2" />
-                              {language === 'en' 
-                                ? `Send to ${phoneSubscribers.length} Subscribers`
-                                : `Envoyer à ${phoneSubscribers.length} Abonnés`}
-                            </>
-                          )}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Targeted Mode Card - Ambassador Applications by City */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Target className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'Targeted Mode' : 'Mode Ciblé'}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {language === 'en' 
-                            ? `Send message to ambassador applications by city`
-                            : `Envoyer un message aux candidatures d'ambassadeurs par ville`}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {/* City Selector */}
-                        <div className="space-y-2">
-                          <Label>{language === 'en' ? 'Select City' : 'Sélectionner une Ville'} *</Label>
-                          <Select
-                            value={targetedCity || undefined}
-                            onValueChange={handleTargetedCityChange}
-                          >
-                            <SelectTrigger className="h-10">
-                              <SelectValue placeholder={language === 'en' ? 'Select a city...' : 'Sélectionner une ville...'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {CITIES.map((city) => (
-                                <SelectItem key={city} value={city}>
-                                  {city}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* Count Display */}
-                        {targetedCity && (
-                          <div className="p-3 bg-muted/30 rounded-lg border border-border">
-                            {loadingTargetedCount ? (
-                              <div className="flex items-center gap-2">
-                                <RefreshCw className="w-4 h-4 animate-spin text-primary" />
-                                <span className="text-sm text-muted-foreground">
-                                  {language === 'en' ? 'Loading count...' : 'Chargement du nombre...'}
-                                </span>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="text-sm font-semibold text-foreground mb-1">
-                                  {language === 'en' ? 'Phone Numbers Count' : 'Nombre de Numéros'}
-                                </div>
-                                <div className="text-2xl font-bold text-primary">
-                                  {targetedCount}
-                                </div>
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  {language === 'en' 
-                                    ? `This message will be sent to ${targetedCount} numbers in ${targetedCity}`
-                                    : `Ce message sera envoyé à ${targetedCount} numéros à ${targetedCity}`}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        )}
-                        
-                        <div className="space-y-2">
-                          <Label>{language === 'en' ? 'Message' : 'Message'} *</Label>
-                          <Textarea
-                            value={targetedMessage}
-                            onChange={(e) => setTargetedMessage(e.target.value)}
-                            placeholder=""
-                            className="min-h-[200px] text-sm bg-background text-foreground"
-                          />
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{language === 'en' ? 'Characters' : 'Caractères'}: {targetedMessage.length}</span>
-                            <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(targetedMessage.length / 160)}</span>
-                          </div>
-                        </div>
-                        <Button
-                          onClick={handleSendTargeted}
-                          disabled={sendingTargeted || !targetedMessage.trim() || !targetedCity || targetedCount === 0 || loadingTargetedCount}
-                          className="w-full btn-gradient"
-                          size="lg"
-                        >
-                          {sendingTargeted ? (
-                            <>
-                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                              {language === 'en' ? 'Sending SMS...' : 'Envoi SMS...'}
-                            </>
-                          ) : (
-                            <>
-                              <Send className="w-5 h-5 mr-2" />
-                              {language === 'en' 
-                                ? targetedCity && targetedCount > 0
-                                  ? `Send to ${targetedCount} Numbers in ${targetedCity}`
-                                  : 'Select City to Send'
-                                : targetedCity && targetedCount > 0
-                                  ? `Envoyer à ${targetedCount} Numéros à ${targetedCity}`
-                                  : 'Sélectionner une Ville'}
-                            </>
-                          )}
-                        </Button>
                       </CardContent>
                     </Card>
                   </div>
@@ -15999,6 +15871,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                             <Phone className="w-3.5 h-3.5 text-muted-foreground" />
                                             <span className="font-mono">+216 {log.phone_number}</span>
                                           </div>
+                                          {(log as any).source && (
+                                            <Badge variant="outline" className="text-xs">
+                                              {getSourceDisplayName((log as any).source as any, language)}
+                                            </Badge>
+                                          )}
                                         </div>
                                         
                                         {/* Message */}
