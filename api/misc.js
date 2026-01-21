@@ -5107,6 +5107,62 @@ We Create Memories`;
       }
     }
     
+    // ============================================
+    // /api/auto-reject-expired-orders (Cron endpoint)
+    // ============================================
+    if (path === '/api/auto-reject-expired-orders' && (method === 'POST' || method === 'GET')) {
+      try {
+        // Optional: Add authentication for security
+        const cronSecret = process.env.CRON_SECRET;
+        if (cronSecret) {
+          const providedSecret = req.headers['x-cron-secret'] || (await parseBody(req)).secret || req.query?.secret;
+          if (providedSecret !== cronSecret) {
+            return res.status(401).json({ error: 'Unauthorized' });
+          }
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(500).json({
+            error: 'Server configuration error',
+            details: 'Supabase not configured'
+          });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+
+        // Call the database function to auto-reject expired orders
+        const { data, error } = await supabase.rpc('auto_reject_expired_pending_cash_orders');
+
+        if (error) {
+          console.error('Error auto-rejecting expired orders:', error);
+          return res.status(500).json({
+            error: 'Failed to auto-reject expired orders',
+            details: error.message
+          });
+        }
+
+        const result = data && data[0] ? data[0] : { rejected_count: 0, rejected_order_ids: [] };
+
+        return res.status(200).json({
+          success: true,
+          rejected_count: result.rejected_count || 0,
+          rejected_order_ids: result.rejected_order_ids || [],
+          message: `Auto-rejected ${result.rejected_count || 0} expired order(s)`,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Error in auto-reject-expired-orders:', error);
+        return res.status(500).json({
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
+    
     // 404 for unknown routes
     return res.status(404).json({
       error: 'Not Found',
