@@ -526,6 +526,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         totalBonuses += 20; // 20 DT bonus at 35 passes
       }
 
+      const totalCommission = baseCommission + totalBonuses;
+      
       setPerformance({
         total,
         paid,
@@ -536,6 +538,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         totalPassesSold,
         baseCommission,
         totalBonuses,
+        commission: totalCommission, // Total commission = base + bonuses
         completionRate: total > 0 ? ((paid / total) * 100).toFixed(1) : '0',
         cancellationRate: total > 0 ? ((cancelled / total) * 100).toFixed(1) : '0',
         rejectionRate: total > 0 ? ((rejected / total) * 100).toFixed(1) : '0',
@@ -1762,7 +1765,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
                   </CardHeader>
                   <CardContent className="pt-0">
                     <p className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-primary via-primary/90 to-primary/80 bg-clip-text text-transparent mb-2">
-                      {parseFloat(performance.commission).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {(performance.commission || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                     <p className="text-xs sm:text-sm text-muted-foreground/80 font-medium">
                       {language === 'en' 
