@@ -230,10 +230,40 @@ export function ScannersTab({ language }: ScannersTabProps) {
 
       {stats && (
         <Card className="bg-[#1F1F1F] border-[#2A2A2A]">
-          <CardHeader><CardTitle className="text-white">{t.total}: {stats.total} | {t.valid}: {stats.byStatus.valid ?? 0} | {t.alreadyScanned}: {stats.byStatus.already_scanned ?? 0} | {t.invalid}: {stats.byStatus.invalid ?? 0} | {t.expired}: {stats.byStatus.expired ?? 0} | {t.wrongEvent}: {stats.byStatus.wrong_event ?? 0}</CardTitle></CardHeader>
-          {Object.keys(stats.byPass || {}).length > 0 && (
-            <CardContent className="text-[#B0B0B0]">By pass: {Object.entries(stats.byPass).map(([k, v]) => `${k}: ${v}`).join(", ")}</CardContent>
-          )}
+          <CardHeader>
+            <CardTitle className="text-white text-base">{language === "en" ? "Scan summary" : "Résumé des scans"}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
+                <p className="text-xs text-[#B0B0B0] mb-1">{t.total}</p>
+                <p className="text-lg font-bold" style={{ color: "#E21836" }}>{(stats.total ?? 0).toLocaleString()}</p>
+              </div>
+              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
+                <p className="text-xs text-[#B0B0B0] mb-1">{t.valid}</p>
+                <p className="text-lg font-bold" style={{ color: "#10B981" }}>{(stats.byStatus.valid ?? 0).toLocaleString()}</p>
+              </div>
+              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
+                <p className="text-xs text-[#B0B0B0] mb-1">{t.alreadyScanned}</p>
+                <p className="text-lg font-bold" style={{ color: "#F59E0B" }}>{(stats.byStatus.already_scanned ?? 0).toLocaleString()}</p>
+              </div>
+              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
+                <p className="text-xs text-[#B0B0B0] mb-1">{t.invalid}</p>
+                <p className="text-lg font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.invalid ?? 0).toLocaleString()}</p>
+              </div>
+              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
+                <p className="text-xs text-[#B0B0B0] mb-1">{t.expired}</p>
+                <p className="text-lg font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.expired ?? 0).toLocaleString()}</p>
+              </div>
+              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
+                <p className="text-xs text-[#B0B0B0] mb-1">{t.wrongEvent}</p>
+                <p className="text-lg font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.wrong_event ?? 0).toLocaleString()}</p>
+              </div>
+            </div>
+            {Object.keys(stats.byPass || {}).length > 0 && (
+              <p className="text-sm text-[#B0B0B0] pt-1 border-t border-[#2A2A2A]">{language === "en" ? "By pass" : "Par pass"}: {Object.entries(stats.byPass).map(([k, v]) => `${k}: ${v}`).join(", ")}</p>
+            )}
+          </CardContent>
         </Card>
       )}
 
