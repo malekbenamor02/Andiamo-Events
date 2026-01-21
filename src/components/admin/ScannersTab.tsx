@@ -160,7 +160,7 @@ export function ScannersTab({ language }: ScannersTabProps) {
     if (r.ok) await loadScanners();
   };
 
-  const t = language === "en" ? { start: "Start Scan", stop: "Stop Scan", status: "Status", on: "ON", off: "OFF", scanners: "Scanners", create: "Create Scanner", name: "Name", email: "Email", password: "Password", active: "Active", actions: "Actions", edit: "Edit", deactivate: "Deactivate", all: "All Scanners", total: "Total", valid: "Valid", invalid: "Invalid", alreadyScanned: "Already scanned", expired: "Expired", wrongEvent: "Wrong event", history: "History", time: "Time", result: "Result", buyer: "Buyer", pass: "Pass", ambassador: "Ambassador", event: "Event", scanner: "Scanner", noScans: "No scans" } : { start: "Démarrer le scan", stop: "Arrêter le scan", status: "État", on: "ACTIF", off: "INACTIF", scanners: "Scanners", create: "Créer un scanner", name: "Nom", email: "Email", password: "Mot de passe", active: "Actif", actions: "Actions", edit: "Modifier", deactivate: "Désactiver", all: "Tous les scanners", total: "Total", valid: "Valide", invalid: "Invalide", alreadyScanned: "Déjà scanné", expired: "Expiré", wrongEvent: "Mauvais événement", history: "Historique", time: "Heure", result: "Résultat", buyer: "Acheteur", pass: "Pass", ambassador: "Ambassadeur", event: "Événement", scanner: "Scanner", noScans: "Aucun scan" };
+  const t = language === "en" ? { start: "Start Scan", stop: "Stop Scan", status: "Status", on: "ON", off: "OFF", scanners: "Scanners", create: "Create Scanner", name: "Name", email: "Email", password: "Password", active: "Active", actions: "Actions", edit: "Edit", deactivate: "Deactivate", all: "All Scanners", total: "Total", valid: "Valid", invalid: "Invalid", alreadyScanned: "Already scanned", wrongEvent: "Wrong event", history: "History", time: "Time", result: "Result", buyer: "Buyer", pass: "Pass", ambassador: "Ambassador", event: "Event", scanner: "Scanner", noScans: "No scans" } : { start: "Démarrer le scan", stop: "Arrêter le scan", status: "État", on: "ACTIF", off: "INACTIF", scanners: "Scanners", create: "Créer un scanner", name: "Nom", email: "Email", password: "Mot de passe", active: "Actif", actions: "Actions", edit: "Modifier", deactivate: "Désactiver", all: "Tous les scanners", total: "Total", valid: "Valide", invalid: "Invalide", alreadyScanned: "Déjà scanné", wrongEvent: "Mauvais événement", history: "Historique", time: "Heure", result: "Résultat", buyer: "Acheteur", pass: "Pass", ambassador: "Ambassadeur", event: "Événement", scanner: "Scanner", noScans: "Aucun scan" };
 
   return (
     <div className="space-y-6">
@@ -234,7 +234,7 @@ export function ScannersTab({ language }: ScannersTabProps) {
             <CardTitle className="text-white text-base">{language === "en" ? "Scan summary" : "Résumé des scans"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
                 <p className="text-xs text-[#B0B0B0] mb-1">{t.total}</p>
                 <p className="text-lg font-bold" style={{ color: "#E21836" }}>{(stats.total ?? 0).toLocaleString()}</p>
@@ -250,10 +250,6 @@ export function ScannersTab({ language }: ScannersTabProps) {
               <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
                 <p className="text-xs text-[#B0B0B0] mb-1">{t.invalid}</p>
                 <p className="text-lg font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.invalid ?? 0).toLocaleString()}</p>
-              </div>
-              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
-                <p className="text-xs text-[#B0B0B0] mb-1">{t.expired}</p>
-                <p className="text-lg font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.expired ?? 0).toLocaleString()}</p>
               </div>
               <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
                 <p className="text-xs text-[#B0B0B0] mb-1">{t.wrongEvent}</p>

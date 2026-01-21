@@ -91,10 +91,6 @@ export default function ScannerHistory() {
                   <p className="text-base font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.invalid ?? 0).toLocaleString()}</p>
                 </div>
                 <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-2">
-                  <p className="text-[10px] text-[#B0B0B0] uppercase tracking-wide">Expired</p>
-                  <p className="text-base font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.expired ?? 0).toLocaleString()}</p>
-                </div>
-                <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-2">
                   <p className="text-[10px] text-[#B0B0B0] uppercase tracking-wide">Wrong event</p>
                   <p className="text-base font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.wrong_event ?? 0).toLocaleString()}</p>
                 </div>

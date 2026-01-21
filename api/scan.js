@@ -247,7 +247,7 @@ export default async function handler(req, res) {
       if (event_id && /^[0-9a-f-]{36}$/i.test(event_id)) query = query.eq('event_id', event_id);
       if (date_from) query = query.gte('scan_time', date_from);
       if (date_to) query = query.lte('scan_time', date_to);
-      if (['valid','invalid','already_scanned','expired','wrong_event'].includes(scan_result)) query = query.eq('scan_result', scan_result);
+      if (['valid','invalid','already_scanned','wrong_event'].includes(scan_result)) query = query.eq('scan_result', scan_result);
       const { data: rows, error, count } = await query;
       if (error) return res.status(500).json({ error: error.message });
       const qids = (rows || []).map((r) => r.qr_ticket_id).filter(Boolean);
@@ -282,7 +282,7 @@ export default async function handler(req, res) {
       const { data: rows, error } = await query;
       if (error) return res.status(500).json({ error: error.message });
       const total = (rows || []).length;
-      const byStatus = { valid: 0, invalid: 0, already_scanned: 0, expired: 0, wrong_event: 0 };
+      const byStatus = { valid: 0, invalid: 0, already_scanned: 0, wrong_event: 0 };
       (rows || []).forEach((r) => { if (byStatus[r.scan_result] != null) byStatus[r.scan_result]++; });
       const qids = (rows || []).map((r) => r.qr_ticket_id).filter(Boolean);
       let byPass = {};
@@ -312,7 +312,7 @@ export default async function handler(req, res) {
         if (event_id && /^[0-9a-f-]{36}$/i.test(event_id)) qu = qu.eq('event_id', event_id);
         if (date_from) qu = qu.gte('scan_time', date_from);
         if (date_to) qu = qu.lte('scan_time', date_to);
-        if (['valid','invalid','already_scanned','expired','wrong_event'].includes(scan_result)) qu = qu.eq('scan_result', scan_result);
+        if (['valid','invalid','already_scanned','wrong_event'].includes(scan_result)) qu = qu.eq('scan_result', scan_result);
         return qu;
       };
 
@@ -373,7 +373,7 @@ export default async function handler(req, res) {
       if (err) return res.status(500).json({ error: err.message });
 
       const total = (rows || []).length;
-      const byStatus = { valid: 0, invalid: 0, already_scanned: 0, expired: 0, wrong_event: 0 };
+      const byStatus = { valid: 0, invalid: 0, already_scanned: 0, wrong_event: 0 };
       const byScanner = {};
       (rows || []).forEach((r) => {
         if (byStatus[r.scan_result] != null) byStatus[r.scan_result]++;
@@ -423,10 +423,6 @@ export default async function handler(req, res) {
         const ticketDup = isInvDup ? { is_invitation: true, pass_type: qt.pass_type || null, invitation_number: invDup?.invitation_number || null, recipient_name: invDup?.recipient_name || qt.buyer_name || null, recipient_phone: invDup?.recipient_phone || qt.buyer_phone || null, recipient_email: invDup?.recipient_email || qt.buyer_email || null } : undefined;
         return res.status(200).json({ success: false, result: 'already_scanned', message: 'Ticket already scanned', previous_scan: { scanned_at: existing.scan_time, scanner_name: prevName }, ...(ticketDup && { ticket: ticketDup }) });
       }
-      if (qt.event_date && new Date(qt.event_date) < now) {
-        await db.from('scans').insert({ event_id: ev, scanner_id: scannerId, qr_ticket_id: qt.id, scan_result: 'expired', scan_location: sl, device_info: di, ambassador_id: qt.ambassador_id, notes: 'Event date passed' });
-        return res.status(200).json({ success: false, result: 'expired', message: 'Ticket has expired', event_date: qt.event_date });
-      }
       await db.from('qr_tickets').update({ ticket_status: 'USED', updated_at: now.toISOString() }).eq('id', qt.id);
       const { data: scanRow } = await db.from('scans').insert({ event_id: ev, scanner_id: scannerId, qr_ticket_id: qt.id, scan_result: 'valid', scan_location: sl, device_info: di, ambassador_id: qt.ambassador_id, notes: 'Valid' }).select('scan_time').single();
       const isInv = qt.source === 'official_invitation';
@@ -463,7 +459,7 @@ export default async function handler(req, res) {
       if (event_id && /^[0-9a-f-]{36}$/i.test(event_id)) query = query.eq('event_id', event_id);
       if (date_from) query = query.gte('scan_time', date_from);
       if (date_to) query = query.lte('scan_time', date_to);
-      if (['valid','invalid','already_scanned','expired','wrong_event'].includes(scan_result)) query = query.eq('scan_result', scan_result);
+      if (['valid','invalid','already_scanned','wrong_event'].includes(scan_result)) query = query.eq('scan_result', scan_result);
       const { data: rows, error, count } = await query;
       if (error) return res.status(500).json({ error: error.message });
       const ids = (rows || []).map((r) => r.qr_ticket_id).filter(Boolean);
@@ -489,7 +485,7 @@ export default async function handler(req, res) {
       const { data: rows, error } = await query;
       if (error) return res.status(500).json({ error: error.message });
       const total = (rows || []).length;
-      const byStatus = { valid: 0, invalid: 0, already_scanned: 0, expired: 0, wrong_event: 0 };
+      const byStatus = { valid: 0, invalid: 0, already_scanned: 0, wrong_event: 0 };
       (rows || []).forEach((r) => { if (byStatus[r.scan_result] != null) byStatus[r.scan_result]++; });
       const qids = (rows || []).map((r) => r.qr_ticket_id).filter(Boolean);
       let byPass = {};

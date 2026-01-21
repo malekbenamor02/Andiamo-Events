@@ -4,7 +4,7 @@ import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
-import { LogOut, History, Play, RotateCw, PenLine, Square, CheckCircle2, XCircle, Copy, Clock, MapPinOff, ScanLine, WifiOff, Cloud, BatteryWarning } from "lucide-react";
+import { LogOut, History, Play, RotateCw, PenLine, Square, CheckCircle2, XCircle, Copy, MapPinOff, ScanLine, WifiOff, Cloud, BatteryWarning } from "lucide-react";
 
 const STORAGE_KEY = "scanner_selected_event";
 const TIMEOUT_MS = 90000; // 90s
@@ -18,7 +18,6 @@ function triggerHaptic(status: string) {
     case "valid": navigator.vibrate(50); break;
     case "invalid":
     case "already_scanned": navigator.vibrate([40, 30, 40]); break;
-    case "expired": navigator.vibrate(80); break;
     default: navigator.vibrate([40, 30, 40]);
   }
 }
@@ -28,7 +27,6 @@ function getStatusConfig(result: string): { color: string; border: string; bg: s
     case "valid": return { color: "text-[#22C55E]", border: "border-[#22C55E]", bg: "bg-[#22C55E]/10", icon: CheckCircle2, label: "VALID" };
     case "already_scanned": return { color: "text-[#F59E0B]", border: "border-[#F59E0B]", bg: "bg-[#F59E0B]/10", icon: Copy, label: "ALREADY SCANNED" };
     case "wrong_event": return { color: "text-[#F59E0B]", border: "border-[#F59E0B]", bg: "bg-[#F59E0B]/10", icon: MapPinOff, label: "WRONG EVENT" };
-    case "expired": return { color: "text-[#D4D4D4]", border: "border-[#A3A3A3]", bg: "bg-[#525252]/80", icon: Clock, label: "EXPIRED" };
     default: return { color: "text-[#EF4444]", border: "border-[#EF4444]", bg: "bg-[#EF4444]/10", icon: XCircle, label: "INVALID" };
   }
 }
@@ -47,7 +45,6 @@ function getStatusEdgeColor(r: string): string {
     case "valid": return "#22C55E";
     case "already_scanned":
     case "wrong_event": return "#F59E0B";
-    case "expired": return "#A3A3A3";
     default: return "#EF4444";
   }
 }
@@ -400,13 +397,11 @@ export default function ScannerScan() {
               <span className="text-[13px] text-[#A3A3A3]">Valid </span><span className="text-[15px] font-semibold text-[#22C55E]">{stats.byStatus.valid ?? 0}</span>
               {stats.total > 0 && <div className="h-1 mt-1 rounded-full bg-[#2A2A2A] overflow-hidden"><div className="h-full rounded-full bg-[#22C55E]" style={{ width: `${(100 * (stats.byStatus.valid ?? 0)) / stats.total}%` }} /></div>}
             </div>
-            {((stats.byStatus.invalid ?? 0) + (stats.byStatus.already_scanned ?? 0) + (stats.byStatus.expired ?? 0) + (stats.byStatus.wrong_event ?? 0)) > 0 && (
+            {((stats.byStatus.invalid ?? 0) + (stats.byStatus.already_scanned ?? 0) + (stats.byStatus.wrong_event ?? 0)) > 0 && (
               <p className="text-[13px] text-[#A3A3A3]">
                 <span className="text-[#EF4444]">Invalid {stats.byStatus.invalid ?? 0}</span>
                 <span className="text-[#525252] mx-1">·</span>
                 <span className="text-[#F59E0B]">Already {stats.byStatus.already_scanned ?? 0}</span>
-                <span className="text-[#525252] mx-1">·</span>
-                <span className="text-[#A3A3A3]">Expired {stats.byStatus.expired ?? 0}</span>
                 <span className="text-[#525252] mx-1">·</span>
                 <span className="text-[#F59E0B]">Wrong {stats.byStatus.wrong_event ?? 0}</span>
               </p>
@@ -423,7 +418,7 @@ export default function ScannerScan() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-[#737373] shrink-0">{new Date(s.scan_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                    <span className={`shrink-0 px-1.5 py-0.5 rounded text-[11px] font-medium ${s.scan_result === "valid" ? "bg-[#22C55E]/20 text-[#22C55E]" : s.scan_result === "already_scanned" || s.scan_result === "wrong_event" ? "bg-[#F59E0B]/20 text-[#F59E0B]" : s.scan_result === "expired" ? "bg-[#A3A3A3]/20 text-[#A3A3A3]" : "bg-[#EF4444]/20 text-[#EF4444]"}`}>{s.scan_result === "valid" ? "Valid" : s.scan_result === "already_scanned" ? "Already" : s.scan_result === "wrong_event" ? "Wrong" : s.scan_result === "expired" ? "Exp" : "Invalid"}</span>
+                    <span className={`shrink-0 px-1.5 py-0.5 rounded text-[11px] font-medium ${s.scan_result === "valid" ? "bg-[#22C55E]/20 text-[#22C55E]" : s.scan_result === "already_scanned" || s.scan_result === "wrong_event" ? "bg-[#F59E0B]/20 text-[#F59E0B]" : "bg-[#EF4444]/20 text-[#EF4444]"}`}>{s.scan_result === "valid" ? "Valid" : s.scan_result === "already_scanned" ? "Already" : s.scan_result === "wrong_event" ? "Wrong" : "Invalid"}</span>
                     <span className="text-sm font-medium text-[#F5F5F5] truncate">{s.buyer_name || "—"}</span>
                   </div>
                   <p className="text-xs text-[#A3A3A3] pt-0.5">{s.pass_type || "—"}</p>

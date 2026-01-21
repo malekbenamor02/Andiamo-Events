@@ -1390,10 +1390,6 @@ app.post('/api/scanner/validate-ticket', requireScannerAuth, async (req, res) =>
       } : undefined;
       return res.status(200).json({ success: false, result: 'already_scanned', message: 'Ticket already scanned', previous_scan: { scanned_at: existing.scan_time, scanner_name: prevName }, ...(ticketDup && { ticket: ticketDup }) });
     }
-    if (qt.event_date && new Date(qt.event_date) < now) {
-      await db.from('scans').insert({ event_id: ev, scanner_id: scannerId, qr_ticket_id: qt.id, scan_result: 'expired', scan_location: sl, device_info: di, ambassador_id: qt.ambassador_id, notes: 'Event date passed' });
-      return res.status(200).json({ success: false, result: 'expired', message: 'Ticket has expired', event_date: qt.event_date });
-    }
     await db.from('qr_tickets').update({ ticket_status: 'USED', updated_at: now.toISOString() }).eq('id', qt.id);
     const { data: scanRow } = await db.from('scans').insert({ event_id: ev, scanner_id: scannerId, qr_ticket_id: qt.id, scan_result: 'valid', scan_location: sl, device_info: di, ambassador_id: qt.ambassador_id, notes: 'Valid' }).select('scan_time').single();
     const isInv = qt.source === 'official_invitation';
@@ -1453,7 +1449,7 @@ app.get('/api/scanner/scans', requireScannerAuth, async (req, res) => {
     if (event_id && /^[0-9a-f-]{36}$/i.test(event_id)) q = q.eq('event_id', event_id);
     if (date_from) q = q.gte('scan_time', date_from);
     if (date_to) q = q.lte('scan_time', date_to);
-    if (['valid','invalid','already_scanned','expired','wrong_event'].includes(scan_result)) q = q.eq('scan_result', scan_result);
+    if (['valid','invalid','already_scanned','wrong_event'].includes(scan_result)) q = q.eq('scan_result', scan_result);
     const { data: rows, error, count } = await q;
     if (error) return res.status(500).json({ error: error.message });
     const ids = (rows || []).map(r => r.qr_ticket_id).filter(Boolean);
@@ -1483,7 +1479,7 @@ app.get('/api/scanner/statistics', requireScannerAuth, async (req, res) => {
     const { data: rows, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
     const total = (rows || []).length;
-    const byStatus = { valid: 0, invalid: 0, already_scanned: 0, expired: 0, wrong_event: 0 };
+    const byStatus = { valid: 0, invalid: 0, already_scanned: 0, wrong_event: 0 };
     (rows || []).forEach(r => { if (byStatus[r.scan_result] != null) byStatus[r.scan_result]++; });
     const qids = (rows || []).map(r => r.qr_ticket_id).filter(Boolean);
     let byPass = {};
@@ -1510,7 +1506,7 @@ app.get('/api/admin/scanners/:id/scans', requireAdminAuth, requireSuperAdmin, as
     if (event_id && /^[0-9a-f-]{36}$/i.test(event_id)) q = q.eq('event_id', event_id);
     if (date_from) q = q.gte('scan_time', date_from);
     if (date_to) q = q.lte('scan_time', date_to);
-    if (['valid','invalid','already_scanned','expired','wrong_event'].includes(scan_result)) q = q.eq('scan_result', scan_result);
+    if (['valid','invalid','already_scanned','wrong_event'].includes(scan_result)) q = q.eq('scan_result', scan_result);
     const { data: rows, error, count } = await q;
     if (error) return res.status(500).json({ error: error.message });
     const qids = (rows || []).map(r => r.qr_ticket_id).filter(Boolean);
@@ -1534,7 +1530,7 @@ app.get('/api/admin/scanners/:id/statistics', requireAdminAuth, requireSuperAdmi
     const { data: rows, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
     const total = (rows || []).length;
-    const byStatus = { valid: 0, invalid: 0, already_scanned: 0, expired: 0, wrong_event: 0 };
+    const byStatus = { valid: 0, invalid: 0, already_scanned: 0, wrong_event: 0 };
     (rows || []).forEach(r => { if (byStatus[r.scan_result] != null) byStatus[r.scan_result]++; });
     const qids = (rows || []).map(r => r.qr_ticket_id).filter(Boolean);
     let byPass = {}; if (qids.length) { const { data: qr } = await db.from('qr_tickets').select('id, pass_type').in('id', qids); (qr || []).forEach(q => { byPass[q.pass_type] = (byPass[q.pass_type] || 0) + 1; }); }
@@ -1559,7 +1555,7 @@ app.get('/api/admin/scan-history', requireAdminAuth, requireSuperAdmin, async (r
       if (event_id && /^[0-9a-f-]{36}$/i.test(event_id)) q = q.eq('event_id', event_id);
       if (date_from) q = q.gte('scan_time', date_from);
       if (date_to) q = q.lte('scan_time', date_to);
-      if (['valid','invalid','already_scanned','expired','wrong_event'].includes(scan_result)) q = q.eq('scan_result', scan_result);
+      if (['valid','invalid','already_scanned','wrong_event'].includes(scan_result)) q = q.eq('scan_result', scan_result);
       return q;
     };
     let q = buildQuery('id, scan_time, scan_result, scan_location, event_id, qr_ticket_id, scanner_id');
@@ -1626,7 +1622,7 @@ app.get('/api/admin/scan-statistics', requireAdminAuth, requireSuperAdmin, async
       return res.status(500).json({ error: error.message });
     }
     const total = (rows || []).length;
-    const byStatus = { valid: 0, invalid: 0, already_scanned: 0, expired: 0, wrong_event: 0 };
+    const byStatus = { valid: 0, invalid: 0, already_scanned: 0, wrong_event: 0 };
     const byScanner = {};
     (rows || []).forEach(r => {
       if (byStatus[r.scan_result] != null) byStatus[r.scan_result]++;
@@ -3184,35 +3180,6 @@ app.post('/api/validate-ticket', async (req, res) => {
           event_name: ticket.events.name,
           ticket_type: ticket.pass_type,
           scan_time: existingScan.scan_time
-        }
-      });
-    }
-
-    // Check if event date has passed
-    const eventDate = new Date(ticket.events.date);
-    const now = new Date();
-    
-    if (eventDate < now) {
-      // Record the expired scan attempt
-      await supabase.from('scans').insert({
-        ticket_id: ticket.id,
-        event_id: eventId,
-        ambassador_id: ambassadorId,
-        scan_result: 'expired',
-        device_info: deviceInfo,
-        scan_location: scanLocation,
-        notes: 'Event date has passed'
-      });
-
-      return res.status(200).json({
-        success: false,
-        result: 'expired',
-        message: 'Event date has passed',
-        ticket: {
-          id: ticket.id,
-          customer_name: ticket.customer_name,
-          event_name: ticket.events.name,
-          ticket_type: ticket.pass_type
         }
       });
     }

@@ -51,15 +51,28 @@ export const usePhoneCapture = (pathname: string) => {
       '/pass-purchase',
       '/cod-order',
       '/payment-processing',
-      '/pos'
+      '/pos',
+      '/scanner',
+      '/event',
+      '/gallery'
     ];
-    
+
+    const pathsWithPrefix = ['/admin', '/ambassador', '/pos', '/scanner', '/event', '/gallery'];
     const isExcluded = excludedPaths.some(path => {
-      if (path === '/admin' || path === '/ambassador' || path === '/pos') {
+      if (pathsWithPrefix.includes(path)) {
         return pathname.startsWith(path);
       }
       return pathname === path;
     });
+
+    // Also exclude pass booking by event slug (e.g. /el-daheeh-live-show-in-tunis)
+    const reservedSegments = ['events', 'about', 'contact', 'terms', 'refund-policy', 'ambassador', 'pass-purchase', 'cod-order', 'payment-processing', 'admin', 'gallery'];
+    if (pathname.match(/^\/[^/]+$/)) {
+      const segment = pathname.slice(1);
+      if (segment && !reservedSegments.includes(segment)) {
+        return; // event slug pass booking — exclude
+      }
+    }
 
     if (isExcluded) {
       return;

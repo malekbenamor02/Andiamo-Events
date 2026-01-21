@@ -225,13 +225,10 @@ const Footer = ({ language }: FooterProps) => {
           <div>
             <h4 className="font-semibold text-primary mb-4">{content[language].contact}</h4>
             <div className="space-y-3">
-              <a 
-                href={`tel:+21628070128`}
-                className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
-              >
+              <span className="flex items-center gap-2 text-muted-foreground">
                 <Phone className="w-4 h-4 flex-shrink-0" />
                 <span className="font-medium">+216 28 070 128</span>
-              </a>
+              </span>
               {contactInfo?.email && (
                 <a 
                   href={`mailto:${contactInfo.email}`}
