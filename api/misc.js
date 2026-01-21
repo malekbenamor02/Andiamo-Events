@@ -5044,6 +5044,69 @@ We Create Memories`;
       }
     }
     
+    // ============================================
+    // /api/csp-report (CSP Violation Reporting)
+    // ============================================
+    if (path === '/api/csp-report' && method === 'POST') {
+      try {
+        // Parse the CSP report
+        let reportData;
+        if (req.body && typeof req.body === 'object') {
+          reportData = req.body;
+        } else {
+          const body = await parseBody(req);
+          reportData = body;
+        }
+
+        // Extract violation details
+        const cspReport = reportData['csp-report'] || reportData;
+        const violation = {
+          documentUri: cspReport['document-uri'] || cspReport.documentUri || 'unknown',
+          referrer: cspReport.referrer || 'unknown',
+          violatedDirective: cspReport['violated-directive'] || cspReport.violatedDirective || 'unknown',
+          effectiveDirective: cspReport['effective-directive'] || cspReport.effectiveDirective || 'unknown',
+          originalPolicy: cspReport['original-policy'] || cspReport.originalPolicy || 'unknown',
+          blockedUri: cspReport['blocked-uri'] || cspReport.blockedUri || 'unknown',
+          sourceFile: cspReport['source-file'] || cspReport.sourceFile || 'unknown',
+          lineNumber: cspReport['line-number'] || cspReport.lineNumber || null,
+          columnNumber: cspReport['column-number'] || cspReport.columnNumber || null,
+          statusCode: cspReport['status-code'] || cspReport.statusCode || null,
+        };
+
+        // Log violation (console for now, can be extended to database)
+        console.warn('🚨 CSP Violation Report:', {
+          timestamp: new Date().toISOString(),
+          violation: violation.violatedDirective,
+          blockedUri: violation.blockedUri,
+          documentUri: violation.documentUri,
+          sourceFile: violation.sourceFile,
+          lineNumber: violation.lineNumber,
+          columnNumber: violation.columnNumber,
+        });
+
+        // Optional: Store in database for analysis
+        if (process.env.ENABLE_CSP_LOGGING === 'true' && process.env.SUPABASE_URL) {
+          try {
+            const { createClient } = await import('@supabase/supabase-js');
+            const supabase = createClient(
+              process.env.SUPABASE_URL,
+              process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+            );
+            // Database logging can be enabled here if needed
+          } catch (dbError) {
+            console.error('Failed to log CSP violation to database:', dbError);
+          }
+        }
+
+        // Return 204 No Content (standard for CSP reporting)
+        return res.status(204).end();
+      } catch (error) {
+        console.error('Error processing CSP report:', error);
+        // Still return 204 to prevent retries
+        return res.status(204).end();
+      }
+    }
+    
     // 404 for unknown routes
     return res.status(404).json({
       error: 'Not Found',

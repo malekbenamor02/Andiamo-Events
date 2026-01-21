@@ -40,6 +40,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/csp-report",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin-logout",
       "destination": "/api/misc.js"
     },
