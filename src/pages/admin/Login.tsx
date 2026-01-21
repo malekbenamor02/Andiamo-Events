@@ -10,6 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { logger } from "@/lib/logger";
 import { API_ROUTES } from "@/lib/api-routes";
+import { supabase } from "@/integrations/supabase/client";
+import { logAdminAction } from "@/lib/adminLogs";
 
 interface AdminLoginProps {
   language: 'en' | 'fr';
@@ -226,6 +228,10 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
             email: adminEmail 
           }
         });
+
+        if (data.admin?.id) {
+          logAdminAction(supabase, { adminId: data.admin.id, adminName: adminName, adminEmail: adminEmail, action: 'admin.login' }).catch(() => {});
+        }
 
         // No localStorage cleanup needed - session is managed by server token only
 

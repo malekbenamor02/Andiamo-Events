@@ -30,7 +30,7 @@ import {
   PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
   Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Database,
   Search, Filter, MoreVertical, ExternalLink, Ticket, TrendingDown, Percent, Target, Package, Pause,
-  Zap, MailCheck, ArrowRight, Shield, QrCode, Store
+  Zap, MailCheck, ArrowRight, Shield, QrCode, Store, History
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
@@ -50,6 +50,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useInvalidateEvents } from "@/hooks/useEvents";
 import { useInvalidateSiteContent } from "@/hooks/useSiteContent";
 import { logger } from "@/lib/logger";
+import { logAdminAction } from "@/lib/adminLogs";
 import { ReportsAnalytics } from "@/components/admin/analytics/ReportsAnalytics";
 import { OfficialInvitationForm } from "@/components/admin/OfficialInvitationForm";
 import { OfficialInvitationsList } from "@/components/admin/OfficialInvitationsList";
@@ -184,6 +185,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [isEditAdminDialogOpen, setIsEditAdminDialogOpen] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<{id: string; name: string; email: string; phone?: string; role: string; is_active: boolean} | null>(null);
   const [newAdminData, setNewAdminData] = useState({ name: '', email: '', phone: '' });
+  const [adminLogs, setAdminLogs] = useState<any[]>([]);
+  const [loadingAdminLogs, setLoadingAdminLogs] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
   // Add state for email recovery and status tracking
@@ -5748,6 +5751,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  const fetchAdminLogs = async () => {
+    setLoadingAdminLogs(true);
+    try {
+      const { data, error } = await (supabase as any)
+        .from('admin_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(150);
+      if (!error) setAdminLogs(data || []);
+    } catch (e) {
+      console.error('Error fetching admin logs:', e);
+    } finally {
+      setLoadingAdminLogs(false);
+    }
+  };
+
   // Add new admin
   const handleAddAdmin = async () => {
     if (!newAdminData.name || !newAdminData.email) {
@@ -5845,9 +5864,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // Reset form and close dialog
         setNewAdminData({ name: '', email: '', phone: '' });
         setIsAddAdminDialogOpen(false);
-        
-        // Refresh admins list
+        if (currentAdminId) logAdminAction(supabase, { adminId: currentAdminId, adminName: currentAdminName || 'Unknown', adminEmail: currentAdminEmail, action: 'admin.created', targetType: 'admin', targetId: retryAdmin.id, details: { name: newAdminData.name, email: newAdminData.email } }).catch(() => {});
         await fetchAdmins();
+        await fetchAdminLogs();
         setProcessingId(null);
         return;
       }
@@ -5905,9 +5924,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           // Reset form and close dialog
           setNewAdminData({ name: '', email: '', phone: '' });
           setIsAddAdminDialogOpen(false);
-          
-          // Refresh admins list
+          if (currentAdminId) logAdminAction(supabase, { adminId: currentAdminId, adminName: currentAdminName || 'Unknown', adminEmail: currentAdminEmail, action: 'admin.created', targetType: 'admin', targetId: retryAdmin.id, details: { name: newAdminData.name, email: newAdminData.email } }).catch(() => {});
           await fetchAdmins();
+          await fetchAdminLogs();
           setProcessingId(null);
           return;
         }
@@ -5951,9 +5970,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Reset form and close dialog
       setNewAdminData({ name: '', email: '', phone: '' });
       setIsAddAdminDialogOpen(false);
-      
-      // Refresh admins list
+      if (currentAdminId) logAdminAction(supabase, { adminId: currentAdminId, adminName: currentAdminName || 'Unknown', adminEmail: currentAdminEmail, action: 'admin.created', targetType: 'admin', targetId: newAdmin.id, details: { name: newAdminData.name, email: newAdminData.email } }).catch(() => {});
       await fetchAdmins();
+      await fetchAdminLogs();
     } catch (error: any) {
       console.error('Error creating admin:', error);
       
@@ -5996,6 +6015,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setProcessingId(`edit-admin-${editingAdmin.id}`);
     
     try {
+      const { data: existing } = await supabase.from('admins').select('role').eq('id', editingAdmin.id).single();
       const updatePayload: any = {
         name: editingAdmin.name,
         email: editingAdmin.email,
@@ -6046,8 +6066,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Reset form and close dialog
       setEditingAdmin(null);
       setIsEditAdminDialogOpen(false);
-      
-      // Refresh admins list
+      if (currentAdminId && existing?.role !== editingAdmin.role) {
+        if (editingAdmin.role === 'super_admin') {
+          logAdminAction(supabase, { adminId: currentAdminId, adminName: currentAdminName || 'Unknown', adminEmail: currentAdminEmail, action: 'admin.role_set_super_admin', targetType: 'admin', targetId: editingAdmin.id, details: { target_name: editingAdmin.name, target_email: editingAdmin.email } }).catch(() => {});
+        } else if (editingAdmin.role === 'admin') {
+          logAdminAction(supabase, { adminId: currentAdminId, adminName: currentAdminName || 'Unknown', adminEmail: currentAdminEmail, action: 'admin.role_set_admin', targetType: 'admin', targetId: editingAdmin.id, details: { target_name: editingAdmin.name, target_email: editingAdmin.email } }).catch(() => {});
+        }
+        await fetchAdminLogs();
+      }
       await fetchAdmins();
     } catch (error: any) {
       console.error('Error updating admin:', error);
@@ -6096,6 +6122,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const doDeleteAdmin = async (adminId: string) => {
     setProcessingId(`delete-admin-${adminId}`);
     try {
+      const target = admins.find((a) => a.id === adminId);
       const { error: deleteError } = await supabase
         .from('admins')
         .delete()
@@ -6103,11 +6130,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       if (deleteError) throw deleteError;
 
+      if (currentAdminId) {
+        logAdminAction(supabase, { adminId: currentAdminId, adminName: currentAdminName || 'Unknown', adminEmail: currentAdminEmail, action: 'admin.deleted', targetType: 'admin', targetId: adminId, details: { target_name: target?.name, target_email: target?.email } }).catch(() => {});
+      }
       toast({
         title: language === 'en' ? 'Admin Deleted' : 'Admin Supprimé',
         description: language === 'en' ? 'Admin account deleted successfully' : 'Compte admin supprimé avec succès',
       });
       await fetchAdmins();
+      await fetchAdminLogs();
     } catch (error: any) {
       console.error('Error deleting admin:', error);
       let errorMessage = language === 'en' ? 'Failed to delete admin account' : 'Échec de la suppression du compte admin';
@@ -6164,6 +6195,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       fetchAdmins();
     }
   }, [currentAdminRole]);
+
+  useEffect(() => {
+    if (activeTab === 'admins' && currentAdminRole === 'super_admin') {
+      fetchAdminLogs();
+    }
+  }, [activeTab, currentAdminRole]);
 
   // Protect super_admin-only tabs: redirect regular admins away from logs, settings, admins tabs
   useEffect(() => {
@@ -9160,6 +9197,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             adminId: currentAdminId 
           }
         });
+        logAdminAction(supabase, { adminId: currentAdminId, adminName: currentAdminName || 'Unknown', adminEmail: currentAdminEmail, action: 'admin.logout' }).catch(() => {});
       }
       
       // Call Vercel API route to clear JWT cookie
@@ -12654,6 +12692,48 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                           )}
                         </TableBody>
                       </Table>
+                    </CardContent>
+                  </Card>
+
+                  {/* Activity Logs */}
+                  <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-500">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <History className="w-5 h-5 text-primary" />
+                        {language === 'en' ? 'Activity Logs' : 'Journaux d\'activité'}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {loadingAdminLogs ? (
+                        <p className="text-muted-foreground text-sm py-4">{language === 'en' ? 'Loading…' : 'Chargement…'}</p>
+                      ) : adminLogs.length === 0 ? (
+                        <p className="text-muted-foreground text-sm py-4">{language === 'en' ? 'No activity yet.' : 'Aucune activité pour l\'instant.'}</p>
+                      ) : (
+                        <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>{language === 'en' ? 'Date' : 'Date'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Admin' : 'Admin'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Action' : 'Action'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Target' : 'Cible'}</TableHead>
+                                <TableHead>{language === 'en' ? 'Details' : 'Détails'}</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {adminLogs.map((log: any) => (
+                                <TableRow key={log.id}>
+                                  <TableCell className="text-muted-foreground text-xs">{log.created_at ? format(new Date(log.created_at), 'PPp') : '-'}</TableCell>
+                                  <TableCell className="font-medium">{log.admin_name || '-'}</TableCell>
+                                  <TableCell><Badge variant="outline">{log.action || '-'}</Badge></TableCell>
+                                  <TableCell className="text-muted-foreground text-sm">{log.target_type && log.target_id ? `${log.target_type} (${String(log.target_id).slice(0, 8)}…)` : '-'}</TableCell>
+                                  <TableCell className="text-muted-foreground text-xs max-w-[180px] truncate" title={log.details ? JSON.stringify(log.details) : ''}>{log.details ? JSON.stringify(log.details) : '-'}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
