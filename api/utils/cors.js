@@ -70,18 +70,19 @@ function isOriginAllowed(origin) {
 /**
  * Gets the allowed origin for a request
  * @param {object} req - Request object
- * @returns {string|null} - Allowed origin or null if not allowed
+ * @returns {string|null} - Allowed origin or null if not allowed or no origin header
  */
 function getCorsOrigin(req) {
-  const origin = req.headers?.origin || req.headers?.referer?.split('/').slice(0, 3).join('/');
+  // Only process CORS if there's an Origin header (CORS is only for cross-origin requests)
+  const origin = req.headers?.origin;
   
-  if (isDevelopment) {
-    return origin || '*';
+  // No Origin header means same-origin request - don't set CORS headers
+  if (!origin) {
+    return null;
   }
   
-  if (!origin) {
-    // Allow requests with no origin (mobile apps, curl, etc.)
-    return '*';
+  if (isDevelopment) {
+    return origin;
   }
   
   if (isOriginAllowed(origin)) {
@@ -95,22 +96,27 @@ function getCorsOrigin(req) {
  * Sets CORS headers on a response
  * @param {object} res - Response object
  * @param {object} req - Request object
- * @param {object} options - Optional configuration
- * @returns {boolean} - True if headers were set, false if origin not allowed
+ * @param {object} options - Optional configuration (credentials: boolean to enable credentials)
+ * @returns {boolean} - True if headers were set, false if origin not allowed or no origin
  */
 function setCORSHeaders(res, req, options = {}) {
   const origin = getCorsOrigin(req);
   
+  // No origin or origin not allowed - don't set CORS headers
   if (origin === null) {
-    // Origin not allowed - don't set CORS headers
     return false;
   }
   
+  // Set CORS headers only for cross-origin requests with valid origin
   res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', options.methods || 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', options.headers || 'Content-Type, Authorization');
   res.setHeader('Vary', 'Origin');
+  
+  // Only set credentials if explicitly requested (and origin is not '*')
+  if (options.credentials !== false && origin !== '*') {
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
   
   return true;
 }
@@ -135,7 +141,7 @@ function handlePreflight(req, res, options = {}) {
   return false;
 }
 
-module.exports = {
+export {
   getCorsOrigin,
   setCORSHeaders,
   handlePreflight,

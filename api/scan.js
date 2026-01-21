@@ -85,19 +85,37 @@ async function requireScannerAuth(req) {
 }
 
 export default async function handler(req, res) {
-  // Handle CORS (including preflight)
-  const corsResult = await setCORS(res, req);
-  if (corsResult === false) {
-    return; // CORS error already handled
-  }
-  
-  let path = (req.url || req.path || '/').split('?')[0];
-  if (!path.startsWith('/api/')) path = '/api' + (path.startsWith('/') ? path : '/' + path);
-  const method = req.method || 'GET';
-
-  const db = getDb();
-
   try {
+    // Handle CORS (including preflight)
+    const corsResult = await setCORS(res, req);
+    if (corsResult === false) {
+      return; // CORS error already handled
+    }
+    
+    let path = (req.url || req.path || '/').split('?')[0];
+    if (!path.startsWith('/api/')) path = '/api' + (path.startsWith('/') ? path : '/' + path);
+    const method = req.method || 'GET';
+
+    const db = getDb();
+
+    // Validate environment variables for database operations
+    if (!process.env.SUPABASE_URL || (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_ANON_KEY)) {
+      console.error('Missing Supabase configuration:', {
+        hasUrl: !!process.env.SUPABASE_URL,
+        hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        hasAnonKey: !!process.env.SUPABASE_ANON_KEY
+      });
+      // For public endpoints, return appropriate response
+      if (path === '/api/scan-system-status') {
+        return res.status(200).json({ enabled: false });
+      }
+      return res.status(500).json({ 
+        error: 'Service configuration error',
+        message: 'Database not configured'
+      });
+    }
+
+    try {
     // ——— GET /api/scan-system-status (public)
     if (path === '/api/scan-system-status' && method === 'GET') {
       if (!db) return res.status(200).json({ enabled: false });
@@ -509,10 +527,25 @@ export default async function handler(req, res) {
       if (qids.length) { const { data: qr } = await db.from('qr_tickets').select('id, pass_type').in('id', qids); (qr || []).forEach((x) => { byPass[x.pass_type] = (byPass[x.pass_type] || 0) + 1; }); }
       return res.status(200).json({ total, byStatus, byPass });
     }
-  } catch (e) {
-    console.error('[api/scan.js]', e);
-    return res.status(500).json({ error: 'Server error' });
-  }
 
-  return res.status(404).json({ error: 'Not found', path, method });
+    // Route not found
+    return res.status(404).json({ error: 'Not found', path, method });
+    } catch (innerError) {
+      console.error('[api/scan.js] Inner error:', innerError);
+      if (!res.headersSent) {
+        return res.status(500).json({ 
+          error: 'Internal server error',
+          message: process.env.NODE_ENV === 'production' ? 'An error occurred processing the request' : innerError.message
+        });
+      }
+    }
+  } catch (outerError) {
+    console.error('[api/scan.js] Outer error:', outerError);
+    if (!res.headersSent) {
+      return res.status(500).json({ 
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'production' ? 'An error occurred' : outerError.message
+      });
+    }
+  }
 }

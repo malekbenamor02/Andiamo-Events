@@ -7,16 +7,28 @@ import nodemailer from 'nodemailer';
 import querystring from 'querystring';
 import https from 'https';
 
+// Import shared CORS utility (using dynamic import for ES modules)
+let corsUtils = null;
+async function getCorsUtils() {
+  if (!corsUtils) {
+    corsUtils = await import('./utils/cors.js');
+  }
+  return corsUtils;
+}
+
 export default async (req, res) => {
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  const { setCORSHeaders, handlePreflight } = await getCorsUtils();
   
-  // Handle preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  // Handle preflight requests
+  if (handlePreflight(req, res, { methods: 'POST, OPTIONS', headers: 'Content-Type', credentials: true })) {
+    return; // Preflight handled
+  }
+  
+  // Set CORS headers for actual requests
+  if (!setCORSHeaders(res, req, { methods: 'POST, OPTIONS', headers: 'Content-Type', credentials: true })) {
+    if (req.headers.origin) {
+      return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
+    }
   }
   
   // Only allow POST
