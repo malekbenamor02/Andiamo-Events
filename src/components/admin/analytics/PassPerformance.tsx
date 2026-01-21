@@ -67,8 +67,8 @@ export function PassPerformance({ data, loading }: PassPerformanceProps) {
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
-          <p className="text-sm font-semibold mb-2">{payload[0].payload.name}</p>
+        <div className="bg-[#1F1F1F] border border-[#2A2A2A] rounded-lg p-3 shadow-lg text-white">
+          <p className="text-sm font-semibold mb-2 text-white">{payload[0].payload.name}</p>
           {payload.map((entry: any, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
               {entry.name === 'tickets' ? 'Tickets Sold' : 'Revenue'}: {entry.name === 'tickets'
@@ -81,6 +81,8 @@ export function PassPerformance({ data, loading }: PassPerformanceProps) {
     }
     return null;
   };
+
+  const tooltipStyle = { background: '#1F1F1F', border: '1px solid #2A2A2A', borderRadius: 8 };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -106,7 +108,7 @@ export function PassPerformance({ data, loading }: PassPerformanceProps) {
                   stroke="hsl(var(--muted-foreground))"
                   style={{ fontSize: '12px' }}
                 />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<CustomTooltip />} contentStyle={tooltipStyle} wrapperStyle={{ outline: 'none', backgroundColor: 'transparent' }} cursor={false} />
                 <Bar 
                   dataKey="tickets" 
                   fill="hsl(var(--primary))"
@@ -141,7 +143,7 @@ export function PassPerformance({ data, loading }: PassPerformanceProps) {
                   stroke="hsl(var(--muted-foreground))"
                   style={{ fontSize: '12px' }}
                 />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<CustomTooltip />} contentStyle={tooltipStyle} wrapperStyle={{ outline: 'none', backgroundColor: 'transparent' }} cursor={false} />
                 <Bar 
                   dataKey="revenue" 
                   fill="#f97316"
