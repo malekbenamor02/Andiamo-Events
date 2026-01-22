@@ -312,6 +312,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/send-sms",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
