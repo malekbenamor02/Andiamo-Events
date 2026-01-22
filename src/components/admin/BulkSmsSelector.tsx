@@ -98,14 +98,34 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
   const fetchSourceCounts = async () => {
     try {
       const url = buildFullApiUrl(API_ROUTES.ADMIN_PHONE_NUMBERS_COUNTS);
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        credentials: 'include' // Important for admin auth cookies
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 100)}`);
+      }
+      
       const data = await response.json();
       
       if (data.success) {
         setSourceCounts(data.data || {});
+      } else {
+        console.error('API returned error:', data.error);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching source counts:', error);
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to fetch source counts' : 'Échec de la récupération des compteurs'),
+        variant: 'destructive'
+      });
     }
   };
 
@@ -129,7 +149,20 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
         includeMetadata: 'true'
       });
 
-      const response = await fetch(`${url}?${params}`);
+      const response = await fetch(`${url}?${params}`, {
+        credentials: 'include' // Important for admin auth cookies
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 100)}`);
+      }
+
       const data = await response.json();
 
       if (data.success) {
@@ -144,9 +177,10 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
       }
     } catch (error: any) {
       console.error('Error fetching phone numbers:', error);
+      const errorMessage = error.message || (language === 'en' ? 'Failed to fetch phone numbers' : 'Échec de la récupération des numéros');
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to fetch phone numbers' : 'Échec de la récupération des numéros'),
+        description: errorMessage,
         variant: 'destructive'
       });
     } finally {
@@ -205,6 +239,7 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Important for admin auth cookies
         body: JSON.stringify({
           phoneNumbers: phoneNumbersToSend,
           message: bulkSmsMessage.trim(),
@@ -215,6 +250,16 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
           }
         })
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 100)}`);
+      }
 
       const data = await response.json();
 
