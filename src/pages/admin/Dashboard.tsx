@@ -440,6 +440,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     city: '',
     ville: '',
     orderId: '',
+    passType: '',
   });
   const [allAmbassadorOrders, setAllAmbassadorOrders] = useState<any[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -636,10 +637,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Get unique filter values from orders
   const filterOptions = useMemo(() => {
     const ambassadors = new Set<string>();
+    const passTypes = new Set<string>();
 
     codAmbassadorOrders.forEach(order => {
       if (order.ambassador_name) {
         ambassadors.add(order.ambassador_name);
+      }
+      // Extract pass types from passes array
+      if (order.passes && Array.isArray(order.passes)) {
+        order.passes.forEach((pass: any) => {
+          const passType = pass.pass_type || pass.passName;
+          if (passType) {
+            passTypes.add(passType);
+          }
+        });
       }
     });
 
@@ -655,6 +666,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
     return {
       ambassadors: Array.from(ambassadors).sort(),
+      passTypes: Array.from(passTypes).sort(),
       cities: CITIES,
       getAllVilles,
     };
@@ -695,8 +707,39 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
     }
 
+    if (orderFilters.passType) {
+      filtered = filtered.filter(order => {
+        // Check if order has passes array with the selected pass type
+        if (order.passes && Array.isArray(order.passes)) {
+          return order.passes.some((pass: any) => {
+            const passType = pass.pass_type || pass.passName;
+            return passType === orderFilters.passType;
+          });
+        }
+        return false;
+      });
+    }
+
     setFilteredCodOrders(filtered);
   }, [codAmbassadorOrders, orderFilters]);
+
+  // Calculate total count of selected pass type
+  const selectedPassTypeTotal = useMemo(() => {
+    if (!orderFilters.passType) return 0;
+    
+    return filteredCodOrders.reduce((total, order) => {
+      if (order.passes && Array.isArray(order.passes)) {
+        const matchingPass = order.passes.find((pass: any) => {
+          const passType = pass.pass_type || pass.passName;
+          return passType === orderFilters.passType;
+        });
+        if (matchingPass) {
+          return total + (matchingPass.quantity || 0);
+        }
+      }
+      return total;
+    }, 0);
+  }, [filteredCodOrders, orderFilters.passType]);
 
   // Dashboard overview stats from COD ambassador orders (revenue + sold tickets)
   // Sold tickets = paid tickets from ambassador orders only (PAID/COMPLETED), no pending, no online, no POS
@@ -14786,7 +14829,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       <CardContent>
                         {/* Filters */}
                         <div className="flex items-end gap-4 mb-4 pb-4 border-b">
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
+                          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 flex-1">
                           <div>
                             <Label className="text-xs mb-2">{language === 'en' ? 'Order ID' : 'ID Commande'}</Label>
                             <Input
@@ -14858,6 +14901,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                               </SelectContent>
                             </Select>
                           </div>
+                          <div>
+                            <Label className="text-xs mb-2">{language === 'en' ? 'Pass Type' : 'Type de Pass'}</Label>
+                            <Select
+                              value={orderFilters.passType || undefined}
+                              onValueChange={(value) => {
+                                setOrderFilters({ ...orderFilters, passType: value === 'all' || value === '' ? '' : value });
+                              }}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder={language === 'en' ? 'All Pass Types' : 'Tous les Types'} />
+                              </SelectTrigger>
+                              <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
+                                <SelectItem value="">{language === 'en' ? 'All Pass Types' : 'Tous les Types'}</SelectItem>
+                                {filterOptions.passTypes.map((passType) => (
+                                  <SelectItem key={passType} value={passType}>
+                                    {passType}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {orderFilters.passType && (
+                              <div className="mt-1 text-xs text-primary font-semibold">
+                                {language === 'en' ? 'Total:' : 'Total:'} {selectedPassTypeTotal}
+                              </div>
+                            )}
+                          </div>
                           </div>
                           <Button
                             variant="outline"
@@ -14870,6 +14939,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                                 city: '',
                                 ville: '',
                                 orderId: '',
+                                passType: '',
                               });
                               // Refetch data to exclude REMOVED_BY_ADMIN orders after clearing filters
                               fetchAmbassadorSalesData();
