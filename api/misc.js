@@ -320,6 +320,54 @@ async function sendSms(phoneNumbers, message, senderId = 'Andiamo') {
   });
 }
 
+// Helper function to check WinSMS Account Balance
+async function checkSmsBalance() {
+  const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
+  if (!WINSMS_API_KEY) {
+    throw new Error('SMS service not configured: WINSMS_API_KEY is required');
+  }
+
+  const querystring = await import('querystring');
+  const https = await import('https');
+  
+  const queryParams = querystring.default.stringify({
+    action: 'check-balance',
+    api_key: WINSMS_API_KEY,
+    response: 'json'
+  });
+
+  const url = `https://www.winsmspro.com/sms/sms/api?${queryParams}`;
+
+  return new Promise((resolve, reject) => {
+    https.default.get(url, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          resolve({
+            status: res.statusCode,
+            data: parsed,
+            raw: data
+          });
+        } catch (e) {
+          resolve({
+            status: res.statusCode,
+            data: data,
+            raw: data
+          });
+        }
+      });
+    }).on('error', (e) => {
+      reject(new Error(`Balance check failed: ${e.message}`));
+    });
+  });
+}
+
 export default async (req, res) => {
   // Get path from URL, handling both /api/... and /... formats (Vercel may strip /api prefix)
   let path = req.url.split('?')[0]; // Remove query string
@@ -5966,6 +6014,77 @@ We Create Memories`;
         return res.status(500).json({
           success: false,
           error: error.message || 'Failed to send bulk SMS'
+        });
+      }
+    }
+
+    // ============================================
+    // GET /api/sms-balance - Check WinSMS Account Balance
+    // ============================================
+    if (path === '/api/sms-balance' && method === 'GET') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+
+        const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
+        if (!WINSMS_API_KEY) {
+          return res.status(200).json({ 
+            success: true,
+            balance: null,
+            currency: null,
+            message: 'SMS service not configured',
+            configured: false,
+            error: 'WINSMS_API_KEY environment variable is required'
+          });
+        }
+        
+        const responseData = await checkSmsBalance();
+        
+        // Parse response
+        let balanceData = responseData.data;
+        if (typeof balanceData === 'string') {
+          try {
+            balanceData = JSON.parse(balanceData);
+          } catch (e) {
+            // Keep as string if JSON parse fails
+          }
+        }
+
+        // Check for error codes
+        if (balanceData && balanceData.code && balanceData.code !== '200') {
+          return res.status(200).json({
+            success: true,
+            balance: null,
+            currency: null,
+            message: 'Unable to fetch balance from SMS provider',
+            configured: true,
+            error: balanceData.message || `Error code ${balanceData.code}`,
+            rawResponse: balanceData
+          });
+        }
+
+        return res.json({
+          success: true,
+          balance: balanceData,
+          rawResponse: responseData.raw,
+          balanceValue: balanceData?.balance || balanceData?.solde || balanceData?.credit || balanceData?.amount || null
+        });
+      } catch (error) {
+        console.error('Error checking SMS balance:', error);
+        return res.status(200).json({
+          success: true,
+          balance: null,
+          currency: null,
+          message: 'SMS service unavailable',
+          configured: false,
+          error: error.message || 'Failed to check SMS balance',
+          rawResponse: null
         });
       }
     }

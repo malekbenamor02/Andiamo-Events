@@ -308,6 +308,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/sms-balance",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
