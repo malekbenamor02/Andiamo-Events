@@ -5081,6 +5081,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       setSendingTestSms(true);
       
+      console.log('Sending test SMS:', { phoneNumber: phoneToSend, messageLength: testSmsMessage.trim().length });
+      
       const response = await apiFetch(API_ROUTES.SEND_SMS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -5090,20 +5092,42 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }),
       });
 
+      console.log('Test SMS response status:', response.status, response.statusText);
+
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Server error: ${response.status} ${response.statusText}. ${text.substring(0, 200)}`);
+        let errorText = '';
+        try {
+          errorText = await response.text();
+          const errorData = JSON.parse(errorText);
+          throw new Error(errorData.error || errorData.message || `Server error: ${response.status} ${response.statusText}`);
+        } catch (parseError) {
+          throw new Error(`Server error: ${response.status} ${response.statusText}. ${errorText.substring(0, 200)}`);
+        }
       }
 
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
+        console.error('Unexpected content type:', contentType, 'Response:', text.substring(0, 200));
         throw new Error(`Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`);
       }
 
       const responseData = await response.json();
+      console.log('Test SMS response data:', responseData);
 
       if (responseData.success) {
+        // Check if there were any errors in the results
+        if (responseData.errors && responseData.errors.length > 0) {
+          const errorMsg = responseData.errors[0].error || 'Failed to send SMS';
+          throw new Error(errorMsg);
+        }
+
+        // Check if SMS was actually sent
+        if (responseData.sent === 0 && responseData.failed > 0) {
+          const errorMsg = responseData.errors?.[0]?.error || 'SMS failed to send';
+          throw new Error(errorMsg);
+        }
+
         toast({
           title: language === 'en' ? 'Test SMS Sent' : 'SMS Test Envoyé',
           description: language === 'en' 
@@ -5118,13 +5142,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setTestPhoneNumber('');
         setTestSmsMessage('');
       } else {
-        throw new Error(responseData.error || 'Failed to send test SMS');
+        const errorMsg = responseData.error || responseData.message || 'Failed to send test SMS';
+        console.error('Test SMS failed:', errorMsg, responseData);
+        throw new Error(errorMsg);
       }
     } catch (error) {
       console.error('Error sending test SMS:', error);
+      const errorMessage = error instanceof Error ? error.message : (language === 'en' ? 'Failed to send test SMS' : 'Échec de l\'envoi du SMS test');
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send test SMS' : 'Échec de l\'envoi du SMS test'),
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
