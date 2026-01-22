@@ -82,6 +82,17 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
     fetchSourceCounts();
   }, []);
 
+  // Auto-select phone_subscribers if it has data
+  useEffect(() => {
+    if (sourceCounts.phone_subscribers?.withPhone > 0 && !selectedSources.phone_subscribers) {
+      console.log('Auto-selecting phone_subscribers with count:', sourceCounts.phone_subscribers.withPhone);
+      setSelectedSources(prev => ({
+        ...prev,
+        phone_subscribers: true
+      }));
+    }
+  }, [sourceCounts]);
+
   // Fetch preview when sources or filters change
   useEffect(() => {
     if (hasSelectedSource(selectedSources)) {
@@ -165,10 +176,43 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
 
       const data = await response.json();
 
-      if (data.success) {
-        setPreviewPhoneNumbers(data.data.phoneNumbers);
-        setPreviewData(data.data);
+      if (data.success && data.data) {
+        // Ensure counts are properly set even if empty
+        const previewData = {
+          phoneNumbers: data.data.phoneNumbers || [],
+          counts: {
+            total: data.data.counts?.total ?? (data.data.phoneNumbers?.length || 0),
+            unique: data.data.counts?.unique ?? (data.data.phoneNumbers?.length || 0),
+            duplicates: data.data.counts?.duplicates ?? 0,
+            bySource: data.data.counts?.bySource || {}
+          },
+          duplicates: data.data.duplicates || []
+        };
+        
+        // Log for debugging if counts are 0 but we have phone numbers
+        if (previewData.phoneNumbers.length > 0 && previewData.counts.total === 0) {
+          console.warn('Preview data mismatch: phoneNumbers exist but counts are 0', {
+            phoneNumbersCount: previewData.phoneNumbers.length,
+            counts: previewData.counts,
+            rawData: data.data
+          });
+          // Fix the counts if they're wrong
+          previewData.counts.total = previewData.phoneNumbers.length;
+          previewData.counts.unique = previewData.phoneNumbers.length;
+        }
+        
+        setPreviewPhoneNumbers(previewData.phoneNumbers);
+        setPreviewData(previewData);
       } else {
+        // Set empty preview data on error
+        setPreviewPhoneNumbers([]);
+        setPreviewData({
+          phoneNumbers: [],
+          counts: { total: 0, unique: 0, duplicates: 0, bySource: {} },
+          duplicates: []
+        });
+        
+        console.error('Failed to fetch phone numbers preview:', data);
         toast({
           title: language === 'en' ? 'Error' : 'Erreur',
           description: data.error || (language === 'en' ? 'Failed to fetch phone numbers' : 'Échec de la récupération des numéros'),
@@ -568,15 +612,15 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
                   <div className="grid grid-cols-3 gap-4">
                     <div className="p-3 rounded-lg bg-muted/30 border border-border">
                       <p className="text-sm text-muted-foreground">{t.total}</p>
-                      <p className="text-2xl font-bold">{previewData.counts.total}</p>
+                      <p className="text-2xl font-bold">{previewData.counts.total || 0}</p>
                     </div>
                     <div className="p-3 rounded-lg bg-muted/30 border border-border">
                       <p className="text-sm text-muted-foreground">{t.unique}</p>
-                      <p className="text-2xl font-bold text-primary">{previewData.counts.unique}</p>
+                      <p className="text-2xl font-bold text-primary">{previewData.counts.unique || 0}</p>
                     </div>
                     <div className="p-3 rounded-lg bg-muted/30 border border-border">
                       <p className="text-sm text-muted-foreground">{t.duplicates}</p>
-                      <p className="text-2xl font-bold text-orange-500">{previewData.counts.duplicates}</p>
+                      <p className="text-2xl font-bold text-orange-500">{previewData.counts.duplicates || 0}</p>
                     </div>
                   </div>
 
