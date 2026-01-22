@@ -296,6 +296,18 @@
       "destination": "/api/admin-pos.js"
     },
     {
+      "source": "/api/admin/phone-numbers/counts",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/phone-numbers/sources",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/bulk-sms/send",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
