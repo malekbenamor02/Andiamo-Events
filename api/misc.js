@@ -6024,6 +6024,7 @@ We Create Memories`;
     // POST /api/send-sms - Send SMS to phone numbers
     // ============================================
     if (path === '/api/send-sms' && method === 'POST') {
+      console.log('[api/misc.js] /api/send-sms endpoint called', { method, path, originalUrl: req.url });
       try {
         const authResult = await verifyAdminAuth(req);
         if (!authResult.valid) {
