@@ -377,7 +377,9 @@ export default async (req, res) => {
     path.startsWith('/admin/') || 
     path.startsWith('/ambassador') || 
     path.startsWith('/phone') || 
-    path.startsWith('/send-email')
+    path.startsWith('/send-email') ||
+    path.startsWith('/send-sms') ||
+    path.startsWith('/sms-balance')
   )) {
     path = '/api' + path;
   }
