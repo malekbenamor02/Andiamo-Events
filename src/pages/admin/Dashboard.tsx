@@ -309,11 +309,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [loadingTargetedCount, setLoadingTargetedCount] = useState(false);
   const [sendingTargeted, setSendingTargeted] = useState(false);
   // Test SMS state
-  const [testMode, setTestMode] = useState<'specific' | 'broadcast' | 'targeted'>('specific');
   const [testPhoneNumber, setTestPhoneNumber] = useState("");
   const [testSmsMessage, setTestSmsMessage] = useState("");
   const [sendingTestSms, setSendingTestSms] = useState(false);
-  const [testTargetedCity, setTestTargetedCity] = useState<string>('');
   const [selectedPhones, setSelectedPhones] = useState<Set<string>>(new Set());
   const [bulkPhonesInput, setBulkPhonesInput] = useState("");
   const [addingBulkPhones, setAddingBulkPhones] = useState(false);
@@ -5028,7 +5026,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Send Test SMS - handles all three test modes
+  // Send Test SMS - specific number only
   const handleSendTestSms = async () => {
     if (!testSmsMessage.trim()) {
       toast({
@@ -5041,99 +5039,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       return;
     }
 
-    let phoneToSend = '';
-
-    // Determine which phone number to use based on test mode
-    if (testMode === 'specific') {
-      if (!testPhoneNumber.trim()) {
-        toast({
-          title: language === 'en' ? 'Error' : 'Erreur',
-          description: language === 'en' 
-            ? 'Please enter a phone number' 
-            : 'Veuillez entrer un numéro de téléphone',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      // Validate phone number format (should be 8 digits)
-      const phoneRegex = /^\d{8}$/;
-      const cleanPhone = testPhoneNumber.trim().replace(/\s+/g, '');
-      if (!phoneRegex.test(cleanPhone)) {
-        toast({
-          title: language === 'en' ? 'Error' : 'Erreur',
-          description: language === 'en' 
-            ? 'Please enter a valid 8-digit phone number (e.g., 21234567)' 
-            : 'Veuillez entrer un numéro de téléphone valide à 8 chiffres (ex: 21234567)',
-          variant: 'destructive',
-        });
-        return;
-      }
-      phoneToSend = cleanPhone;
-    } else if (testMode === 'broadcast') {
-      // Get test number from phone_subscribers (27169458)
-      const testNumber = '27169458';
-      const { data, error } = await supabase
-        .from('phone_subscribers' as any)
-        .select('phone_number')
-        .eq('phone_number', testNumber)
-        .single();
-      
-      if (error || !data) {
-        toast({
-          title: language === 'en' ? 'Test Number Not Found' : 'Numéro Test Introuvable',
-          description: language === 'en' 
-            ? 'Test number 27169458 not found in subscribers. Please run the migration to add it.'
-            : 'Le numéro test 27169458 n\'a pas été trouvé. Veuillez exécuter la migration pour l\'ajouter.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      phoneToSend = testNumber;
-    } else if (testMode === 'targeted') {
-      if (!testTargetedCity) {
-        toast({
-          title: language === 'en' ? 'Error' : 'Erreur',
-          description: language === 'en' 
-            ? 'Please select a city' 
-            : 'Veuillez sélectionner une ville',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      // Get first phone number from ambassador_applications for selected city
-      const { data, error } = await supabase
-        .from('ambassador_applications')
-        .select('phone_number')
-        .eq('city', testTargetedCity)
-        .not('phone_number', 'is', null)
-        .limit(1)
-        .single();
-      
-      if (error || !data || !data.phone_number) {
-        toast({
-          title: language === 'en' ? 'No Numbers Found' : 'Aucun Numéro Trouvé',
-          description: language === 'en' 
-            ? `No phone numbers found for city: ${testTargetedCity}`
-            : `Aucun numéro de téléphone trouvé pour la ville: ${testTargetedCity}`,
-          variant: 'destructive',
-        });
-        return;
-      }
-      phoneToSend = data.phone_number;
-    }
-
-    if (!phoneToSend) {
+    if (!testPhoneNumber.trim()) {
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
-          ? 'No phone number available for testing'
-          : 'Aucun numéro de téléphone disponible pour le test',
+          ? 'Please enter a phone number' 
+          : 'Veuillez entrer un numéro de téléphone',
         variant: 'destructive',
       });
       return;
     }
+
+    // Validate phone number format (should be 8 digits)
+    const phoneRegex = /^\d{8}$/;
+    const cleanPhone = testPhoneNumber.trim().replace(/\s+/g, '');
+    if (!phoneRegex.test(cleanPhone)) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: language === 'en' 
+          ? 'Please enter a valid 8-digit phone number (e.g., 21234567)' 
+          : 'Veuillez entrer un numéro de téléphone valide à 8 chiffres (ex: 21234567)',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const phoneToSend = cleanPhone;
 
     // Check balance before sending
     if (smsBalance?.balanceValue === 0 || smsBalance?.balance === 0 || smsBalance?.balance === '0') {
@@ -5173,33 +5104,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const responseData = await response.json();
 
       if (responseData.success) {
-        let description = '';
-        if (testMode === 'specific') {
-          description = language === 'en' 
-            ? `Test SMS sent successfully to +216 ${phoneToSend}`
-            : `SMS test envoyé avec succès à +216 ${phoneToSend}`;
-        } else if (testMode === 'broadcast') {
-          description = language === 'en' 
-            ? `Broadcast test sent to +216 ${phoneToSend} (test number)`
-            : `Test de diffusion envoyé à +216 ${phoneToSend} (numéro test)`;
-        } else if (testMode === 'targeted') {
-          description = language === 'en' 
-            ? `Targeted test sent to +216 ${phoneToSend} in ${testTargetedCity}`
-            : `Test ciblé envoyé à +216 ${phoneToSend} à ${testTargetedCity}`;
-        }
-
         toast({
           title: language === 'en' ? 'Test SMS Sent' : 'SMS Test Envoyé',
-          description,
+          description: language === 'en' 
+            ? `Test SMS sent successfully to +216 ${phoneToSend}`
+            : `SMS test envoyé avec succès à +216 ${phoneToSend}`,
         });
         
         await fetchSmsLogs();
         await fetchSmsBalance();
         
-        // Clear test fields (only clear phone number for specific mode)
-        if (testMode === 'specific') {
-          setTestPhoneNumber('');
-        }
+        // Clear test fields
+        setTestPhoneNumber('');
         setTestSmsMessage('');
       } else {
         throw new Error(responseData.error || 'Failed to send test SMS');
@@ -5216,45 +5132,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Fetch count of phone numbers from ambassador applications by city
-  const fetchTargetedCount = async (city: string) => {
-    if (!city) {
-      setTargetedCount(0);
-      return;
-    }
-    
-    try {
-      setLoadingTargetedCount(true);
-      const { data, error } = await supabase
-        .from('ambassador_applications')
-        .select('phone_number')
-        .eq('city', city)
-        .not('phone_number', 'is', null);
-      
-      if (error) {
-        console.error('Error fetching targeted count:', error);
-        setTargetedCount(0);
-        return;
-      }
-      
-      setTargetedCount(data?.length || 0);
-    } catch (error) {
-      console.error('Error fetching targeted count:', error);
-      setTargetedCount(0);
-    } finally {
-      setLoadingTargetedCount(false);
-    }
-  };
-
-  // Handle city change in targeted mode
-  const handleTargetedCityChange = async (city: string) => {
-    setTargetedCity(city);
-    if (city) {
-      await fetchTargetedCount(city);
-    } else {
-      setTargetedCount(0);
-    }
-  };
 
   // Send SMS broadcast (popup subscribers only)
   const handleSendBroadcast = async () => {
@@ -15415,7 +15292,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     </Card>
                   </div>
 
-                  {/* Test SMS Card with Tabs */}
+                  {/* Test SMS Card */}
                   <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200">
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
@@ -15425,204 +15302,67 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {language === 'en' 
-                            ? 'Test SMS functionality for different modes'
-                            : 'Tester la fonctionnalité SMS pour différents modes'}
+                            ? 'Test SMS functionality with a specific phone number'
+                            : 'Tester la fonctionnalité SMS avec un numéro de téléphone spécifique'}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
-                        {/* Test Mode Tabs */}
-                        <Tabs value={testMode} onValueChange={(value) => setTestMode(value as 'specific' | 'broadcast' | 'targeted')}>
-                          <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger value="specific" className="text-xs">
-                              {language === 'en' ? 'Specific' : 'Spécifique'}
-                            </TabsTrigger>
-                            <TabsTrigger value="broadcast" className="text-xs">
-                              {language === 'en' ? 'Broadcast' : 'Diffusion'}
-                            </TabsTrigger>
-                            <TabsTrigger value="targeted" className="text-xs">
-                              {language === 'en' ? 'Targeted' : 'Ciblé'}
-                            </TabsTrigger>
-                          </TabsList>
-
-                          {/* Specific Number Test */}
-                          <TabsContent value="specific" className="space-y-4 mt-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="testPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'} *</Label>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground font-heading">+216</span>
-                                <Input
-                                  id="testPhone"
-                                  type="text"
-                                  value={testPhoneNumber}
-                                  onChange={(e) => setTestPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                                  placeholder="21234567"
-                                  className="flex-1 font-heading"
-                                  maxLength={8}
-                                />
-                              </div>
-                              <p className="text-xs text-muted-foreground font-heading">
-                                {language === 'en' ? 'Enter 8 digits (e.g., 21234567)' : 'Entrez 8 chiffres (ex: 21234567)'}
-                              </p>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="testMessage">{language === 'en' ? 'Test Message' : 'Message Test'} *</Label>
-                              <Textarea
-                                id="testMessage"
-                                value={testSmsMessage}
-                                onChange={(e) => setTestSmsMessage(e.target.value)}
-                                placeholder=""
-                                className="min-h-[100px] text-sm bg-background text-foreground font-heading"
-                              />
-                              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>{language === 'en' ? 'Characters' : 'Caractères'}: {testSmsMessage.length}</span>
-                                <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(testSmsMessage.length / 160)}</span>
-                              </div>
-                            </div>
-                            <Button
-                              onClick={handleSendTestSms}
-                              disabled={sendingTestSms || !testPhoneNumber.trim() || !testSmsMessage.trim()}
-                              className="w-full font-heading btn-gradient"
-                              size="lg"
-                            >
-                              {sendingTestSms ? (
-                                <>
-                                  <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                                  {language === 'en' ? 'Sending...' : 'Envoi...'}
-                                </>
-                              ) : (
-                                <>
-                                  <Send className="w-5 h-5 mr-2" />
-                                  {language === 'en' ? 'Send Test SMS' : 'Envoyer SMS Test'}
-                                </>
-                              )}
-                            </Button>
-                          </TabsContent>
-
-                          {/* Broadcast Mode Test */}
-                          <TabsContent value="broadcast" className="space-y-4 mt-4">
-                            <div className="p-3 bg-muted/30 rounded-lg border border-border">
-                              <div className="text-sm font-semibold text-foreground mb-1">
-                                {language === 'en' ? 'Test Number' : 'Numéro Test'}
-                              </div>
-                              <div className="text-lg font-bold text-primary">
-                                27169458
-                              </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {language === 'en' 
-                                  ? 'This test will send SMS to the test number in phone_subscribers table'
-                                  : 'Ce test enverra un SMS au numéro test dans la table phone_subscribers'}
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="testMessageBroadcast">{language === 'en' ? 'Test Message' : 'Message Test'} *</Label>
-                              <Textarea
-                                id="testMessageBroadcast"
-                                value={testSmsMessage}
-                                onChange={(e) => setTestSmsMessage(e.target.value)}
-                                placeholder=""
-                                className="min-h-[100px] text-sm bg-background text-foreground font-heading"
-                              />
-                              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>{language === 'en' ? 'Characters' : 'Caractères'}: {testSmsMessage.length}</span>
-                                <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(testSmsMessage.length / 160)}</span>
-                              </div>
-                            </div>
-                            <Button
-                              onClick={handleSendTestSms}
-                              disabled={sendingTestSms || !testSmsMessage.trim()}
-                              className="w-full font-heading btn-gradient"
-                              size="lg"
-                            >
-                              {sendingTestSms ? (
-                                <>
-                                  <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                                  {language === 'en' ? 'Sending...' : 'Envoi...'}
-                                </>
-                              ) : (
-                                <>
-                                  <Send className="w-5 h-5 mr-2" />
-                                  {language === 'en' ? 'Test Broadcast Mode' : 'Tester Mode Diffusion'}
-                                </>
-                              )}
-                            </Button>
-                          </TabsContent>
-
-                          {/* Targeted Mode Test */}
-                          <TabsContent value="targeted" className="space-y-4 mt-4">
-                            <div className="space-y-2">
-                              <Label>{language === 'en' ? 'Select City' : 'Sélectionner une Ville'} *</Label>
-                              <Select
-                                value={testTargetedCity || undefined}
-                                onValueChange={setTestTargetedCity}
-                              >
-                                <SelectTrigger className="h-10">
-                                  <SelectValue placeholder={language === 'en' ? 'Select a city...' : 'Sélectionner une ville...'} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {CITIES.map((city) => (
-                                    <SelectItem key={city} value={city}>
-                                      {city}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <p className="text-xs text-muted-foreground">
-                                {language === 'en' 
-                                  ? 'Test will send to first number found in ambassador applications for this city'
-                                  : 'Le test enverra au premier numéro trouvé dans les candidatures d\'ambassadeurs pour cette ville'}
-                              </p>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="testMessageTargeted">{language === 'en' ? 'Test Message' : 'Message Test'} *</Label>
-                              <Textarea
-                                id="testMessageTargeted"
-                                value={testSmsMessage}
-                                onChange={(e) => setTestSmsMessage(e.target.value)}
-                                placeholder=""
-                                className="min-h-[100px] text-sm bg-background text-foreground font-heading"
-                              />
-                              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>{language === 'en' ? 'Characters' : 'Caractères'}: {testSmsMessage.length}</span>
-                                <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(testSmsMessage.length / 160)}</span>
-                              </div>
-                            </div>
-                            <Button
-                              onClick={handleSendTestSms}
-                              disabled={sendingTestSms || !testSmsMessage.trim() || !testTargetedCity}
-                              className="w-full font-heading btn-gradient"
-                              size="lg"
-                            >
-                              {sendingTestSms ? (
-                                <>
-                                  <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                                  {language === 'en' ? 'Sending...' : 'Envoi...'}
-                                </>
-                              ) : (
-                                <>
-                                  <Send className="w-5 h-5 mr-2" />
-                                  {language === 'en' ? 'Test Targeted Mode' : 'Tester Mode Ciblé'}
-                                </>
-                              )}
-                            </Button>
-                          </TabsContent>
-                        </Tabs>
+                        <div className="space-y-2">
+                          <Label htmlFor="testPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'} *</Label>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground font-heading">+216</span>
+                            <Input
+                              id="testPhone"
+                              type="text"
+                              value={testPhoneNumber}
+                              onChange={(e) => setTestPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                              placeholder="21234567"
+                              className="flex-1 font-heading"
+                              maxLength={8}
+                            />
+                          </div>
+                          <p className="text-xs text-muted-foreground font-heading">
+                            {language === 'en' ? 'Enter 8 digits (e.g., 21234567)' : 'Entrez 8 chiffres (ex: 21234567)'}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="testMessage">{language === 'en' ? 'Test Message' : 'Message Test'} *</Label>
+                          <Textarea
+                            id="testMessage"
+                            value={testSmsMessage}
+                            onChange={(e) => setTestSmsMessage(e.target.value)}
+                            placeholder=""
+                            className="min-h-[100px] text-sm bg-background text-foreground font-heading"
+                          />
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>{language === 'en' ? 'Characters' : 'Caractères'}: {testSmsMessage.length}</span>
+                            <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(testSmsMessage.length / 160)}</span>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={handleSendTestSms}
+                          disabled={sendingTestSms || !testPhoneNumber.trim() || !testSmsMessage.trim()}
+                          className="w-full font-heading btn-gradient"
+                          size="lg"
+                        >
+                          {sendingTestSms ? (
+                            <>
+                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                              {language === 'en' ? 'Sending...' : 'Envoi...'}
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-5 h-5 mr-2" />
+                              {language === 'en' ? 'Send Test SMS' : 'Envoyer SMS Test'}
+                            </>
+                          )}
+                        </Button>
                       </CardContent>
                     </Card>
                   </div>
 
-                  {/* Bulk SMS Selector - Replaces Broadcast and Targeted Mode */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400 lg:col-span-2">
-                    <BulkSmsSelector
-                      language={language}
-                      onSendComplete={() => {
-                        fetchSmsLogs();
-                        fetchPhoneSubscribers();
-                      }}
-                    />
-                  </div>
-
-                  {/* Export/Import Phone Subscribers Card - Keep for phone_subscribers source */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600">
+                  {/* Export/Import Phone Subscribers Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400">
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -15752,6 +15492,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         </div>
                       </CardContent>
                     </Card>
+                  </div>
+
+                  {/* Bulk SMS Selector */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600 lg:col-span-2">
+                    <BulkSmsSelector
+                      language={language}
+                      onSendComplete={() => {
+                        fetchSmsLogs();
+                        fetchPhoneSubscribers();
+                      }}
+                    />
                   </div>
 
                   {/* SMS Logs Card */}
