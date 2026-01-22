@@ -14906,14 +14906,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                             <Select
                               value={orderFilters.passType || undefined}
                               onValueChange={(value) => {
-                                setOrderFilters({ ...orderFilters, passType: value === 'all' || value === '' ? '' : value });
+                                setOrderFilters({ ...orderFilters, passType: value === 'all' ? '' : value });
                               }}
                             >
                               <SelectTrigger className="h-8 text-xs">
                                 <SelectValue placeholder={language === 'en' ? 'All Pass Types' : 'Tous les Types'} />
                               </SelectTrigger>
                               <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
-                                <SelectItem value="">{language === 'en' ? 'All Pass Types' : 'Tous les Types'}</SelectItem>
+                                <SelectItem value="all">{language === 'en' ? 'All Pass Types' : 'Tous les Types'}</SelectItem>
                                 {filterOptions.passTypes.map((passType) => (
                                   <SelectItem key={passType} value={passType}>
                                     {passType}
