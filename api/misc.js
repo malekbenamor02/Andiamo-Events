@@ -6019,6 +6019,150 @@ We Create Memories`;
     }
 
     // ============================================
+    // POST /api/send-sms - Send SMS to phone numbers
+    // ============================================
+    if (path === '/api/send-sms' && method === 'POST') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ success: false, error: 'Supabase not configured' });
+        }
+
+        const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
+        if (!WINSMS_API_KEY) {
+          return res.status(500).json({ 
+            success: false, 
+            error: 'SMS service not configured. WINSMS_API_KEY environment variable is required.' 
+          });
+        }
+
+        const bodyData = await parseBody(req);
+        const { phoneNumbers, message } = bodyData;
+
+        if (!message || !message.trim()) {
+          return res.status(400).json({ success: false, error: 'Message is required' });
+        }
+
+        if (!phoneNumbers || !Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
+          return res.status(400).json({ success: false, error: 'Phone numbers array is required' });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+
+        let supabaseService = null;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabaseService = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        }
+
+        const dbClient = supabaseService || supabase;
+
+        const results = [];
+        const errors = [];
+
+        // Process each phone number individually
+        for (const phoneNumber of phoneNumbers) {
+          const formattedNumber = formatPhoneNumber(phoneNumber);
+          
+          if (!formattedNumber) {
+            const errorMsg = `Invalid phone number format: ${phoneNumber}`;
+            errors.push({ phoneNumber, error: errorMsg });
+            
+            await dbClient.from('sms_logs').insert({
+              phone_number: phoneNumber,
+              message: message.trim(),
+              status: 'failed',
+              error_message: errorMsg
+            });
+            continue;
+          }
+
+          try {
+            // Send SMS using helper function
+            const responseData = await sendSms(formattedNumber, message);
+            
+            // Check if response indicates success
+            const isSuccess = responseData.status === 200 && 
+                             responseData.data && 
+                             (responseData.data.code === 'ok' || 
+                              responseData.data.code === '200' ||
+                              (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
+
+            if (isSuccess) {
+              await dbClient.from('sms_logs').insert({
+                phone_number: phoneNumber,
+                message: message.trim(),
+                status: 'sent',
+                api_response: JSON.stringify(responseData.data || responseData.raw),
+                sent_at: new Date().toISOString()
+              });
+              
+              results.push({ phoneNumber, success: true, response: responseData.data || responseData.raw });
+            } else {
+              const errorMsg = responseData.data?.message || 
+                              (responseData.data?.code ? `Error code ${responseData.data.code}` : 'SMS sending failed');
+              
+              await dbClient.from('sms_logs').insert({
+                phone_number: phoneNumber,
+                message: message.trim(),
+                status: 'failed',
+                error_message: errorMsg,
+                api_response: JSON.stringify(responseData.data || responseData.raw)
+              });
+              
+              errors.push({ phoneNumber, error: errorMsg });
+            }
+          } catch (error) {
+            const errorMsg = error.message || 'Unknown error';
+            
+            await dbClient.from('sms_logs').insert({
+              phone_number: phoneNumber,
+              message: message.trim(),
+              status: 'failed',
+              error_message: errorMsg,
+              api_response: null
+            });
+
+            errors.push({ phoneNumber, error: errorMsg });
+          }
+
+          // Small delay between requests to avoid overwhelming the API
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        return res.json({
+          success: true,
+          total: phoneNumbers.length,
+          sent: results.length,
+          failed: errors.length,
+          results,
+          errors
+        });
+
+      } catch (error) {
+        console.error('Error sending SMS:', error);
+        return res.status(500).json({
+          success: false,
+          error: error.message || 'Failed to send SMS'
+        });
+      }
+    }
+
+    // ============================================
     // GET /api/sms-balance - Check WinSMS Account Balance
     // ============================================
     if (path === '/api/sms-balance' && method === 'GET') {
