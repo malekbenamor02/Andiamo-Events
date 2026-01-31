@@ -2,7 +2,7 @@
  * Maintenance Mode Utility
  * 
  * Provides utilities for checking if a route should be excluded from maintenance mode.
- * Admin and Ambassador dashboard routes are always accessible during maintenance.
+ * Admin, Scanner, and Ambassador dashboard routes are always accessible during maintenance.
  */
 
 /**
@@ -14,6 +14,11 @@
 export const isExcludedFromMaintenance = (pathname: string, allowAmbassadorApplication: boolean = false): boolean => {
   // Allow admin routes (always accessible)
   if (pathname.startsWith('/admin')) {
+    return true;
+  }
+  
+  // Allow scanner routes (always accessible)
+  if (pathname.startsWith('/scanner')) {
     return true;
   }
   
