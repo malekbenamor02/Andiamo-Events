@@ -174,6 +174,14 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
 
   const eventUrl = `event-${event.id}`;
 
+  // Past or completed events: no Book Now, no pass purchase
+  const isEventPastOrCompleted = useMemo(() => {
+    if (!event?.date) return false;
+    const eventDate = new Date(event.date);
+    const now = new Date();
+    return eventDate < now || event.event_status === 'completed';
+  }, [event?.date, event?.event_status]);
+
   return (
     <div className="pt-16 min-h-screen bg-background animate-page-intro">
       {/* Hero Section */}
@@ -297,8 +305,16 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
         </section>
       )}
 
-      {/* Book Tickets CTA Section */}
-      {event.passes && event.passes.length > 0 && event.event_status !== 'cancelled' ? (
+      {/* Book Tickets CTA Section — only for future, not completed events */}
+      {isEventPastOrCompleted ? (
+        <section className="py-16 bg-gradient-dark">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <p className="text-muted-foreground text-lg">
+              {language === 'en' ? 'This event has passed. Pass purchase is no longer available.' : 'Cet événement est terminé. La réservation n\'est plus disponible.'}
+            </p>
+          </div>
+        </section>
+      ) : event.passes && event.passes.length > 0 && event.event_status !== 'cancelled' ? (
         <section className="py-16 bg-gradient-dark">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center animate-fade-in-up">

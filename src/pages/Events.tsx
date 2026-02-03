@@ -147,12 +147,10 @@ const Events = ({ language }: EventsProps) => {
   const upcomingEvents = events.filter(event => {
     const eventDate = new Date(event.date);
     const now = new Date();
-    // Show as upcoming if:
-    // - Explicitly marked as upcoming, OR
-    // - No type specified and date is in the future, AND
-    // - Not cancelled
+    // Show as upcoming only if date is in the future, not cancelled, not completed
     return (
-      (event.event_type === 'upcoming' || (!event.event_type && eventDate >= now)) && 
+      eventDate >= now &&
+      (event.event_type === 'upcoming' || !event.event_type) &&
       event.event_status !== 'cancelled' &&
       event.event_status !== 'completed'
     );
@@ -453,7 +451,11 @@ const Events = ({ language }: EventsProps) => {
         hasImages: !!(e.gallery_images && e.gallery_images.length > 0),
         hasVideos: !!(e.gallery_videos && e.gallery_videos.length > 0)
       }));
-      const upcomingCount = events.filter(e => (e.event_type === 'upcoming' || !e.event_type) && e.event_status !== 'cancelled').length;
+      const now = new Date();
+        const upcomingCount = events.filter(e => {
+          const eventDate = new Date(e.date);
+          return eventDate >= now && (e.event_type === 'upcoming' || !e.event_type) && e.event_status !== 'cancelled' && e.event_status !== 'completed';
+        }).length;
     }
   }, [events, loading]);
 

@@ -196,12 +196,13 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
 
 
         if (filteredData && filteredData.length > 0) {
-          // Filter for future events (date >= now) and not cancelled
+          // Filter for future events (date >= now), not cancelled, not completed
           const futureEvents = filteredData.filter((event: any) => {
             const eventDate = new Date(event.date);
             const isFuture = eventDate >= new Date(now);
             const notCancelled = event.event_status !== 'cancelled' && (!event.event_status || event.event_status !== 'cancelled');
-            return isFuture && notCancelled;
+            const notCompleted = event.event_status !== 'completed';
+            return isFuture && notCancelled && notCompleted;
           });
 
 

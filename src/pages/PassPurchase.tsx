@@ -84,6 +84,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   const [submitted, setSubmitted] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [selectedAmbassadorDetails, setSelectedAmbassadorDetails] = useState<Ambassador | null>(null);
+  const [purchaseBlockedReason, setPurchaseBlockedReason] = useState<'past' | 'completed' | null>(null);
   
   // Fetch payment options
   const { data: paymentOptions = [], isLoading: loadingPaymentOptions } = usePaymentOptions();
@@ -315,6 +316,23 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         });
         setEvent(null);
         setLoading(false);
+        return;
+      }
+
+      // Block pass purchase for past or completed events
+      const eventDate = new Date(event.date);
+      const now = new Date();
+      if (eventDate < now || event.event_status === 'completed') {
+        setPurchaseBlockedReason(eventDate < now ? 'past' : 'completed');
+        setEvent({ ...event, passes: [] });
+        setLoading(false);
+        toast({
+          title: language === 'en' ? 'Event ended' : 'Événement terminé',
+          description: language === 'en' 
+            ? 'Pass purchase is no longer available for this event.' 
+            : 'La réservation n\'est plus disponible pour cet événement.',
+          variant: 'default'
+        });
         return;
       }
 
@@ -666,6 +684,38 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             <Button onClick={() => navigate('/events')}>
               {t[language].backToEvents}
             </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Past or completed event: show message and link to event details (no pass purchase)
+  if (purchaseBlockedReason) {
+    const eventSlug = (event as { slug?: string }).slug;
+    return (
+      <div className="min-h-screen bg-gradient-dark flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-6 text-center">
+            <Calendar className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-bold mb-2">
+              {language === 'en' ? 'This event has passed' : 'Cet événement est terminé'}
+            </h2>
+            <p className="text-muted-foreground mb-4">
+              {language === 'en' 
+                ? 'Pass purchase is no longer available for this event.'
+                : 'La réservation n\'est plus disponible pour cet événement.'}
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+              {eventSlug && (
+                <Button onClick={() => navigate(`/event/${eventSlug}`)}>
+                  {language === 'en' ? 'View event details' : 'Voir les détails'}
+                </Button>
+              )}
+              <Button variant={eventSlug ? 'outline' : 'default'} onClick={() => navigate('/events')}>
+                {t[language].backToEvents}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
