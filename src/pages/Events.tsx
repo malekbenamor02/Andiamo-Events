@@ -157,14 +157,20 @@ const Events = ({ language }: EventsProps) => {
   });
 
   const galleryEvents = events.filter(event => {
-    // Primary filter: Show events with event_type === 'gallery'
+    // Show events explicitly marked as gallery (not cancelled)
     if (event.event_type === 'gallery') {
-      // Only exclude if explicitly cancelled
       return event.event_status !== 'cancelled';
     }
-    
-    // For now, only show events explicitly marked as gallery
-    // Remove secondary filters to debug
+    // Also show past upcoming events in gallery (date passed or completed) — manual move to gallery added later
+    const eventDate = new Date(event.date);
+    const now = new Date();
+    const isPastOrCompleted =
+      eventDate < now ||
+      event.event_status === 'completed';
+    const wasUpcoming = event.event_type === 'upcoming' || !event.event_type;
+    if (wasUpcoming && isPastOrCompleted && event.event_status !== 'cancelled') {
+      return true;
+    }
     return false;
   });
 
