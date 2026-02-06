@@ -317,7 +317,7 @@
     },
     {
       "source": "/sitemap.xml",
-      "destination": "/api/sitemap"
+      "destination": "/api/misc?route=sitemap"
     },
     {
       "source": "/((?!api).*)",
