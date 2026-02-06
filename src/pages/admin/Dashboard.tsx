@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+﻿import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -57,111 +57,35 @@ import { ScannersTab } from "@/components/admin/ScannersTab";
 import { PosTab } from "@/components/admin/PosTab";
 import { BulkSmsSelector } from "@/components/admin/BulkSmsSelector";
 import { getSourceDisplayName } from "@/lib/phone-numbers";
-import { BulkSmsSelector } from "@/components/admin/BulkSmsSelector";
-
-
-interface AdminDashboardProps {
-  language: 'en' | 'fr';
-}
-
-interface AmbassadorApplication {
-  id: string;
-  full_name: string;
-  age: number;
-  phone_number: string;
-  email?: string; // Make email optional since it might not exist in database yet
-  city: string;
-  ville?: string; // Ville (neighborhood) - only for Sousse and Tunis
-  social_link?: string;
-  motivation?: string;
-  status: string;
-  created_at: string;
-  reapply_delay_date?: string; // Date when rejected/removed applicants can reapply (30 days after rejection/removal)
-  manually_added?: boolean; // Indicator for manually added ambassadors
-}
-
-interface EventPass {
-  id?: string;
-  name: string;
-  price: number;
-  description: string;
-  is_primary: boolean;
-  // Stock management fields
-  max_quantity?: number | null;
-  sold_quantity?: number;
-  remaining_quantity?: number | null;
-  is_unlimited?: boolean;
-  is_active?: boolean;
-  is_sold_out?: boolean;
-  // Payment method restrictions
-  allowed_payment_methods?: string[] | null;
-}
-
-interface Event {
-  id: string;
-  name: string;
-  date: string;
-  venue: string;
-  city: string;
-  description?: string;
-  poster_url?: string;
-  instagram_link?: string;
-  ticket_link?: string;
-  featured?: boolean;
-  event_type?: 'upcoming' | 'gallery'; // New field to distinguish event types
-  gallery_images?: string[]; // Array of gallery image URLs
-  gallery_videos?: string[]; // Array of gallery video URLs
-  passes?: EventPass[]; // Array of passes for this event - REQUIRED for publishing
-  created_at: string;
-  updated_at: string;
-  _uploadFile?: File | null;
-  _pendingGalleryImages?: File[]; // Temporary storage for pending gallery image files
-  _pendingGalleryVideos?: File[]; // Temporary storage for pending gallery video files
-}
-
-
-
-interface Ambassador {
-  id: string;
-  full_name: string;
-  phone: string;
-  email?: string;
-  city: string;
-  ville?: string;
-  status: string;
-  commission_rate: number;
-  password?: string;
-  created_at: string;
-  updated_at: string;
-  age?: number; // Age from corresponding application
-  social_link?: string; // Social link from corresponding application
-}
-
-interface PassPurchase {
-  id: string;
-  event_id: string;
-  pass_type: 'standard' | 'vip';
-  quantity: number;
-  total_price: number;
-  customer_name: string;
-  customer_email: string;
-  customer_phone: string;
-  customer_city?: string;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'refunded';
-  payment_method?: string;
-  payment_reference?: string;
-  notes?: string;
-  created_at: string;
-  updated_at: string;
-  event?: {
-    name: string;
-    date: string;
-    venue: string;
-    city: string;
-  };
-}
-
-type ConfirmDeleteTarget = { kind: "delete-admin"; adminId: string } | { kind: "delete-pass"; passId: string; passName: string; eventId: string };
+import type {
+  AdminDashboardProps,
+  AmbassadorApplication,
+  Ambassador,
+  Event,
+  EventPass,
+  PassPurchase,
+  ConfirmDeleteTarget,
+  HeroImage,
+  AboutImage,
+} from "./types";
+import { OverviewTab } from "./components/OverviewTab";
+import { AdminsTab } from "./components/AdminsTab";
+import { AmbassadorsTab } from "./components/AmbassadorsTab";
+import { ApplicationsTab } from "./components/ApplicationsTab";
+import { SponsorsTab } from "./components/SponsorsTab";
+import { TeamTab } from "./components/TeamTab";
+import { ContactTab } from "./components/ContactTab";
+import { OfficialInvitationsTab } from "./components/OfficialInvitationsTab";
+import { OnlineOrdersTab } from "./components/OnlineOrdersTab";
+import { AioEventsTab } from "./components/AioEventsTab";
+import { LogsTab } from "./components/LogsTab";
+import { MarketingTab } from "./components/MarketingTab";
+import { AmbassadorSalesTab } from "./components/AmbassadorSalesTab";
+import { SettingsTab } from "./components/SettingsTab";
+import { EventsTab } from "./components/EventsTab";
+import { AmbassadorInfoDialog } from "./components/AmbassadorInfoDialog";
+import { OnlineOrderDetailsDialog } from "./components/OnlineOrderDetailsDialog";
+import { OrderDetailsDialog } from "./components/OrderDetailsDialog";
 
 const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // All hooks must be called before any conditional returns (Rules of Hooks)
@@ -245,6 +169,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [sponsorToDelete, setSponsorToDelete] = useState(null);
   const [allEvents, setAllEvents] = useState([]);
   
+  // Selected event for filtering dashboard data
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
+  
   // Sales settings state
   const [salesEnabled, setSalesEnabled] = useState(true);
   const [loadingSalesSettings, setLoadingSalesSettings] = useState(false);
@@ -269,24 +196,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [loadingAmbassadorApplicationSettings, setLoadingAmbassadorApplicationSettings] = useState(false);
 
   // Hero images state
-  interface HeroImage {
-    type: 'image' | 'video';
-    src: string;
-    alt: string;
-    path?: string;
-    poster?: string; // Optional poster image for videos
-    srcMobile?: string; // Optional mobile version for videos
-  }
   const [heroImages, setHeroImages] = useState<HeroImage[]>([]);
   const [loadingHeroImages, setLoadingHeroImages] = useState(false);
   const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
 
   // About images state
-  interface AboutImage {
-    src: string;
-    alt: string;
-    path?: string;
-  }
   const [aboutImages, setAboutImages] = useState<AboutImage[]>([]);
   const [loadingAboutImages, setLoadingAboutImages] = useState(false);
   const [uploadingAboutImage, setUploadingAboutImage] = useState(false);
@@ -398,7 +312,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             const [editingTicket, setEditingTicket] = useState<any>(null);
             const [isDeleteTicketDialogOpen, setIsDeleteTicketDialogOpen] = useState(false);
             const [ticketToDelete, setTicketToDelete] = useState<any>(null);
-            const [selectedEventId, setSelectedEventId] = useState<string>('');
             const [ticketStats, setTicketStats] = useState<any>({
               totalTickets: 0,
               soldTickets: 0,
@@ -449,29 +362,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [loadingEmailLogs, setLoadingEmailLogs] = useState(false);
   const [resendingEmail, setResendingEmail] = useState(false);
   const [isOrderDetailsOpen, setIsOrderDetailsOpen] = useState(false);
-  const [isEditingEmail, setIsEditingEmail] = useState(false);
-  const [editingEmailValue, setEditingEmailValue] = useState('');
-  const [updatingEmail, setUpdatingEmail] = useState(false);
-  const [isEditingAdminNotes, setIsEditingAdminNotes] = useState(false);
-  const [editingAdminNotesValue, setEditingAdminNotesValue] = useState('');
-  const [updatingAdminNotes, setUpdatingAdminNotes] = useState(false);
-  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
-  const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [isRemoveOrderDialogOpen, setIsRemoveOrderDialogOpen] = useState(false);
-  const [removingOrderId, setRemovingOrderId] = useState<string | null>(null);
-  const [removingOrder, setRemovingOrder] = useState(false);
   const [isMotivationDialogOpen, setIsMotivationDialogOpen] = useState(false);
   const [selectedMotivation, setSelectedMotivation] = useState<{application: AmbassadorApplication; motivation: string} | null>(null);
   const [orderLogs, setOrderLogs] = useState<any[]>([]);
   const [performanceReports, setPerformanceReports] = useState<any>(null);
   const [salesSystemTab, setSalesSystemTab] = useState('cod-ambassador-orders');
   
-  // Admin skip confirmation and resend email state
-  const [isSkipConfirmationDialogOpen, setIsSkipConfirmationDialogOpen] = useState(false);
-  const [skippingOrderId, setSkippingOrderId] = useState<string | null>(null);
-  const [skipReason, setSkipReason] = useState('');
-  const [skippingOrder, setSkippingOrder] = useState(false);
   const [resendingTicketEmail, setResendingTicketEmail] = useState(false);
 
   // Export COD Ambassador Orders to Excel
@@ -525,10 +421,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         let passTypesStr = 'N/A';
         if (passes.length > 0) {
           passTypesStr = passes.map((p: any) => 
-            `${p.pass_type || p.passName || 'Unknown'} ×${p.quantity || 1}`
+            `${p.pass_type || p.passName || 'Unknown'} Ã—${p.quantity || 1}`
           ).join(', ');
         } else if (order.pass_type) {
-          passTypesStr = `${order.pass_type} ×${order.quantity || 1}`;
+          passTypesStr = `${order.pass_type} Ã—${order.quantity || 1}`;
         }
 
         // Format dates
@@ -540,19 +436,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         // Format status text
         const statusText = order.status === 'PENDING_CASH'
-          ? (language === 'en' ? 'Pending Cash' : 'En Attente Espèces')
+          ? (language === 'en' ? 'Pending Cash' : 'En Attente EspÃ¨ces')
           : order.status === 'PAID'
-          ? (language === 'en' ? 'Paid' : 'Payé')
+          ? (language === 'en' ? 'Paid' : 'PayÃ©')
           : order.status === 'CANCELLED'
-          ? (language === 'en' ? 'Cancelled' : 'Annulé')
+          ? (language === 'en' ? 'Cancelled' : 'AnnulÃ©')
           : order.status === 'PENDING_ADMIN_APPROVAL'
           ? (language === 'en' ? 'Pending Approval' : 'En Attente')
           : order.status === 'APPROVED'
-          ? (language === 'en' ? 'Approved' : 'Approuvé')
+          ? (language === 'en' ? 'Approved' : 'ApprouvÃ©')
           : order.status === 'REJECTED'
-          ? (language === 'en' ? 'Rejected' : 'Rejeté')
+          ? (language === 'en' ? 'Rejected' : 'RejetÃ©')
           : order.status === 'REMOVED_BY_ADMIN'
-          ? (language === 'en' ? 'Removed by Admin' : 'Retiré par l\'administrateur')
+          ? (language === 'en' ? 'Removed by Admin' : 'RetirÃ© par l\'administrateur')
           : order.status || 'N/A';
 
         const row = worksheet.addRow({
@@ -616,22 +512,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.URL.revokeObjectURL(url);
 
       toast({
-        title: language === 'en' ? 'Export Successful' : 'Export Réussi',
+        title: language === 'en' ? 'Export Successful' : 'Export RÃ©ussi',
         description: language === 'en' 
           ? `${codAmbassadorOrders.length} orders exported to ${filename}`
-          : `${codAmbassadorOrders.length} commandes exportées vers ${filename}`,
+          : `${codAmbassadorOrders.length} commandes exportÃ©es vers ${filename}`,
         duration: 3000,
       });
     } catch (error) {
       console.error('Error exporting orders:', error);
       toast({
-        title: language === 'en' ? 'Export Failed' : 'Échec de l\'Export',
+        title: language === 'en' ? 'Export Failed' : 'Ã‰chec de l\'Export',
         description: language === 'en' 
           ? 'Failed to export orders. Please try again.'
-          : 'Échec de l\'exportation des commandes. Veuillez réessayer.',
+          : 'Ã‰chec de l\'exportation des commandes. Veuillez rÃ©essayer.',
         variant: 'destructive',
       });
     }
+  };
+
+  const handleViewAmbassador = async (ambassadorId: string) => {
+    const { data: ambassadorData } = await (supabase as any)
+      .from('ambassadors')
+      .select('*')
+      .eq('id', ambassadorId)
+      .single();
+    setSelectedOrderAmbassador(ambassadorData);
+    setIsAmbassadorInfoDialogOpen(true);
   };
 
   // Get unique filter values from orders
@@ -941,6 +847,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       eventType: "Event Type",
       eventTypeUpcoming: "Upcoming Event",
       eventTypeGallery: "Gallery Event (Past Event)",
+      convertToGallery: "Convert to Gallery",
+      convertToGalleryTooltip: "Move this event to the gallery and add images/videos. Orders and statistics are kept.",
       galleryImages: "Gallery Images",
       galleryVideos: "Gallery Videos",
       uploadGalleryFiles: "Upload Gallery Files",
@@ -996,14 +904,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     },
     fr: {
       title: "Tableau de Bord Admin",
-      subtitle: "Gérer tout - événements, ambassadeurs, candidatures",
-      overview: "Aperçu",
-      events: "Événements",
+      subtitle: "GÃ©rer tout - Ã©vÃ©nements, ambassadeurs, candidatures",
+      overview: "AperÃ§u",
+      events: "Ã‰vÃ©nements",
       ambassadors: "Ambassadeurs",
       applications: "Candidatures",
       pendingApplications: "Candidatures en Attente",
-      approvedApplications: "Candidatures Approuvées",
-      totalEvents: "Total Événements",
+      approvedApplications: "Candidatures ApprouvÃ©es",
+      totalEvents: "Total Ã‰vÃ©nements",
       totalRevenue: "Revenus Totaux",
       approve: "Approuver",
       reject: "Rejeter",
@@ -1012,40 +920,42 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       add: "Ajouter",
       save: "Enregistrer",
       cancel: "Annuler",
-      approved: "Approuvé",
-      rejected: "Rejeté",
+      approved: "ApprouvÃ©",
+      rejected: "RejetÃ©",
       pending: "En Attente",
       processing: "Traitement...",
-      noApplications: "Aucune candidature trouvée",
-      noEvents: "Aucun événement trouvé",
-      noAmbassadors: "Aucun ambassadeur trouvé",
-      approvalSuccess: "Candidature approuvée avec succès!",
-      rejectionSuccess: "Candidature rejetée avec succès!",
-      eventSaved: "Événement enregistré avec succès!",
-      ambassadorSaved: "Ambassadeur enregistré avec succès!",
-      emailSent: "Email de notification envoyé",
+      noApplications: "Aucune candidature trouvÃ©e",
+      noEvents: "Aucun Ã©vÃ©nement trouvÃ©",
+      noAmbassadors: "Aucun ambassadeur trouvÃ©",
+      approvalSuccess: "Candidature approuvÃ©e avec succÃ¨s!",
+      rejectionSuccess: "Candidature rejetÃ©e avec succÃ¨s!",
+      eventSaved: "Ã‰vÃ©nement enregistrÃ© avec succÃ¨s!",
+      ambassadorSaved: "Ambassadeur enregistrÃ© avec succÃ¨s!",
+      emailSent: "Email de notification envoyÃ©",
       error: "Une erreur s'est produite",
-      logout: "Déconnexion",
-      eventName: "Nom de l'Événement",
-      eventDate: "Date de l'Événement",
+      logout: "DÃ©connexion",
+      eventName: "Nom de l'Ã‰vÃ©nement",
+      eventDate: "Date de l'Ã‰vÃ©nement",
       eventVenue: "Lieu",
       eventCity: "Ville",
       eventDescription: "Description",
       eventPoster: "URL de l'Affiche",
       eventInstagramLink: "Lien Instagram",
-      eventFeatured: "Événement en Vedette",
+      eventFeatured: "Ã‰vÃ©nement en Vedette",
       eventStandardPrice: "Prix Standard (TND)",
       eventVipPrice: "Prix VIP (TND)",
-      eventType: "Type d'Événement",
-      eventTypeUpcoming: "Événement à Venir",
-      eventTypeGallery: "Événement Galerie (Événement Passé)",
+      eventType: "Type d'Ã‰vÃ©nement",
+      eventTypeUpcoming: "Ã‰vÃ©nement Ã  Venir",
+      eventTypeGallery: "Ã‰vÃ©nement Galerie (Ã‰vÃ©nement PassÃ©)",
+      convertToGallery: "Convertir en Galerie",
+      convertToGalleryTooltip: "DÃ©placer cet Ã©vÃ©nement vers la galerie et ajouter images/vidÃ©os. Commandes et statistiques conservÃ©es.",
       galleryImages: "Images de Galerie",
-      galleryVideos: "Vidéos de Galerie",
-      uploadGalleryFiles: "Télécharger des Fichiers de Galerie",
+      galleryVideos: "VidÃ©os de Galerie",
+      uploadGalleryFiles: "TÃ©lÃ©charger des Fichiers de Galerie",
       addGalleryFile: "Ajouter un Fichier",
       removeGalleryFile: "Supprimer",
       ambassadorName: "Nom Complet",
-      ambassadorPhone: "Téléphone",
+      ambassadorPhone: "TÃ©lÃ©phone",
       ambassadorEmail: "Email",
       ambassadorCity: "Ville",
       ambassadorStatus: "Statut",
@@ -1055,42 +965,42 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       ambassadorOrdersPending: "Commandes Ambassadeurs en Attente",
       passPurchases: "Achats de Passes",
       totalPurchases: "Total des Achats",
-      purchaseDetails: "Détails de l'Achat",
+      purchaseDetails: "DÃ©tails de l'Achat",
       customerInfo: "Informations Client",
       purchaseStatus: "Statut de l'Achat",
-      noPurchases: "Aucun achat trouvé",
-      settings: "Paramètres",
-      salesSettings: "Paramètres de Ventes",
+      noPurchases: "Aucun achat trouvÃ©",
+      settings: "ParamÃ¨tres",
+      salesSettings: "ParamÃ¨tres de Ventes",
       enableSales: "Activer les Ventes",
-      disableSales: "Désactiver les Ventes",
-      salesEnabled: "Les ventes sont actuellement activées",
-      salesDisabled: "Les ventes sont actuellement désactivées",
-      salesSettingsDescription: "Contrôlez si les ambassadeurs peuvent ajouter des ventes. Lorsqu'elle est désactivée, les ambassadeurs verront un message indiquant que les ventes ne sont pas encore ouvertes.",
+      disableSales: "DÃ©sactiver les Ventes",
+      salesEnabled: "Les ventes sont actuellement activÃ©es",
+      salesDisabled: "Les ventes sont actuellement dÃ©sactivÃ©es",
+      salesSettingsDescription: "ContrÃ´lez si les ambassadeurs peuvent ajouter des ventes. Lorsqu'elle est dÃ©sactivÃ©e, les ambassadeurs verront un message indiquant que les ventes ne sont pas encore ouvertes.",
       maintenanceSettings: "Mode Maintenance",
       enableMaintenance: "Activer le Mode Maintenance",
-      disableMaintenance: "Désactiver le Mode Maintenance",
+      disableMaintenance: "DÃ©sactiver le Mode Maintenance",
       maintenanceEnabled: "Le mode maintenance est actuellement actif",
       maintenanceDisabled: "Le mode maintenance est actuellement inactif",
-      maintenanceSettingsDescription: "Contrôlez le mode maintenance du site web. Lorsqu'il est activé, les utilisateurs verront un message de maintenance et ne pourront pas accéder au site. L'accès administrateur est toujours autorisé.",
+      maintenanceSettingsDescription: "ContrÃ´lez le mode maintenance du site web. Lorsqu'il est activÃ©, les utilisateurs verront un message de maintenance et ne pourront pas accÃ©der au site. L'accÃ¨s administrateur est toujours autorisÃ©.",
       maintenanceMessage: "Message de Maintenance",
-      maintenanceMessagePlaceholder: "Entrez un message de maintenance personnalisé (optionnel)",
+      maintenanceMessagePlaceholder: "Entrez un message de maintenance personnalisÃ© (optionnel)",
       allowAmbassadorApplication: "Autoriser la Page de Candidature d'Ambassadeur",
-      allowAmbassadorApplicationDescription: "Lorsqu'elle est activée, la page de candidature d'ambassadeur restera accessible pendant le mode maintenance.",
-      ambassadorApplicationSettings: "Paramètres de Candidature d'Ambassadeur",
-      ambassadorApplicationSettingsDescription: "Contrôlez si les utilisateurs peuvent soumettre des candidatures d'ambassadeur. Lorsqu'elle est désactivée, les utilisateurs verront un message indiquant que les candidatures sont fermées.",
+      allowAmbassadorApplicationDescription: "Lorsqu'elle est activÃ©e, la page de candidature d'ambassadeur restera accessible pendant le mode maintenance.",
+      ambassadorApplicationSettings: "ParamÃ¨tres de Candidature d'Ambassadeur",
+      ambassadorApplicationSettingsDescription: "ContrÃ´lez si les utilisateurs peuvent soumettre des candidatures d'ambassadeur. Lorsqu'elle est dÃ©sactivÃ©e, les utilisateurs verront un message indiquant que les candidatures sont fermÃ©es.",
       ambassadorApplicationEnabled: "Les candidatures sont actuellement ouvertes",
-      ambassadorApplicationDisabled: "Les candidatures sont actuellement fermées",
+      ambassadorApplicationDisabled: "Les candidatures sont actuellement fermÃ©es",
       enableAmbassadorApplication: "Ouvrir les Candidatures",
       disableAmbassadorApplication: "Fermer les Candidatures",
-      ambassadorApplicationMessage: "Message de Candidature Fermée",
-      ambassadorApplicationMessagePlaceholder: "Entrez un message personnalisé lorsque les candidatures sont fermées (optionnel)",
-      heroImagesSettings: "Images et Vidéos Hero",
-      heroImagesSettingsDescription: "Gérez les images et vidéos hero affichées sur la page d'accueil. Vous pouvez ajouter, supprimer et réorganiser les fichiers multimédias.",
-      uploadHeroImage: "Télécharger une Image ou Vidéo Hero",
+      ambassadorApplicationMessage: "Message de Candidature FermÃ©e",
+      ambassadorApplicationMessagePlaceholder: "Entrez un message personnalisÃ© lorsque les candidatures sont fermÃ©es (optionnel)",
+      heroImagesSettings: "Images et VidÃ©os Hero",
+      heroImagesSettingsDescription: "GÃ©rez les images et vidÃ©os hero affichÃ©es sur la page d'accueil. Vous pouvez ajouter, supprimer et rÃ©organiser les fichiers multimÃ©dias.",
+      uploadHeroImage: "TÃ©lÃ©charger une Image ou VidÃ©o Hero",
       deleteHeroImage: "Supprimer",
-      noHeroImages: "Aucun média hero pour le moment. Téléchargez une image ou une vidéo pour commencer.",
+      noHeroImages: "Aucun mÃ©dia hero pour le moment. TÃ©lÃ©chargez une image ou une vidÃ©o pour commencer.",
       heroImageAlt: "Texte Alternatif de l'Image",
-      reorderImages: "Réorganiser en faisant glisser"
+      reorderImages: "RÃ©organiser en faisant glisser"
     }
   };
 
@@ -1099,6 +1009,54 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   useEffect(() => {
     fetchAllData();
     fetchAmbassadorSalesData(); // Fetch ambassador orders data on initial load for pending count
+  }, []);
+
+  // Realtime: keep applications in sync without refresh
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-ambassador-applications-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ambassador_applications',
+        },
+        (payload) => {
+          const eventType = payload.eventType;
+          const newRecord = payload.new as Record<string, unknown> | null;
+          const oldRecord = payload.old as Record<string, unknown> | null;
+
+          if (eventType === 'INSERT' && newRecord?.id) {
+            setApplications((prev) => {
+              const asApp = newRecord as unknown as AmbassadorApplication;
+              if (prev.some((a) => a.id === asApp.id)) return prev;
+              return [asApp, ...prev].sort(
+                (a, b) =>
+                  new Date(b.created_at || 0).getTime() -
+                  new Date(a.created_at || 0).getTime()
+              );
+            });
+          } else if (eventType === 'UPDATE' && newRecord?.id) {
+            setApplications((prev) =>
+              prev.map((app) =>
+                app.id === newRecord.id
+                  ? (newRecord as unknown as AmbassadorApplication)
+                  : app
+              )
+            );
+          } else if (eventType === 'DELETE' && oldRecord?.id) {
+            setApplications((prev) =>
+              prev.filter((app) => app.id !== oldRecord.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Animation effect for overview cards
@@ -1416,6 +1374,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [events, selectedEventId]);
 
+  // Reload data when selected event changes
+  useEffect(() => {
+    // Skip reload on initial mount (when selectedEventId is being set for the first time)
+    // Only reload when selectedEventId actually changes after initial load
+    if (events.length > 0) {
+      fetchAmbassadorSalesData();
+      fetchOnlineOrders();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEventId]);
+
   // Update ticket stats when selected event changes
   useEffect(() => {
     if (selectedEventId && tickets.length > 0) {
@@ -1487,7 +1456,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error fetching expiration settings:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: language === 'en' ? 'Failed to fetch expiration settings' : 'Échec de la récupération des paramètres d\'expiration',
+        description: language === 'en' ? 'Failed to fetch expiration settings' : 'Ã‰chec de la rÃ©cupÃ©ration des paramÃ¨tres d\'expiration',
         variant: 'destructive'
       });
     } finally {
@@ -1531,10 +1500,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (result.success) {
         const count = result.rejected_count || 0;
         toast({
-          title: language === 'en' ? 'Expired Orders Processed' : 'Commandes Expirées Traitées',
+          title: language === 'en' ? 'Expired Orders Processed' : 'Commandes ExpirÃ©es TraitÃ©es',
           description: language === 'en' 
             ? `Successfully rejected ${count} expired order(s). Stock has been released.` 
-            : `${count} commande(s) expirée(s) rejetée(s) avec succès. Le stock a été libéré.`,
+            : `${count} commande(s) expirÃ©e(s) rejetÃ©e(s) avec succÃ¨s. Le stock a Ã©tÃ© libÃ©rÃ©.`,
         });
         
         // Refresh orders after a short delay
@@ -1548,7 +1517,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error triggering auto-reject:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to reject expired orders. Check console for details.' : 'Échec du rejet des commandes expirées. Vérifiez la console pour plus de détails.'),
+        description: error.message || (language === 'en' ? 'Failed to reject expired orders. Check console for details.' : 'Ã‰chec du rejet des commandes expirÃ©es. VÃ©rifiez la console pour plus de dÃ©tails.'),
         variant: 'destructive'
       });
     } finally {
@@ -1586,8 +1555,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         const filteredData = (result.data || []).filter((setting: any) => setting.order_status === 'PENDING_CASH');
         setExpirationSettings(filteredData);
         toast({
-          title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
-          description: language === 'en' ? 'Expiration settings updated successfully. Refreshing orders...' : 'Paramètres d\'expiration mis à jour avec succès. Actualisation des commandes...',
+          title: language === 'en' ? 'Settings Updated' : 'ParamÃ¨tres Mis Ã  Jour',
+          description: language === 'en' ? 'Expiration settings updated successfully. Refreshing orders...' : 'ParamÃ¨tres d\'expiration mis Ã  jour avec succÃ¨s. Actualisation des commandes...',
         });
         
         // Wait a moment for database updates to complete, then refresh order data
@@ -1613,7 +1582,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error updating expiration settings:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to update expiration settings' : 'Échec de la mise à jour des paramètres d\'expiration'),
+        description: error.message || (language === 'en' ? 'Failed to update expiration settings' : 'Ã‰chec de la mise Ã  jour des paramÃ¨tres d\'expiration'),
         variant: 'destructive'
       });
     } finally {
@@ -1760,10 +1729,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       setHeroImages(images);
       toast({
-        title: language === 'en' ? 'Hero Images Updated' : 'Images Hero Mises à Jour',
+        title: language === 'en' ? 'Hero Images Updated' : 'Images Hero Mises Ã  Jour',
         description: language === 'en' 
           ? 'Hero images have been updated successfully' 
-          : 'Les images hero ont été mises à jour avec succès',
+          : 'Les images hero ont Ã©tÃ© mises Ã  jour avec succÃ¨s',
       });
     } catch (error) {
       console.error('Error saving hero images:', error);
@@ -1771,7 +1740,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description: language === 'en' 
           ? 'Failed to save hero images' 
-          : 'Échec de la sauvegarde des images hero',
+          : 'Ã‰chec de la sauvegarde des images hero',
         variant: 'destructive',
       });
     }
@@ -1796,7 +1765,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Large File Warning' : 'Avertissement Fichier Volumineux',
           description: language === 'en' 
             ? 'Video file is larger than 2MB. For best performance, videos should be under 2MB (5-10 seconds, H.264).' 
-            : 'Le fichier vidéo est supérieur à 2MB. Pour de meilleures performances, les vidéos doivent faire moins de 2MB (5-10 secondes, H.264).',
+            : 'Le fichier vidÃ©o est supÃ©rieur Ã  2MB. Pour de meilleures performances, les vidÃ©os doivent faire moins de 2MB (5-10 secondes, H.264).',
           variant: 'default',
           duration: 5000,
         });
@@ -1822,10 +1791,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await saveHeroImages(updatedImages);
       
       toast({
-        title: language === 'en' ? 'Success' : 'Succès',
+        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
         description: language === 'en' 
           ? `${fileType === 'video' ? 'Video' : 'Image'} uploaded successfully` 
-          : `${fileType === 'video' ? 'Vidéo' : 'Image'} téléchargée avec succès`,
+          : `${fileType === 'video' ? 'VidÃ©o' : 'Image'} tÃ©lÃ©chargÃ©e avec succÃ¨s`,
         duration: 3000,
       });
     } catch (error) {
@@ -1834,7 +1803,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description: language === 'en' 
           ? 'Failed to upload hero media' 
-          : 'Échec du téléchargement du média hero',
+          : 'Ã‰chec du tÃ©lÃ©chargement du mÃ©dia hero',
         variant: 'destructive',
       });
     } finally {
@@ -1861,7 +1830,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description: language === 'en' 
           ? 'Failed to delete hero image' 
-          : 'Échec de la suppression de l\'image hero',
+          : 'Ã‰chec de la suppression de l\'image hero',
         variant: 'destructive',
       });
     }
@@ -1896,6 +1865,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       let ordersUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_SALES_ORDERS, apiBase) + '?limit=1000';
       if (statusFilter) {
         ordersUrl += `&status=${encodeURIComponent(statusFilter)}`;
+      }
+      // Filter by selected event if one is selected
+      if (selectedEventId) {
+        ordersUrl += `&event_id=${encodeURIComponent(selectedEventId)}`;
       }
       const ordersResponse = await fetch(ordersUrl, {
         credentials: 'include'
@@ -2012,7 +1985,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: language === 'en' ? 'Failed to fetch sales data' : 'Échec de la récupération des données de vente',
+        description: language === 'en' ? 'Failed to fetch sales data' : 'Ã‰chec de la rÃ©cupÃ©ration des donnÃ©es de vente',
         variant: 'destructive'
       });
     } finally {
@@ -2032,6 +2005,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         .select('*')
         .eq('source', 'platform_online')
         .order('created_at', { ascending: false });
+
+      // Filter by selected event if one is selected
+      if (selectedEventId) {
+        query = query.eq('event_id', selectedEventId);
+      }
 
       // Apply filters
       if (onlineOrderFilters.status !== 'all') {
@@ -2070,7 +2048,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error fetching online orders:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Échec du chargement des commandes en ligne'),
+        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Ã‰chec du chargement des commandes en ligne'),
         variant: "destructive",
       });
     } finally {
@@ -2089,6 +2067,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         .select('*')
         .eq('source', 'platform_online')
         .order('created_at', { ascending: false });
+
+      // Filter by selected event if one is selected
+      if (selectedEventId) {
+        query = query.eq('event_id', selectedEventId);
+      }
 
       // Apply filters
       if (filters.status !== 'all') {
@@ -2127,7 +2110,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error fetching online orders:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Échec du chargement des commandes en ligne'),
+        description: error.message || (language === 'en' ? 'Failed to fetch online orders' : 'Ã‰chec du chargement des commandes en ligne'),
         variant: "destructive",
       });
     } finally {
@@ -2154,7 +2137,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? 'Only PAID orders can have email/SMS delivery approved'
-            : 'Seules les commandes PAYÉES peuvent avoir la livraison email/SMS approuvée',
+            : 'Seules les commandes PAYÃ‰ES peuvent avoir la livraison email/SMS approuvÃ©e',
           variant: 'destructive'
         });
         return;
@@ -2186,8 +2169,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           const responseData = await ticketResponse.json();
 
           if (!ticketResponse.ok) {
-            console.error('❌ Failed to generate tickets. Status:', ticketResponse.status);
-            console.error('❌ Error details:', responseData);
+            console.error('âŒ Failed to generate tickets. Status:', ticketResponse.status);
+            console.error('âŒ Error details:', responseData);
             
             // Fallback to old email system if ticket generation fails
             const apiBase = getApiBaseUrl();
@@ -2205,14 +2188,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
             if (!emailResponse.ok) {
               const emailErrorData = await emailResponse.json();
-              console.error('❌ Failed to send completion email:', emailErrorData);
+              console.error('âŒ Failed to send completion email:', emailErrorData);
               throw new Error('Failed to send email');
             } else {
             }
           } else {
           }
         } catch (error) {
-          console.error('❌ Error generating tickets or sending email:', error);
+          console.error('âŒ Error generating tickets or sending email:', error);
           throw error;
         }
       }
@@ -2246,10 +2229,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
 
       toast({
-        title: language === 'en' ? 'Email/SMS Sent' : 'Email/SMS Envoyé',
+        title: language === 'en' ? 'Email/SMS Sent' : 'Email/SMS EnvoyÃ©',
         description: language === 'en' 
           ? 'Tickets generated and email sent to customer successfully'
-          : 'Tickets générés et email envoyé au client avec succès',
+          : 'Tickets gÃ©nÃ©rÃ©s et email envoyÃ© au client avec succÃ¨s',
         variant: 'default'
       });
 
@@ -2260,7 +2243,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: error.message || (language === 'en' 
           ? 'Failed to approve email/SMS delivery' 
-          : 'Échec de l\'approbation de la livraison email/SMS'),
+          : 'Ã‰chec de l\'approbation de la livraison email/SMS'),
         variant: 'destructive'
       });
     }
@@ -2268,15 +2251,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Approve COD Ambassador order (with email and SMS) - LEGACY FUNCTION
   const handleApproveCodAmbassadorOrder = async (orderId: string) => {
-    console.log('\n🔵 ============================================');
-    console.log('🔵 FRONTEND: Admin Approval Started');
-    console.log('🔵 ============================================');
-    console.log('🔵 Order ID:', orderId);
-    console.log('🔵 Timestamp:', new Date().toISOString());
+    console.log('\nðŸ”µ ============================================');
+    console.log('ðŸ”µ FRONTEND: Admin Approval Started');
+    console.log('ðŸ”µ ============================================');
+    console.log('ðŸ”µ Order ID:', orderId);
+    console.log('ðŸ”µ Timestamp:', new Date().toISOString());
     
     try {
       // Get full order details
-      console.log('🔵 Fetching order details...');
+      console.log('ðŸ”µ Fetching order details...');
       const { data: order, error: fetchError } = await (supabase as any)
         .from('orders')
         .select('*')
@@ -2284,11 +2267,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         .single();
 
       if (fetchError) {
-        console.error('❌ FRONTEND: Error fetching order:', fetchError);
+        console.error('âŒ FRONTEND: Error fetching order:', fetchError);
         throw fetchError;
       }
 
-      console.log('🔵 Order fetched:', {
+      console.log('ðŸ”µ Order fetched:', {
         id: order.id,
         status: order.status,
         payment_method: order.payment_method,
@@ -2301,31 +2284,31 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       // Validate order - accept any COD order with PENDING_ADMIN_APPROVAL status
       if (order.payment_method !== 'ambassador_cash') {
-        console.error('❌ FRONTEND: Invalid payment method:', order.payment_method);
+        console.error('âŒ FRONTEND: Invalid payment method:', order.payment_method);
         toast({
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? `This order is not a COD order. Payment method: ${order.payment_method || 'N/A'}`
-            : `Cette commande n'est pas une commande COD. Méthode de paiement: ${order.payment_method || 'N/A'}`,
+            : `Cette commande n'est pas une commande COD. MÃ©thode de paiement: ${order.payment_method || 'N/A'}`,
           variant: 'destructive'
         });
         return;
       }
       
       if (order.status !== 'PENDING_ADMIN_APPROVAL') {
-        console.error('❌ FRONTEND: Invalid order status:', order.status);
+        console.error('âŒ FRONTEND: Invalid order status:', order.status);
         toast({
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? `Order status must be PENDING_ADMIN_APPROVAL to approve. Current status: ${order.status || 'N/A'}`
-            : `Le statut de la commande doit être PENDING_ADMIN_APPROVAL pour approuver. Statut actuel: ${order.status || 'N/A'}`,
+            : `Le statut de la commande doit Ãªtre PENDING_ADMIN_APPROVAL pour approuver. Statut actuel: ${order.status || 'N/A'}`,
           variant: 'destructive'
         });
         return;
       }
 
       // Update order status to PAID (this will trigger ticket generation)
-      console.log('🔵 Updating order status to PAID...');
+      console.log('ðŸ”µ Updating order status to PAID...');
       const { error: updateError } = await (supabase as any)
         .from('orders')
         .update({
@@ -2336,40 +2319,40 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         .eq('id', orderId);
 
       if (updateError) {
-        console.error('❌ FRONTEND: Error updating order status:', updateError);
+        console.error('âŒ FRONTEND: Error updating order status:', updateError);
         throw updateError;
       }
-      console.log('✅ FRONTEND: Order status updated to PAID');
+      console.log('âœ… FRONTEND: Order status updated to PAID');
 
       // Generate tickets and send email with QR codes (only after admin approval)
       let ticketsGenerated = false;
-      console.log('🔵 Checking if order has email for ticket generation...');
-      console.log('🔵 Email check:', {
+      console.log('ðŸ”µ Checking if order has email for ticket generation...');
+      console.log('ðŸ”µ Email check:', {
         hasUserEmail: !!order.user_email,
         userEmail: order.user_email || 'NOT SET'
       });
       
       if (order.user_email) {
         try {
-          console.log('🔵 Order has email, proceeding with ticket generation...');
+          console.log('ðŸ”µ Order has email, proceeding with ticket generation...');
           
           // Small delay to ensure database is ready
-          console.log('🔵 Waiting 500ms for database to be ready...');
+          console.log('ðŸ”µ Waiting 500ms for database to be ready...');
           await new Promise(resolve => setTimeout(resolve, 500));
           
           // Generate tickets (this will also send the email with QR codes)
           const apiBase = getApiBaseUrl();
           const ticketApiUrl = buildFullApiUrl(API_ROUTES.GENERATE_TICKETS_FOR_ORDER, apiBase);
           
-          console.log('🔵 API Configuration:', {
+          console.log('ðŸ”µ API Configuration:', {
             apiBase: apiBase,
             ticketApiUrl: ticketApiUrl,
             route: API_ROUTES.GENERATE_TICKETS_FOR_ORDER
           });
           
           if (ticketApiUrl) {
-            console.log('🔵 Calling ticket generation API...');
-            console.log('🔵 Request:', {
+            console.log('ðŸ”µ Calling ticket generation API...');
+            console.log('ðŸ”µ Request:', {
               url: ticketApiUrl,
               method: 'POST',
               body: { orderId }
@@ -2383,12 +2366,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               body: JSON.stringify({ orderId }),
             });
 
-            console.log('🔵 API Response Status:', ticketResponse.status);
+            console.log('ðŸ”µ API Response Status:', ticketResponse.status);
             
             // Check if response is ok and has content
             if (!ticketResponse.ok) {
               const errorText = await ticketResponse.text();
-              console.error('❌ FRONTEND: API Error Response:', errorText);
+              console.error('âŒ FRONTEND: API Error Response:', errorText);
               throw new Error(errorText || `HTTP ${ticketResponse.status}: ${ticketResponse.statusText}`);
             }
             
@@ -2401,19 +2384,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               try {
                 responseData = JSON.parse(responseText);
               } catch (jsonError) {
-                console.error('❌ FRONTEND: Failed to parse JSON response:', responseText);
+                console.error('âŒ FRONTEND: Failed to parse JSON response:', responseText);
                 throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
               }
             } else {
-              console.error('❌ FRONTEND: Non-JSON response received:', responseText);
+              console.error('âŒ FRONTEND: Non-JSON response received:', responseText);
               throw new Error(`Expected JSON but received: ${contentType || 'unknown content type'}`);
             }
             
-            console.log('🔵 API Response Data:', responseData);
+            console.log('ðŸ”µ API Response Data:', responseData);
 
             if (ticketResponse.ok && responseData.success) {
               ticketsGenerated = true;
-              console.log('✅ FRONTEND: Tickets generated successfully:', {
+              console.log('âœ… FRONTEND: Tickets generated successfully:', {
                 ticketsCount: responseData.ticketsCount,
                 emailSent: responseData.emailSent,
                 emailError: responseData.emailError,
@@ -2421,22 +2404,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 smsError: responseData.smsError
               });
             } else {
-              console.error('❌ FRONTEND: Failed to generate tickets. Status:', ticketResponse.status);
-              console.error('❌ FRONTEND: Error details:', responseData);
+              console.error('âŒ FRONTEND: Failed to generate tickets. Status:', ticketResponse.status);
+              console.error('âŒ FRONTEND: Error details:', responseData);
             }
           } else {
-            console.error('❌ FRONTEND: Invalid ticket API URL');
+            console.error('âŒ FRONTEND: Invalid ticket API URL');
           }
         } catch (ticketError) {
-          console.error('❌ FRONTEND: Error generating tickets:', ticketError);
-          console.error('❌ FRONTEND: Error details:', {
+          console.error('âŒ FRONTEND: Error generating tickets:', ticketError);
+          console.error('âŒ FRONTEND: Error details:', {
             message: ticketError.message,
             stack: ticketError.stack
           });
         }
       } else {
-        console.warn('⚠️ FRONTEND: Order does not have email, skipping ticket generation');
-        console.warn('⚠️ FRONTEND: Order details:', {
+        console.warn('âš ï¸ FRONTEND: Order does not have email, skipping ticket generation');
+        console.warn('âš ï¸ FRONTEND: Order details:', {
           orderId: order.id,
           hasUserEmail: false,
           hasUserPhone: !!order.user_phone
@@ -2444,7 +2427,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       // Log the approval
-      console.log('🔵 Logging approval to order_logs...');
+      console.log('ðŸ”µ Logging approval to order_logs...');
       await (supabase as any)
         .from('order_logs')
         .insert({
@@ -2459,22 +2442,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             admin_action: true 
           }
         });
-      console.log('✅ FRONTEND: Approval logged');
+      console.log('âœ… FRONTEND: Approval logged');
 
-      console.log('🔵 ============================================');
-      console.log('🔵 FRONTEND: Admin Approval Completed');
-      console.log('🔵 ============================================');
-      console.log('📊 Final Status:', {
+      console.log('ðŸ”µ ============================================');
+      console.log('ðŸ”µ FRONTEND: Admin Approval Completed');
+      console.log('ðŸ”µ ============================================');
+      console.log('ðŸ“Š Final Status:', {
         ticketsGenerated: ticketsGenerated,
         orderId: orderId
       });
-      console.log('🔵 ============================================\n');
+      console.log('ðŸ”µ ============================================\n');
 
       toast({
-        title: language === 'en' ? 'Success' : 'Succès',
+        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
         description: language === 'en' 
           ? `Order approved and tickets ${ticketsGenerated ? 'sent' : 'generation failed'}`
-          : `Commande approuvée et billets ${ticketsGenerated ? 'envoyés' : 'génération échouée'}`,
+          : `Commande approuvÃ©e et billets ${ticketsGenerated ? 'envoyÃ©s' : 'gÃ©nÃ©ration Ã©chouÃ©e'}`,
         variant: 'default'
       });
       
@@ -2483,19 +2466,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setIsOrderDetailsOpen(false);
       }
     } catch (error: any) {
-      console.error('\n❌ ============================================');
-      console.error('❌ FRONTEND: Admin Approval Failed');
-      console.error('❌ ============================================');
-      console.error('❌ Error approving COD ambassador order:', error);
-      console.error('❌ Error details:', {
+      console.error('\nâŒ ============================================');
+      console.error('âŒ FRONTEND: Admin Approval Failed');
+      console.error('âŒ ============================================');
+      console.error('âŒ Error approving COD ambassador order:', error);
+      console.error('âŒ Error details:', {
         message: error.message,
         stack: error.stack
       });
-      console.error('❌ ============================================\n');
+      console.error('âŒ ============================================\n');
       
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to approve order' : 'Échec de l\'approbation de la commande'),
+        description: error.message || (language === 'en' ? 'Failed to approve order' : 'Ã‰chec de l\'approbation de la commande'),
         variant: 'destructive'
       });
     }
@@ -2524,7 +2507,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? `This order is not a COD order. Payment method: ${order.payment_method || 'N/A'}`
-            : `Cette commande n'est pas une commande COD. Méthode de paiement: ${order.payment_method || 'N/A'}`,
+            : `Cette commande n'est pas une commande COD. MÃ©thode de paiement: ${order.payment_method || 'N/A'}`,
           variant: 'destructive'
         });
         return;
@@ -2535,7 +2518,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? `Order status must be PENDING_ADMIN_APPROVAL to approve. Current status: ${order.status || 'N/A'}`
-            : `Le statut de la commande doit être PENDING_ADMIN_APPROVAL pour approuver. Statut actuel: ${order.status || 'N/A'}`,
+            : `Le statut de la commande doit Ãªtre PENDING_ADMIN_APPROVAL pour approuver. Statut actuel: ${order.status || 'N/A'}`,
           variant: 'destructive'
         });
         return;
@@ -2579,7 +2562,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           // If we can't parse the error, use the status text
           console.error('Error parsing error response:', parseError);
         }
-        throw new Error(errorMessage || (language === 'en' ? 'Failed to approve order' : 'Échec de l\'approbation de la commande'));
+        throw new Error(errorMessage || (language === 'en' ? 'Failed to approve order' : 'Ã‰chec de l\'approbation de la commande'));
       }
 
       // Parse JSON response safely
@@ -2599,10 +2582,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       // Success
       toast({
-        title: language === 'en' ? 'Success' : 'Succès',
+        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
         description: language === 'en'
           ? `Order approved successfully. Tickets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Sent' : 'Failed'}, SMS: ${data.smsSent ? 'Sent' : 'Failed'}`
-          : `Commande approuvée avec succès. Billets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Envoyé' : 'Échoué'}, SMS: ${data.smsSent ? 'Envoyé' : 'Échoué'}`,
+          : `Commande approuvÃ©e avec succÃ¨s. Billets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'EnvoyÃ©' : 'Ã‰chouÃ©'}, SMS: ${data.smsSent ? 'EnvoyÃ©' : 'Ã‰chouÃ©'}`,
         variant: 'default'
       });
       fetchAmbassadorSalesData();
@@ -2613,7 +2596,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error approving order:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to approve order' : 'Échec de l\'approbation de la commande'),
+        description: error.message || (language === 'en' ? 'Failed to approve order' : 'Ã‰chec de l\'approbation de la commande'),
         variant: 'destructive'
       });
     }
@@ -2637,7 +2620,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? `This order is not a COD order. Payment method: ${order.payment_method || 'N/A'}`
-            : `Cette commande n'est pas une commande COD. Méthode de paiement: ${order.payment_method || 'N/A'}`,
+            : `Cette commande n'est pas une commande COD. MÃ©thode de paiement: ${order.payment_method || 'N/A'}`,
           variant: 'destructive'
         });
         return;
@@ -2648,7 +2631,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? `Order status must be PENDING_ADMIN_APPROVAL to reject. Current status: ${order.status || 'N/A'}`
-            : `Le statut de la commande doit être PENDING_ADMIN_APPROVAL pour rejeter. Statut actuel: ${order.status || 'N/A'}`,
+            : `Le statut de la commande doit Ãªtre PENDING_ADMIN_APPROVAL pour rejeter. Statut actuel: ${order.status || 'N/A'}`,
           variant: 'destructive'
         });
         return;
@@ -2696,14 +2679,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
 
       toast({
-        title: language === 'en' ? 'Success' : 'Succès',
-        description: language === 'en' ? 'Order rejected' : 'Commande rejetée',
+        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+        description: language === 'en' ? 'Order rejected' : 'Commande rejetÃ©e',
         variant: 'default'
       });
       
-      setIsRejectDialogOpen(false);
-      setRejectingOrderId(null);
-      setRejectionReason('');
       fetchAmbassadorSalesData();
       if (selectedOrder?.id === orderId) {
         setIsOrderDetailsOpen(false);
@@ -2712,7 +2692,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error rejecting COD ambassador order:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to reject order' : 'Échec du rejet de la commande'),
+        description: error.message || (language === 'en' ? 'Failed to reject order' : 'Ã‰chec du rejet de la commande'),
         variant: 'destructive'
       });
     }
@@ -2733,9 +2713,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // If it's a COD order, use the special rejection function
       if (order.payment_method === 'ambassador_cash') {
         if (!rejectionReason) {
-          // Open rejection dialog
-          setRejectingOrderId(orderId);
-          setIsRejectDialogOpen(true);
+          toast({
+            title: language === 'en' ? 'Error' : 'Erreur',
+            description: language === 'en' ? 'Rejection reason is required for COD orders' : 'La raison du rejet est requise pour les commandes COD',
+            variant: 'destructive'
+          });
           return;
         }
         return handleRejectCodAmbassadorOrder(orderId, rejectionReason);
@@ -2747,7 +2729,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? `This order is not a COD order. Payment method: ${order.payment_method || 'N/A'}`
-            : `Cette commande n'est pas une commande COD. Méthode de paiement: ${order.payment_method || 'N/A'}`,
+            : `Cette commande n'est pas une commande COD. MÃ©thode de paiement: ${order.payment_method || 'N/A'}`,
           variant: 'destructive'
         });
         return;
@@ -2758,7 +2740,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? `Order status must be PENDING_ADMIN_APPROVAL to reject. Current status: ${order.status || 'N/A'}`
-            : `Le statut de la commande doit être PENDING_ADMIN_APPROVAL pour rejeter. Statut actuel: ${order.status || 'N/A'}`,
+            : `Le statut de la commande doit Ãªtre PENDING_ADMIN_APPROVAL pour rejeter. Statut actuel: ${order.status || 'N/A'}`,
           variant: 'destructive'
         });
         return;
@@ -2798,8 +2780,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
 
       toast({
-        title: language === 'en' ? 'Success' : 'Succès',
-        description: language === 'en' ? 'Order rejected' : 'Commande rejetée',
+        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+        description: language === 'en' ? 'Order rejected' : 'Commande rejetÃ©e',
         variant: 'default'
       });
       fetchAmbassadorSalesData();
@@ -2810,7 +2792,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error rejecting order:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to reject order' : 'Échec du rejet de la commande'),
+        description: error.message || (language === 'en' ? 'Failed to reject order' : 'Ã‰chec du rejet de la commande'),
         variant: 'destructive'
       });
     }
@@ -2818,7 +2800,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Admin Remove Order - NEW FEATURE
   const handleRemoveOrder = async (orderId: string) => {
-    setRemovingOrder(true);
     try {
       const apiBase = getApiBaseUrl();
       const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_REMOVE_ORDER, apiBase);
@@ -2843,8 +2824,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       toast({
-        title: language === 'en' ? 'Order Removed' : 'Commande Retirée',
-        description: language === 'en' ? 'Order has been removed successfully' : 'La commande a été retirée avec succès',
+        title: language === 'en' ? 'Order Removed' : 'Commande RetirÃ©e',
+        description: language === 'en' ? 'Order has been removed successfully' : 'La commande a Ã©tÃ© retirÃ©e avec succÃ¨s',
         variant: 'default'
       });
       
@@ -2854,24 +2835,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setIsOrderDetailsOpen(false);
         setSelectedOrder(null);
       }
-      
-      setIsRemoveOrderDialogOpen(false);
-      setRemovingOrderId(null);
     } catch (error: any) {
       console.error('Error removing order:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to remove order' : 'Échec du retrait de la commande'),
+        description: error.message || (language === 'en' ? 'Failed to remove order' : 'Ã‰chec du retrait de la commande'),
         variant: 'destructive'
       });
-    } finally {
-      setRemovingOrder(false);
+      throw error;
     }
   };
 
   // Admin Skip Ambassador Confirmation - NEW FEATURE
   const handleSkipAmbassadorConfirmation = async (orderId: string, reason?: string) => {
-    setSkippingOrder(true);
     try {
       const apiBase = getApiBaseUrl();
       const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_SKIP_AMBASSADOR_CONFIRMATION, apiBase);
@@ -2898,32 +2874,29 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // Handle rate limiting (429)
         if (response.status === 429) {
           toast({
-            title: language === 'en' ? 'Rate Limit Exceeded' : 'Limite de Taux Dépassée',
+            title: language === 'en' ? 'Rate Limit Exceeded' : 'Limite de Taux DÃ©passÃ©e',
             description: language === 'en' 
               ? 'Too many requests. Please try again later.'
-              : 'Trop de demandes. Veuillez réessayer plus tard.',
+              : 'Trop de demandes. Veuillez rÃ©essayer plus tard.',
             variant: 'destructive'
           });
           return;
         }
 
         // Handle validation errors
-        throw new Error(data.details || data.error || (language === 'en' ? 'Failed to skip ambassador confirmation' : 'Échec de la confirmation de l\'ambassadeur'));
+        throw new Error(data.details || data.error || (language === 'en' ? 'Failed to skip ambassador confirmation' : 'Ã‰chec de la confirmation de l\'ambassadeur'));
       }
 
       // Success
       toast({
-        title: language === 'en' ? 'Success' : 'Succès',
+        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
         description: language === 'en'
           ? `Order approved successfully. Tickets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Sent' : 'Failed'}, SMS: ${data.smsSent ? 'Sent' : 'Failed'}`
-          : `Commande approuvée avec succès. Billets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'Envoyé' : 'Échoué'}, SMS: ${data.smsSent ? 'Envoyé' : 'Échoué'}`,
+          : `Commande approuvÃ©e avec succÃ¨s. Billets: ${data.ticketsCount || 0}, Email: ${data.emailSent ? 'EnvoyÃ©' : 'Ã‰chouÃ©'}, SMS: ${data.smsSent ? 'EnvoyÃ©' : 'Ã‰chouÃ©'}`,
         variant: 'default'
       });
 
-      // Close dialog and refresh data
-      setIsSkipConfirmationDialogOpen(false);
-      setSkippingOrderId(null);
-      setSkipReason('');
+      // Refresh data
       fetchAmbassadorSalesData();
       
       if (selectedOrder?.id === orderId) {
@@ -2933,11 +2906,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error skipping ambassador confirmation:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to skip ambassador confirmation' : 'Échec de la confirmation de l\'ambassadeur'),
+        description: error.message || (language === 'en' ? 'Failed to skip ambassador confirmation' : 'Ã‰chec de la confirmation de l\'ambassadeur'),
         variant: 'destructive'
       });
-    } finally {
-      setSkippingOrder(false);
+      throw error;
     }
   };
 
@@ -2967,26 +2939,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // Handle rate limiting (429)
         if (response.status === 429) {
           toast({
-            title: language === 'en' ? 'Rate Limit Exceeded' : 'Limite de Taux Dépassée',
+            title: language === 'en' ? 'Rate Limit Exceeded' : 'Limite de Taux DÃ©passÃ©e',
             description: language === 'en' 
               ? 'Too many resend requests for this order. Please wait before trying again (max 5 per hour).'
-              : 'Trop de demandes de renvoi pour cette commande. Veuillez attendre avant de réessayer (max 5 par heure).',
+              : 'Trop de demandes de renvoi pour cette commande. Veuillez attendre avant de rÃ©essayer (max 5 par heure).',
             variant: 'destructive'
           });
           return;
         }
 
         // Handle validation errors
-        const errorMessage = data.details || data.error || (language === 'en' ? 'Failed to resend ticket email' : 'Échec du renvoi de l\'email des billets');
+        const errorMessage = data.details || data.error || (language === 'en' ? 'Failed to resend ticket email' : 'Ã‰chec du renvoi de l\'email des billets');
         throw new Error(errorMessage);
       }
 
       // Success
       toast({
-        title: language === 'en' ? 'Email Resent' : 'Email Renvoyé',
+        title: language === 'en' ? 'Email Resent' : 'Email RenvoyÃ©',
         description: language === 'en'
           ? `Ticket email resent successfully. Tickets: ${data.ticketsCount || 0}`
-          : `Email de billet renvoyé avec succès. Billets: ${data.ticketsCount || 0}`,
+          : `Email de billet renvoyÃ© avec succÃ¨s. Billets: ${data.ticketsCount || 0}`,
         variant: 'default'
       });
 
@@ -3010,7 +2982,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error resending ticket email:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to resend ticket email' : 'Échec du renvoi de l\'email des billets'),
+        description: error.message || (language === 'en' ? 'Failed to resend ticket email' : 'Ã‰chec du renvoi de l\'email des billets'),
         variant: 'destructive'
       });
     } finally {
@@ -3036,7 +3008,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? 'COD orders must be approved before they can be completed'
-            : 'Les commandes COD doivent être approuvées avant de pouvoir être terminées',
+            : 'Les commandes COD doivent Ãªtre approuvÃ©es avant de pouvoir Ãªtre terminÃ©es',
           variant: 'destructive'
         });
         return;
@@ -3069,8 +3041,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
 
       toast({
-        title: language === 'en' ? 'Success' : 'Succès',
-        description: language === 'en' ? 'Order completed' : 'Commande terminée',
+        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+        description: language === 'en' ? 'Order completed' : 'Commande terminÃ©e',
         variant: 'default'
       });
       fetchAmbassadorSalesData();
@@ -3081,7 +3053,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error completing order:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to complete order' : 'Échec de la finalisation de la commande'),
+        description: error.message || (language === 'en' ? 'Failed to complete order' : 'Ã‰chec de la finalisation de la commande'),
         variant: 'destructive'
       });
     }
@@ -3110,8 +3082,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
 
       toast({
-        title: language === 'en' ? 'Success' : 'Succès',
-        description: language === 'en' ? `Order status updated to ${newStatus}` : `Statut de la commande mis à jour vers ${newStatus}`,
+        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+        description: language === 'en' ? `Order status updated to ${newStatus}` : `Statut de la commande mis Ã  jour vers ${newStatus}`,
         variant: "default",
       });
 
@@ -3127,7 +3099,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error updating order status:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to update order status' : 'Échec de la mise à jour du statut'),
+        description: error.message || (language === 'en' ? 'Failed to update order status' : 'Ã‰chec de la mise Ã  jour du statut'),
         variant: "destructive",
       });
     }
@@ -3260,10 +3232,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       setAboutImages(images);
       toast({
-        title: language === 'en' ? 'About Images Updated' : 'Images À Propos Mises à Jour',
+        title: language === 'en' ? 'About Images Updated' : 'Images Ã€ Propos Mises Ã  Jour',
         description: language === 'en' 
           ? 'About images have been updated successfully' 
-          : 'Les images de la page À propos ont été mises à jour avec succès',
+          : 'Les images de la page Ã€ propos ont Ã©tÃ© mises Ã  jour avec succÃ¨s',
       });
     } catch (error) {
       console.error('Error saving about images:', error);
@@ -3271,7 +3243,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description: language === 'en' 
           ? 'Failed to save about images' 
-          : 'Échec de la sauvegarde des images À propos',
+          : 'Ã‰chec de la sauvegarde des images Ã€ propos',
         variant: 'destructive',
       });
     }
@@ -3305,7 +3277,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description: language === 'en' 
           ? 'Failed to upload about image' 
-          : 'Échec du téléchargement de l\'image À propos',
+          : 'Ã‰chec du tÃ©lÃ©chargement de l\'image Ã€ propos',
         variant: 'destructive',
       });
     } finally {
@@ -3332,7 +3304,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description: language === 'en' 
           ? 'Failed to delete about image' 
-          : 'Échec de la suppression de l\'image À propos',
+          : 'Ã‰chec de la suppression de l\'image Ã€ propos',
         variant: 'destructive',
       });
     }
@@ -3393,10 +3365,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (!applications || applications.length === 0) {
         toast({
-          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
+          title: language === 'en' ? 'No Data' : 'Aucune DonnÃ©e',
           description: language === 'en' 
             ? 'No ambassador applications found with phone numbers'
-            : 'Aucune candidature d\'ambassadeur trouvée avec numéros de téléphone',
+            : 'Aucune candidature d\'ambassadeur trouvÃ©e avec numÃ©ros de tÃ©lÃ©phone',
           variant: 'default'
         });
         return;
@@ -3414,10 +3386,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (phonesToImport.length === 0) {
         toast({
-          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
+          title: language === 'en' ? 'No Data' : 'Aucune DonnÃ©e',
           description: language === 'en' 
             ? 'No valid phone numbers found in applications'
-            : 'Aucun numéro de téléphone valide trouvé dans les candidatures',
+            : 'Aucun numÃ©ro de tÃ©lÃ©phone valide trouvÃ© dans les candidatures',
           variant: 'default'
         });
         return;
@@ -3539,10 +3511,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchPhoneSubscribers();
 
       toast({
-        title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
+        title: language === 'en' ? 'Import Complete' : 'Importation TerminÃ©e',
         description: language === 'en'
           ? `Imported: ${results.length}, Duplicates: ${duplicates.length}, Errors: ${errors.length}`
-          : `Importé: ${results.length}, Doublons: ${duplicates.length}, Erreurs: ${errors.length}`,
+          : `ImportÃ©: ${results.length}, Doublons: ${duplicates.length}, Erreurs: ${errors.length}`,
         variant: results.length > 0 ? 'default' : 'destructive'
       });
 
@@ -3553,7 +3525,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error importing from applications:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : 'Échec de l\'importation des numéros'),
+        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : 'Ã‰chec de l\'importation des numÃ©ros'),
         variant: 'destructive'
       });
     } finally {
@@ -3566,10 +3538,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       if (phoneSubscribers.length === 0) {
         toast({
-          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
+          title: language === 'en' ? 'No Data' : 'Aucune DonnÃ©e',
           description: language === 'en' 
             ? 'No phone numbers to export'
-            : 'Aucun numéro de téléphone à exporter',
+            : 'Aucun numÃ©ro de tÃ©lÃ©phone Ã  exporter',
           variant: 'default'
         });
         return;
@@ -3612,17 +3584,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.URL.revokeObjectURL(url);
 
       toast({
-        title: language === 'en' ? 'Export Successful' : 'Exportation Réussie',
+        title: language === 'en' ? 'Export Successful' : 'Exportation RÃ©ussie',
         description: language === 'en' 
           ? `Exported ${phoneSubscribers.length} phone numbers`
-          : `${phoneSubscribers.length} numéros exportés`,
+          : `${phoneSubscribers.length} numÃ©ros exportÃ©s`,
         variant: 'default'
       });
     } catch (error: any) {
       console.error('Error exporting phone numbers:', error);
       toast({
-        title: language === 'en' ? 'Export Failed' : 'Échec de l\'Exportation',
-        description: error.message || (language === 'en' ? 'Failed to export phone numbers' : 'Échec de l\'exportation des numéros'),
+        title: language === 'en' ? 'Export Failed' : 'Ã‰chec de l\'Exportation',
+        description: error.message || (language === 'en' ? 'Failed to export phone numbers' : 'Ã‰chec de l\'exportation des numÃ©ros'),
         variant: 'destructive'
       });
     }
@@ -3670,10 +3642,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (phoneNumbers.length === 0) {
         toast({
-          title: language === 'en' ? 'No Valid Numbers' : 'Aucun Numéro Valide',
+          title: language === 'en' ? 'No Valid Numbers' : 'Aucun NumÃ©ro Valide',
           description: language === 'en' 
             ? 'No valid phone numbers found in Excel file'
-            : 'Aucun numéro de téléphone valide trouvé dans le fichier Excel',
+            : 'Aucun numÃ©ro de tÃ©lÃ©phone valide trouvÃ© dans le fichier Excel',
           variant: 'destructive'
         });
         return;
@@ -3705,7 +3677,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'All Duplicates' : 'Tous Doublons',
           description: language === 'en' 
             ? `All ${phoneNumbers.length} phone numbers already exist in database`
-            : `Tous les ${phoneNumbers.length} numéros existent déjà dans la base de données`,
+            : `Tous les ${phoneNumbers.length} numÃ©ros existent dÃ©jÃ  dans la base de donnÃ©es`,
           variant: 'default'
         });
         return;
@@ -3762,10 +3734,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchPhoneSubscribers();
 
       toast({
-        title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
+        title: language === 'en' ? 'Import Complete' : 'Importation TerminÃ©e',
         description: language === 'en'
           ? `Imported: ${results.length}, Duplicates: ${duplicatesCount}, Errors: ${errors.length}`
-          : `Importé: ${results.length}, Doublons: ${duplicatesCount}, Erreurs: ${errors.length}`,
+          : `ImportÃ©: ${results.length}, Doublons: ${duplicatesCount}, Erreurs: ${errors.length}`,
         variant: results.length > 0 ? 'default' : 'destructive'
       });
 
@@ -3777,8 +3749,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     } catch (error: any) {
       console.error('Error importing from Excel:', error);
       toast({
-        title: language === 'en' ? 'Import Failed' : 'Échec de l\'Importation',
-        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : 'Échec de l\'importation des numéros'),
+        title: language === 'en' ? 'Import Failed' : 'Ã‰chec de l\'Importation',
+        description: error.message || (language === 'en' ? 'Failed to import phone numbers' : 'Ã‰chec de l\'importation des numÃ©ros'),
         variant: 'destructive'
       });
     } finally {
@@ -3820,10 +3792,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       if (emailSubscribers.length === 0) {
         toast({
-          title: language === 'en' ? 'No Data' : 'Aucune Donnée',
+          title: language === 'en' ? 'No Data' : 'Aucune DonnÃ©e',
           description: language === 'en' 
             ? 'No email addresses to export'
-            : 'Aucune adresse email à exporter',
+            : 'Aucune adresse email Ã  exporter',
           variant: 'default'
         });
         return;
@@ -3862,17 +3834,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.URL.revokeObjectURL(url);
 
       toast({
-        title: language === 'en' ? 'Export Successful' : 'Exportation Réussie',
+        title: language === 'en' ? 'Export Successful' : 'Exportation RÃ©ussie',
         description: language === 'en' 
           ? `Exported ${emailSubscribers.length} email addresses`
-          : `${emailSubscribers.length} adresses email exportées`,
+          : `${emailSubscribers.length} adresses email exportÃ©es`,
         variant: 'default'
       });
     } catch (error: any) {
       console.error('Error exporting email addresses:', error);
       toast({
-        title: language === 'en' ? 'Export Failed' : 'Échec de l\'Exportation',
-        description: error.message || (language === 'en' ? 'Failed to export email addresses' : 'Échec de l\'exportation des adresses email'),
+        title: language === 'en' ? 'Export Failed' : 'Ã‰chec de l\'Exportation',
+        description: error.message || (language === 'en' ? 'Failed to export email addresses' : 'Ã‰chec de l\'exportation des adresses email'),
         variant: 'destructive'
       });
     }
@@ -3914,7 +3886,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'No Valid Emails' : 'Aucun Email Valide',
           description: language === 'en' 
             ? 'No valid email addresses found in Excel file'
-            : 'Aucune adresse email valide trouvée dans le fichier Excel',
+            : 'Aucune adresse email valide trouvÃ©e dans le fichier Excel',
           variant: 'destructive'
         });
         return;
@@ -3945,7 +3917,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'All Duplicates' : 'Tous Doublons',
           description: language === 'en' 
             ? `All ${emails.length} email addresses already exist in database`
-            : `Toutes les ${emails.length} adresses email existent déjà dans la base de données`,
+            : `Toutes les ${emails.length} adresses email existent dÃ©jÃ  dans la base de donnÃ©es`,
           variant: 'default'
         });
         return;
@@ -3999,10 +3971,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchEmailSubscribers();
 
       toast({
-        title: language === 'en' ? 'Import Complete' : 'Importation Terminée',
+        title: language === 'en' ? 'Import Complete' : 'Importation TerminÃ©e',
         description: language === 'en'
           ? `Imported: ${results.length}, Duplicates: ${duplicatesCount}, Errors: ${errors.length}`
-          : `Importé: ${results.length}, Doublons: ${duplicatesCount}, Erreurs: ${errors.length}`,
+          : `ImportÃ©: ${results.length}, Doublons: ${duplicatesCount}, Erreurs: ${errors.length}`,
         variant: results.length > 0 ? 'default' : 'destructive'
       });
 
@@ -4014,8 +3986,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     } catch (error: any) {
       console.error('Error importing from Excel:', error);
       toast({
-        title: language === 'en' ? 'Import Failed' : 'Échec de l\'Importation',
-        description: error.message || (language === 'en' ? 'Failed to import email addresses' : 'Échec de l\'importation des adresses email'),
+        title: language === 'en' ? 'Import Failed' : 'Ã‰chec de l\'Importation',
+        description: error.message || (language === 'en' ? 'Failed to import email addresses' : 'Ã‰chec de l\'importation des adresses email'),
         variant: 'destructive'
       });
     } finally {
@@ -4289,7 +4261,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <p class="footer-text" style="margin-top: 20px;">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
             <div class="footer-links">
               <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
-              <span style="color: #999999;">•</span>
+              <span style="color: #999999;">â€¢</span>
               <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
             </div>
           </div>
@@ -4371,17 +4343,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       toast({
-        title: language === 'en' ? 'Test Email Sent' : 'Email de Test Envoyé',
+        title: language === 'en' ? 'Test Email Sent' : 'Email de Test EnvoyÃ©',
         description: language === 'en'
           ? `Test email sent successfully to ${testEmailAddress.trim()}`
-          : `Email de test envoyé avec succès à ${testEmailAddress.trim()}`,
+          : `Email de test envoyÃ© avec succÃ¨s Ã  ${testEmailAddress.trim()}`,
         variant: 'default'
       });
     } catch (error: any) {
       console.error('Error sending test email:', error);
       toast({
-        title: language === 'en' ? 'Test Email Failed' : 'Échec de l\'Email de Test',
-        description: error.message || (language === 'en' ? 'Failed to send test email' : 'Échec de l\'envoi de l\'email de test'),
+        title: language === 'en' ? 'Test Email Failed' : 'Ã‰chec de l\'Email de Test',
+        description: error.message || (language === 'en' ? 'Failed to send test email' : 'Ã‰chec de l\'envoi de l\'email de test'),
         variant: 'destructive'
       });
     } finally {
@@ -4418,7 +4390,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'No email subscribers available' 
-          : 'Aucun abonné email disponible',
+          : 'Aucun abonnÃ© email disponible',
         variant: 'destructive',
       });
       return;
@@ -4472,10 +4444,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const failCount = results.filter(r => !r.success).length;
 
       toast({
-        title: language === 'en' ? 'Bulk Email Complete' : 'Envoi en Masse Terminé',
+        title: language === 'en' ? 'Bulk Email Complete' : 'Envoi en Masse TerminÃ©',
         description: language === 'en'
           ? `Sent: ${successCount}, Failed: ${failCount}`
-          : `Envoyé: ${successCount}, Échoué: ${failCount}`,
+          : `EnvoyÃ©: ${successCount}, Ã‰chouÃ©: ${failCount}`,
         variant: failCount === 0 ? 'default' : 'destructive'
       });
 
@@ -4488,7 +4460,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error sending bulk emails:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error.message || (language === 'en' ? 'Failed to send bulk emails' : 'Échec de l\'envoi en masse'),
+        description: error.message || (language === 'en' ? 'Failed to send bulk emails' : 'Ã‰chec de l\'envoi en masse'),
         variant: 'destructive'
       });
     } finally {
@@ -4546,7 +4518,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'Failed to fetch site logs' 
-          : 'Échec de la récupération des logs du site',
+          : 'Ã‰chec de la rÃ©cupÃ©ration des logs du site',
         variant: 'destructive',
       });
     } finally {
@@ -4609,7 +4581,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? `Failed to fetch logs: ${error.message}` 
-          : `Échec de la récupération des logs: ${error.message}`,
+          : `Ã‰chec de la rÃ©cupÃ©ration des logs: ${error.message}`,
         variant: 'destructive',
       });
       setLogs([]);
@@ -4694,7 +4666,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         let passesStr = 'N/A';
         if (submission.selected_passes && Array.isArray(submission.selected_passes) && submission.selected_passes.length > 0) {
           passesStr = submission.selected_passes.map((p: any) => 
-            `${p.name || p.passName || 'Pass'} × ${p.quantity || 1}`
+            `${p.name || p.passName || 'Pass'} Ã— ${p.quantity || 1}`
           ).join(', ');
         }
 
@@ -4744,10 +4716,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.URL.revokeObjectURL(downloadUrl);
 
       toast({
-        title: language === 'en' ? 'Success' : 'Succès',
+        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
         description: language === 'en' 
           ? `Exported ${allSubmissions.length} submissions to Excel` 
-          : `${allSubmissions.length} soumissions exportées vers Excel`,
+          : `${allSubmissions.length} soumissions exportÃ©es vers Excel`,
         variant: 'default',
       });
     } catch (error: any) {
@@ -4756,7 +4728,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? `Failed to export submissions: ${error.message}` 
-          : `Échec de l'exportation: ${error.message}`,
+          : `Ã‰chec de l'exportation: ${error.message}`,
         variant: 'destructive',
       });
     } finally {
@@ -4801,7 +4773,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? `Failed to fetch AIO events submissions: ${error.message}` 
-          : `Échec de la récupération des soumissions AIO Events: ${error.message}`,
+          : `Ã‰chec de la rÃ©cupÃ©ration des soumissions AIO Events: ${error.message}`,
         variant: 'destructive',
       });
       setAioEventsSubmissions([]);
@@ -4858,18 +4830,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.dispatchEvent(new Event('favicon-updated'));
 
       toast({
-        title: language === 'en' ? 'Favicon Uploaded' : 'Favicon Téléchargé',
+        title: language === 'en' ? 'Favicon Uploaded' : 'Favicon TÃ©lÃ©chargÃ©',
         description: language === 'en' 
           ? 'Favicon uploaded successfully. The favicon should update automatically. If not, try refreshing the page (Ctrl+Shift+R or Cmd+Shift+R).' 
-          : 'Favicon téléchargé avec succès. Le favicon devrait se mettre à jour automatiquement. Sinon, essayez d\'actualiser la page (Ctrl+Shift+R ou Cmd+Shift+R).',
+          : 'Favicon tÃ©lÃ©chargÃ© avec succÃ¨s. Le favicon devrait se mettre Ã  jour automatiquement. Sinon, essayez d\'actualiser la page (Ctrl+Shift+R ou Cmd+Shift+R).',
       });
     } catch (error) {
       console.error('Error uploading favicon:', error);
       toast({
-        title: language === 'en' ? 'Upload Failed' : 'Échec du Téléchargement',
+        title: language === 'en' ? 'Upload Failed' : 'Ã‰chec du TÃ©lÃ©chargement',
         description: language === 'en' 
           ? `Failed to upload favicon: ${error instanceof Error ? error.message : 'Unknown error'}` 
-          : `Échec du téléchargement: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+          : `Ã‰chec du tÃ©lÃ©chargement: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
         variant: 'destructive',
       });
     } finally {
@@ -4886,7 +4858,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? 'No favicon to delete' 
-            : 'Aucun favicon à supprimer',
+            : 'Aucun favicon Ã  supprimer',
           variant: 'destructive',
         });
         return;
@@ -4905,18 +4877,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.dispatchEvent(new Event('favicon-updated'));
 
       toast({
-        title: language === 'en' ? 'Favicon Deleted' : 'Favicon Supprimé',
+        title: language === 'en' ? 'Favicon Deleted' : 'Favicon SupprimÃ©',
         description: language === 'en' 
           ? 'Favicon deleted successfully. The change should be visible immediately. If not, try refreshing the page (Ctrl+Shift+R or Cmd+Shift+R).' 
-          : 'Favicon supprimé avec succès. Le changement devrait être visible immédiatement. Sinon, essayez d\'actualiser la page (Ctrl+Shift+R ou Cmd+Shift+R).',
+          : 'Favicon supprimÃ© avec succÃ¨s. Le changement devrait Ãªtre visible immÃ©diatement. Sinon, essayez d\'actualiser la page (Ctrl+Shift+R ou Cmd+Shift+R).',
       });
     } catch (error) {
       console.error('Error deleting favicon:', error);
       toast({
-        title: language === 'en' ? 'Delete Failed' : 'Échec de la Suppression',
+        title: language === 'en' ? 'Delete Failed' : 'Ã‰chec de la Suppression',
         description: language === 'en' 
           ? `Failed to delete favicon: ${error instanceof Error ? error.message : 'Unknown error'}` 
-          : `Échec de la suppression: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
+          : `Ã‰chec de la suppression: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
         variant: 'destructive',
       });
     }
@@ -4953,7 +4925,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           // Only show toast if API is configured but returned an error
         toast({
             title: language === 'en' ? 'Warning' : 'Avertissement',
-            description: data.error || data.message || (language === 'en' ? 'Unable to fetch SMS balance' : 'Impossible de récupérer le solde SMS'),
+            description: data.error || data.message || (language === 'en' ? 'Unable to fetch SMS balance' : 'Impossible de rÃ©cupÃ©rer le solde SMS'),
             variant: 'default',
           });
         }
@@ -4969,7 +4941,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to fetch SMS balance' : 'Échec de la récupération du solde SMS'),
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to fetch SMS balance' : 'Ã‰chec de la rÃ©cupÃ©ration du solde SMS'),
         variant: 'destructive',
       });
     } finally {
@@ -4984,7 +4956,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'Please enter phone numbers' 
-          : 'Veuillez entrer des numéros de téléphone',
+          : 'Veuillez entrer des numÃ©ros de tÃ©lÃ©phone',
         variant: 'destructive',
       });
       return;
@@ -5004,7 +4976,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
             ? 'No valid phone numbers found' 
-            : 'Aucun numéro de téléphone valide trouvé',
+            : 'Aucun numÃ©ro de tÃ©lÃ©phone valide trouvÃ©',
           variant: 'destructive',
         });
         return;
@@ -5023,7 +4995,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (text.includes('<!DOCTYPE') || text.includes('<html')) {
           errorMsg = language === 'en' 
             ? 'API route not found. Please restart the backend server (npm run server) to load the new routes.'
-            : 'Route API introuvable. Veuillez redémarrer le serveur backend (npm run server) pour charger les nouvelles routes.';
+            : 'Route API introuvable. Veuillez redÃ©marrer le serveur backend (npm run server) pour charger les nouvelles routes.';
         } else {
           errorMsg += `. ${text.substring(0, 200)}`;
         }
@@ -5036,7 +5008,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         const text = await response.text();
         let errorMsg = language === 'en'
           ? 'API route not found. Please restart the backend server (npm run server) to load the new routes.'
-          : 'Route API introuvable. Veuillez redémarrer le serveur backend (npm run server) pour charger les nouvelles routes.';
+          : 'Route API introuvable. Veuillez redÃ©marrer le serveur backend (npm run server) pour charger les nouvelles routes.';
         if (!text.includes('<!DOCTYPE') && !text.includes('<html')) {
           errorMsg = `Expected JSON but got ${contentType}. Response: ${text.substring(0, 200)}`;
         }
@@ -5047,10 +5019,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (data.success) {
         toast({
-          title: language === 'en' ? 'Success' : 'Succès',
+          title: language === 'en' ? 'Success' : 'SuccÃ¨s',
           description: language === 'en' 
             ? `${data.inserted} phone numbers added. ${data.duplicates} duplicates skipped. ${data.invalid} invalid numbers.`
-            : `${data.inserted} numéros ajoutés. ${data.duplicates} doublons ignorés. ${data.invalid} numéros invalides.`,
+            : `${data.inserted} numÃ©ros ajoutÃ©s. ${data.duplicates} doublons ignorÃ©s. ${data.invalid} numÃ©ros invalides.`,
         });
         setBulkPhonesInput('');
         await fetchPhoneSubscribers();
@@ -5061,7 +5033,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error adding bulk phones:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to add phone numbers' : 'Échec de l\'ajout des numéros'),
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to add phone numbers' : 'Ã‰chec de l\'ajout des numÃ©ros'),
         variant: 'destructive',
       });
     } finally {
@@ -5087,7 +5059,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'Please enter a phone number' 
-          : 'Veuillez entrer un numéro de téléphone',
+          : 'Veuillez entrer un numÃ©ro de tÃ©lÃ©phone',
         variant: 'destructive',
       });
       return;
@@ -5101,7 +5073,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'Please enter a valid 8-digit phone number (e.g., 21234567)' 
-          : 'Veuillez entrer un numéro de téléphone valide à 8 chiffres (ex: 21234567)',
+          : 'Veuillez entrer un numÃ©ro de tÃ©lÃ©phone valide Ã  8 chiffres (ex: 21234567)',
         variant: 'destructive',
       });
       return;
@@ -5113,8 +5085,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (smsBalance?.balanceValue === 0 || smsBalance?.balance === 0 || smsBalance?.balance === '0') {
       const confirmSend = window.confirm(
         language === 'en' 
-          ? '⚠️ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
-          : '⚠️ Avertissement: Votre solde SMS semble être de 0. Les messages peuvent échouer. Voulez-vous continuer?'
+          ? 'âš ï¸ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
+          : 'âš ï¸ Avertissement: Votre solde SMS semble Ãªtre de 0. Les messages peuvent Ã©chouer. Voulez-vous continuer?'
       );
       if (!confirmSend) {
         return;
@@ -5172,10 +5144,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
 
         toast({
-          title: language === 'en' ? 'Test SMS Sent' : 'SMS Test Envoyé',
+          title: language === 'en' ? 'Test SMS Sent' : 'SMS Test EnvoyÃ©',
           description: language === 'en' 
             ? `Test SMS sent successfully to +216 ${phoneToSend}`
-            : `SMS test envoyé avec succès à +216 ${phoneToSend}`,
+            : `SMS test envoyÃ© avec succÃ¨s Ã  +216 ${phoneToSend}`,
         });
         
         await fetchSmsLogs();
@@ -5191,7 +5163,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
     } catch (error) {
       console.error('Error sending test SMS:', error);
-      const errorMessage = error instanceof Error ? error.message : (language === 'en' ? 'Failed to send test SMS' : 'Échec de l\'envoi du SMS test');
+      const errorMessage = error instanceof Error ? error.message : (language === 'en' ? 'Failed to send test SMS' : 'Ã‰chec de l\'envoi du SMS test');
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description: errorMessage,
@@ -5221,7 +5193,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'No subscribers available' 
-          : 'Aucun abonné disponible',
+          : 'Aucun abonnÃ© disponible',
         variant: 'destructive',
       });
       return;
@@ -5231,8 +5203,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (smsBalance?.balanceValue === 0 || smsBalance?.balance === 0 || smsBalance?.balance === '0') {
       const confirmSend = window.confirm(
         language === 'en' 
-          ? '⚠️ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
-          : '⚠️ Avertissement: Votre solde SMS semble être de 0. Les messages peuvent échouer. Voulez-vous continuer?'
+          ? 'âš ï¸ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
+          : 'âš ï¸ Avertissement: Votre solde SMS semble Ãªtre de 0. Les messages peuvent Ã©chouer. Voulez-vous continuer?'
       );
       if (!confirmSend) {
         return;
@@ -5268,10 +5240,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (data.success) {
         toast({
-          title: language === 'en' ? 'SMS Broadcast Sent' : 'Diffusion SMS Envoyée',
+          title: language === 'en' ? 'SMS Broadcast Sent' : 'Diffusion SMS EnvoyÃ©e',
           description: language === 'en' 
             ? `Sent: ${data.sent}, Failed: ${data.failed} out of ${data.total}`
-            : `Envoyé: ${data.sent}, Échoué: ${data.failed} sur ${data.total}`,
+            : `EnvoyÃ©: ${data.sent}, Ã‰chouÃ©: ${data.failed} sur ${data.total}`,
         });
         
         await fetchSmsLogs();
@@ -5284,7 +5256,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error sending SMS broadcast:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send SMS' : 'Échec de l\'envoi du SMS'),
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send SMS' : 'Ã‰chec de l\'envoi du SMS'),
         variant: 'destructive',
       });
     } finally {
@@ -5310,7 +5282,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? 'Error' : 'Erreur',
         description: language === 'en' 
           ? 'Please select a city' 
-          : 'Veuillez sélectionner une ville',
+          : 'Veuillez sÃ©lectionner une ville',
         variant: 'destructive',
       });
       return;
@@ -5318,10 +5290,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
     if (targetedCount === 0) {
       toast({
-        title: language === 'en' ? 'No Numbers' : 'Aucun Numéro',
+        title: language === 'en' ? 'No Numbers' : 'Aucun NumÃ©ro',
         description: language === 'en' 
           ? `No phone numbers found for city: ${targetedCity}`
-          : `Aucun numéro de téléphone trouvé pour la ville: ${targetedCity}`,
+          : `Aucun numÃ©ro de tÃ©lÃ©phone trouvÃ© pour la ville: ${targetedCity}`,
         variant: 'destructive',
       });
       return;
@@ -5331,8 +5303,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (smsBalance?.balanceValue === 0 || smsBalance?.balance === 0 || smsBalance?.balance === '0') {
       const confirmSend = window.confirm(
         language === 'en' 
-          ? '⚠️ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
-          : '⚠️ Avertissement: Votre solde SMS semble être de 0. Les messages peuvent échouer. Voulez-vous continuer?'
+          ? 'âš ï¸ Warning: Your SMS balance appears to be 0. Messages may fail to send. Do you want to continue?'
+          : 'âš ï¸ Avertissement: Votre solde SMS semble Ãªtre de 0. Les messages peuvent Ã©chouer. Voulez-vous continuer?'
       );
       if (!confirmSend) {
         return;
@@ -5383,10 +5355,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (responseData.success) {
         toast({
-          title: language === 'en' ? 'Targeted SMS Sent' : 'SMS Ciblé Envoyé',
+          title: language === 'en' ? 'Targeted SMS Sent' : 'SMS CiblÃ© EnvoyÃ©',
           description: language === 'en' 
             ? `Sent: ${responseData.sent}, Failed: ${responseData.failed} out of ${responseData.total}`
-            : `Envoyé: ${responseData.sent}, Échoué: ${responseData.failed} sur ${responseData.total}`,
+            : `EnvoyÃ©: ${responseData.sent}, Ã‰chouÃ©: ${responseData.failed} sur ${responseData.total}`,
         });
         
         await fetchSmsLogs();
@@ -5399,7 +5371,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error sending targeted SMS:', error);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send SMS' : 'Échec de l\'envoi du SMS'),
+        description: error instanceof Error ? error.message : (language === 'en' ? 'Failed to send SMS' : 'Ã‰chec de l\'envoi du SMS'),
         variant: 'destructive',
       });
     } finally {
@@ -5456,8 +5428,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             
             // Show alert if role is not super_admin but user expects it
             if (role !== 'super_admin') {
-              console.warn('⚠️ Current role is:', role, '- Expected: super_admin');
-              console.warn('💡 If you should be super_admin, run FIX_SUPER_ADMIN_ROLE.sql and log out/in');
+              console.warn('âš ï¸ Current role is:', role, '- Expected: super_admin');
+              console.warn('ðŸ’¡ If you should be super_admin, run FIX_SUPER_ADMIN_ROLE.sql and log out/in');
             }
           } else {
             // Check if it's a clear token expiration (not a server error)
@@ -5686,18 +5658,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         if (emailResult.success) {
           toast({
-            title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+            title: language === 'en' ? 'Admin Created' : 'Admin CrÃ©Ã©',
             description: language === 'en' 
               ? `Admin account created successfully. Credentials sent to ${newAdminData.email}`
-              : `Compte admin créé avec succès. Identifiants envoyés à ${newAdminData.email}`,
+              : `Compte admin crÃ©Ã© avec succÃ¨s. Identifiants envoyÃ©s Ã  ${newAdminData.email}`,
           });
         } else {
           console.error('Email sending failed:', emailResult.error);
           toast({
-            title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin Créé - Email Échoué',
+            title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin CrÃ©Ã© - Email Ã‰chouÃ©',
             description: language === 'en' 
               ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Please check the password manually.`
-              : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Veuillez vérifier le mot de passe manuellement.`,
+              : `Compte admin crÃ©Ã©, mais l'email a Ã©chouÃ©: ${emailResult.error || 'Erreur inconnue'}. Veuillez vÃ©rifier le mot de passe manuellement.`,
             variant: 'destructive',
             duration: 10000,
           });
@@ -5746,18 +5718,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
           if (emailResult.success) {
             toast({
-              title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+              title: language === 'en' ? 'Admin Created' : 'Admin CrÃ©Ã©',
               description: language === 'en' 
                 ? `Admin account created successfully. Credentials sent to ${newAdminData.email}`
-                : `Compte admin créé avec succès. Identifiants envoyés à ${newAdminData.email}`,
+                : `Compte admin crÃ©Ã© avec succÃ¨s. Identifiants envoyÃ©s Ã  ${newAdminData.email}`,
             });
           } else {
             console.error('Email sending failed:', emailResult.error);
             toast({
-              title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin Créé - Email Échoué',
+              title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin CrÃ©Ã© - Email Ã‰chouÃ©',
               description: language === 'en' 
                 ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Please check the password manually.`
-                : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Veuillez vérifier le mot de passe manuellement.`,
+                : `Compte admin crÃ©Ã©, mais l'email a Ã©chouÃ©: ${emailResult.error || 'Erreur inconnue'}. Veuillez vÃ©rifier le mot de passe manuellement.`,
               variant: 'destructive',
               duration: 10000,
             });
@@ -5792,18 +5764,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (emailResult.success) {
         toast({
-          title: language === 'en' ? 'Admin Created' : 'Admin Créé',
+          title: language === 'en' ? 'Admin Created' : 'Admin CrÃ©Ã©',
           description: language === 'en' 
             ? `Admin account created successfully. Credentials sent to ${newAdminData.email}`
-            : `Compte admin créé avec succès. Identifiants envoyés à ${newAdminData.email}`,
+            : `Compte admin crÃ©Ã© avec succÃ¨s. Identifiants envoyÃ©s Ã  ${newAdminData.email}`,
         });
       } else {
         console.error('Email sending failed:', emailResult.error);
         toast({
-          title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin Créé - Email Échoué',
+          title: language === 'en' ? 'Admin Created - Email Failed' : 'Admin CrÃ©Ã© - Email Ã‰chouÃ©',
           description: language === 'en' 
             ? `Admin account created, but email failed: ${emailResult.error || 'Unknown error'}. Please check the password manually.`
-            : `Compte admin créé, mais l'email a échoué: ${emailResult.error || 'Erreur inconnue'}. Veuillez vérifier le mot de passe manuellement.`,
+            : `Compte admin crÃ©Ã©, mais l'email a Ã©chouÃ©: ${emailResult.error || 'Erreur inconnue'}. Veuillez vÃ©rifier le mot de passe manuellement.`,
           variant: 'destructive',
           duration: 10000,
         });
@@ -5819,16 +5791,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error creating admin:', error);
       
       // Provide more specific error message
-      let errorMessage = language === 'en' ? 'Failed to create admin account' : 'Échec de la création du compte admin';
+      let errorMessage = language === 'en' ? 'Failed to create admin account' : 'Ã‰chec de la crÃ©ation du compte admin';
       
       if (error?.code === '42501' || error?.message?.includes('policy') || error?.message?.includes('permission')) {
         errorMessage = language === 'en' 
           ? 'Permission denied. Please run FIX_ADMIN_INSERT_POLICY.sql in Supabase SQL Editor.'
-          : 'Permission refusée. Veuillez exécuter FIX_ADMIN_INSERT_POLICY.sql dans l\'éditeur SQL Supabase.';
+          : 'Permission refusÃ©e. Veuillez exÃ©cuter FIX_ADMIN_INSERT_POLICY.sql dans l\'Ã©diteur SQL Supabase.';
       } else if (error?.code === '23505' || error?.message?.includes('duplicate') || error?.message?.includes('unique')) {
         errorMessage = language === 'en' 
           ? 'An admin with this email already exists.'
-          : 'Un admin avec cet email existe déjà.';
+          : 'Un admin avec cet email existe dÃ©jÃ .';
       } else if (error?.message) {
         errorMessage = error.message;
       }
@@ -5899,10 +5871,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       toast({
-        title: language === 'en' ? 'Admin Updated' : 'Admin Modifié',
+        title: language === 'en' ? 'Admin Updated' : 'Admin ModifiÃ©',
         description: language === 'en' 
           ? 'Admin account updated successfully'
-          : 'Compte admin modifié avec succès',
+          : 'Compte admin modifiÃ© avec succÃ¨s',
       });
 
       // Reset form and close dialog
@@ -5920,16 +5892,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     } catch (error: any) {
       console.error('Error updating admin:', error);
       
-      let errorMessage = language === 'en' ? 'Failed to update admin account' : 'Échec de la modification du compte admin';
+      let errorMessage = language === 'en' ? 'Failed to update admin account' : 'Ã‰chec de la modification du compte admin';
       
       if (error?.code === '42501' || error?.message?.includes('policy') || error?.message?.includes('permission')) {
         errorMessage = language === 'en' 
           ? 'Permission denied. Please check your admin permissions.'
-          : 'Permission refusée. Veuillez vérifier vos permissions d\'admin.';
+          : 'Permission refusÃ©e. Veuillez vÃ©rifier vos permissions d\'admin.';
       } else if (error?.code === '23505' || error?.message?.includes('duplicate') || error?.message?.includes('unique')) {
         errorMessage = language === 'en' 
           ? 'An admin with this email already exists.'
-          : 'Un admin avec cet email existe déjà.';
+          : 'Un admin avec cet email existe dÃ©jÃ .';
       } else if (error?.message) {
         errorMessage = error.message;
       }
@@ -5976,16 +5948,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         logAdminAction(supabase, { adminId: currentAdminId, adminName: currentAdminName || 'Unknown', adminEmail: currentAdminEmail, action: 'admin.deleted', targetType: 'admin', targetId: adminId, details: { target_name: target?.name, target_email: target?.email } }).catch(() => {});
       }
       toast({
-        title: language === 'en' ? 'Admin Deleted' : 'Admin Supprimé',
-        description: language === 'en' ? 'Admin account deleted successfully' : 'Compte admin supprimé avec succès',
+        title: language === 'en' ? 'Admin Deleted' : 'Admin SupprimÃ©',
+        description: language === 'en' ? 'Admin account deleted successfully' : 'Compte admin supprimÃ© avec succÃ¨s',
       });
       await fetchAdmins();
       await fetchAdminLogs();
     } catch (error: any) {
       console.error('Error deleting admin:', error);
-      let errorMessage = language === 'en' ? 'Failed to delete admin account' : 'Échec de la suppression du compte admin';
+      let errorMessage = language === 'en' ? 'Failed to delete admin account' : 'Ã‰chec de la suppression du compte admin';
       if (error?.code === '42501' || error?.message?.includes('policy') || error?.message?.includes('permission')) {
-        errorMessage = language === 'en' ? 'Permission denied. Please check your admin permissions.' : 'Permission refusée. Veuillez vérifier vos permissions d\'admin.';
+        errorMessage = language === 'en' ? 'Permission denied. Please check your admin permissions.' : 'Permission refusÃ©e. Veuillez vÃ©rifier vos permissions d\'admin.';
       } else if (error?.message) {
         errorMessage = error.message;
       }
@@ -6019,13 +5991,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setPassesForManagement(passesWithStock);
       }
       toast({
-        title: language === 'en' ? 'Success' : 'Succès',
-        description: language === 'en' ? 'Pass deleted successfully' : 'Pass supprimé avec succès',
+        title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+        description: language === 'en' ? 'Pass deleted successfully' : 'Pass supprimÃ© avec succÃ¨s',
       });
     } catch (error: any) {
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: error?.message || (language === 'en' ? 'Failed to delete pass' : 'Échec de la suppression du pass'),
+        description: error?.message || (language === 'en' ? 'Failed to delete pass' : 'Ã‰chec de la suppression du pass'),
         variant: "destructive",
       });
     }
@@ -6289,11 +6261,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       try {
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        const { data: onlineForChart } = await (supabase as any)
+        let chartQuery = (supabase as any)
           .from('orders')
           .select('id, created_at, total_price, total')
           .eq('source', 'platform_online')
           .gte('created_at', sevenDaysAgo.toISOString());
+        
+        // Filter by selected event if one is selected
+        if (selectedEventId) {
+          chartQuery = chartQuery.eq('event_id', selectedEventId);
+        }
+        
+        const { data: onlineForChart } = await chartQuery;
         setOnlineOrdersForChart(onlineForChart || []);
       } catch {
         setOnlineOrdersForChart([]);
@@ -6303,7 +6282,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error fetching data:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to load data" : "Échec du chargement des données",
+        description: language === 'en' ? "Failed to load data" : "Ã‰chec du chargement des donnÃ©es",
         variant: "destructive",
       });
     } finally {
@@ -6385,7 +6364,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         console.error('Error updating application status:', errorData);
-        let errorMessage = language === 'en' ? 'Failed to approve application' : 'Échec de l\'approbation';
+        let errorMessage = language === 'en' ? 'Failed to approve application' : 'Ã‰chec de l\'approbation';
         if (errorData.details) {
           errorMessage = errorData.details;
         } else if (errorData.error) {
@@ -6502,10 +6481,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
         // Show additional warning toast
         toast({
-          title: language === 'en' ? '⚠️ Email Delivery Failed' : '⚠️ Échec de l\'envoi de l\'email',
+          title: language === 'en' ? 'âš ï¸ Email Delivery Failed' : 'âš ï¸ Ã‰chec de l\'envoi de l\'email',
           description: language === 'en' 
             ? `The approval email could not be sent to ${application.email || application.phone_number}. Please use the 'Resend Email' button to retry.`
-            : `L'email d'approbation n'a pas pu être envoyé à ${application.email || application.phone_number}. Veuillez utiliser le bouton 'Renvoyer l'email' pour réessayer.`,
+            : `L'email d'approbation n'a pas pu Ãªtre envoyÃ© Ã  ${application.email || application.phone_number}. Veuillez utiliser le bouton 'Renvoyer l'email' pour rÃ©essayer.`,
           variant: "destructive",
         });
       }
@@ -6548,7 +6527,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error approving application:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to approve application" : "Échec de l'approbation",
+        description: language === 'en' ? "Failed to approve application" : "Ã‰chec de l'approbation",
         variant: "destructive",
       });
     } finally {
@@ -6602,7 +6581,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const titleRow = worksheet.getRow(1);
       titleRow.height = 30;
       const titleCell = worksheet.getCell('A1');
-      titleCell.value = 'ANDIAMO EVENTS – APPROVED AMBASSADORS LIST';
+      titleCell.value = 'ANDIAMO EVENTS â€“ APPROVED AMBASSADORS LIST';
       titleCell.font = { name: 'Arial', size: 16, bold: true, color: white };
       titleCell.fill = {
         type: 'pattern',
@@ -6774,18 +6753,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.URL.revokeObjectURL(url);
 
       toast({
-        title: language === 'en' ? 'Export Successful' : 'Exportation réussie',
+        title: language === 'en' ? 'Export Successful' : 'Exportation rÃ©ussie',
         description: language === 'en' 
           ? `Exported ${approvedAmbassadors.length} approved ambassadors to Excel`
-          : `${approvedAmbassadors.length} ambassadeurs approuvés exportés vers Excel`,
+          : `${approvedAmbassadors.length} ambassadeurs approuvÃ©s exportÃ©s vers Excel`,
       });
     } catch (error) {
       console.error('Error exporting to Excel:', error);
       toast({
-        title: language === 'en' ? 'Export Failed' : 'Échec de l\'exportation',
+        title: language === 'en' ? 'Export Failed' : 'Ã‰chec de l\'exportation',
         description: language === 'en' 
           ? 'Failed to export ambassadors list. Please try again.'
-          : 'Échec de l\'exportation de la liste des ambassadeurs. Veuillez réessayer.',
+          : 'Ã‰chec de l\'exportation de la liste des ambassadeurs. Veuillez rÃ©essayer.',
         variant: 'destructive',
       });
     }
@@ -6815,7 +6794,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const titleRow = worksheet.getRow(1);
       titleRow.height = 30;
       const titleCell = worksheet.getCell('A1');
-      titleCell.value = 'ANDIAMO EVENTS – AMBASSADORS LIST';
+      titleCell.value = 'ANDIAMO EVENTS â€“ AMBASSADORS LIST';
       titleCell.font = { name: 'Arial', size: 16, bold: true, color: white };
       titleCell.fill = {
         type: 'pattern',
@@ -6995,18 +6974,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       window.URL.revokeObjectURL(url);
 
       toast({
-        title: language === 'en' ? 'Export Successful' : 'Exportation réussie',
+        title: language === 'en' ? 'Export Successful' : 'Exportation rÃ©ussie',
         description: language === 'en' 
           ? `Exported ${filteredApplications.length} ambassadors to Excel`
-          : `${filteredApplications.length} ambassadeurs exportés vers Excel`,
+          : `${filteredApplications.length} ambassadeurs exportÃ©s vers Excel`,
       });
     } catch (error) {
       console.error('Error exporting to Excel:', error);
       toast({
-        title: language === 'en' ? 'Export Failed' : 'Échec de l\'exportation',
+        title: language === 'en' ? 'Export Failed' : 'Ã‰chec de l\'exportation',
         description: language === 'en' 
           ? 'Failed to export ambassadors list. Please try again.'
-          : 'Échec de l\'exportation de la liste des ambassadeurs. Veuillez réessayer.',
+          : 'Ã‰chec de l\'exportation de la liste des ambassadeurs. Veuillez rÃ©essayer.',
         variant: 'destructive',
       });
     }
@@ -7075,7 +7054,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       if (!ambassador) {
-        console.error('❌ Ambassador not found for resend email:', {
+        console.error('âŒ Ambassador not found for resend email:', {
           applicationId: application.id,
           phoneNumber: application.phone_number,
           normalizedPhone: normalizedPhone,
@@ -7096,7 +7075,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: t.error,
           description: language === 'en' 
             ? `Ambassador not found for phone ${application.phone_number}. Please verify the ambassador exists and try again, or approve the application again if needed.` 
-            : `Ambassadeur introuvable pour le téléphone ${application.phone_number}. Veuillez vérifier que l'ambassadeur existe et réessayer, ou approuver à nouveau la candidature si nécessaire.`,
+            : `Ambassadeur introuvable pour le tÃ©lÃ©phone ${application.phone_number}. Veuillez vÃ©rifier que l'ambassadeur existe et rÃ©essayer, ou approuver Ã  nouveau la candidature si nÃ©cessaire.`,
           variant: "destructive",
         });
         setProcessingId(null);
@@ -7109,10 +7088,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Validate that we have an email address
       if (!emailToUse || !emailToUse.trim()) {
         toast({
-          title: language === 'en' ? "❌ Email Address Required" : "❌ Adresse email requise",
+          title: language === 'en' ? "âŒ Email Address Required" : "âŒ Adresse email requise",
           description: language === 'en' 
             ? "No email address found for this ambassador. Please add an email address to the ambassador record or application before resending."
-            : "Aucune adresse email trouvée pour cet ambassadeur. Veuillez ajouter une adresse email à l'enregistrement de l'ambassadeur ou à la candidature avant de renvoyer.",
+            : "Aucune adresse email trouvÃ©e pour cet ambassadeur. Veuillez ajouter une adresse email Ã  l'enregistrement de l'ambassadeur ou Ã  la candidature avant de renvoyer.",
           variant: "destructive",
         });
         setProcessingId(null);
@@ -7163,7 +7142,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             title: t.error,
             description: language === 'en' 
               ? "Failed to update ambassador password. Please try again." 
-              : "Échec de la mise à jour du mot de passe de l'ambassadeur. Veuillez réessayer.",
+              : "Ã‰chec de la mise Ã  jour du mot de passe de l'ambassadeur. Veuillez rÃ©essayer.",
             variant: "destructive",
           });
           setProcessingId(null);
@@ -7222,14 +7201,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           }));
 
           toast({
-            title: language === 'en' ? "✅ Email Sent Successfully" : "✅ Email envoyé avec succès",
+            title: language === 'en' ? "âœ… Email Sent Successfully" : "âœ… Email envoyÃ© avec succÃ¨s",
             description: language === 'en' 
               ? needsPasswordUpdate
                 ? `Approval email with new credentials has been successfully delivered to ${emailToUse}`
                 : `Approval email has been successfully delivered to ${emailToUse}`
               : needsPasswordUpdate
-                ? `L'email d'approbation avec de nouvelles identifiants a été envoyé avec succès à ${emailToUse}`
-                : `L'email d'approbation a été envoyé avec succès à ${emailToUse}`,
+                ? `L'email d'approbation avec de nouvelles identifiants a Ã©tÃ© envoyÃ© avec succÃ¨s Ã  ${emailToUse}`
+                : `L'email d'approbation a Ã©tÃ© envoyÃ© avec succÃ¨s Ã  ${emailToUse}`,
           });
         } else {
           // Update status to failed
@@ -7248,10 +7227,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           const errorMessage = emailError || 'Email delivery failed. Please check the email address and try again.';
 
           toast({
-            title: language === 'en' ? "❌ Email Failed to Send" : "❌ Échec de l'envoi de l'email",
+            title: language === 'en' ? "âŒ Email Failed to Send" : "âŒ Ã‰chec de l'envoi de l'email",
             description: language === 'en' 
               ? `The email could not be sent to ${emailToUse}. ${errorMessage}`
-              : `L'email n'a pas pu être envoyé à ${emailToUse}. ${errorMessage}`,
+              : `L'email n'a pas pu Ãªtre envoyÃ© Ã  ${emailToUse}. ${errorMessage}`,
             variant: "destructive",
           });
         }
@@ -7269,10 +7248,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }));
 
         toast({
-          title: language === 'en' ? "❌ Email Error" : "❌ Erreur d'email",
+          title: language === 'en' ? "âŒ Email Error" : "âŒ Erreur d'email",
           description: language === 'en' 
             ? `Failed to send email: ${emailError}`
-            : `Échec de l'envoi de l'email : ${emailError}`,
+            : `Ã‰chec de l'envoi de l'email : ${emailError}`,
           variant: "destructive",
         });
       }
@@ -7301,7 +7280,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: t.error,
         description: language === 'en' 
           ? "An unexpected error occurred while resending the email. Please try again."
-          : "Une erreur inattendue s'est produite lors de la nouvelle tentative d'envoi. Veuillez réessayer.",
+          : "Une erreur inattendue s'est produite lors de la nouvelle tentative d'envoi. Veuillez rÃ©essayer.",
         variant: "destructive",
       });
     } finally {
@@ -7315,15 +7294,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await updateSalesSettings(enabled);
       setSalesEnabled(enabled);
       toast({
-        title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
+        title: language === 'en' ? 'Settings Updated' : 'ParamÃ¨tres Mis Ã  Jour',
         description: enabled
-          ? (language === 'en' ? 'Sales are now enabled for ambassadors' : 'Les ventes sont maintenant activées pour les ambassadeurs')
-          : (language === 'en' ? 'Sales are now disabled for ambassadors' : 'Les ventes sont maintenant désactivées pour les ambassadeurs'),
+          ? (language === 'en' ? 'Sales are now enabled for ambassadors' : 'Les ventes sont maintenant activÃ©es pour les ambassadeurs')
+          : (language === 'en' ? 'Sales are now disabled for ambassadors' : 'Les ventes sont maintenant dÃ©sactivÃ©es pour les ambassadeurs'),
       });
       await fetchSalesSettingsData();
     } catch (error: any) {
       console.error('Error updating sales settings:', error);
-      const errorMessage = error.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres');
+      const errorMessage = error.message || (language === 'en' ? 'Failed to update settings' : 'Ã‰chec de la mise Ã  jour des paramÃ¨tres');
       toast({
         title: t.error,
         description: errorMessage,
@@ -7367,17 +7346,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setAllowAmbassadorApplication(allowAmbassador);
       }
       toast({
-        title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
+        title: language === 'en' ? 'Settings Updated' : 'ParamÃ¨tres Mis Ã  Jour',
         description: enabled
-          ? (language === 'en' ? 'Maintenance mode is now enabled. Users will see the maintenance message.' : 'Le mode maintenance est maintenant activé. Les utilisateurs verront le message de maintenance.')
-          : (language === 'en' ? 'Maintenance mode is now disabled. The site is accessible to all users.' : 'Le mode maintenance est maintenant désactivé. Le site est accessible à tous les utilisateurs.'),
+          ? (language === 'en' ? 'Maintenance mode is now enabled. Users will see the maintenance message.' : 'Le mode maintenance est maintenant activÃ©. Les utilisateurs verront le message de maintenance.')
+          : (language === 'en' ? 'Maintenance mode is now disabled. The site is accessible to all users.' : 'Le mode maintenance est maintenant dÃ©sactivÃ©. Le site est accessible Ã  tous les utilisateurs.'),
       });
       
       // Refresh the settings to ensure sync
       await fetchMaintenanceSettings();
     } catch (error: any) {
       console.error('Error updating maintenance settings:', error);
-      const errorMessage = error.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres');
+      const errorMessage = error.message || (language === 'en' ? 'Failed to update settings' : 'Ã‰chec de la mise Ã  jour des paramÃ¨tres');
       toast({
         title: t.error,
         description: errorMessage,
@@ -7436,23 +7415,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             title: t.error,
             description: language === 'en' 
               ? 'Permission denied. Please run INIT_AMBASSADOR_APPLICATION_SETTINGS.sql in Supabase SQL Editor.'
-              : 'Permission refusée. Veuillez exécuter INIT_AMBASSADOR_APPLICATION_SETTINGS.sql dans l\'éditeur SQL Supabase.',
+              : 'Permission refusÃ©e. Veuillez exÃ©cuter INIT_AMBASSADOR_APPLICATION_SETTINGS.sql dans l\'Ã©diteur SQL Supabase.',
             variant: 'destructive',
           });
         } else {
           toast({
             title: t.error,
-            description: error.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres'),
+            description: error.message || (language === 'en' ? 'Failed to update settings' : 'Ã‰chec de la mise Ã  jour des paramÃ¨tres'),
             variant: 'destructive',
           });
         }
         // Continue to finally block to clear loading state
       } else {
         toast({
-          title: language === 'en' ? 'Settings Updated' : 'Paramètres Mis à Jour',
+          title: language === 'en' ? 'Settings Updated' : 'ParamÃ¨tres Mis Ã  Jour',
           description: enabled
             ? (language === 'en' ? 'Ambassador applications are now open. Users can submit applications.' : 'Les candidatures ambassadeur sont maintenant ouvertes. Les utilisateurs peuvent soumettre des candidatures.')
-            : (language === 'en' ? 'Ambassador applications are now closed. Users will see the closed message.' : 'Les candidatures ambassadeur sont maintenant fermées. Les utilisateurs verront le message de fermeture.'),
+            : (language === 'en' ? 'Ambassador applications are now closed. Users will see the closed message.' : 'Les candidatures ambassadeur sont maintenant fermÃ©es. Les utilisateurs verront le message de fermeture.'),
         });
         
         // Refresh the settings to ensure sync (don't await to avoid blocking)
@@ -7470,7 +7449,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       toast({
         title: t.error,
-        description: error?.message || (language === 'en' ? 'Failed to update settings' : 'Échec de la mise à jour des paramètres'),
+        description: error?.message || (language === 'en' ? 'Failed to update settings' : 'Ã‰chec de la mise Ã  jour des paramÃ¨tres'),
         variant: 'destructive',
       });
     } finally {
@@ -7527,7 +7506,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (!credentials) {
         toast({
           title: t.error,
-          description: language === 'en' ? "No credentials found for this application" : "Aucune information d'identification trouvée",
+          description: language === 'en' ? "No credentials found for this application" : "Aucune information d'identification trouvÃ©e",
           variant: "destructive",
         });
         return;
@@ -7538,14 +7517,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await navigator.clipboard.writeText(credentialsText);
       
       toast({
-        title: language === 'en' ? "Credentials copied" : "Informations d'identification copiées",
-        description: language === 'en' ? "Credentials copied to clipboard. You can now paste them in a message." : "Informations copiées dans le presse-papiers. Vous pouvez maintenant les coller dans un message.",
+        title: language === 'en' ? "Credentials copied" : "Informations d'identification copiÃ©es",
+        description: language === 'en' ? "Credentials copied to clipboard. You can now paste them in a message." : "Informations copiÃ©es dans le presse-papiers. Vous pouvez maintenant les coller dans un message.",
       });
     } catch (error) {
       console.error('Error copying credentials:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to copy credentials" : "Échec de la copie des informations",
+        description: language === 'en' ? "Failed to copy credentials" : "Ã‰chec de la copie des informations",
         variant: "destructive",
       });
     }
@@ -7576,7 +7555,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         console.error('Error updating application status:', errorData);
-        let errorMessage = language === 'en' ? 'Failed to reject application' : 'Échec du rejet';
+        let errorMessage = language === 'en' ? 'Failed to reject application' : 'Ã‰chec du rejet';
         if (errorData.details) {
           errorMessage = errorData.details;
         } else if (errorData.error) {
@@ -7631,7 +7610,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error rejecting application:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to reject application" : "Échec du rejet",
+        description: language === 'en' ? "Failed to reject application" : "Ã‰chec du rejet",
         variant: "destructive",
       });
     } finally {
@@ -7652,6 +7631,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
         return;
       }
+      // Gallery conversion only allowed after the event date has passed
+      if (event.event_type === 'gallery' && event.date) {
+        const eventDate = new Date(event.date);
+        const now = new Date();
+        if (eventDate.getTime() > now.getTime()) {
+          toast({
+            title: t.error,
+            description: language === 'en' 
+              ? "Cannot set as gallery event until after the event date." 
+              : "Impossible de passer en galerie avant la date de l'Ã©vÃ©nement.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
       // Pass management is now handled separately via Pass Stock Management dialog
       // No pass validation or saving needed here - passes are managed independently
 
@@ -7665,7 +7659,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (uploadResult.error) {
           toast({
             title: t.error,
-            description: language === 'en' ? `Failed to upload image: ${uploadResult.error}` : `Échec du téléchargement: ${uploadResult.error}`,
+            description: language === 'en' ? `Failed to upload image: ${uploadResult.error}` : `Ã‰chec du tÃ©lÃ©chargement: ${uploadResult.error}`,
             variant: "destructive",
           });
           setUploadingImage(false);
@@ -7697,10 +7691,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         } catch (error) {
           console.error('Error uploading gallery files:', error);
           toast({
-            title: language === 'en' ? "Upload failed" : "Échec du téléchargement",
+            title: language === 'en' ? "Upload failed" : "Ã‰chec du tÃ©lÃ©chargement",
             description: language === 'en' 
               ? "Failed to upload gallery files" 
-              : "Échec du téléchargement des fichiers de galerie",
+              : "Ã‰chec du tÃ©lÃ©chargement des fichiers de galerie",
             variant: "destructive",
           });
           setUploadingGallery(false);
@@ -7787,7 +7781,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Show success immediately and update UI optimistically
       toast({
         title: t.eventSaved,
-        description: language === 'en' ? "Event saved successfully" : "Événement enregistré avec succès",
+        description: language === 'en' ? "Event saved successfully" : "Ã‰vÃ©nement enregistrÃ© avec succÃ¨s",
       });
 
       // Update local state immediately for instant UI feedback
@@ -7848,7 +7842,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error saving event:', error, error?.message, error?.details);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to save event" : "Échec de l'enregistrement",
+        description: language === 'en' ? "Failed to save event" : "Ã‰chec de l'enregistrement",
         variant: "destructive",
       });
     } finally {
@@ -7944,10 +7938,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           console.error('Error updating application status:', updateAppError);
           // Show warning but continue - ambassador update succeeded
           toast({
-            title: language === 'en' ? '⚠️ Partial Update' : '⚠️ Mise à Jour Partielle',
+            title: language === 'en' ? 'âš ï¸ Partial Update' : 'âš ï¸ Mise Ã  Jour Partielle',
             description: language === 'en' 
               ? `Ambassador status updated, but application status update failed: ${updateAppError.message}`
-              : `Statut de l'ambassadeur mis à jour, mais la mise à jour du statut de la candidature a échoué : ${updateAppError.message}`,
+              : `Statut de l'ambassadeur mis Ã  jour, mais la mise Ã  jour du statut de la candidature a Ã©chouÃ© : ${updateAppError.message}`,
             variant: 'destructive',
           });
         } else {
@@ -7965,29 +7959,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // No matching applications found - this is okay, might be a manually added ambassador
       }
 
-      // Update local state for ambassadors
+      // Update local state for ambassadors (no full refresh needed)
       setAmbassadors(prev => prev.map(amb => 
         amb.id === ambassador.id 
           ? { ...amb, status: newStatus }
           : amb
       ));
 
-      // Refresh data to ensure consistency
-      await fetchAllData();
-
       toast({
-        title: language === 'en' ? 'Status Updated' : 'Statut Mis à Jour',
+        title: language === 'en' ? 'Status Updated' : 'Statut Mis Ã  Jour',
         description: language === 'en' 
           ? `Ambassador ${newStatus === 'suspended' ? 'paused' : 'activated'} successfully`
-          : `Ambassadeur ${newStatus === 'suspended' ? 'mis en pause' : 'activé'} avec succès`,
+          : `Ambassadeur ${newStatus === 'suspended' ? 'mis en pause' : 'activÃ©'} avec succÃ¨s`,
       });
     } catch (error) {
       console.error('Error toggling ambassador status:', error);
       toast({
-        title: language === 'en' ? 'Update Failed' : 'Échec de la Mise à Jour',
+        title: language === 'en' ? 'Update Failed' : 'Ã‰chec de la Mise Ã  Jour',
         description: language === 'en' 
           ? 'Failed to update ambassador status. Please try again.'
-          : 'Échec de la mise à jour du statut. Veuillez réessayer.',
+          : 'Ã‰chec de la mise Ã  jour du statut. Veuillez rÃ©essayer.',
         variant: 'destructive',
       });
     } finally {
@@ -8003,7 +7994,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (ambassador.age !== undefined && (ambassador.age < 16 || ambassador.age > 99)) {
           toast({
             title: language === 'en' ? "Validation Error" : "Erreur de validation",
-            description: language === 'en' ? "Age must be between 16 and 99" : "L'âge doit être entre 16 et 99",
+            description: language === 'en' ? "Age must be between 16 and 99" : "L'Ã¢ge doit Ãªtre entre 16 et 99",
             variant: "destructive",
           });
           return;
@@ -8038,7 +8029,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           if (!validatePassword(ambassador.password)) {
             toast({
               title: language === 'en' ? "Validation Error" : "Erreur de validation",
-              description: language === 'en' ? "Password must be at least 6 characters long" : "Le mot de passe doit contenir au moins 6 caractères",
+              description: language === 'en' ? "Password must be at least 6 characters long" : "Le mot de passe doit contenir au moins 6 caractÃ¨res",
               variant: "destructive",
             });
             return;
@@ -8082,7 +8073,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               title: language === 'en' ? "Warning" : "Avertissement",
               description: language === 'en' 
                 ? "Ambassador updated, but synchronization with application may have failed" 
-                : "Ambassadeur mis à jour, mais la synchronisation avec la candidature a peut-être échoué",
+                : "Ambassadeur mis Ã  jour, mais la synchronisation avec la candidature a peut-Ãªtre Ã©chouÃ©",
               variant: "default",
             });
           }
@@ -8090,7 +8081,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       toast({
         title: t.ambassadorSaved,
-          description: language === 'en' ? "Ambassador updated successfully" : "Ambassadeur mis à jour avec succès",
+          description: language === 'en' ? "Ambassador updated successfully" : "Ambassadeur mis Ã  jour avec succÃ¨s",
         });
 
         setEditingAmbassador(null);
@@ -8117,10 +8108,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       if (!newAmbassadorForm.age || !newAmbassadorForm.age.trim()) {
-        errors.full_name = language === 'en' ? "Age is required" : "L'âge est requis";
+        errors.full_name = language === 'en' ? "Age is required" : "L'Ã¢ge est requis";
         hasErrors = true;
       } else if (isNaN(parseInt(newAmbassadorForm.age)) || parseInt(newAmbassadorForm.age) < 16 || parseInt(newAmbassadorForm.age) > 99) {
-        errors.full_name = language === 'en' ? "Age must be between 16 and 99" : "L'âge doit être entre 16 et 99";
+        errors.full_name = language === 'en' ? "Age must be between 16 and 99" : "L'Ã¢ge doit Ãªtre entre 16 et 99";
         hasErrors = true;
       }
 
@@ -8135,10 +8126,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       // Validate phone
       if (!newAmbassadorForm.phone_number || !newAmbassadorForm.phone_number.trim()) {
-        errors.phone = language === 'en' ? "Phone number is required" : "Le numéro de téléphone est requis";
+        errors.phone = language === 'en' ? "Phone number is required" : "Le numÃ©ro de tÃ©lÃ©phone est requis";
         hasErrors = true;
       } else if (!validatePhone(newAmbassadorForm.phone_number)) {
-        errors.phone = language === 'en' ? "Phone number must be 8 digits starting with 2, 4, 9, or 5" : "Le numéro de téléphone doit contenir 8 chiffres commençant par 2, 4, 9 ou 5";
+        errors.phone = language === 'en' ? "Phone number must be 8 digits starting with 2, 4, 9, or 5" : "Le numÃ©ro de tÃ©lÃ©phone doit contenir 8 chiffres commenÃ§ant par 2, 4, 9 ou 5";
         hasErrors = true;
       }
 
@@ -8147,7 +8138,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         errors.city = language === 'en' ? "City is required" : "La ville est requise";
         hasErrors = true;
       } else if (!CITIES.includes(newAmbassadorForm.city as any)) {
-        errors.city = language === 'en' ? "Please select a valid city from the list" : "Veuillez sélectionner une ville valide dans la liste";
+        errors.city = language === 'en' ? "Please select a valid city from the list" : "Veuillez sÃ©lectionner une ville valide dans la liste";
         hasErrors = true;
       }
 
@@ -8189,8 +8180,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (existingAmbByPhone) {
         toast({
-          title: language === 'en' ? "Duplicate Phone Number" : "Numéro de téléphone dupliqué",
-          description: language === 'en' ? "An ambassador with this phone number already exists" : "Un ambassadeur avec ce numéro de téléphone existe déjà",
+          title: language === 'en' ? "Duplicate Phone Number" : "NumÃ©ro de tÃ©lÃ©phone dupliquÃ©",
+          description: language === 'en' ? "An ambassador with this phone number already exists" : "Un ambassadeur avec ce numÃ©ro de tÃ©lÃ©phone existe dÃ©jÃ ",
           variant: "destructive",
         });
         return;
@@ -8206,10 +8197,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (existingAppByPhone) {
         toast({
-          title: language === 'en' ? "Duplicate Phone Number" : "Numéro de téléphone dupliqué",
+          title: language === 'en' ? "Duplicate Phone Number" : "NumÃ©ro de tÃ©lÃ©phone dupliquÃ©",
           description: language === 'en' 
             ? `An application with this phone number already exists with status: ${existingAppByPhone.status}`
-            : `Une candidature avec ce numéro de téléphone existe déjà avec le statut : ${existingAppByPhone.status}`,
+            : `Une candidature avec ce numÃ©ro de tÃ©lÃ©phone existe dÃ©jÃ  avec le statut : ${existingAppByPhone.status}`,
           variant: "destructive",
         });
         return;
@@ -8225,8 +8216,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         if (existingAmbByEmail) {
           toast({
-            title: language === 'en' ? "Duplicate Email" : "Email dupliqué",
-            description: language === 'en' ? "An ambassador with this email already exists" : "Un ambassadeur avec cet email existe déjà",
+            title: language === 'en' ? "Duplicate Email" : "Email dupliquÃ©",
+            description: language === 'en' ? "An ambassador with this email already exists" : "Un ambassadeur avec cet email existe dÃ©jÃ ",
             variant: "destructive",
           });
           return;
@@ -8242,10 +8233,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         if (existingAppByEmail) {
           toast({
-            title: language === 'en' ? "Duplicate Email" : "Email dupliqué",
+            title: language === 'en' ? "Duplicate Email" : "Email dupliquÃ©",
             description: language === 'en' 
               ? `An application with this email already exists with status: ${existingAppByEmail.status}`
-              : `Une candidature avec cet email existe déjà avec le statut : ${existingAppByEmail.status}`,
+              : `Une candidature avec cet email existe dÃ©jÃ  avec le statut : ${existingAppByEmail.status}`,
             variant: "destructive",
           });
           return;
@@ -8292,7 +8283,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         city: newAmbassadorForm.city.trim(),
         ville: newAmbassadorForm.city === 'Tunis' ? newAmbassadorForm.ville.trim() : null,
         social_link: newAmbassadorForm.social_link?.trim() || null,
-        motivation: newAmbassadorForm.motivation?.trim() || (language === 'en' ? 'Manually added by admin' : 'Ajouté manuellement par l\'administrateur'),
+        motivation: newAmbassadorForm.motivation?.trim() || (language === 'en' ? 'Manually added by admin' : 'AjoutÃ© manuellement par l\'administrateur'),
         status: 'approved'
       };
 
@@ -8324,7 +8315,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         
         throw new Error(language === 'en' 
           ? `Failed to create application record: ${finalAppError.message}. Ambassador creation was rolled back. Please run the migration: 20250203000001-ensure-manually-added-column.sql`
-          : `Échec de la création de la candidature : ${finalAppError.message}. La création de l'ambassadeur a été annulée. Veuillez exécuter la migration : 20250203000001-ensure-manually-added-column.sql`);
+          : `Ã‰chec de la crÃ©ation de la candidature : ${finalAppError.message}. La crÃ©ation de l'ambassadeur a Ã©tÃ© annulÃ©e. Veuillez exÃ©cuter la migration : 20250203000001-ensure-manually-added-column.sql`);
       }
 
       // Find the application record we just created to get its ID
@@ -8431,24 +8422,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Show appropriate toast notifications
       if (emailSent) {
         toast({
-          title: language === 'en' ? "✅ Ambassador Added Successfully" : "✅ Ambassadeur ajouté avec succès",
+          title: language === 'en' ? "âœ… Ambassador Added Successfully" : "âœ… Ambassadeur ajoutÃ© avec succÃ¨s",
           description: language === 'en' 
             ? `Ambassador created and approval email sent to ${newAmbassadorForm.email}`
-            : `Ambassadeur créé et email d'approbation envoyé à ${newAmbassadorForm.email}`,
+            : `Ambassadeur crÃ©Ã© et email d'approbation envoyÃ© Ã  ${newAmbassadorForm.email}`,
         });
       } else {
         toast({
-          title: language === 'en' ? "✅ Ambassador Added" : "✅ Ambassadeur ajouté",
+          title: language === 'en' ? "âœ… Ambassador Added" : "âœ… Ambassadeur ajoutÃ©",
           description: emailError || (language === 'en' 
             ? "Ambassador created, but email failed to send. Use 'Resend Email' button to retry."
-            : "Ambassadeur créé, mais l'email n'a pas pu être envoyé. Utilisez le bouton 'Renvoyer Email' pour réessayer."),
+            : "Ambassadeur crÃ©Ã©, mais l'email n'a pas pu Ãªtre envoyÃ©. Utilisez le bouton 'Renvoyer Email' pour rÃ©essayer."),
           variant: "default",
         });
         toast({
-          title: language === 'en' ? '⚠️ Email Delivery Failed' : '⚠️ Échec de l\'envoi de l\'email',
+          title: language === 'en' ? 'âš ï¸ Email Delivery Failed' : 'âš ï¸ Ã‰chec de l\'envoi de l\'email',
           description: language === 'en' 
             ? `The approval email could not be sent to ${newAmbassadorForm.email}. Please use the 'Resend Email' button to retry.`
-            : `L'email d'approbation n'a pas pu être envoyé à ${newAmbassadorForm.email}. Veuillez utiliser le bouton 'Renvoyer Email' pour réessayer.`,
+            : `L'email d'approbation n'a pas pu Ãªtre envoyÃ© Ã  ${newAmbassadorForm.email}. Veuillez utiliser le bouton 'Renvoyer Email' pour rÃ©essayer.`,
           variant: "destructive",
         });
       }
@@ -8474,7 +8465,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error saving ambassador:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to save ambassador" : "Échec de l'enregistrement",
+        description: language === 'en' ? "Failed to save ambassador" : "Ã‰chec de l'enregistrement",
         variant: "destructive",
       });
     } finally {
@@ -8520,8 +8511,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         invalidateEvents();
         
         toast({
-          title: language === 'en' ? "Event deleted" : "Événement supprimé",
-          description: language === 'en' ? "Event deleted successfully" : "Événement supprimé avec succès",
+          title: language === 'en' ? "Event deleted" : "Ã‰vÃ©nement supprimÃ©",
+          description: language === 'en' ? "Event deleted successfully" : "Ã‰vÃ©nement supprimÃ© avec succÃ¨s",
         });
       } else if (verifyData) {
         // Event still exists - deletion failed, revert UI
@@ -8531,7 +8522,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         console.error('Event still exists after deletion attempt');
         toast({
           title: t.error,
-          description: language === 'en' ? "Event deletion failed - please check RLS policies" : "Échec de la suppression - vérifiez les politiques RLS",
+          description: language === 'en' ? "Event deletion failed - please check RLS policies" : "Ã‰chec de la suppression - vÃ©rifiez les politiques RLS",
           variant: "destructive",
         });
         return; // Don't continue if deletion failed
@@ -8544,7 +8535,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error deleting event:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? `Failed to delete event: ${error.message}` : `Échec de la suppression: ${error.message}`,
+        description: language === 'en' ? `Failed to delete event: ${error.message}` : `Ã‰chec de la suppression: ${error.message}`,
         variant: "destructive",
       });
     } finally {
@@ -8574,11 +8565,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (deleteError) {
         console.error('Delete ambassador error:', deleteError);
         // Provide more specific error message
-        let errorMessage = language === 'en' ? 'Failed to delete ambassador' : 'Échec de la suppression de l\'ambassadeur';
+        let errorMessage = language === 'en' ? 'Failed to delete ambassador' : 'Ã‰chec de la suppression de l\'ambassadeur';
         if (deleteError.code === '42501' || deleteError.message?.includes('policy') || deleteError.message?.includes('permission')) {
           errorMessage = language === 'en' 
             ? 'Permission denied. Please run the migration 20250131000002-fix-ambassador-delete-policy.sql in Supabase SQL Editor.'
-            : 'Permission refusée. Veuillez exécuter la migration 20250131000002-fix-ambassador-delete-policy.sql dans l\'éditeur SQL Supabase.';
+            : 'Permission refusÃ©e. Veuillez exÃ©cuter la migration 20250131000002-fix-ambassador-delete-policy.sql dans l\'Ã©diteur SQL Supabase.';
         } else if (deleteError.message) {
           errorMessage = deleteError.message;
         }
@@ -8709,10 +8700,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       toast({
-        title: language === 'en' ? "Ambassador Removed" : "Ambassadeur Retiré",
+        title: language === 'en' ? "Ambassador Removed" : "Ambassadeur RetirÃ©",
         description: language === 'en' 
           ? "Ambassador removed from active list. Application status updated to 'removed' to preserve history." 
-          : "Ambassadeur retiré de la liste active. Statut de la candidature mis à jour à 'retiré' pour préserver l'historique.",
+          : "Ambassadeur retirÃ© de la liste active. Statut de la candidature mis Ã  jour Ã  'retirÃ©' pour prÃ©server l'historique.",
       });
       
       // Close delete dialog
@@ -8722,7 +8713,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchAllData();
     } catch (error) {
       console.error('Error deleting ambassador:', error);
-      const errorMessage = error instanceof Error ? error.message : (language === 'en' ? "Failed to delete ambassador" : "Échec de la suppression");
+      const errorMessage = error instanceof Error ? error.message : (language === 'en' ? "Failed to delete ambassador" : "Ã‰chec de la suppression");
       toast({
         title: language === 'en' ? "Error" : "Erreur",
         description: errorMessage,
@@ -8755,7 +8746,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? "All Ambassadors Have Applications" : "Tous les Ambassadeurs ont des Candidatures",
           description: language === 'en' 
             ? "All ambassadors have corresponding approved applications." 
-            : "Tous les ambassadeurs ont des candidatures approuvées correspondantes.",
+            : "Tous les ambassadeurs ont des candidatures approuvÃ©es correspondantes.",
         });
         return;
       }
@@ -8770,7 +8761,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         social_link: '',
         motivation: language === 'en' 
           ? 'Ambassador created directly (application record created retroactively)' 
-          : 'Ambassadeur créé directement (candidature créée rétroactivement)',
+          : 'Ambassadeur crÃ©Ã© directement (candidature crÃ©Ã©e rÃ©troactivement)',
         status: 'approved',
         created_at: amb.created_at || new Date().toISOString()
       }));
@@ -8784,10 +8775,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
 
       toast({
-        title: language === 'en' ? "Applications Created" : "Candidatures Créées",
+        title: language === 'en' ? "Applications Created" : "Candidatures CrÃ©Ã©es",
         description: language === 'en' 
           ? `Created ${ambassadorsWithoutApps.length} application record(s) for ambassadors.` 
-          : `${ambassadorsWithoutApps.length} candidature(s) créée(s) pour les ambassadeurs.`,
+          : `${ambassadorsWithoutApps.length} candidature(s) crÃ©Ã©e(s) pour les ambassadeurs.`,
       });
 
       // Refresh data
@@ -8798,7 +8789,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? "Error" : "Erreur",
         description: language === 'en' 
           ? "Failed to create application records." 
-          : "Échec de la création des candidatures.",
+          : "Ã‰chec de la crÃ©ation des candidatures.",
         variant: "destructive",
       });
     }
@@ -8823,7 +8814,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           title: language === 'en' ? "No Orphaned Applications" : "Aucune Candidature Orpheline",
           description: language === 'en' 
             ? "All approved applications have corresponding ambassadors." 
-            : "Toutes les candidatures approuvées ont des ambassadeurs correspondants.",
+            : "Toutes les candidatures approuvÃ©es ont des ambassadeurs correspondants.",
         });
         return;
       }
@@ -8843,10 +8834,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setApplications(prev => prev.filter(app => !orphanedIds.includes(app.id)));
 
       toast({
-        title: language === 'en' ? "Cleanup Complete" : "Nettoyage Terminé",
+        title: language === 'en' ? "Cleanup Complete" : "Nettoyage TerminÃ©",
         description: language === 'en' 
           ? `Deleted ${orphanedApps.length} orphaned approved application(s).` 
-          : `${orphanedApps.length} candidature(s) orpheline(s) supprimée(s).`,
+          : `${orphanedApps.length} candidature(s) orpheline(s) supprimÃ©e(s).`,
       });
 
       // Refresh data
@@ -8857,7 +8848,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         title: language === 'en' ? "Error" : "Erreur",
         description: language === 'en' 
           ? "Failed to clean up orphaned applications." 
-          : "Échec du nettoyage des candidatures orphelines.",
+          : "Ã‰chec du nettoyage des candidatures orphelines.",
         variant: "destructive",
       });
     }
@@ -8943,8 +8934,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if ((isNew && affectedRows > 0) || (!isNew && affectedRows > 0)) {
         closeSponsorDialog();
         toast({
-          title: language === 'en' ? 'Sponsor saved' : 'Sponsor enregistré',
-          description: language === 'en' ? 'Sponsor details updated successfully.' : 'Détails du sponsor mis à jour avec succès.',
+          title: language === 'en' ? 'Sponsor saved' : 'Sponsor enregistrÃ©',
+          description: language === 'en' ? 'Sponsor details updated successfully.' : 'DÃ©tails du sponsor mis Ã  jour avec succÃ¨s.',
         });
       } else {
         // Refresh from database if update failed
@@ -8953,7 +8944,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         
         toast({
           title: t.error,
-          description: language === 'en' ? 'No sponsor was updated. Please check your data.' : 'Aucun sponsor n\'a été mis à jour. Veuillez vérifier vos données.',
+          description: language === 'en' ? 'No sponsor was updated. Please check your data.' : 'Aucun sponsor n\'a Ã©tÃ© mis Ã  jour. Veuillez vÃ©rifier vos donnÃ©es.',
           variant: 'destructive',
         });
       }
@@ -9009,8 +9000,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }
       
       toast({
-        title: language === 'en' ? "Sponsor deleted" : "Sponsor supprimé",
-        description: language === 'en' ? "Sponsor deleted successfully" : "Sponsor supprimé avec succès",
+        title: language === 'en' ? "Sponsor deleted" : "Sponsor supprimÃ©",
+        description: language === 'en' ? "Sponsor deleted successfully" : "Sponsor supprimÃ© avec succÃ¨s",
       });
       
       closeDeleteDialog();
@@ -9018,7 +9009,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error deleting sponsor:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to delete sponsor" : "Échec de la suppression du sponsor",
+        description: language === 'en' ? "Failed to delete sponsor" : "Ã‰chec de la suppression du sponsor",
         variant: "destructive",
       });
     }
@@ -9055,10 +9046,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setCurrentAdminEmail(null);
       
       toast({
-        title: language === 'en' ? "Logged Out" : "Déconnecté",
+        title: language === 'en' ? "Logged Out" : "DÃ©connectÃ©",
         description: language === 'en' 
           ? "You have been successfully logged out. Please re-enter your credentials to continue."
-          : "Vous avez été déconnecté avec succès. Veuillez ré-entrer vos identifiants pour continuer.",
+          : "Vous avez Ã©tÃ© dÃ©connectÃ© avec succÃ¨s. Veuillez rÃ©-entrer vos identifiants pour continuer.",
       });
     } catch (error) {
       console.error('Logout error:', error);
@@ -9078,7 +9069,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       case 'rejected':
         return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#EF4444' }} title={t.rejected} />; // Red
       case 'removed':
-        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#EF4444' }} title={language === 'en' ? 'Removed' : 'Retiré'} />; // Red
+        return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#EF4444' }} title={language === 'en' ? 'Removed' : 'RetirÃ©'} />; // Red
       case 'suspended':
         return <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6B7280' }} title={language === 'en' ? 'Paused' : 'En Pause'} />; // Grey
       default:
@@ -9097,31 +9088,31 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         color: '#E21836',
         bgColor: 'rgba(226, 24, 54, 0.15)',
         textColor: '#E21836',
-        label: language === 'en' ? 'Completed' : 'Terminé'
+        label: language === 'en' ? 'Completed' : 'TerminÃ©'
       },
       'MANUAL_COMPLETED': {
         color: '#E21836',
         bgColor: 'rgba(226, 24, 54, 0.15)',
         textColor: '#E21836',
-        label: language === 'en' ? 'Manual Completed' : 'Terminé Manuel'
+        label: language === 'en' ? 'Manual Completed' : 'TerminÃ© Manuel'
       },
       'ACCEPTED': {
         color: '#E21836',
         bgColor: 'rgba(226, 24, 54, 0.15)',
         textColor: '#E21836',
-        label: language === 'en' ? 'Accepted' : 'Accepté'
+        label: language === 'en' ? 'Accepted' : 'AcceptÃ©'
       },
       'MANUAL_ACCEPTED': {
         color: '#E21836',
         bgColor: 'rgba(226, 24, 54, 0.15)',
         textColor: '#E21836',
-        label: language === 'en' ? 'Manual Accepted' : 'Accepté Manuel'
+        label: language === 'en' ? 'Manual Accepted' : 'AcceptÃ© Manuel'
       },
       'PAID': {
         color: '#E21836',
         bgColor: 'rgba(226, 24, 54, 0.15)',
         textColor: '#E21836',
-        label: language === 'en' ? 'Paid' : 'Payé'
+        label: language === 'en' ? 'Paid' : 'PayÃ©'
       },
       'PENDING': {
         color: '#FFC93C',
@@ -9145,13 +9136,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         color: '#FFC93C',
         bgColor: 'rgba(255, 201, 60, 0.15)',
         textColor: '#FFC93C',
-        label: language === 'en' ? 'Refunded' : 'Remboursé'
+        label: language === 'en' ? 'Refunded' : 'RemboursÃ©'
       },
       'FRAUD_FLAGGED': {
         color: '#FFC93C',
         bgColor: 'rgba(255, 201, 60, 0.15)',
         textColor: '#FFC93C',
-        label: language === 'en' ? 'Fraud Flagged' : 'Signalé comme Fraude'
+        label: language === 'en' ? 'Fraud Flagged' : 'SignalÃ© comme Fraude'
       },
       
       // Info statuses - Cyan
@@ -9159,19 +9150,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         color: '#00CFFF',
         bgColor: 'rgba(0, 207, 255, 0.15)',
         textColor: '#00CFFF',
-        label: language === 'en' ? 'Cancelled' : 'Annulé'
+        label: language === 'en' ? 'Cancelled' : 'AnnulÃ©'
       },
       'CANCELLED_BY_AMBASSADOR': {
         color: '#00CFFF',
         bgColor: 'rgba(0, 207, 255, 0.15)',
         textColor: '#00CFFF',
-        label: language === 'en' ? 'Cancelled by Ambassador' : 'Annulé par Ambassadeur'
+        label: language === 'en' ? 'Cancelled by Ambassador' : 'AnnulÃ© par Ambassadeur'
       },
       'CANCELLED_BY_ADMIN': {
         color: '#00CFFF',
         bgColor: 'rgba(0, 207, 255, 0.15)',
         textColor: '#00CFFF',
-        label: language === 'en' ? 'Cancelled by Admin' : 'Annulé par Admin'
+        label: language === 'en' ? 'Cancelled by Admin' : 'AnnulÃ© par Admin'
       },
       
       // Disabled statuses - Gray
@@ -9179,13 +9170,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         color: '#8C8C8C',
         bgColor: 'rgba(140, 140, 140, 0.15)',
         textColor: '#8C8C8C',
-        label: language === 'en' ? 'Failed' : 'Échoué'
+        label: language === 'en' ? 'Failed' : 'Ã‰chouÃ©'
       },
       'IGNORED': {
         color: '#8C8C8C',
         bgColor: 'rgba(140, 140, 140, 0.15)',
         textColor: '#8C8C8C',
-        label: language === 'en' ? 'Ignored' : 'Ignoré'
+        label: language === 'en' ? 'Ignored' : 'IgnorÃ©'
       },
       'FRAUD_SUSPECT': {
         color: '#8C8C8C',
@@ -9301,10 +9292,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
     
     toast({
-      title: language === 'en' ? "Files selected" : "Fichiers sélectionnés",
+      title: language === 'en' ? "Files selected" : "Fichiers sÃ©lectionnÃ©s",
       description: language === 'en' 
         ? `${files.length} file(s) will be uploaded when you save` 
-        : `${files.length} fichier(s) seront téléchargés lors de l'enregistrement`,
+        : `${files.length} fichier(s) seront tÃ©lÃ©chargÃ©s lors de l'enregistrement`,
     });
   };
 
@@ -9508,8 +9499,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if ((isNew && affectedRows > 0) || (!isNew && affectedRows > 0)) {
         closeTeamDialog();
         toast({
-          title: language === 'en' ? 'Team member saved' : 'Membre enregistré',
-          description: language === 'en' ? 'Team member details updated successfully.' : 'Détails du membre mis à jour avec succès.',
+          title: language === 'en' ? 'Team member saved' : 'Membre enregistrÃ©',
+          description: language === 'en' ? 'Team member details updated successfully.' : 'DÃ©tails du membre mis Ã  jour avec succÃ¨s.',
         });
       } else {
         // Refresh from database if update failed
@@ -9518,7 +9509,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         
         toast({
           title: t.error,
-          description: language === 'en' ? 'No team member was updated. Please check your data.' : 'Aucun membre n\'a été mis à jour. Veuillez vérifier vos données.',
+          description: language === 'en' ? 'No team member was updated. Please check your data.' : 'Aucun membre n\'a Ã©tÃ© mis Ã  jour. Veuillez vÃ©rifier vos donnÃ©es.',
           variant: 'destructive',
         });
       }
@@ -9554,14 +9545,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       closeDeleteTeamDialog();
       toast({
-        title: language === 'en' ? 'Team member deleted' : 'Membre supprimé',
-        description: language === 'en' ? 'Team member removed successfully.' : 'Membre supprimé avec succès.',
+        title: language === 'en' ? 'Team member deleted' : 'Membre supprimÃ©',
+        description: language === 'en' ? 'Team member removed successfully.' : 'Membre supprimÃ© avec succÃ¨s.',
       });
     } catch (err) {
       console.error('Delete team member error:', err);
       toast({
         title: t.error,
-        description: language === 'en' ? 'Failed to delete team member. Please try again.' : 'Échec de la suppression. Veuillez réessayer.',
+        description: language === 'en' ? 'Failed to delete team member. Please try again.' : 'Ã‰chec de la suppression. Veuillez rÃ©essayer.',
         variant: 'destructive',
       });
     }
@@ -9592,11 +9583,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       if (error) {
         console.error('Delete message error:', error);
-        let errorMessage = language === 'en' ? 'Failed to delete message' : 'Échec de la suppression';
+        let errorMessage = language === 'en' ? 'Failed to delete message' : 'Ã‰chec de la suppression';
         if (error.code === '42501' || error.message?.includes('policy') || error.message?.includes('permission')) {
           errorMessage = language === 'en' 
             ? 'Permission denied. Check RLS policies for "contact_messages" table.' 
-            : 'Permission refusée. Vérifiez les politiques RLS pour la table "contact_messages".';
+            : 'Permission refusÃ©e. VÃ©rifiez les politiques RLS pour la table "contact_messages".';
         } else if (error.message) {
           errorMessage = error.message;
         }
@@ -9615,7 +9606,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         if (verifyData) {
           throw new Error(language === 'en' 
             ? 'Failed to delete message. Check RLS policies.' 
-            : 'Échec de la suppression. Vérifiez les politiques RLS.');
+            : 'Ã‰chec de la suppression. VÃ©rifiez les politiques RLS.');
         }
       }
       
@@ -9624,14 +9615,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       closeDeleteMessageDialog();
       toast({
-        title: language === 'en' ? 'Message deleted' : 'Message supprimé',
-        description: language === 'en' ? 'Contact message removed successfully.' : 'Message supprimé avec succès.',
+        title: language === 'en' ? 'Message deleted' : 'Message supprimÃ©',
+        description: language === 'en' ? 'Contact message removed successfully.' : 'Message supprimÃ© avec succÃ¨s.',
       });
     } catch (err: any) {
       console.error('Delete message error:', err);
       toast({
         title: t.error,
-        description: err.message || (language === 'en' ? 'Failed to delete message. Please try again.' : 'Échec de la suppression. Veuillez réessayer.'),
+        description: err.message || (language === 'en' ? 'Failed to delete message. Please try again.' : 'Ã‰chec de la suppression. Veuillez rÃ©essayer.'),
         variant: 'destructive',
       });
     }
@@ -9704,10 +9695,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // Clear timer and redirect to login
         clearInterval(timer);
         toast({
-          title: language === 'en' ? "Session Expired" : "Session expirée",
+          title: language === 'en' ? "Session Expired" : "Session expirÃ©e",
           description: language === 'en' 
             ? "Your session has expired. Please login again."
-            : "Votre session a expiré. Veuillez vous reconnecter.",
+            : "Votre session a expirÃ©. Veuillez vous reconnecter.",
           variant: "destructive",
         });
         // Use window.location for hard redirect (clears all state)
@@ -9724,10 +9715,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (response.status === 401) {
         // Token expired - redirect to login
         toast({
-          title: language === 'en' ? "Session Expired" : "Session expirée",
+          title: language === 'en' ? "Session Expired" : "Session expirÃ©e",
           description: language === 'en' 
             ? "Your session has expired. Please login again."
-            : "Votre session a expiré. Veuillez vous reconnecter.",
+            : "Votre session a expirÃ©. Veuillez vous reconnecter.",
           variant: "destructive",
         });
         navigate('/admin/login');
@@ -9795,7 +9786,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               <p className="text-foreground/90 leading-relaxed">
                 {language === 'en' 
                   ? 'The admin dashboard is only available on desktop computers and laptops. Please access it from a PC for the best experience and full functionality.'
-                  : 'Le tableau de bord administrateur est uniquement disponible sur les ordinateurs de bureau et les ordinateurs portables. Veuillez y accéder depuis un PC pour une meilleure expérience et toutes les fonctionnalités.'}
+                  : 'Le tableau de bord administrateur est uniquement disponible sur les ordinateurs de bureau et les ordinateurs portables. Veuillez y accÃ©der depuis un PC pour une meilleure expÃ©rience et toutes les fonctionnalitÃ©s.'}
               </p>
             </div>
 
@@ -9805,7 +9796,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onClick={() => navigate('/admin/login')}
                 className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 h-12 text-base font-semibold"
               >
-                {language === 'en' ? 'Back to Login' : 'Retour à la Connexion'}
+                {language === 'en' ? 'Back to Login' : 'Retour Ã  la Connexion'}
               </Button>
             </div>
 
@@ -10171,37 +10162,92 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         <div className="flex-1">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 min-w-0">
             {/* Header */}
-            <div className="mb-8 flex justify-between items-start min-w-0 animate-in slide-in-from-top-4 fade-in duration-700">
-              <div>
-                <h1 
-                  className="text-4xl font-heading font-bold mb-2 animate-in slide-in-from-left-4 duration-1000 uppercase"
+            <div className="mb-8 flex flex-col gap-4 min-w-0 animate-in slide-in-from-top-4 fade-in duration-700">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h1 
+                    className="text-4xl font-heading font-bold mb-2 animate-in slide-in-from-left-4 duration-1000 uppercase"
+                    style={{
+                      color: '#E21836',
+                      textShadow: '0 0 12px rgba(226, 24, 54, 0.45)'
+                    }}
+                  >
+                    {t.title}
+                  </h1>
+                  <p 
+                    className="animate-in slide-in-from-left-4 duration-1000 delay-300"
+                    style={{ color: '#B0B0B0' }}
+                  >
+                    {t.subtitle}
+                  </p>
+                </div>
+                {/* Session Timer */}
+                <div 
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg"
                   style={{
-                    color: '#E21836',
-                    textShadow: '0 0 12px rgba(226, 24, 54, 0.45)'
+                    background: '#1F1F1F',
+                    border: '1px solid #2A2A2A',
+                    color: '#B8B8B8'
                   }}
                 >
-                  {t.title}
-                </h1>
-                <p 
-                  className="animate-in slide-in-from-left-4 duration-1000 delay-300"
-                  style={{ color: '#B0B0B0' }}
-                >
-                  {t.subtitle}
-                </p>
+                  <Clock className="w-4 h-4 animate-pulse" style={{ color: '#E21836' }} />
+                  <span className="text-sm font-medium">
+                    {language === 'en' ? 'Session:' : 'Session:'} {Math.floor(sessionTimeLeft / 3600)}h {Math.floor((sessionTimeLeft % 3600) / 60)}m {sessionTimeLeft % 60}s
+                  </span>
+                </div>
               </div>
-              {/* Session Timer */}
-              <div 
-                className="flex items-center gap-2 px-4 py-2 rounded-lg"
-                style={{
-                  background: '#1F1F1F',
-                  border: '1px solid #2A2A2A',
-                  color: '#B8B8B8'
-                }}
-              >
-                <Clock className="w-4 h-4 animate-pulse" style={{ color: '#E21836' }} />
-                <span className="text-sm font-medium">
-                  {language === 'en' ? 'Session:' : 'Session:'} {Math.floor(sessionTimeLeft / 3600)}h {Math.floor((sessionTimeLeft % 3600) / 60)}m {sessionTimeLeft % 60}s
-                </span>
+              
+              {/* Event Selector */}
+              <div className="flex items-center gap-4">
+                <Label htmlFor="event-selector" className="text-sm font-medium" style={{ color: '#B0B0B0' }}>
+                  {language === 'en' ? 'Filter by Event:' : 'Filtrer par Événement:'}
+                </Label>
+                <Select
+                  value={selectedEventId || 'all'}
+                  onValueChange={(value) => {
+                    setSelectedEventId(value === 'all' ? '' : value);
+                  }}
+                >
+                  <SelectTrigger 
+                    id="event-selector"
+                    className="w-[300px]"
+                    style={{
+                      background: '#1F1F1F',
+                      borderColor: '#2A2A2A',
+                      color: '#FFFFFF'
+                    }}
+                  >
+                    <SelectValue placeholder={language === 'en' ? 'All Events' : 'Tous les Événements'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      {language === 'en' ? 'All Events' : 'Tous les Événements'}
+                    </SelectItem>
+                    {events
+                      .filter(e => e.event_type === 'upcoming')
+                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                      .map((event) => (
+                        <SelectItem key={event.id} value={event.id}>
+                          {event.name} - {new Date(event.date).toLocaleDateString()}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {selectedEventId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      fetchAllData();
+                      fetchAmbassadorSalesData();
+                      fetchOnlineOrders();
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    {language === 'en' ? 'Reload Data' : 'Recharger les Données'}
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -10219,2399 +10265,87 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             >
               {/* Tabs Content - separated from navigation */}
               <TabsContent value="overview" className="space-y-6 mt-20 sm:mt-0">
-                {/* Welcome Header */}
-                <div className="animate-in slide-in-from-top-4 fade-in duration-700">
-                  <Card 
-                    className="shadow-xl"
-                    style={{
-                      backgroundColor: '#1F1F1F',
-                      borderColor: '#2A2A2A'
-                    }}
-                  >
-                    <CardContent className="p-8">
-                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                        <div className="space-y-2">
-                          <h2 className="text-3xl font-heading font-bold" style={{ color: '#E21836' }}>
-                            {language === 'en' ? 'Welcome Back!' : 'Bon Retour !'}
-                          </h2>
-                          <p className="text-lg font-heading" style={{ color: '#B0B0B0' }}>
-                            {language === 'en' 
-                              ? 'Here\'s what\'s happening with your events today'
-                              : 'Voici ce qui se passe avec vos événements aujourd\'hui'}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-4">
-                          <div className="text-right">
-                            <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>
-                              {language === 'en' ? 'Total Revenue' : 'Revenus Totaux'}
-                            </p>
-                            <p className="text-lg font-bold font-heading" style={{ color: '#E21836' }}>
-                              {displayStats.totalRevenue.toLocaleString()} TND
-                            </p>
-                          </div>
-                          <div className="h-12 w-px" style={{ backgroundColor: '#2A2A2A' }} />
-                          <div className="text-right">
-                            <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>
-                              {language === 'en' ? 'Paid Revenue' : 'Revenus Payés'}
-                            </p>
-                            <p className="text-lg font-bold font-heading" style={{ color: '#10B981' }}>
-                              {displayStats.paidRevenue.toLocaleString()} TND
-                            </p>
-                          </div>
-                          <div className="h-12 w-px" style={{ backgroundColor: '#2A2A2A' }} />
-                          <div className="text-right">
-                            <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>
-                              {language === 'en' ? 'Pending Revenue' : 'Revenus en Attente'}
-                            </p>
-                            <p className="text-lg font-bold font-heading" style={{ color: '#F59E0B' }}>
-                              {displayStats.pendingRevenue.toLocaleString()} TND
-                            </p>
-                          </div>
-                          <div className="h-12 w-px" style={{ backgroundColor: '#2A2A2A' }} />
-                          <div className="text-right">
-                            <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>
-                              {language === 'en' ? 'Sold Tickets' : 'Billets Vendus'}
-                            </p>
-                            <p className="text-lg font-bold font-heading" style={{ color: '#E21836' }}>
-                              {displayStats.soldTickets.toLocaleString()}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Enhanced KPI Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full px-2">
-                  {/* Pending Applications Card */}
-                  <Card 
-                    className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-                      animatedCards.has(0) 
-                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                        : 'opacity-0 translate-y-8'
-                    }`}
-                    style={{
-                      backgroundColor: '#1F1F1F',
-                      borderColor: '#2A2A2A'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#3A3A3A';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#2A2A2A';
-                    }}
-                  >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl" />
-                    <CardContent className="p-6 relative z-10">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(107, 107, 107, 0.2)' }}>
-                          <Clock className="w-6 h-6" style={{ color: '#6B6B6B' }} />
-                        </div>
-                        <div className="flex items-center gap-1 text-xs font-heading">
-                          <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
-                          <span style={{ color: '#E21836' }}>+12%</span>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-sm font-heading" style={{ color: '#B0B0B0' }}>{t.pendingApplications}</p>
-                        <p className="text-3xl font-bold font-heading" style={{ color: '#FFFFFF' }}>
-                            {pendingApplications.length}
-                          </p>
-                        <p className="text-xs font-heading" style={{ color: '#B0B0B0' }}>
-                          {language === 'en' ? 'Awaiting review' : 'En attente de révision'}
-                        </p>
-                        </div>
-                      {/* Mini Sparkline */}
-                      <div className="mt-4 h-8 flex items-end gap-1">
-                        {(() => {
-                          const barValues = [3, 5, 4, 7, 6, 8, pendingApplications.length];
-                          const maxValue = Math.max(...barValues, 1); // Ensure at least 1 to avoid division by zero
-                          return barValues.map((h, i) => (
-                            <div 
-                              key={i}
-                              className="flex-1 bg-yellow-500/30 rounded-t transition-all duration-300 hover:bg-yellow-500/50"
-                              style={{ height: `${(h / maxValue) * 100}%` }}
-                            />
-                          ));
-                        })()}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Approved Applications Card */}
-                  <Card 
-                    className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-                      animatedCards.has(1) 
-                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200' 
-                        : 'opacity-0 translate-y-8'
-                    }`}
-                    style={{
-                      backgroundColor: '#1F1F1F',
-                      borderColor: '#2A2A2A'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#3A3A3A';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#2A2A2A';
-                    }}
-                  >
-                    <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl" style={{ backgroundColor: 'rgba(226, 24, 54, 0.05)' }} />
-                    <CardContent className="p-6 relative z-10">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(226, 24, 54, 0.2)' }}>
-                          <CheckCircle className="w-6 h-6" style={{ color: '#E21836' }} />
-                        </div>
-                        <div className="flex items-center gap-1 text-xs font-heading">
-                          <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
-                          <span style={{ color: '#E21836' }}>+8%</span>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground font-heading">{t.approvedApplications}</p>
-                        <p className="text-3xl font-bold font-heading text-foreground">
-                            {approvedCount}
-                          </p>
-                        <p className="text-xs text-muted-foreground font-heading">
-                          {language === 'en' ? 'Active ambassadors' : 'Ambassadeurs actifs'}
-                        </p>
-                        </div>
-                      {/* Mini Sparkline */}
-                      <div className="mt-4 h-8 flex items-end gap-1">
-                        {[5, 7, 6, 8, 9, 10, approvedCount].map((h, i) => (
-                          <div 
-                            key={i}
-                            className="flex-1 rounded-t transition-all duration-300"
-                            style={{ backgroundColor: 'rgba(226, 24, 54, 0.3)', height: `${(h / 15) * 100}%` }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(226, 24, 54, 0.5)'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(226, 24, 54, 0.3)'}
-                          />
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Total Events Card */}
-                  <Card 
-                    className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-                      animatedCards.has(2) 
-                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400' 
-                        : 'opacity-0 translate-y-8'
-                    }`}
-                    style={{
-                      backgroundColor: '#1F1F1F',
-                      borderColor: '#2A2A2A'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#3A3A3A';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#2A2A2A';
-                    }}
-                  >
-                    <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl" style={{ backgroundColor: 'rgba(0, 207, 255, 0.05)' }} />
-                    <CardContent className="p-6 relative z-10">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(107, 107, 107, 0.2)' }}>
-                          <CalendarIcon className="w-6 h-6" style={{ color: '#6B6B6B' }} />
-                        </div>
-                        <div className="flex items-center gap-1 text-xs font-heading">
-                          <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
-                          <span style={{ color: '#E21836' }}>+15%</span>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground font-heading">{t.totalEvents}</p>
-                        <p className="text-3xl font-bold font-heading text-foreground">
-                            {events.length}
-                          </p>
-                        <p className="text-xs text-muted-foreground font-heading">
-                          {language === 'en' ? 'All time events' : 'Événements de tous les temps'}
-                        </p>
-                        </div>
-                      {/* Mini Sparkline */}
-                      <div className="mt-4 h-8 flex items-end gap-1">
-                        {[2, 3, 4, 5, 6, 7, events.length].map((h, i) => (
-                          <div 
-                            key={i}
-                            className="flex-1 rounded-t transition-all duration-300"
-                            style={{ backgroundColor: 'rgba(0, 207, 255, 0.3)', height: `${(h / 10) * 100}%` }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 207, 255, 0.5)'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 207, 255, 0.3)'}
-                          />
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Ambassador Orders Pending Card */}
-                  <Card 
-                    className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-                      animatedCards.has(3) 
-                        ? 'animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600' 
-                        : 'opacity-0 translate-y-8'
-                    }`}
-                    style={{
-                      backgroundColor: '#1F1F1F',
-                      borderColor: '#2A2A2A'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#3A3A3A';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#2A2A2A';
-                    }}
-                  >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
-                    <CardContent className="p-6 relative z-10">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(107, 107, 107, 0.2)' }}>
-                          <Users className="w-6 h-6" style={{ color: '#6B6B6B' }} />
-                        </div>
-                        {previousPendingAmbassadorOrdersCount !== null && previousPendingAmbassadorOrdersCount > 0 ? (
-                          <div className="flex items-center gap-1 text-xs font-heading">
-                            {(() => {
-                              const trend = ((pendingAmbassadorOrdersCount - previousPendingAmbassadorOrdersCount) / previousPendingAmbassadorOrdersCount) * 100;
-                              const isPositive = trend >= 0;
-                              return (
-                                <>
-                                  {isPositive ? (
-                                    <TrendingUp className="w-3 h-3" style={{ color: '#E21836' }} />
-                                  ) : (
-                                    <TrendingDown className="w-3 h-3" style={{ color: '#E21836' }} />
-                                  )}
-                                  <span style={{ color: '#E21836' }}>
-                                    {isPositive ? '+' : ''}{trend.toFixed(1)}%
-                                  </span>
-                                </>
-                              );
-                            })()}
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-xs font-heading" style={{ color: '#6B6B6B' }}>
-                            <span>—</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground font-heading">{t.ambassadorOrdersPending}</p>
-                        <p className="text-3xl font-bold font-heading text-foreground">
-                            {pendingAmbassadorOrdersCount}
-                          </p>
-                        </div>
-                      {/* Mini Sparkline */}
-                      <div className="mt-4 h-8 flex items-end gap-1">
-                        {(() => {
-                          const barValues = [Math.max(0, pendingAmbassadorOrdersCount - 6), Math.max(0, pendingAmbassadorOrdersCount - 5), Math.max(0, pendingAmbassadorOrdersCount - 4), Math.max(0, pendingAmbassadorOrdersCount - 3), Math.max(0, pendingAmbassadorOrdersCount - 2), Math.max(0, pendingAmbassadorOrdersCount - 1), pendingAmbassadorOrdersCount];
-                          const maxValue = Math.max(...barValues, 1);
-                          return barValues.map((h, i) => (
-                            <div 
-                              key={i}
-                              className="flex-1 bg-primary/30 rounded-t transition-all duration-300 hover:bg-primary/50"
-                              style={{ height: `${(h / maxValue) * 100}%` }}
-                            />
-                          ));
-                        })()}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Charts & Analytics Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Activity Timeline Chart */}
-                  <Card 
-                    className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-800 hover:shadow-lg transition-all duration-300"
-                    style={{
-                      backgroundColor: '#1F1F1F',
-                      borderColor: '#2A2A2A'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#3A3A3A';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#2A2A2A';
-                    }}
-                  >
-                  <CardHeader>
-                      <CardTitle className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Activity className="w-5 h-5 text-primary" />
-                          <span className="font-heading">
-                            {language === 'en' ? 'Activity Overview' : 'Aperçu de l\'Activité'}
-                          </span>
-                        </div>
-                        <Badge variant="outline" className="font-heading">
-                          {language === 'en' ? 'Last 7 days' : '7 derniers jours'}
-                        </Badge>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={activityChartData} margin={{ top: 8, right: 30, left: 0, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" />
-                            <XAxis dataKey="name" stroke="#B0B0B0" tick={{ fill: '#B0B0B0', fontSize: 12 }} />
-                            <YAxis yAxisId="left" stroke="#B0B0B0" tick={{ fill: '#B0B0B0', fontSize: 12 }} />
-                            <YAxis yAxisId="right" orientation="right" stroke="#B0B0B0" tick={{ fill: '#B0B0B0', fontSize: 12 }} />
-                            <RechartsTooltip
-                              contentStyle={{ background: '#1F1F1F', border: '1px solid #2A2A2A', borderRadius: 8 }}
-                              labelStyle={{ color: '#fff' }}
-                              formatter={(value: number, name: string) => {
-                                const labels: Record<string, string> = { applications: language === 'en' ? 'Applications' : 'Candidatures', orders: language === 'en' ? 'Orders' : 'Commandes', revenue: language === 'en' ? 'Revenue (TND)' : 'Chiffre (TND)' };
-                                return [name === 'revenue' ? `${Number(value).toLocaleString()} TND` : value, labels[name] || name];
-                              }}
-                            />
-                            <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value) => (value === 'revenue' ? (language === 'en' ? 'Revenue (TND)' : 'Chiffre (TND)') : value === 'applications' ? (language === 'en' ? 'Applications' : 'Candidatures') : (language === 'en' ? 'Orders' : 'Commandes'))} />
-                            <Line type="monotone" dataKey="applications" stroke="#E21836" strokeWidth={2} dot={{ fill: '#E21836', r: 4 }} yAxisId="left" name="applications" />
-                            <Line type="monotone" dataKey="orders" stroke="#10B981" strokeWidth={2} dot={{ fill: '#10B981', r: 4 }} yAxisId="left" name="orders" />
-                            <Line type="monotone" dataKey="revenue" stroke="#F59E0B" strokeWidth={2} dot={{ fill: '#F59E0B', r: 4 }} yAxisId="right" name="revenue" />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Distribution Chart */}
-                  <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-900 hover:shadow-lg transition-all duration-300">
-                    <CardHeader>
-                      <CardTitle className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <PieChart className="w-5 h-5 text-primary" />
-                          <span className="font-heading">
-                            {language === 'en' ? 'Applications Status' : 'Statut des Candidatures'}
-                          </span>
-                        </div>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                        {/* Pending */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-heading text-muted-foreground">
-                              {language === 'en' ? 'Pending' : 'En Attente'}
-                            </span>
-                            <span className="text-sm font-bold font-heading">{pendingApplications.length}</span>
-                          </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-full transition-all duration-500"
-                              style={{ width: `${applications.length > 0 ? (pendingApplications.length / applications.length) * 100 : 0}%` }}
-                            />
-                          </div>
-                        </div>
-                        {/* Approved */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-heading text-muted-foreground">
-                              {language === 'en' ? 'Approved' : 'Approuvé'}
-                            </span>
-                            <span className="text-sm font-bold font-heading">{approvedCount}</span>
-                          </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all duration-500"
-                              style={{ width: `${applications.length > 0 ? (approvedCount / applications.length) * 100 : 0}%` }}
-                            />
-                          </div>
-                        </div>
-                        {/* Rejected */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-heading text-muted-foreground">
-                              {language === 'en' ? 'Rejected' : 'Rejeté'}
-                            </span>
-                            <span className="text-sm font-bold font-heading">
-                              {applications.filter(a => a.status === 'rejected').length}
-                            </span>
-                          </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all duration-500"
-                              style={{ width: `${applications.length > 0 ? (applications.filter(a => a.status === 'rejected').length / applications.length) * 100 : 0}%` }}
-                            />
-                          </div>
-                        </div>
-                        {/* Summary */}
-                        <div className="pt-4 border-t border-border">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-heading font-semibold">
-                              {language === 'en' ? 'Total Applications' : 'Total des Candidatures'}
-                            </span>
-                            <span className="text-lg font-bold font-heading text-primary">
-                              {applications.length}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Quick Actions & Upcoming Events */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Quick Actions */}
-                  <Card 
-                    className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-1000 hover:shadow-lg transition-all duration-300"
-                    style={{
-                      backgroundColor: '#1F1F1F',
-                      borderColor: '#2A2A2A'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#3A3A3A';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#2A2A2A';
-                    }}
-                  >
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 font-heading" style={{ color: '#FFFFFF' }}>
-                        <Target className="w-5 h-5" style={{ color: '#E21836' }} />
-                        {language === 'en' ? 'Quick Actions' : 'Actions Rapides'}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <Button 
-                        onClick={() => setActiveTab("events")}
-                        className="w-full justify-start font-heading"
-                        style={{
-                          backgroundColor: '#E21836',
-                          color: '#FFFFFF',
-                          border: 'none'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#C4162F';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = '#E21836';
-                        }}
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        {language === 'en' ? 'Create New Event' : 'Créer un Nouvel Événement'}
-                      </Button>
-                      <Button 
-                        onClick={() => setActiveTab("applications")}
-                        className="w-full justify-start font-heading"
-                        style={{
-                          backgroundColor: '#1F1F1F',
-                          color: '#FFFFFF',
-                          borderColor: '#2A2A2A'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#252525';
-                          e.currentTarget.style.borderColor = '#3A3A3A';
-                          e.currentTarget.style.color = '#E21836';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = '#1F1F1F';
-                          e.currentTarget.style.borderColor = '#2A2A2A';
-                          e.currentTarget.style.color = '#FFFFFF';
-                        }}
-                      >
-                        <FileText className="w-4 h-4 mr-2" />
-                        {language === 'en' ? 'Review Applications' : 'Examiner les Candidatures'}
-                      </Button>
-                      <Button 
-                        onClick={() => setActiveTab("ambassadors")}
-                        className="w-full justify-start font-heading"
-                        style={{
-                          backgroundColor: '#1F1F1F',
-                          color: '#FFFFFF',
-                          borderColor: '#2A2A2A'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#252525';
-                          e.currentTarget.style.borderColor = '#3A3A3A';
-                          e.currentTarget.style.color = '#E21836';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = '#1F1F1F';
-                          e.currentTarget.style.borderColor = '#2A2A2A';
-                          e.currentTarget.style.color = '#FFFFFF';
-                        }}
-                      >
-                        <Users className="w-4 h-4 mr-2" />
-                        {language === 'en' ? 'Manage Ambassadors' : 'Gérer les Ambassadeurs'}
-                      </Button>
-                      <Button 
-                        onClick={() => setActiveTab("tickets")}
-                        className="w-full justify-start font-heading"
-                        style={{
-                          backgroundColor: '#1F1F1F',
-                          color: '#FFFFFF',
-                          borderColor: '#2A2A2A'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#252525';
-                          e.currentTarget.style.borderColor = '#3A3A3A';
-                          e.currentTarget.style.color = '#E21836';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = '#1F1F1F';
-                          e.currentTarget.style.borderColor = '#2A2A2A';
-                          e.currentTarget.style.color = '#FFFFFF';
-                        }}
-                      >
-                        <Ticket className="w-4 h-4 mr-2" />
-                        {language === 'en' ? 'View Ticket Sales' : 'Voir les Ventes de Billets'}
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Upcoming Events Preview */}
-                  <Card className="lg:col-span-2 animate-in slide-in-from-bottom-4 fade-in duration-700 delay-1100 hover:shadow-lg transition-all duration-300">
-                    <CardHeader>
-                      <CardTitle className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <CalendarIcon className="w-5 h-5 text-primary" />
-                          <span className="font-heading">
-                            {language === 'en' ? 'Upcoming Events' : 'Événements à Venir'}
-                          </span>
-                        </div>
-                        <Button 
-                          onClick={() => setActiveTab("events")}
-                          variant="ghost"
-                          size="sm"
-                          className="font-heading"
-                        >
-                          {language === 'en' ? 'View All' : 'Voir Tout'}
-                        </Button>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {events
-                          .filter(e => e.event_type === 'upcoming' && new Date(e.date) >= new Date())
-                          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                          .slice(0, 3)
-                          .map((event, index) => (
-                            <div 
-                              key={event.id}
-                              className={`p-4 bg-muted/50 rounded-lg border border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-md cursor-pointer group animate-in slide-in-from-left-4 fade-in duration-500 ${
-                                index === 0 ? 'delay-1200' :
-                                index === 1 ? 'delay-1300' :
-                                'delay-1400'
-                              }`}
-                              onClick={() => setActiveTab("events")}
-                            >
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1 space-y-1">
-                                  <h4 className="font-semibold font-heading group-hover:text-primary transition-colors">
-                                    {event.name}
-                                  </h4>
-                                  <div className="flex items-center gap-4 text-sm text-muted-foreground font-heading">
-                                    <div className="flex items-center gap-1">
-                                      <CalendarIcon className="w-3 h-3" />
-                                      {new Date(event.date).toLocaleDateString()}
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <MapPin className="w-3 h-3" />
-                                      {event.venue}
-                                    </div>
-                                  </div>
-                                </div>
-                                <Badge variant="outline" className="font-heading">
-                                  {event.featured ? (language === 'en' ? 'Featured' : 'En Vedette') : event.event_type}
-                                </Badge>
-                              </div>
-                            </div>
-                          ))}
-                        {events.filter(e => e.event_type === 'upcoming' && new Date(e.date) >= new Date()).length === 0 && (
-                          <div className="text-center py-8 text-muted-foreground font-heading">
-                            {language === 'en' ? 'No upcoming events' : 'Aucun événement à venir'}
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Recent Activity - Enhanced */}
-                <Card className="animate-in slide-in-from-bottom-4 fade-in duration-1000 delay-1500 hover:shadow-lg transition-all duration-300">
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5 text-primary animate-pulse" />
-                        <span className="font-heading">
-                          {language === 'en' ? 'Recent Activity' : 'Activité Récente'}
-                        </span>
-                      </div>
-                      <Button 
-                        onClick={() => setActiveTab("applications")}
-                        variant="ghost"
-                        size="sm"
-                        className="font-heading"
-                      >
-                        {language === 'en' ? 'View All' : 'Voir Tout'}
-                      </Button>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {applications.slice(0, 5).map((app, index) => (
-                        <div 
-                          key={app.id} 
-                          className={`flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-lg border border-border/50 hover:border-primary/50 transform transition-all duration-300 hover:scale-[1.02] hover:shadow-md group animate-in slide-in-from-left-4 fade-in duration-500 ${
-                            index === 0 ? 'delay-1600' :
-                            index === 1 ? 'delay-1700' :
-                            index === 2 ? 'delay-1800' :
-                            index === 3 ? 'delay-1900' :
-                            'delay-2000'
-                          }`}
-                        >
-                          <div className="flex items-center gap-4 flex-1">
-                            <div 
-                              className="p-2 rounded-lg"
-                              style={{
-                                backgroundColor: app.status === 'approved' 
-                                  ? 'rgba(34, 197, 94, 0.2)' // Green
-                                  : app.status === 'rejected' || app.status === 'removed'
-                                  ? 'rgba(239, 68, 68, 0.2)' // Red
-                                  : app.status === 'suspended'
-                                  ? 'rgba(107, 114, 128, 0.2)' // Grey
-                                  : 'rgba(249, 115, 22, 0.2)' // Orange
-                              }}
-                            >
-                              {app.status === 'approved' ? (
-                                <CheckCircle className="w-5 h-5" style={{ color: '#22C55E' }} /> // Green
-                              ) : app.status === 'rejected' || app.status === 'removed' ? (
-                                <XCircle className="w-5 h-5" style={{ color: '#EF4444' }} /> // Red
-                              ) : app.status === 'suspended' ? (
-                                <Pause className="w-5 h-5" style={{ color: '#6B7280' }} /> // Grey
-                              ) : (
-                                <Clock className="w-5 h-5" style={{ color: '#F97316' }} /> // Orange
-                              )}
-                          </div>
-                            <div className="flex-1">
-                              <p className="font-semibold font-heading group-hover:text-primary transition-colors">
-                                {app.full_name}
-                              </p>
-                              <p className="text-sm text-muted-foreground font-heading">
-                                {app.city} • {app.phone_number}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {getStatusBadge(app.status)}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setActiveTab("applications")}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity font-heading"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                      {applications.length === 0 && (
-                        <div className="text-center py-12">
-                          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                            <FileText className="w-8 h-8 text-muted-foreground" />
-                          </div>
-                          <p className="text-muted-foreground font-heading">
-                            {t.noApplications}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+                <OverviewTab
+                  language={language}
+                  t={t}
+                  applications={applications}
+                  pendingApplications={pendingApplications}
+                  approvedCount={approvedCount}
+                  events={events}
+                  displayStats={displayStats}
+                  pendingAmbassadorOrdersCount={pendingAmbassadorOrdersCount}
+                  previousPendingAmbassadorOrdersCount={previousPendingAmbassadorOrdersCount}
+                  activityChartData={activityChartData}
+                  animatedCards={animatedCards}
+                  setActiveTab={setActiveTab}
+                  getStatusBadge={getStatusBadge}
+                />
               </TabsContent>
 
-              {/* Events Tab */}
-              <TabsContent value="events" className="space-y-6">
-                <div className="flex justify-between items-center mb-4 animate-in slide-in-from-top-4 fade-in duration-700">
-                  <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">Events Management</h2>
-                  <Dialog open={isEventDialogOpen} onOpenChange={setIsEventDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button 
-                        onClick={() => {
-                          // Initialize with empty passes and default event_type - admin must add at least one pass
-                          setEditingEvent({
-                            passes: [],
-                            event_type: 'upcoming',
-                            featured: false
-                          } as Event);
-                          // Clear pending files and validation errors when opening dialog
-                          setPendingGalleryImages([]);
-                          setPendingGalleryVideos([]);
-                          setPassValidationErrors({});
-                          setIsEventDialogOpen(true);
-                        }}
-                        className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
-                      >
-                        <Plus className="w-4 h-4 mr-2 animate-pulse" />
-                        {t.add}
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
-                      <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-                        <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
-                          {editingEvent?.id ? 'Edit Event' : 'Add New Event'}
-                        </DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700 delay-300">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
-                            <Label htmlFor="eventName">{t.eventName}</Label>
-                            <Input
-                              id="eventName"
-                              value={editingEvent?.name || ''}
-                              onChange={(e) => setEditingEvent(prev => ({ ...prev, name: e.target.value }))}
-                              className="transition-all duration-300 focus:scale-105"
-                            />
-                          </div>
-                          <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
-                            <Label htmlFor="eventDate">{t.eventDate}</Label>
-                            <Input
-                              id="eventDate"
-                              type="datetime-local"
-                              value={editingEvent?.date ? editingEvent.date.slice(0, 16) : ''}
-                              onChange={(e) => setEditingEvent(prev => ({ ...prev, date: e.target.value }))}
-                              className="transition-all duration-300 focus:scale-105"
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="eventVenue">{t.eventVenue}</Label>
-                            <Input
-                              id="eventVenue"
-                              value={editingEvent?.venue || ''}
-                              onChange={(e) => setEditingEvent(prev => ({ ...prev, venue: e.target.value }))}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="eventCity">{t.eventCity}</Label>
-                            <Input
-                              id="eventCity"
-                              value={editingEvent?.city || ''}
-                              onChange={(e) => setEditingEvent(prev => ({ ...prev, city: e.target.value }))}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <Label htmlFor="eventDescription">{t.eventDescription}</Label>
-                          <Textarea
-                            id="eventDescription"
-                            value={editingEvent?.description || ''}
-                            onChange={(e) => setEditingEvent(prev => ({ ...prev, description: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="eventInstagramLink" className="flex items-center gap-2">
-                            <Instagram className="w-4 h-4" />
-                            {t.eventInstagramLink} *
-                          </Label>
-                          <Input
-                            id="eventInstagramLink"
-                            type="url"
-                            value={editingEvent?.instagram_link || ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setEditingEvent(prev => ({ ...prev, instagram_link: value }));
-                            }}
-                            placeholder="https://www.instagram.com/username"
-                            className={editingEvent?.instagram_link && !isInstagramUrl(editingEvent.instagram_link) ? 'border-red-500' : ''}
-                            required
-                          />
-                          {editingEvent?.instagram_link && !isInstagramUrl(editingEvent.instagram_link) && (
-                            <p className="text-sm text-red-500 mt-1">
-                              {language === 'en' 
-                                ? 'Must be a valid Instagram URL (e.g., https://www.instagram.com/username)' 
-                                : 'Doit être une URL Instagram valide (ex: https://www.instagram.com/username)'}
-                            </p>
-                          )}
-                          {!editingEvent?.instagram_link && (
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {language === 'en' 
-                                ? 'Must start with https://www.instagram.com/ or https://instagram.com/' 
-                                : 'Doit commencer par https://www.instagram.com/ ou https://instagram.com/'}
-                            </p>
-                          )}
-                        </div>
-                        <div>
-                          <Label htmlFor="eventType">{t.eventType}</Label>
-                          <Select value={editingEvent?.event_type || 'upcoming'} onValueChange={(value: 'upcoming' | 'gallery') => setEditingEvent(prev => ({ ...prev, event_type: value }))}>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="upcoming">{t.eventTypeUpcoming}</SelectItem>
-                              <SelectItem value="gallery">{t.eventTypeGallery}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label>{t.eventPoster}</Label>
-                          <FileUpload
-                            onFileSelect={(file) => setEditingEvent(prev => ({ ...prev, _uploadFile: file }))}
-                            onUrlChange={(url) => setEditingEvent(prev => ({ ...prev, poster_url: url }))}
-                            currentUrl={editingEvent?.poster_url}
-                            accept="image/*"
-                          />
-                        </div>
-                        {/* Gallery Images & Videos - Only show for Gallery Events */}
-                        {editingEvent?.event_type === 'gallery' && (
-                          <div className="space-y-6 border-t pt-6">
-                            {/* Gallery Images Section */}
-                            <div className="space-y-4">
-                              <div className="flex items-center justify-between">
-                                <Label className="text-lg font-semibold flex items-center gap-2">
-                                  <Image className="w-5 h-5" />
-                                  {t.galleryImages}
-                                </Label>
-                                <div className="relative">
-                                  <input
-                                    type="file"
-                                    id="gallery-images-upload"
-                                    multiple
-                                    accept="image/*"
-                                    onChange={(e) => {
-                                      const files = Array.from(e.target.files || []);
-                                      if (files.length > 0) {
-                                        handleGalleryFileSelect(files, 'images');
-                                      }
-                                      // Reset input
-                                      e.target.value = '';
-                                    }}
-                                    className="hidden"
-                                  />
-                                  <Label
-                                    htmlFor="gallery-images-upload"
-                                    className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-                                  >
-                                    <Upload className="w-4 h-4" />
-                                    {t.addGalleryFile}
-                                  </Label>
-                                </div>
-                              </div>
-                              {/* Existing uploaded images */}
-                              {editingEvent?.gallery_images && editingEvent.gallery_images.length > 0 && (
-                                <div>
-                                  <Label className="text-sm text-muted-foreground mb-2 block">
-                                    {language === 'en' ? 'Uploaded Images' : 'Images Téléchargées'}
-                                  </Label>
-                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                    {editingEvent.gallery_images.map((url, index) => (
-                                      <div key={`uploaded-${index}`} className="relative group">
-                                        <img
-                                          src={url}
-                                          alt={`Gallery image ${index + 1}`}
-                                          className="w-full h-32 object-cover rounded-lg border border-border"
-                                        />
-                                        <Button
-                                          type="button"
-                                          variant="destructive"
-                                          size="sm"
-                                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
-                                          onClick={() => removeGalleryFile(index, 'images')}
-                                        >
-                                          <X className="w-4 h-4" />
-                                        </Button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              {/* Pending images (to be uploaded on save) */}
-                              {pendingGalleryImages.length > 0 && (
-                                <div>
-                                  <Label className="text-sm text-muted-foreground mb-2 block">
-                                    {language === 'en' ? `Pending Images (${pendingGalleryImages.length}) - Will upload on save` : `Images en Attente (${pendingGalleryImages.length}) - Sera téléchargé lors de l'enregistrement`}
-                                  </Label>
-                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                    {pendingGalleryImages.map((file, index) => (
-                                      <div key={`pending-${index}`} className="relative group">
-                                        <img
-                                          src={URL.createObjectURL(file)}
-                                          alt={`Pending image ${index + 1}`}
-                                          className="w-full h-32 object-cover rounded-lg border border-dashed border-primary"
-                                        />
-                                        <div className="absolute inset-0 bg-primary/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                          <Badge variant="secondary" className="text-xs">
-                                            {language === 'en' ? 'Pending' : 'En Attente'}
-                                          </Badge>
-                                        </div>
-                                        <Button
-                                          type="button"
-                                          variant="destructive"
-                                          size="sm"
-                                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
-                                          onClick={() => removePendingGalleryFile(index, 'images')}
-                                        >
-                                          <X className="w-4 h-4" />
-                                        </Button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              {(!editingEvent?.gallery_images || editingEvent.gallery_images.length === 0) && pendingGalleryImages.length === 0 && (
-                                <p className="text-sm text-muted-foreground">
-                                  {language === 'en' 
-                                    ? 'No gallery images. Select images to upload when you save.' 
-                                    : 'Aucune image de galerie. Sélectionnez des images à télécharger lors de l\'enregistrement.'}
-                                </p>
-                              )}
-                            </div>
-
-                            {/* Gallery Videos Section */}
-                            <div className="space-y-4">
-                              <div className="flex items-center justify-between">
-                                <Label className="text-lg font-semibold flex items-center gap-2">
-                                  <Video className="w-5 h-5" />
-                                  {t.galleryVideos}
-                                </Label>
-                                <div className="relative">
-                                  <input
-                                    type="file"
-                                    id="gallery-videos-upload"
-                                    multiple
-                                    accept="video/*"
-                                    onChange={(e) => {
-                                      const files = Array.from(e.target.files || []);
-                                      if (files.length > 0) {
-                                        handleGalleryFileSelect(files, 'videos');
-                                      }
-                                      // Reset input
-                                      e.target.value = '';
-                                    }}
-                                    className="hidden"
-                                  />
-                                  <Label
-                                    htmlFor="gallery-videos-upload"
-                                    className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-                                  >
-                                    <Upload className="w-4 h-4" />
-                                    {t.addGalleryFile}
-                                  </Label>
-                                </div>
-                              </div>
-                              {/* Existing uploaded videos */}
-                              {editingEvent?.gallery_videos && editingEvent.gallery_videos.length > 0 && (
-                                <div>
-                                  <Label className="text-sm text-muted-foreground mb-2 block">
-                                    {language === 'en' ? 'Uploaded Videos' : 'Vidéos Téléchargées'}
-                                  </Label>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {editingEvent.gallery_videos.map((url, index) => (
-                                      <div key={`uploaded-video-${index}`} className="relative group">
-                                        <video
-                                          src={url}
-                                          controls
-                                          className="w-full h-48 object-cover rounded-lg border border-border"
-                                        />
-                                        <Button
-                                          type="button"
-                                          variant="destructive"
-                                          size="sm"
-                                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
-                                          onClick={() => removeGalleryFile(index, 'videos')}
-                                        >
-                                          <X className="w-4 h-4" />
-                                        </Button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              {/* Pending videos (to be uploaded on save) */}
-                              {pendingGalleryVideos.length > 0 && (
-                                <div>
-                                  <Label className="text-sm text-muted-foreground mb-2 block">
-                                    {language === 'en' ? `Pending Videos (${pendingGalleryVideos.length}) - Will upload on save` : `Vidéos en Attente (${pendingGalleryVideos.length}) - Sera téléchargé lors de l'enregistrement`}
-                                  </Label>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {pendingGalleryVideos.map((file, index) => (
-                                      <div key={`pending-video-${index}`} className="relative group">
-                                        <video
-                                          src={URL.createObjectURL(file)}
-                                          controls
-                                          className="w-full h-48 object-cover rounded-lg border border-dashed border-primary"
-                                        />
-                                        <div className="absolute top-2 left-2 bg-primary/90 text-primary-foreground px-2 py-1 rounded text-xs">
-                                          <Badge variant="secondary">
-                                            {language === 'en' ? 'Pending' : 'En Attente'}
-                                          </Badge>
-                                        </div>
-                                        <Button
-                                          type="button"
-                                          variant="destructive"
-                                          size="sm"
-                                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0"
-                                          onClick={() => removePendingGalleryFile(index, 'videos')}
-                                        >
-                                          <X className="w-4 h-4" />
-                                        </Button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              {(!editingEvent?.gallery_videos || editingEvent.gallery_videos.length === 0) && pendingGalleryVideos.length === 0 && (
-                                <p className="text-sm text-muted-foreground">
-                                  {language === 'en' 
-                                    ? 'No gallery videos. Select videos to upload when you save.' 
-                                    : 'Aucune vidéo de galerie. Sélectionnez des vidéos à télécharger lors de l\'enregistrement.'}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-800">
-                        <DialogClose asChild>
-                          <Button 
-                            variant="outline"
-                            className="transform hover:scale-105 transition-all duration-300"
-                          >
-                            {t.cancel}
-                          </Button>
-                        </DialogClose>
-                        <Button 
-                          onClick={async () => {
-                            await handleSaveEvent(editingEvent, editingEvent._uploadFile);
-                            setIsEventDialogOpen(false);
-                          }}
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          <Save className="w-4 h-4 mr-2 animate-pulse" />
-                          {t.save}
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                  
-                  {/* Pass Management Dialog */}
-                  <Dialog open={isPassManagementDialogOpen} onOpenChange={setIsPassManagementDialogOpen}>
-                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                      <DialogHeader>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <DialogTitle className="flex items-center gap-2">
-                              <Package className="w-5 h-5" />
-                              {language === 'en' ? 'Pass Stock Management' : 'Gestion des Stocks de Passes'}
-                            </DialogTitle>
-                            {eventForPassManagement && (
-                              <p className="text-sm text-muted-foreground mt-2">
-                                {eventForPassManagement.name} • {new Date(eventForPassManagement.date).toLocaleDateString()}
-                              </p>
-                            )}
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="default"
-                            onClick={() => {
-                              setNewPassForm({
-                                name: '',
-                                price: 0,
-                                description: '',
-                                is_primary: passesForManagement.length === 0 || !passesForManagement.some(p => p.is_primary),
-                                allowed_payment_methods: [] // Empty = all methods allowed (NULL in DB)
-                              });
-                            }}
-                          >
-                            <Plus className="w-4 h-4 mr-2" />
-                            {language === 'en' ? 'Add Pass' : 'Ajouter Pass'}
-                          </Button>
-                        </div>
-                      </DialogHeader>
-                      <div className="space-y-4 mt-4">
-                        {/* New Pass Form */}
-                        {newPassForm !== null && (
-                          <Card className="border-primary/50 bg-primary/5">
-                            <CardContent className="p-5 space-y-4">
-                              <div className="flex items-center justify-between mb-4">
-                                <h4 className="text-lg font-semibold">{language === 'en' ? 'Add New Pass' : 'Ajouter un Nouveau Pass'}</h4>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setNewPassForm(null)}
-                                >
-                                  <X className="w-4 h-4" />
-                                </Button>
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                  <Label>{language === 'en' ? 'Pass Name' : 'Nom du Pass'} *</Label>
-                                  <Input
-                                    value={newPassForm.name}
-                                    onChange={(e) => setNewPassForm({ ...newPassForm, name: e.target.value })}
-                                    placeholder={language === 'en' ? 'e.g., VIP, Standard' : 'ex: VIP, Standard'}
-                                  />
-                                </div>
-                                <div>
-                                  <Label>{language === 'en' ? 'Price (TND)' : 'Prix (TND)'} *</Label>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={newPassForm.price || ''}
-                                    onChange={(e) => setNewPassForm({ ...newPassForm, price: parseFloat(e.target.value) || 0 })}
-                                    placeholder="0.00"
-                                  />
-                                </div>
-                              </div>
-                              <div>
-                                <Label>{language === 'en' ? 'Description' : 'Description'}</Label>
-                                <Textarea
-                                  value={newPassForm.description}
-                                  onChange={(e) => setNewPassForm({ ...newPassForm, description: e.target.value })}
-                                  placeholder={language === 'en' ? 'Optional description' : 'Description optionnelle'}
-                                  rows={2}
-                                />
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <input
-                                  type="checkbox"
-                                  checked={newPassForm.is_primary}
-                                  onChange={(e) => {
-                                    const isPrimary = e.target.checked;
-                                    setNewPassForm({ ...newPassForm, is_primary: isPrimary });
-                                  }}
-                                  className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
-                                />
-                                <Label className="text-sm font-medium cursor-pointer">
-                                  {language === 'en' ? 'Mark as primary pass' : 'Marquer comme pass principal'}
-                                </Label>
-                              </div>
-                              <div className="space-y-2">
-                                <Label>{language === 'en' ? 'Allowed Payment Methods' : 'Méthodes de Paiement Autorisées'}</Label>
-                                <p className="text-xs text-muted-foreground">
-                                  {language === 'en' 
-                                    ? 'If none selected, all payment methods are allowed. Select specific methods to restrict this pass.'
-                                    : 'Si aucune n\'est sélectionnée, toutes les méthodes de paiement sont autorisées. Sélectionnez des méthodes spécifiques pour restreindre ce pass.'}
-                                </p>
-                                <div className="space-y-2">
-                                  <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                      id="pm-online"
-                                      checked={newPassForm.allowed_payment_methods.includes('online')}
-                                      onCheckedChange={(checked) => {
-                                        const methods = checked
-                                          ? [...newPassForm.allowed_payment_methods, 'online']
-                                          : newPassForm.allowed_payment_methods.filter(m => m !== 'online');
-                                        setNewPassForm({ ...newPassForm, allowed_payment_methods: methods });
-                                      }}
-                                    />
-                                    <Label htmlFor="pm-online" className="text-sm font-normal cursor-pointer">
-                                      {language === 'en' ? 'Online Payment' : 'Paiement en ligne'}
-                                    </Label>
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                      id="pm-external-app"
-                                      checked={newPassForm.allowed_payment_methods.includes('external_app')}
-                                      onCheckedChange={(checked) => {
-                                        const methods = checked
-                                          ? [...newPassForm.allowed_payment_methods, 'external_app']
-                                          : newPassForm.allowed_payment_methods.filter(m => m !== 'external_app');
-                                        setNewPassForm({ ...newPassForm, allowed_payment_methods: methods });
-                                      }}
-                                    />
-                                    <Label htmlFor="pm-external-app" className="text-sm font-normal cursor-pointer">
-                                      {language === 'en' ? 'External App' : 'Application externe'}
-                                    </Label>
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                      id="pm-ambassador-cash"
-                                      checked={newPassForm.allowed_payment_methods.includes('ambassador_cash')}
-                                      onCheckedChange={(checked) => {
-                                        const methods = checked
-                                          ? [...newPassForm.allowed_payment_methods, 'ambassador_cash']
-                                          : newPassForm.allowed_payment_methods.filter(m => m !== 'ambassador_cash');
-                                        setNewPassForm({ ...newPassForm, allowed_payment_methods: methods });
-                                      }}
-                                    />
-                                    <Label htmlFor="pm-ambassador-cash" className="text-sm font-normal cursor-pointer">
-                                      {language === 'en' ? 'Cash on Delivery (Ambassador)' : 'Paiement à la livraison (Ambassadeur)'}
-                                    </Label>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  variant="outline"
-                                  onClick={() => setNewPassForm(null)}
-                                >
-                                  {language === 'en' ? 'Cancel' : 'Annuler'}
-                                </Button>
-                                <Button
-                                  onClick={async () => {
-                                    if (!eventForPassManagement?.id) return;
-                                    if (!newPassForm.name.trim()) {
-                                      toast({
-                                        title: t.error,
-                                        description: language === 'en' ? 'Pass name is required' : 'Le nom du pass est requis',
-                                        variant: "destructive",
-                                      });
-                                      return;
-                                    }
-                                    if (!newPassForm.price || newPassForm.price <= 0) {
-                                      toast({
-                                        title: t.error,
-                                        description: language === 'en' ? 'Price must be greater than 0' : 'Le prix doit être supérieur à 0',
-                                        variant: "destructive",
-                                      });
-                                      return;
-                                    }
-
-                                    try {
-                                      // If setting as primary, unset all other primary passes first
-                                      if (newPassForm.is_primary) {
-                                        const passesToUpdate = passesForManagement
-                                          .filter(p => p.id && p.is_primary)
-                                          .map(p => p.id);
-                                        
-                                        for (const passId of passesToUpdate) {
-                                          await supabase
-                                            .from('event_passes')
-                                            .update({ is_primary: false })
-                                            .eq('id', passId);
-                                        }
-                                      }
-
-                                      // Insert new pass
-                                      // Normalize allowed_payment_methods: empty array = NULL (all methods allowed)
-                                      const allowedPaymentMethods = newPassForm.allowed_payment_methods.length > 0
-                                        ? newPassForm.allowed_payment_methods
-                                        : null;
-
-                                      const { data: newPass, error: insertError } = await supabase
-                                        .from('event_passes')
-                                        .insert({
-                                          event_id: eventForPassManagement.id,
-                                          name: newPassForm.name.trim(),
-                                          price: Number(newPassForm.price.toFixed(2)),
-                                          description: newPassForm.description || '',
-                                          is_primary: newPassForm.is_primary,
-                                          allowed_payment_methods: allowedPaymentMethods
-                                        })
-                                        .select()
-                                        .single();
-
-                                      if (insertError) throw insertError;
-
-                                      // Refresh passes list
-                                      // Use getApiBaseUrl() for consistent API routing
-                                      const apiBase = getApiBaseUrl();
-                                      const passesResponse = await fetch(`${apiBase}/api/admin/passes/${eventForPassManagement.id}`, {
-                                        credentials: 'include'
-                                      });
-                                      
-                                      if (passesResponse.ok) {
-                                        const passesResult = await passesResponse.json();
-                                        const passesWithStock = (passesResult.passes || []).map((p: any) => ({
-                                          id: p.id,
-                                          name: p.name || '',
-                                          price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
-                                          description: p.description || '',
-                                          is_primary: p.is_primary || false,
-                                          max_quantity: p.max_quantity,
-                                          sold_quantity: p.sold_quantity || 0,
-                                          remaining_quantity: p.remaining_quantity,
-                                          is_unlimited: p.is_unlimited || false,
-                                          is_active: p.is_active !== undefined ? p.is_active : true,
-                                          is_sold_out: p.is_sold_out || false,
-                                          allowed_payment_methods: p.allowed_payment_methods || null
-                                        }));
-                                        setPassesForManagement(passesWithStock);
-                                      }
-
-                                      setNewPassForm(null);
-                                      toast({
-                                        title: t.success || (language === 'en' ? 'Success' : 'Succès'),
-                                        description: language === 'en' ? 'Pass created successfully' : 'Pass créé avec succès',
-                                      });
-                                    } catch (error: any) {
-                                      toast({
-                                        title: t.error,
-                                        description: error.message || (language === 'en' ? 'Failed to create pass' : 'Échec de la création du pass'),
-                                        variant: "destructive",
-                                      });
-                                    }
-                                  }}
-                                >
-                                  <Save className="w-4 h-4 mr-2" />
-                                  {language === 'en' ? 'Create Pass' : 'Créer Pass'}
-                                </Button>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        )}
-                        {isPassManagementLoading ? (
-                          <div className="text-center py-8">
-                            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-                            <p className="text-muted-foreground">{language === 'en' ? 'Loading passes...' : 'Chargement des passes...'}</p>
-                          </div>
-                        ) : passesForManagement.length === 0 ? (
-                          <div className="text-center py-8 text-muted-foreground">
-                            <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                            <p>{language === 'en' ? 'No passes found for this event' : 'Aucun pass trouvé pour cet événement'}</p>
-                          </div>
-                        ) : (
-                          passesForManagement.map((pass, index) => (
-                            <Card key={pass.id || index} className="border-border">
-                              <CardContent className="p-5 space-y-4">
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
-                                      {pass.is_primary && (
-                                        <Badge variant="default" className="text-xs">
-                                          {language === 'en' ? 'PRIMARY' : 'PRINCIPAL'}
-                                        </Badge>
-                                      )}
-                                      <h4 className="text-lg font-semibold">{pass.name}</h4>
-                                      <span className="text-lg font-bold text-primary">{pass.price.toFixed(2)} TND</span>
-                                    </div>
-                                    {pass.description && (
-                                      <p className="text-sm text-muted-foreground mb-3">{pass.description}</p>
-                                    )}
-                                  </div>
-                                  {pass.id && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={async () => {
-                                        if (!pass.id || !eventForPassManagement?.id) return;
-                                        
-                                        // Check if pass has sold tickets
-                                        if (pass.sold_quantity && pass.sold_quantity > 0) {
-                                          toast({
-                                            title: t.error,
-                                            description: language === 'en' 
-                                              ? `Cannot delete pass "${pass.name}" - ${pass.sold_quantity} ticket(s) already sold. Deactivate it instead.`
-                                              : `Impossible de supprimer le pass "${pass.name}" - ${pass.sold_quantity} billet(s) déjà vendu(s). Désactivez-le plutôt.`,
-                                            variant: "destructive",
-                                          });
-                                          return;
-                                        }
-                                        
-                                        setConfirmDelete({ kind: 'delete-pass', passId: pass.id, passName: pass.name, eventId: eventForPassManagement.id });
-                                      }}
-                                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  )}
-                                </div>
-                                
-                                {/* Stock Display */}
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-3 bg-muted/30 rounded-lg">
-                                  <div>
-                                    <Label className="text-xs text-muted-foreground">
-                                      {language === 'en' ? 'Sold' : 'Vendus'}
-                                    </Label>
-                                    <p className="text-lg font-bold">{pass.sold_quantity || 0}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-xs text-muted-foreground">
-                                      {language === 'en' ? 'Remaining' : 'Restants'}
-                                    </Label>
-                                    <p className="text-lg font-bold text-primary">
-                                      {pass.is_unlimited 
-                                        ? (language === 'en' ? 'Unlimited' : 'Illimité')
-                                        : (pass.remaining_quantity ?? 0)}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-xs text-muted-foreground">
-                                      {language === 'en' ? 'Status' : 'Statut'}
-                                    </Label>
-                                    <div className="flex items-center gap-2 mt-1">
-                                      {pass.is_sold_out && (
-                                        <Badge variant="destructive" className="text-xs">
-                                          {language === 'en' ? 'Sold Out' : 'Épuisé'}
-                                        </Badge>
-                                      )}
-                                      {pass.is_unlimited && (
-                                        <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
-                                          {language === 'en' ? 'Unlimited' : 'Illimité'}
-                                        </Badge>
-                                      )}
-                                      {!pass.is_active && (
-                                        <Badge variant="secondary" className="text-xs">
-                                          {language === 'en' ? 'Inactive' : 'Inactif'}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                                
-                                {/* Payment Method Restrictions */}
-                                {pass.id && (
-                                  <div className="space-y-2 p-3 bg-muted/20 rounded-lg border">
-                                    <Label className="text-sm font-semibold">
-                                      {language === 'en' ? 'Allowed Payment Methods' : 'Méthodes de Paiement Autorisées'}
-                                    </Label>
-                                    <p className="text-xs text-muted-foreground mb-2">
-                                      {language === 'en' 
-                                        ? 'If none selected, all payment methods are allowed. Select specific methods to restrict this pass.'
-                                        : 'Si aucune n\'est sélectionnée, toutes les méthodes de paiement sont autorisées. Sélectionnez des méthodes spécifiques pour restreindre ce pass.'}
-                                    </p>
-                                    <div className="space-y-2">
-                                      <div className="flex items-center space-x-2">
-                                        <Checkbox
-                                          id={`pm-online-${pass.id}`}
-                                          checked={(pass.allowed_payment_methods || []).includes('online')}
-                                          onCheckedChange={async (checked) => {
-                                            if (!pass.id) return;
-                                            const currentMethods = pass.allowed_payment_methods || [];
-                                            const newMethods = checked
-                                              ? [...currentMethods, 'online']
-                                              : currentMethods.filter(m => m !== 'online');
-                                            
-                                            try {
-                                              const apiBase = getApiBaseUrl();
-                                              const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/payment-methods`, {
-                                                method: 'PUT',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                credentials: 'include',
-                                                body: JSON.stringify({ 
-                                                  allowed_payment_methods: newMethods.length > 0 ? newMethods : null 
-                                                })
-                                              });
-                                              
-                                              if (!response.ok) {
-                                                const error = await response.json();
-                                                toast({
-                                                  title: t.error,
-                                                  description: error.error || error.details || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
-                                                  variant: "destructive",
-                                                });
-                                                return;
-                                              }
-                                              
-                                              const result = await response.json();
-                                              const updatedPasses = [...passesForManagement];
-                                              updatedPasses[index] = {
-                                                ...pass,
-                                                allowed_payment_methods: result.pass.allowed_payment_methods || null
-                                              };
-                                              setPassesForManagement(updatedPasses);
-                                              
-                                              toast({
-                                                title: t.success || (language === 'en' ? 'Success' : 'Succès'),
-                                                description: language === 'en' ? 'Payment methods updated' : 'Méthodes de paiement mises à jour',
-                                              });
-                                            } catch (error: any) {
-                                              toast({
-                                                title: t.error,
-                                                description: error.message || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
-                                                variant: "destructive",
-                                              });
-                                            }
-                                          }}
-                                        />
-                                        <Label htmlFor={`pm-online-${pass.id}`} className="text-sm font-normal cursor-pointer">
-                                          {language === 'en' ? 'Online Payment' : 'Paiement en ligne'}
-                                        </Label>
-                                      </div>
-                                      <div className="flex items-center space-x-2">
-                                        <Checkbox
-                                          id={`pm-external-app-${pass.id}`}
-                                          checked={(pass.allowed_payment_methods || []).includes('external_app')}
-                                          onCheckedChange={async (checked) => {
-                                            if (!pass.id) return;
-                                            const currentMethods = pass.allowed_payment_methods || [];
-                                            const newMethods = checked
-                                              ? [...currentMethods, 'external_app']
-                                              : currentMethods.filter(m => m !== 'external_app');
-                                            
-                                            try {
-                                              const apiBase = getApiBaseUrl();
-                                              const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/payment-methods`, {
-                                                method: 'PUT',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                credentials: 'include',
-                                                body: JSON.stringify({ 
-                                                  allowed_payment_methods: newMethods.length > 0 ? newMethods : null 
-                                                })
-                                              });
-                                              
-                                              if (!response.ok) {
-                                                const error = await response.json();
-                                                toast({
-                                                  title: t.error,
-                                                  description: error.error || error.details || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
-                                                  variant: "destructive",
-                                                });
-                                                return;
-                                              }
-                                              
-                                              const result = await response.json();
-                                              const updatedPasses = [...passesForManagement];
-                                              updatedPasses[index] = {
-                                                ...pass,
-                                                allowed_payment_methods: result.pass.allowed_payment_methods || null
-                                              };
-                                              setPassesForManagement(updatedPasses);
-                                              
-                                              toast({
-                                                title: t.success || (language === 'en' ? 'Success' : 'Succès'),
-                                                description: language === 'en' ? 'Payment methods updated' : 'Méthodes de paiement mises à jour',
-                                              });
-                                            } catch (error: any) {
-                                              toast({
-                                                title: t.error,
-                                                description: error.message || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
-                                                variant: "destructive",
-                                              });
-                                            }
-                                          }}
-                                        />
-                                        <Label htmlFor={`pm-external-app-${pass.id}`} className="text-sm font-normal cursor-pointer">
-                                          {language === 'en' ? 'External App' : 'Application externe'}
-                                        </Label>
-                                      </div>
-                                      <div className="flex items-center space-x-2">
-                                        <Checkbox
-                                          id={`pm-ambassador-cash-${pass.id}`}
-                                          checked={(pass.allowed_payment_methods || []).includes('ambassador_cash')}
-                                          onCheckedChange={async (checked) => {
-                                            if (!pass.id) return;
-                                            const currentMethods = pass.allowed_payment_methods || [];
-                                            const newMethods = checked
-                                              ? [...currentMethods, 'ambassador_cash']
-                                              : currentMethods.filter(m => m !== 'ambassador_cash');
-                                            
-                                            try {
-                                              const apiBase = getApiBaseUrl();
-                                              const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/payment-methods`, {
-                                                method: 'PUT',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                credentials: 'include',
-                                                body: JSON.stringify({ 
-                                                  allowed_payment_methods: newMethods.length > 0 ? newMethods : null 
-                                                })
-                                              });
-                                              
-                                              if (!response.ok) {
-                                                const error = await response.json();
-                                                toast({
-                                                  title: t.error,
-                                                  description: error.error || error.details || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
-                                                  variant: "destructive",
-                                                });
-                                                return;
-                                              }
-                                              
-                                              const result = await response.json();
-                                              const updatedPasses = [...passesForManagement];
-                                              updatedPasses[index] = {
-                                                ...pass,
-                                                allowed_payment_methods: result.pass.allowed_payment_methods || null
-                                              };
-                                              setPassesForManagement(updatedPasses);
-                                              
-                                              toast({
-                                                title: t.success || (language === 'en' ? 'Success' : 'Succès'),
-                                                description: language === 'en' ? 'Payment methods updated' : 'Méthodes de paiement mises à jour',
-                                              });
-                                            } catch (error: any) {
-                                              toast({
-                                                title: t.error,
-                                                description: error.message || (language === 'en' ? 'Failed to update payment methods' : 'Échec de la mise à jour des méthodes de paiement'),
-                                                variant: "destructive",
-                                              });
-                                            }
-                                          }}
-                                        />
-                                        <Label htmlFor={`pm-ambassador-cash-${pass.id}`} className="text-sm font-normal cursor-pointer">
-                                          {language === 'en' ? 'Cash on Delivery (Ambassador)' : 'Paiement à la livraison (Ambassadeur)'}
-                                        </Label>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                                
-                                {/* Stock Limit Control */}
-                                <div className="space-y-4">
-                                  <div className="flex items-center space-x-2">
-                                    <Switch
-                                      id={`pm-unlimited-${pass.id}-${index}`}
-                                      checked={pass.is_unlimited || false}
-                                      disabled={!pass.id}
-                                      onCheckedChange={async (checked) => {
-                                        if (!pass.id) return;
-                                        
-                                        try {
-                                          // Use getApiBaseUrl() for consistent API routing
-                                          const apiBase = getApiBaseUrl();
-                                          const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/stock`, {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            credentials: 'include',
-                                            body: JSON.stringify({ max_quantity: checked ? null : 100 })
-                                          });
-                                          
-                                          if (!response.ok) {
-                                            const error = await response.json();
-                                            toast({
-                                              title: t.error,
-                                              description: error.error || error.details || (language === 'en' ? 'Failed to update stock' : 'Échec de la mise à jour du stock'),
-                                              variant: "destructive",
-                                            });
-                                            return;
-                                          }
-                                          
-                                          const result = await response.json();
-                                          const updatedPass = result.pass;
-                                          
-                                          // Update local state
-                                          const updatedPasses = [...passesForManagement];
-                                          updatedPasses[index] = {
-                                            ...pass,
-                                            max_quantity: updatedPass.max_quantity,
-                                            remaining_quantity: updatedPass.remaining_quantity,
-                                            is_unlimited: updatedPass.is_unlimited
-                                          };
-                                          setPassesForManagement(updatedPasses);
-                                          
-                                          toast({
-                                            title: t.success || (language === 'en' ? 'Success' : 'Succès'),
-                                            description: language === 'en' 
-                                              ? 'Stock limit updated' 
-                                              : 'Limite de stock mise à jour',
-                                          });
-                                        } catch (error: any) {
-                                          toast({
-                                            title: t.error,
-                                            description: error.message || (language === 'en' ? 'Failed to update stock' : 'Échec de la mise à jour du stock'),
-                                            variant: "destructive",
-                                          });
-                                        }
-                                      }}
-                                    />
-                                    <Label htmlFor={`pm-unlimited-${pass.id}-${index}`} className="text-sm font-medium cursor-pointer">
-                                      {language === 'en' ? 'Unlimited Stock' : 'Stock Illimité'}
-                                    </Label>
-                                  </div>
-                                  
-                                  {!pass.is_unlimited && (
-                                    <div>
-                                      <Label htmlFor={`pm-max-quantity-${pass.id}-${index}`}>
-                                        {language === 'en' ? 'Max Stock' : 'Stock Maximum'}
-                                      </Label>
-                                      <div className="flex gap-2">
-                                        <Input
-                                          id={`pm-max-quantity-${pass.id}-${index}`}
-                                          type="number"
-                                          min={pass.sold_quantity || 0}
-                                          value={pass.max_quantity !== null && pass.max_quantity !== undefined ? pass.max_quantity : ''}
-                                          disabled={!pass.id}
-                                          onChange={(e) => {
-                                            const value = e.target.value;
-                                            const numValue = value === '' ? null : parseInt(value);
-                                            const updatedPasses = [...passesForManagement];
-                                            updatedPasses[index] = {
-                                              ...pass,
-                                              max_quantity: numValue,
-                                              is_unlimited: numValue === null
-                                            };
-                                            setPassesForManagement(updatedPasses);
-                                          }}
-                                          placeholder={language === 'en' ? 'Enter max stock' : 'Entrez le stock max'}
-                                          className="flex-1"
-                                        />
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          disabled={!pass.id}
-                                          onClick={async () => {
-                                            if (!pass.id) return;
-                                            const maxQty = pass.max_quantity;
-                                            
-                                            if (maxQty !== null && maxQty !== undefined && maxQty < (pass.sold_quantity || 0)) {
-                                              toast({
-                                                title: t.error,
-                                                description: language === 'en' 
-                                                  ? `Cannot set max stock below sold quantity (${pass.sold_quantity})` 
-                                                  : `Impossible de définir le stock max en dessous de la quantité vendue (${pass.sold_quantity})`,
-                                                variant: "destructive",
-                                              });
-                                              return;
-                                            }
-                                            
-                                            try {
-                                              // Use getApiBaseUrl() for consistent API routing
-                                              const apiBase = getApiBaseUrl();
-                                              const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/stock`, {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                credentials: 'include',
-                                                body: JSON.stringify({ max_quantity: maxQty })
-                                              });
-                                              
-                                              if (!response.ok) {
-                                                const error = await response.json();
-                                                toast({
-                                                  title: t.error,
-                                                  description: error.error || error.details || (language === 'en' ? 'Failed to update stock' : 'Échec de la mise à jour du stock'),
-                                                  variant: "destructive",
-                                                });
-                                                return;
-                                              }
-                                              
-                                              const result = await response.json();
-                                              const updatedPass = result.pass;
-                                              
-                                              // Update local state
-                                              const updatedPasses = [...passesForManagement];
-                                              updatedPasses[index] = {
-                                                ...pass,
-                                                max_quantity: updatedPass.max_quantity,
-                                                remaining_quantity: updatedPass.remaining_quantity,
-                                                is_unlimited: updatedPass.is_unlimited
-                                              };
-                                              setPassesForManagement(updatedPasses);
-                                              
-                                              toast({
-                                                title: t.success || (language === 'en' ? 'Success' : 'Succès'),
-                                                description: language === 'en' 
-                                                  ? 'Stock limit updated successfully' 
-                                                  : 'Limite de stock mise à jour avec succès',
-                                              });
-                                            } catch (error: any) {
-                                              toast({
-                                                title: t.error,
-                                                description: error.message || (language === 'en' ? 'Failed to update stock' : 'Échec de la mise à jour du stock'),
-                                                variant: "destructive",
-                                              });
-                                            }
-                                          }}
-                                        >
-                                          <Save className="w-4 h-4 mr-2" />
-                                          {language === 'en' ? 'Save' : 'Enregistrer'}
-                                        </Button>
-                                      </div>
-                                      <p className="text-xs text-muted-foreground mt-1">
-                                        {language === 'en' 
-                                          ? `Minimum: ${pass.sold_quantity || 0} (cannot be below sold quantity)` 
-                                          : `Minimum: ${pass.sold_quantity || 0} (ne peut pas être en dessous de la quantité vendue)`}
-                                      </p>
-                                    </div>
-                                  )}
-                                  
-                                  {/* Activate/Deactivate Pass */}
-                                  <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                                    <div>
-                                      <Label className="text-sm font-medium">
-                                        {language === 'en' ? 'Pass Status' : 'Statut du Pass'}
-                                      </Label>
-                                      <p className="text-xs text-muted-foreground mt-1">
-                                        {pass.is_active 
-                                          ? (language === 'en' ? 'Active - visible to customers' : 'Actif - visible par les clients')
-                                          : (language === 'en' ? 'Inactive - hidden from customers' : 'Inactif - caché aux clients')}
-                                      </p>
-                                    </div>
-                                    <Switch
-                                      checked={pass.is_active !== false}
-                                      disabled={!pass.id}
-                                      onCheckedChange={async (checked) => {
-                                        if (!pass.id) return;
-                                        
-                                        try {
-                                          // Use getApiBaseUrl() for consistent API routing
-                                          const apiBase = getApiBaseUrl();
-                                          const response = await fetch(`${apiBase}/api/admin/passes/${pass.id}/activate`, {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            credentials: 'include',
-                                            body: JSON.stringify({ is_active: checked })
-                                          });
-                                          
-                                          if (!response.ok) {
-                                            const error = await response.json();
-                                            toast({
-                                              title: t.error,
-                                              description: error.error || error.details || (language === 'en' ? 'Failed to update pass status' : 'Échec de la mise à jour du statut'),
-                                              variant: "destructive",
-                                            });
-                                            return;
-                                          }
-                                          
-                                          // Update local state
-                                          const updatedPasses = [...passesForManagement];
-                                          updatedPasses[index] = {
-                                            ...pass,
-                                            is_active: checked
-                                          };
-                                          setPassesForManagement(updatedPasses);
-                                          
-                                          toast({
-                                            title: t.success || (language === 'en' ? 'Success' : 'Succès'),
-                                            description: language === 'en' 
-                                              ? `Pass ${checked ? 'activated' : 'deactivated'} successfully` 
-                                              : `Pass ${checked ? 'activé' : 'désactivé'} avec succès`,
-                                          });
-                                        } catch (error: any) {
-                                          toast({
-                                            title: t.error,
-                                            description: error.message || (language === 'en' ? 'Failed to update pass status' : 'Échec de la mise à jour du statut'),
-                                            variant: "destructive",
-                                          });
-                                        }
-                                      }}
-                                    />
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))
-                        )}
-                      </div>
-                      <div className="flex justify-end gap-2 mt-6">
-                        <DialogClose asChild>
-                          <Button variant="outline">
-                            {language === 'en' ? 'Close' : 'Fermer'}
-                          </Button>
-                        </DialogClose>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {events.map((event, index) => (
-                    <Card 
-                      key={event.id}
-                      className={`transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg ${
-                        animatedEvents.has(event.id) 
-                          ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                          : 'opacity-0 translate-y-8'
-                      } ${event.featured ? 'ring-2 ring-primary/20 shadow-lg' : ''}`}
-                    >
-                      <CardContent className="p-6">
-                        {event.poster_url && (
-                          <div className="relative">
-                            <img 
-                              src={event.poster_url} 
-                              alt={event.name} 
-                              className="w-full h-48 object-cover rounded-lg mb-4 transform transition-transform duration-300 hover:scale-105" 
-                            />
-                            {event.featured && (
-                              <Badge className="absolute top-2 right-2 bg-gradient-primary animate-pulse">
-                                Featured
-                              </Badge>
-                            )}
-                          </div>
-                        )}
-                        <h3 className="text-lg font-semibold mb-2 animate-in slide-in-from-left-4 duration-500 delay-200">
-                          {event.name}
-                        </h3>
-                        <div className="space-y-2 text-sm text-muted-foreground">
-                          <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-300">
-                            <CalendarIcon className="w-4 h-4 animate-pulse" />
-                            <span>{new Date(event.date).toLocaleDateString()}</span>
-                          </div>
-                          <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-400">
-                            <MapPin className="w-4 h-4 animate-pulse" />
-                            <span>{event.venue}, {event.city}</span>
-                          </div>
-                          {event.passes && event.passes.length > 0 && (
-                            <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-500">
-                              <DollarSign className="w-4 h-4 animate-pulse" />
-                              <span>
-                                {event.passes.length} {language === 'en' ? 'pass(es)' : 'pass(es)'} available
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-end mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-700">
-                          <div className="inline-flex items-center gap-0 rounded-md border border-border/50 bg-muted/30 p-0.5 shadow-sm">
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={async () => {
-                              // Always fetch fresh passes from database to get current values
-                              const { data: passesData, error: passesError } = await supabase
-                                .from('event_passes')
-                                .select('*')
-                                .eq('event_id', event.id)
-                                .order('is_primary', { ascending: false })
-                                .order('created_at', { ascending: true });
-                              
-                              
-                              // Handle 404 errors gracefully (table might not exist yet)
-                              if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
-                                console.error(`Error fetching passes for event ${event.id}:`, passesError);
-                              }
-                              
-                              // Map database passes to EventPass format with all current values
-                              const mappedPasses = (passesData || []).map((p: any) => {
-                                const mapped = {
-                                  id: p.id,
-                                  name: p.name || '',
-                                  price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
-                                  description: p.description || '',
-                                  is_primary: p.is_primary || false
-                                };
-                                return mapped;
-                              });
-                              
-                              const finalPasses = mappedPasses;
-                              
-                              // Create event with all current pass values from database
-                              // Create a new object without the passes property first, then add it explicitly
-                              const { passes: _, ...eventWithoutPasses } = event;
-                              const eventWithPasses: Event = { 
-                                ...eventWithoutPasses,
-                                passes: finalPasses, // Explicitly set passes - this ensures it's not empty
-                                instagram_link: event.instagram_link || event.whatsapp_link
-                              };
-                              
-                              
-                              // Clear pending files and validation errors when opening edit dialog
-                              setPendingGalleryImages([]);
-                              setPendingGalleryVideos([]);
-                              setPassValidationErrors({});
-                              
-                              // Set editingEvent first, then open dialog after a microtask
-                              // This ensures the state is set before the dialog renders
-                              setEditingEvent(eventWithPasses);
-                              
-                              
-                              // Use setTimeout to ensure state update completes before dialog opens
-                              // This prevents the dialog from rendering with stale/empty passes
-                              setTimeout(() => {
-                                setIsEventDialogOpen(true);
-                              }, 0);
-                            }}
-                            className="h-7 px-2.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground rounded-sm transition-all duration-200"
-                          >
-                            <Edit className="w-3.5 h-3.5 mr-1.5" />
-                            {t.edit}
-                          </Button>
-                          <div className="w-px h-4 bg-border/50" />
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={() => handleDeleteEvent(event.id)}
-                            className="h-7 px-2.5 text-xs font-medium text-destructive hover:bg-destructive/10 hover:text-destructive rounded-sm transition-all duration-200"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                            {t.delete}
-                          </Button>
-                          <div className="w-px h-4 bg-border/50" />
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={async () => {
-                              setIsPassManagementLoading(true);
-                              try {
-                                // Fetch passes with stock info from admin API
-                                // Use getApiBaseUrl() for consistent API routing
-                                const apiBase = getApiBaseUrl();
-                                const passesResponse = await fetch(`${apiBase}/api/admin/passes/${event.id}`, {
-                                  credentials: 'include'
-                                });
-                                
-                                if (passesResponse.ok) {
-                                  const passesResult = await passesResponse.json();
-                                  const passesWithStock = (passesResult.passes || []).map((p: any) => ({
-                                    id: p.id,
-                                    name: p.name || '',
-                                    price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
-                                    description: p.description || '',
-                                    is_primary: p.is_primary || false,
-                                    max_quantity: p.max_quantity,
-                                    sold_quantity: p.sold_quantity || 0,
-                                    remaining_quantity: p.remaining_quantity,
-                                    is_unlimited: p.is_unlimited || false,
-                                    is_active: p.is_active !== undefined ? p.is_active : true,
-                                    is_sold_out: p.is_sold_out || false
-                                  }));
-                                  setPassesForManagement(passesWithStock);
-                                  setEventForPassManagement(event);
-                                  setIsPassManagementDialogOpen(true);
-                                } else {
-                                  toast({
-                                    title: t.error,
-                                    description: language === 'en' ? 'Failed to load passes' : 'Échec du chargement des passes',
-                                    variant: "destructive",
-                                  });
-                                }
-                              } catch (error: any) {
-                                toast({
-                                  title: t.error,
-                                  description: error.message || (language === 'en' ? 'Failed to load passes' : 'Échec du chargement des passes'),
-                                  variant: "destructive",
-                                });
-                              } finally {
-                                setIsPassManagementLoading(false);
-                              }
-                            }}
-                            className="h-7 px-2.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground rounded-sm transition-all duration-200"
-                          >
-                            <Package className="w-3.5 h-3.5 mr-1.5" />
-                            {language === 'en' ? 'Pass Stock' : 'Stock Passes'}
-                          </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-                {events.length === 0 && (
-                  <div className="text-center py-8 animate-in fade-in duration-500">
-                    <p className="text-muted-foreground animate-pulse">{t.noEvents}</p>
-                  </div>
-                )}
-              </TabsContent>
+              <EventsTab
+                language={language}
+                t={t}
+                events={events}
+                editingEvent={editingEvent}
+                setEditingEvent={setEditingEvent}
+                isEventDialogOpen={isEventDialogOpen}
+                setIsEventDialogOpen={setIsEventDialogOpen}
+                pendingGalleryImages={pendingGalleryImages}
+                setPendingGalleryImages={setPendingGalleryImages}
+                pendingGalleryVideos={pendingGalleryVideos}
+                setPendingGalleryVideos={setPendingGalleryVideos}
+                passValidationErrors={passValidationErrors}
+                setPassValidationErrors={setPassValidationErrors}
+                isInstagramUrl={isInstagramUrl}
+                handleSaveEvent={handleSaveEvent}
+                handleGalleryFileSelect={handleGalleryFileSelect}
+                removeGalleryFile={removeGalleryFile}
+                removePendingGalleryFile={removePendingGalleryFile}
+                isPassManagementDialogOpen={isPassManagementDialogOpen}
+                setIsPassManagementDialogOpen={setIsPassManagementDialogOpen}
+                eventForPassManagement={eventForPassManagement}
+                setEventForPassManagement={setEventForPassManagement}
+                passesForManagement={passesForManagement}
+                setPassesForManagement={setPassesForManagement}
+                newPassForm={newPassForm}
+                setNewPassForm={setNewPassForm}
+                setConfirmDelete={setConfirmDelete}
+                isPassManagementLoading={isPassManagementLoading}
+                setIsPassManagementLoading={setIsPassManagementLoading}
+                animatedEvents={animatedEvents}
+                handleDeleteEvent={handleDeleteEvent}
+              />
 
               {/* Admins Management Tab - Only visible to super_admin */}
-              {currentAdminRole === 'super_admin' && (
+              {currentAdminRole === "super_admin" && (
                 <TabsContent value="admins" className="space-y-6">
-                  <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-                    <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
-                      {language === 'en' ? 'Admin Management' : 'Gestion des Administrateurs'}
-                    </h2>
-                    <Dialog open={isAddAdminDialogOpen} onOpenChange={setIsAddAdminDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button 
-                          onClick={() => {
-                            setNewAdminData({ name: '', email: '', phone: '' });
-                            setIsAddAdminDialogOpen(true);
-                          }}
-                          className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
-                        >
-                          <Plus className="w-4 h-4 mr-2 animate-pulse" />
-                          {language === 'en' ? 'Add Admin' : 'Ajouter un Admin'}
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-2xl animate-in zoom-in-95 duration-300">
-                        <DialogHeader>
-                          <DialogTitle>
-                            {language === 'en' ? 'Add New Admin' : 'Ajouter un Nouvel Admin'}
-                          </DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div>
-                            <Label htmlFor="adminName">{language === 'en' ? 'Name' : 'Nom'}</Label>
-                            <Input
-                              id="adminName"
-                              value={newAdminData.name}
-                              onChange={(e) => setNewAdminData({ ...newAdminData, name: e.target.value })}
-                              placeholder={language === 'en' ? 'Enter admin name' : 'Entrez le nom de l\'admin'}
-                              required
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="adminEmail">{language === 'en' ? 'Email' : 'Email'}</Label>
-                            <Input
-                              id="adminEmail"
-                              type="email"
-                              value={newAdminData.email}
-                              onChange={(e) => setNewAdminData({ ...newAdminData, email: e.target.value })}
-                              placeholder={language === 'en' ? 'Enter admin email' : 'Entrez l\'email de l\'admin'}
-                              required
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="adminPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'}</Label>
-                            <Input
-                              id="adminPhone"
-                              type="tel"
-                              value={newAdminData.phone}
-                              onChange={(e) => setNewAdminData({ ...newAdminData, phone: e.target.value })}
-                              placeholder={language === 'en' ? 'Enter phone number (optional)' : 'Entrez le numéro de téléphone (optionnel)'}
-                            />
-                          </div>
-                          <div className="flex justify-end gap-2 pt-4">
-                            <Button
-                              variant="outline"
-                              onClick={() => setIsAddAdminDialogOpen(false)}
-                            >
-                              {language === 'en' ? 'Cancel' : 'Annuler'}
-                            </Button>
-                            <Button
-                              onClick={handleAddAdmin}
-                              disabled={processingId === 'new-admin'}
-                            >
-                              {processingId === 'new-admin' ? (
-                                <>
-                                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                                  {language === 'en' ? 'Creating...' : 'Création...'}
-                                </>
-                              ) : (
-                                <>
-                                  <Plus className="w-4 h-4 mr-2" />
-                                  {language === 'en' ? 'Create Admin' : 'Créer l\'Admin'}
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-
-                  {/* Edit Admin Dialog */}
-                  <Dialog open={isEditAdminDialogOpen} onOpenChange={setIsEditAdminDialogOpen}>
-                    <DialogContent className="max-w-2xl animate-in zoom-in-95 duration-300">
-                      <DialogHeader>
-                        <DialogTitle>
-                          {language === 'en' ? 'Edit Admin' : 'Modifier l\'Admin'}
-                        </DialogTitle>
-                      </DialogHeader>
-                      {editingAdmin && (
-                        <div className="space-y-4">
-                          <div>
-                            <Label htmlFor="editAdminName">{language === 'en' ? 'Name' : 'Nom'}</Label>
-                            <Input
-                              id="editAdminName"
-                              value={editingAdmin.name}
-                              onChange={(e) => setEditingAdmin({ ...editingAdmin, name: e.target.value })}
-                              placeholder={language === 'en' ? 'Enter admin name' : 'Entrez le nom de l\'admin'}
-                              required
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="editAdminEmail">{language === 'en' ? 'Email' : 'Email'}</Label>
-                            <Input
-                              id="editAdminEmail"
-                              type="email"
-                              value={editingAdmin.email}
-                              onChange={(e) => setEditingAdmin({ ...editingAdmin, email: e.target.value })}
-                              placeholder={language === 'en' ? 'Enter admin email' : 'Entrez l\'email de l\'admin'}
-                              required
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="editAdminPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'}</Label>
-                            <Input
-                              id="editAdminPhone"
-                              type="tel"
-                              value={editingAdmin.phone || ''}
-                              onChange={(e) => setEditingAdmin({ ...editingAdmin, phone: e.target.value })}
-                              placeholder={language === 'en' ? 'Enter phone number (optional)' : 'Entrez le numéro de téléphone (optionnel)'}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="editAdminRole">{language === 'en' ? 'Role' : 'Rôle'}</Label>
-                            <Select 
-                              value={editingAdmin.role} 
-                              onValueChange={(value: 'admin' | 'super_admin') => setEditingAdmin({ ...editingAdmin, role: value })}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="admin">{language === 'en' ? 'Admin' : 'Admin'}</SelectItem>
-                                <SelectItem value="super_admin">{language === 'en' ? 'Super Admin' : 'Super Admin'}</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              id="editAdminActive"
-                              checked={editingAdmin.is_active}
-                              onChange={(e) => setEditingAdmin({ ...editingAdmin, is_active: e.target.checked })}
-                            />
-                            <Label htmlFor="editAdminActive">{language === 'en' ? 'Active' : 'Actif'}</Label>
-                          </div>
-                          <div className="flex justify-end gap-2 pt-4">
-                            <Button
-                              variant="outline"
-                              onClick={() => {
-                                setEditingAdmin(null);
-                                setIsEditAdminDialogOpen(false);
-                              }}
-                            >
-                              {language === 'en' ? 'Cancel' : 'Annuler'}
-                            </Button>
-                            <Button
-                              onClick={handleEditAdmin}
-                              disabled={processingId === `edit-admin-${editingAdmin.id}`}
-                            >
-                              {processingId === `edit-admin-${editingAdmin.id}` ? (
-                                <>
-                                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                                  {language === 'en' ? 'Saving...' : 'Enregistrement...'}
-                                </>
-                              ) : (
-                                <>
-                                  <Save className="w-4 h-4 mr-2" />
-                                  {language === 'en' ? 'Save Changes' : 'Enregistrer les Modifications'}
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </DialogContent>
-                  </Dialog>
-
-                  <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-300">
-                    <CardHeader>
-                      <CardTitle>{language === 'en' ? 'All Admins' : 'Tous les Admins'}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{language === 'en' ? 'Name' : 'Nom'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Email' : 'Email'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Phone' : 'Téléphone'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Role' : 'Rôle'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Status' : 'Statut'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {admins.map((admin) => (
-                            <TableRow key={admin.id}>
-                              <TableCell className="font-medium">{admin.name}</TableCell>
-                              <TableCell>{admin.email}</TableCell>
-                              <TableCell>{admin.phone || '-'}</TableCell>
-                              <TableCell>
-                                <Badge variant={admin.role === 'super_admin' ? 'default' : 'secondary'}>
-                                  {admin.role === 'super_admin' 
-                                    ? (language === 'en' ? 'Super Admin' : 'Super Admin')
-                                    : (language === 'en' ? 'Admin' : 'Admin')}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={admin.is_active ? 'default' : 'destructive'}>
-                                  {admin.is_active 
-                                    ? (language === 'en' ? 'Active' : 'Actif')
-                                    : (language === 'en' ? 'Inactive' : 'Inactif')}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {new Date(admin.created_at).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      setEditingAdmin({
-                                        id: admin.id,
-                                        name: admin.name,
-                                        email: admin.email,
-                                        phone: admin.phone,
-                                        role: admin.role,
-                                        is_active: admin.is_active,
-                                      });
-                                      setIsEditAdminDialogOpen(true);
-                                    }}
-                                    disabled={processingId === `edit-admin-${admin.id}`}
-                                    className="transform hover:scale-105 transition-all duration-300"
-                                  >
-                                    <Edit className="w-4 h-4 mr-1" />
-                                    {processingId === `edit-admin-${admin.id}` ? (language === 'en' ? 'Saving...' : 'Enregistrement...') : (language === 'en' ? 'Edit' : 'Modifier')}
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => handleDeleteAdmin(admin.id)}
-                                    disabled={processingId === `delete-admin-${admin.id}` || admin.id === currentAdminId}
-                                    className="transform hover:scale-105 transition-all duration-300"
-                                  >
-                                    <Trash2 className="w-4 h-4 mr-1" />
-                                    {processingId === `delete-admin-${admin.id}` ? (language === 'en' ? 'Deleting...' : 'Suppression...') : (language === 'en' ? 'Delete' : 'Supprimer')}
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          {admins.length === 0 && (
-                            <TableRow>
-                              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                {language === 'en' ? 'No admins found' : 'Aucun admin trouvé'}
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </Card>
-
-                  {/* Activity Logs */}
-                  <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-500">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <History className="w-5 h-5 text-primary" />
-                        {language === 'en' ? 'Activity Logs' : 'Journaux d\'activité'}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {loadingAdminLogs ? (
-                        <p className="text-muted-foreground text-sm py-4">{language === 'en' ? 'Loading…' : 'Chargement…'}</p>
-                      ) : adminLogs.length === 0 ? (
-                        <p className="text-muted-foreground text-sm py-4">{language === 'en' ? 'No activity yet.' : 'Aucune activité pour l\'instant.'}</p>
-                      ) : (
-                        <div className="overflow-x-auto max-h-80 overflow-y-auto">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>{language === 'en' ? 'Date' : 'Date'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Admin' : 'Admin'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Action' : 'Action'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Target' : 'Cible'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Details' : 'Détails'}</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {adminLogs.map((log: any) => (
-                                <TableRow key={log.id}>
-                                  <TableCell className="text-muted-foreground text-xs">{log.created_at ? format(new Date(log.created_at), 'PPp') : '-'}</TableCell>
-                                  <TableCell className="font-medium">{log.admin_name || '-'}</TableCell>
-                                  <TableCell><Badge variant="outline">{log.action || '-'}</Badge></TableCell>
-                                  <TableCell className="text-muted-foreground text-sm">{log.target_type && log.target_id ? `${log.target_type} (${String(log.target_id).slice(0, 8)}…)` : '-'}</TableCell>
-                                  <TableCell className="text-muted-foreground text-xs max-w-[180px] truncate" title={log.details ? JSON.stringify(log.details) : ''}>{log.details ? JSON.stringify(log.details) : '-'}</TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                  <AdminsTab
+                    language={language}
+                    admins={admins}
+                    newAdminData={newAdminData}
+                    setNewAdminData={setNewAdminData}
+                    isAddAdminDialogOpen={isAddAdminDialogOpen}
+                    setIsAddAdminDialogOpen={setIsAddAdminDialogOpen}
+                    isEditAdminDialogOpen={isEditAdminDialogOpen}
+                    setIsEditAdminDialogOpen={setIsEditAdminDialogOpen}
+                    editingAdmin={editingAdmin}
+                    setEditingAdmin={setEditingAdmin}
+                    processingId={processingId}
+                    currentAdminId={currentAdminId}
+                    adminLogs={adminLogs}
+                    loadingAdminLogs={loadingAdminLogs}
+                    onAddAdmin={handleAddAdmin}
+                    onEditAdmin={handleEditAdmin}
+                    onDeleteAdmin={handleDeleteAdmin}
+                  />
                 </TabsContent>
               )}
 
               {/* Official Invitations Tab - Only visible to super_admin */}
-              {currentAdminRole === 'super_admin' && (
-                <TabsContent value="official-invitations" className="space-y-6">
-                  <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-                    <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
-                      {language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}
-                    </h2>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Create Invitation Form */}
-                    <div className="lg:col-span-1">
-                      <OfficialInvitationForm 
-                        onSuccess={() => {
-                          // Refresh list will be handled by the list component
-                          if (typeof window !== 'undefined') {
-                            window.dispatchEvent(new Event('invitation-created'));
-                          }
-                        }}
-                        language={language}
-                      />
-                    </div>
-                    
-                    {/* Invitations List */}
-                    <div className="lg:col-span-2">
-                      <OfficialInvitationsList language={language} />
-                    </div>
-                  </div>
-                </TabsContent>
+              {currentAdminRole === "super_admin" && (
+                <OfficialInvitationsTab language={language} />
               )}
-
-              {currentAdminRole === 'super_admin' && (
+              {currentAdminRole === "super_admin" && (
                 <TabsContent value="scanners" className="space-y-6">
                   <ScannersTab language={language} />
                 </TabsContent>
@@ -12622,1859 +10356,117 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </TabsContent>
 
               {/* Ambassadors Tab */}
-              <TabsContent value="ambassadors" className="space-y-6">
-                <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-                  <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">Ambassadors Management</h2>
-                  <div className="flex items-center gap-3 animate-in slide-in-from-right-4 duration-1000 delay-300">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={exportApprovedAmbassadorsToExcel}
-                      className="transform hover:scale-105 transition-all duration-300"
-                      style={{
-                        background: '#1F1F1F',
-                        borderColor: '#2A2A2A',
-                        color: '#FFFFFF'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#E21836';
-                        e.currentTarget.style.borderColor = '#E21836';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#1F1F1F';
-                        e.currentTarget.style.borderColor = '#2A2A2A';
-                      }}
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      {language === 'en' ? 'Export to Excel' : 'Exporter vers Excel'}
-                    </Button>
-                    <Dialog open={isAmbassadorDialogOpen} onOpenChange={setIsAmbassadorDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button 
-                          onClick={() => {
-                            setEditingAmbassador({} as Ambassador);
-                              setAmbassadorErrors({});
-                            setIsAmbassadorDialogOpen(true);
-                          }}
-                          className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
-                        >
-                          <Plus className="w-4 h-4 mr-2 animate-pulse" />
-                          {t.add}
-                        </Button>
-                      </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
-                      <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-                        <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
-                          {editingAmbassador?.id ? 'Edit Ambassador' : 'Add New Ambassador'}
-                        </DialogTitle>
-                      </DialogHeader>
-                      {editingAmbassador?.id ? (
-                        // Edit form for existing ambassadors
-                      <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-700 delay-300">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
-                              <Label htmlFor="ambassadorName">{t.ambassadorName} <span className="text-destructive">*</span></Label>
-                            <Input
-                              id="ambassadorName"
-                              value={editingAmbassador?.full_name || ''}
-                                onChange={(e) => {
-                                  setEditingAmbassador(prev => ({ ...prev, full_name: e.target.value }));
-                                  if (ambassadorErrors.full_name) {
-                                    setAmbassadorErrors(prev => ({ ...prev, full_name: undefined }));
-                                  }
-                                }}
-                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.full_name ? 'border-destructive' : ''}`}
-                                required
-                              />
-                              {ambassadorErrors.full_name && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.full_name}</p>
-                              )}
-                          </div>
-                          <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
-                              <Label htmlFor="ambassadorAge">{language === 'en' ? 'Age' : 'Âge'} <span className="text-destructive">*</span></Label>
-                            <Input
-                              id="ambassadorAge"
-                              type="number"
-                              min="16"
-                              max="99"
-                              value={editingAmbassador?.age || ''}
-                                onChange={(e) => {
-                                  const ageValue = e.target.value;
-                                  setEditingAmbassador(prev => ({ ...prev, age: ageValue ? parseInt(ageValue) : undefined }));
-                                }}
-                                className="transition-all duration-300 focus:scale-105"
-                                required
-                              />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
-                              <Label htmlFor="ambassadorPhone">{t.ambassadorPhone} <span className="text-destructive">*</span></Label>
-                            <Input
-                              id="ambassadorPhone"
-                              value={editingAmbassador?.phone || ''}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  const digitsOnly = value.replace(/\D/g, '');
-                                  const limited = digitsOnly.slice(0, 8);
-                                  setEditingAmbassador(prev => ({ ...prev, phone: limited }));
-                                  if (ambassadorErrors.phone) {
-                                    setAmbassadorErrors(prev => ({ ...prev, phone: undefined }));
-                                  }
-                                }}
-                                placeholder="24951234"
-                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.phone ? 'border-destructive' : ''}`}
-                                required
-                              />
-                              {ambassadorErrors.phone && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.phone}</p>
-                              )}
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                              <Label htmlFor="ambassadorEmail">{t.ambassadorEmail} <span className="text-destructive">*</span></Label>
-                            <Input
-                              id="ambassadorEmail"
-                              type="email"
-                              value={editingAmbassador?.email || ''}
-                                onChange={(e) => {
-                                  setEditingAmbassador(prev => ({ ...prev, email: e.target.value }));
-                                  if (ambassadorErrors.email) {
-                                    setAmbassadorErrors(prev => ({ ...prev, email: undefined }));
-                                  }
-                                }}
-                                className={ambassadorErrors.email ? 'border-destructive' : ''}
-                                required
-                              />
-                              {ambassadorErrors.email && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.email}</p>
-                              )}
-                          </div>
-                          <div>
-                              <Label htmlFor="ambassadorCity">{t.ambassadorCity} <span className="text-destructive">*</span></Label>
-                            <Select
-                              value={editingAmbassador?.city || ''}
-                              onValueChange={(value) => {
-                                setEditingAmbassador(prev => ({ 
-                                  ...prev, 
-                                  city: value,
-                                  ville: (value === 'Sousse' || value === 'Tunis') ? prev?.ville : ''
-                                }));
-                                if (ambassadorErrors.city) {
-                                  setAmbassadorErrors(prev => ({ ...prev, city: undefined }));
-                                }
-                              }}
-                            >
-                              <SelectTrigger className={ambassadorErrors.city ? 'border-destructive' : ''}>
-                                <SelectValue placeholder={language === 'en' ? 'Select a city' : 'Sélectionner une ville'} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {CITIES.map((city) => (
-                                  <SelectItem key={city} value={city}>{city}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                              {ambassadorErrors.city && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.city}</p>
-                              )}
-                          </div>
-                        </div>
-                        {(editingAmbassador?.city === 'Sousse' || editingAmbassador?.city === 'Tunis') && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <Label htmlFor="ambassadorVille">{language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'} <span className="text-destructive">*</span></Label>
-                              <Select
-                                value={editingAmbassador?.ville || ''}
-                                onValueChange={(value) => {
-                                  setEditingAmbassador(prev => ({ ...prev, ville: value }));
-                                  if (ambassadorErrors.ville) {
-                                    setAmbassadorErrors(prev => ({ ...prev, ville: undefined }));
-                                  }
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {editingAmbassador?.city === 'Sousse' && SOUSSE_VILLES.map((ville) => (
-                                    <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                                  ))}
-                                  {editingAmbassador?.city === 'Tunis' && TUNIS_VILLES.map((ville) => (
-                                    <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              {ambassadorErrors.ville && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.ville}</p>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                        <div>
-                          <Label htmlFor="ambassadorSocialLink">{language === 'en' ? 'Instagram Link' : 'Lien Instagram'}</Label>
-                          <Input
-                            id="ambassadorSocialLink"
-                            type="url"
-                            value={editingAmbassador?.social_link || ''}
-                            onChange={(e) => {
-                              setEditingAmbassador(prev => ({ ...prev, social_link: e.target.value }));
-                              if (ambassadorErrors.social_link) {
-                                setAmbassadorErrors(prev => ({ ...prev, social_link: undefined }));
-                              }
-                            }}
-                            placeholder="https://www.instagram.com/username"
-                            className="transition-all duration-300 focus:scale-105"
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {language === 'en' 
-                              ? 'Must start with https://www.instagram.com/ or https://instagram.com/' 
-                              : 'Doit commencer par https://www.instagram.com/ ou https://instagram.com/'}
-                          </p>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="ambassadorCommission">{t.ambassadorCommission}</Label>
-                            <Input
-                              id="ambassadorCommission"
-                              type="number"
-                              step="0.01"
-                                min="0"
-                                max="100"
-                              value={editingAmbassador?.commission_rate || ''}
-                              onChange={(e) => setEditingAmbassador(prev => ({ ...prev, commission_rate: parseFloat(e.target.value) || 0 }))}
-                            />
-                          </div>
-                            <div>
-                            <Label htmlFor="ambassadorPassword">{t.ambassadorPassword}</Label>
-                            <div className="relative">
-                              <Input
-                                id="ambassadorPassword"
-                                type={showPassword ? "text" : "password"}
-                                value={editingAmbassador?.password || ''}
-                                  onChange={(e) => {
-                                    setEditingAmbassador(prev => ({ ...prev, password: e.target.value }));
-                                    if (ambassadorErrors.password) {
-                                      setAmbassadorErrors(prev => ({ ...prev, password: undefined }));
-                                    }
-                                  }}
-                                  className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.password ? 'border-destructive' : ''}`}
-                                  placeholder={language === 'en' ? 'Leave empty to keep current password' : 'Laisser vide pour garder le mot de passe actuel'}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-2 top-1/2 transform -translate-y-1/2 transition-all duration-300 hover:scale-110"
-                              >
-                                {showPassword ? <EyeOff className="w-4 h-4 animate-pulse" /> : <Eye className="w-4 h-4 animate-pulse" />}
-                              </button>
-                            </div>
-                              {ambassadorErrors.password && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.password}</p>
-                              )}
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {language === 'en' ? 'Leave empty to keep current password' : 'Laisser vide pour garder le mot de passe actuel'}
-                              </p>
-                          </div>
-                        </div>
-                      </div>
-                      ) : (
-                        // New ambassador form (matches application form)
-                        <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-700 delay-300">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
-                              <Label htmlFor="newAmbassadorName">{language === 'en' ? 'Full Name' : 'Nom Complet'} <span className="text-destructive">*</span></Label>
-                              <Input
-                                id="newAmbassadorName"
-                                value={newAmbassadorForm.full_name}
-                                onChange={(e) => {
-                                  setNewAmbassadorForm(prev => ({ ...prev, full_name: e.target.value }));
-                                  if (ambassadorErrors.full_name) {
-                                    setAmbassadorErrors(prev => ({ ...prev, full_name: undefined }));
-                                  }
-                                }}
-                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.full_name ? 'border-destructive' : ''}`}
-                                required
-                              />
-                              {ambassadorErrors.full_name && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.full_name}</p>
-                              )}
-                            </div>
-                            <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
-                              <Label htmlFor="newAmbassadorAge">{language === 'en' ? 'Age' : 'Âge'} <span className="text-destructive">*</span></Label>
-                              <Input
-                                id="newAmbassadorAge"
-                                type="number"
-                                min="16"
-                                max="99"
-                                value={newAmbassadorForm.age}
-                                onChange={(e) => {
-                                  setNewAmbassadorForm(prev => ({ ...prev, age: e.target.value }));
-                                  if (ambassadorErrors.full_name) {
-                                    setAmbassadorErrors(prev => ({ ...prev, full_name: undefined }));
-                                  }
-                                }}
-                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.full_name ? 'border-destructive' : ''}`}
-                                required
-                              />
-                              {ambassadorErrors.full_name && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.full_name}</p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <Label htmlFor="newAmbassadorPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'} <span className="text-destructive">*</span></Label>
-                              <Input
-                                id="newAmbassadorPhone"
-                                type="tel"
-                                value={newAmbassadorForm.phone_number}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  const digitsOnly = value.replace(/\D/g, '');
-                                  const limited = digitsOnly.slice(0, 8);
-                                  setNewAmbassadorForm(prev => ({ ...prev, phone_number: limited }));
-                                  if (ambassadorErrors.phone) {
-                                    setAmbassadorErrors(prev => ({ ...prev, phone: undefined }));
-                                  }
-                                }}
-                                placeholder="24951234"
-                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.phone ? 'border-destructive' : ''}`}
-                                required
-                              />
-                              {ambassadorErrors.phone && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.phone}</p>
-                              )}
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {language === 'en' ? '8 digits starting with 2, 4, 9, or 5' : '8 chiffres commençant par 2, 4, 9 ou 5'}
-                              </p>
-                            </div>
-                            <div>
-                              <Label htmlFor="newAmbassadorEmail">{language === 'en' ? 'Email' : 'Email'} <span className="text-destructive">*</span></Label>
-                              <Input
-                                id="newAmbassadorEmail"
-                                type="email"
-                                value={newAmbassadorForm.email}
-                                onChange={(e) => {
-                                  setNewAmbassadorForm(prev => ({ ...prev, email: e.target.value }));
-                                  if (ambassadorErrors.email) {
-                                    setAmbassadorErrors(prev => ({ ...prev, email: undefined }));
-                                  }
-                                }}
-                                className={ambassadorErrors.email ? 'border-destructive' : ''}
-                                required
-                              />
-                              {ambassadorErrors.email && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.email}</p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <Label htmlFor="newAmbassadorCity">{language === 'en' ? 'City' : 'Ville'} <span className="text-destructive">*</span></Label>
-                              <Select
-                                value={newAmbassadorForm.city}
-                                onValueChange={(value) => {
-                                  setNewAmbassadorForm(prev => ({ 
-                                    ...prev, 
-                                    city: value,
-                                    ville: (value === 'Sousse' || value === 'Tunis') ? prev.ville : ''
-                                  }));
-                                  if (ambassadorErrors.city) {
-                                    setAmbassadorErrors(prev => ({ ...prev, city: undefined }));
-                                  }
-                                }}
-                              >
-                                <SelectTrigger className={ambassadorErrors.city ? 'border-destructive' : ''}>
-                                  <SelectValue placeholder={language === 'en' ? 'Select a city' : 'Sélectionner une ville'} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {CITIES.map((city) => (
-                                    <SelectItem key={city} value={city}>{city}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              {ambassadorErrors.city && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.city}</p>
-                              )}
-                            </div>
-                            <div>
-                              <Label htmlFor="newAmbassadorSocial">{language === 'en' ? 'Instagram Link' : 'Lien Instagram'}</Label>
-                              <Input
-                                id="newAmbassadorSocial"
-                                type="url"
-                                value={newAmbassadorForm.social_link}
-                                onChange={(e) => {
-                                  setNewAmbassadorForm(prev => ({ ...prev, social_link: e.target.value }));
-                                  if (ambassadorErrors.social_link) {
-                                    setAmbassadorErrors(prev => ({ ...prev, social_link: undefined }));
-                                  }
-                                }}
-                                placeholder="https://www.instagram.com/username"
-                                className={`transition-all duration-300 focus:scale-105 ${ambassadorErrors.social_link ? 'border-destructive' : ''}`}
-                              />
-                              {ambassadorErrors.social_link && (
-                                <p className="text-sm text-destructive mt-1">{ambassadorErrors.social_link}</p>
-                              )}
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {language === 'en' 
-                                  ? 'Must start with https://www.instagram.com/ or https://instagram.com/' 
-                                  : 'Doit commencer par https://www.instagram.com/ ou https://instagram.com/'}
-                              </p>
-                            </div>
-                          </div>
-                          {(newAmbassadorForm.city === 'Sousse' || newAmbassadorForm.city === 'Tunis') && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <Label htmlFor="newAmbassadorVille">{language === 'en' ? 'Ville (Neighborhood)' : 'Quartier'} <span className="text-destructive">*</span></Label>
-                                <Select
-                                  value={newAmbassadorForm.ville}
-                                  onValueChange={(value) => {
-                                    setNewAmbassadorForm(prev => ({ ...prev, ville: value }));
-                                    if (ambassadorErrors.ville) {
-                                      setAmbassadorErrors(prev => ({ ...prev, ville: undefined }));
-                                    }
-                                  }}
-                                >
-                                  <SelectTrigger className={ambassadorErrors.ville ? 'border-destructive' : ''}>
-                                    <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {newAmbassadorForm.city === 'Sousse' && SOUSSE_VILLES.map((ville) => (
-                                      <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                                    ))}
-                                    {newAmbassadorForm.city === 'Tunis' && TUNIS_VILLES.map((ville) => (
-                                      <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                {ambassadorErrors.ville && (
-                                  <p className="text-sm text-destructive mt-1">{ambassadorErrors.ville}</p>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                          <div>
-                            <Label htmlFor="newAmbassadorMotivation">{language === 'en' ? 'Motivation' : 'Motivation'}</Label>
-                            <Textarea
-                              id="newAmbassadorMotivation"
-                              value={newAmbassadorForm.motivation}
-                              onChange={(e) => setNewAmbassadorForm(prev => ({ ...prev, motivation: e.target.value }))}
-                              placeholder={language === 'en' 
-                                ? 'Why do you want to become an ambassador? (optional)'
-                                : 'Pourquoi voulez-vous devenir ambassadeur ? (optionnel)'}
-                              rows={4}
-                              className="transition-all duration-300 focus:scale-105"
-                            />
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {language === 'en' ? 'Optional field' : 'Champ optionnel'}
-                            </p>
-                          </div>
-                          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                            <p className="text-sm text-blue-900 dark:text-blue-100">
-                              {language === 'en' 
-                                ? '📧 An approval email with login credentials will be automatically sent to the ambassador after creation.'
-                                : '📧 Un email d\'approbation avec les identifiants de connexion sera automatiquement envoyé à l\'ambassadeur après la création.'}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-800">
-                        <DialogClose asChild>
-                          <Button 
-                            variant="outline"
-                            className="transform hover:scale-105 transition-all duration-300"
-                            onClick={() => {
-                              setNewAmbassadorForm({
-                                full_name: '',
-                                age: '',
-                                phone_number: '',
-                                email: '',
-                                city: '',
-                                ville: '',
-                                social_link: '',
-                                motivation: ''
-                              });
-                              setAmbassadorErrors({});
-                            }}
-                          >
-                            {t.cancel}
-                          </Button>
-                        </DialogClose>
-                        <Button 
-                          onClick={async () => {
-                            if (editingAmbassador?.id) {
-                            await handleSaveAmbassador(editingAmbassador);
-                            } else {
-                              await handleSaveAmbassador({} as Ambassador);
-                            }
-                            if (!editingAmbassador?.id) {
-                            setIsAmbassadorDialogOpen(false);
-                            }
-                          }}
-                          disabled={processingId === 'new-ambassador'}
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          {processingId === 'new-ambassador' ? (
-                            <>
-                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                              {language === 'en' ? 'Creating...' : 'Création...'}
-                            </>
-                          ) : (
-                            <>
-                          <Save className="w-4 h-4 mr-2 animate-pulse" />
-                          {t.save}
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {ambassadors.filter(amb => amb.status === 'approved' || amb.status === 'suspended').map((ambassador, index) => (
-                    <Card 
-                      key={ambassador.id}
-                      className={`transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg ${
-                        animatedAmbassadors.has(ambassador.id) 
-                          ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                          : 'opacity-0 translate-y-8'
-                      } ${ambassador.commission_rate >= 15 ? 'ring-2 ring-green-500/20 shadow-lg' : ''}`}
-                    >
-                      <CardContent className="p-6">
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="text-lg font-semibold animate-in slide-in-from-left-4 duration-500 delay-200">
-                            {ambassador.full_name}
-                          </h3>
-                          <div className="flex items-center gap-2">
-                            {ambassador.status === 'suspended' && (
-                              <Badge 
-                                variant="destructive"
-                                className="text-xs"
-                              >
-                                <Pause className="w-3 h-3 mr-1" />
-                                {language === 'en' ? 'Paused' : 'En Pause'}
-                              </Badge>
-                            )}
-                            {ambassador.commission_rate >= 15 && (
-                              <Badge 
-                                className="animate-pulse"
-                                style={{
-                                  background: 'rgba(226, 24, 54, 0.15)',
-                                  color: '#E21836'
-                                }}
-                              >
-                                Top Performer
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-border/30">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">
-                              {language === 'en' ? 'Status:' : 'Statut:'}
-                            </span>
-                            <span className={`text-xs font-medium ${ambassador.status === 'approved' ? 'text-green-500' : 'text-red-500'}`}>
-                              {ambassador.status === 'approved' 
-                                ? (language === 'en' ? 'Active' : 'Actif')
-                                : (language === 'en' ? 'Paused' : 'En Pause')}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">
-                              {language === 'en' ? 'Active' : 'Actif'}
-                            </span>
-                            <Switch
-                              checked={ambassador.status === 'approved'}
-                              onCheckedChange={() => handleToggleAmbassadorStatus(ambassador)}
-                              disabled={processingId === ambassador.id}
-                              className="data-[state=checked]:bg-[#E21836]"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2 text-sm text-muted-foreground">
-                          <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-300">
-                            <Phone className="w-4 h-4 animate-pulse" />
-                            <span>{ambassador.phone}</span>
-                          </div>
-                          {ambassador.email && (
-                            <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-400">
-                              <Mail className="w-4 h-4 animate-pulse" />
-                              <span>{ambassador.email}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-500">
-                            <MapPin className="w-4 h-4 animate-pulse" />
-                            <span>{ambassador.city}</span>
-                          </div>
-                          <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-600">
-                            <DollarSign className="w-4 h-4 animate-pulse" />
-                            <span>Commission: {ambassador.commission_rate}%</span>
-                          </div>
-                        </div>
-                        <div className="flex gap-2 mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-700">
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            onClick={async () => {
-                              // Fetch age and social_link from corresponding application
-                              let ambassadorAge: number | undefined;
-                              let ambassadorSocialLink: string | undefined;
-                              const { data: appData } = await supabase
-                                .from('ambassador_applications')
-                                .select('age, social_link')
-                                .eq('phone_number', ambassador.phone)
-                                .eq('status', 'approved')
-                                .order('created_at', { ascending: false })
-                                .limit(1)
-                                .maybeSingle();
-                              
-                              if (appData) {
-                                ambassadorAge = appData.age;
-                                ambassadorSocialLink = appData.social_link || undefined;
-                              }
-                              
-                              setEditingAmbassador({ ...ambassador, age: ambassadorAge, social_link: ambassadorSocialLink || ambassador.social_link });
-                              setAmbassadorErrors({});
-                              setIsAmbassadorDialogOpen(true);
-                            }}
-                            className="transform hover:scale-105 transition-all duration-300"
-                          >
-                            <Edit className="w-4 h-4 mr-2" />
-                            {t.edit}
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="destructive" 
-                            onClick={() => setAmbassadorToDelete(ambassador)}
-                            className="transform hover:scale-105 transition-all duration-300"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            {t.delete}
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-                {ambassadors.length === 0 && (
-                  <div className="text-center py-8 animate-in fade-in duration-500">
-                    <p className="text-muted-foreground animate-pulse">{t.noAmbassadors}</p>
-                  </div>
-                )}
-              </TabsContent>
+              <AmbassadorsTab
+                language={language}
+                t={t}
+                ambassadors={ambassadors}
+                animatedAmbassadors={animatedAmbassadors}
+                editingAmbassador={editingAmbassador}
+                setEditingAmbassador={setEditingAmbassador}
+                newAmbassadorForm={newAmbassadorForm}
+                setNewAmbassadorForm={setNewAmbassadorForm}
+                ambassadorErrors={ambassadorErrors}
+                setAmbassadorErrors={setAmbassadorErrors}
+                isAmbassadorDialogOpen={isAmbassadorDialogOpen}
+                setIsAmbassadorDialogOpen={setIsAmbassadorDialogOpen}
+                showPassword={showPassword}
+                setShowPassword={setShowPassword}
+                processingId={processingId}
+                onExportExcel={exportApprovedAmbassadorsToExcel}
+                onSaveAmbassador={handleSaveAmbassador}
+                onToggleStatus={handleToggleAmbassadorStatus}
+                onRequestDelete={setAmbassadorToDelete}
+              />
 
               {/* Applications Tab */}
-              <TabsContent value="applications" className="space-y-6">
-                <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-                  <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">Ambassador Applications</h2>
-                  <div className="flex items-center gap-3 animate-in slide-in-from-right-4 duration-1000 delay-300">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={exportAmbassadorsToExcel}
-                      className="transform hover:scale-105 transition-all duration-300"
-                      style={{
-                        background: '#1F1F1F',
-                        borderColor: '#2A2A2A',
-                        color: '#FFFFFF'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#E21836';
-                        e.currentTarget.style.borderColor = '#E21836';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#1F1F1F';
-                        e.currentTarget.style.borderColor = '#2A2A2A';
-                      }}
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      {language === 'en' ? 'Export to Excel' : 'Exporter vers Excel'}
-                    </Button>
-                    <Badge 
-                      className="animate-pulse"
-                      style={{
-                        background: 'rgba(0, 207, 255, 0.15)',
-                        color: '#00CFFF'
-                      }}
-                    >
-                      {filteredApplications.length} Applications
-                    </Badge>
-                    {/* "Create Missing Application" button removed - applications are now created automatically when ambassadors are added */}
-                    {applications.filter(app => app.status === 'approved' && !ambassadors.some(amb => 
-                      amb.phone === app.phone_number || (app.email && amb.email && amb.email === app.email)
-                    )).length > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCleanupOrphanedApplications}
-                        className="text-xs"
-                      >
-                        <Trash2 className="w-3 h-3 mr-1" />
-                        {language === 'en' 
-                          ? `Cleanup ${applications.filter(app => app.status === 'approved' && !ambassadors.some(amb => 
-                              amb.phone === app.phone_number || (app.email && amb.email && amb.email === app.email)
-                            )).length} Orphaned`
-                          : `Nettoyer ${applications.filter(app => app.status === 'approved' && !ambassadors.some(amb => 
-                              amb.phone === app.phone_number || (app.email && amb.email && amb.email === app.email)
-                            )).length} Orphelines`}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Search Bar and Date Filters */}
-                <div className="space-y-4 animate-in slide-in-from-bottom-4 fade-in duration-700 delay-500">
-                  <div className="relative">
-                    <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                    <Input
-                      placeholder="Search by name, email, or phone..."
-                      value={applicationSearchTerm}
-                      onChange={(e) => setApplicationSearchTerm(e.target.value)}
-                      className="pl-10 transition-all duration-300 focus:scale-105"
-                    />
-                  </div>
-                  
-                  {/* Status, City and Ville Filters */}
-                  <div className="flex flex-wrap gap-4 items-center">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-medium text-muted-foreground">{language === 'en' ? 'Status:' : 'Statut:'}</Label>
-                      <Select
-                        value={applicationStatusFilter}
-                        onValueChange={setApplicationStatusFilter}
-                      >
-                        <SelectTrigger className="w-[180px]">
-                          <SelectValue placeholder={language === 'en' ? 'All Statuses' : 'Tous les Statuts'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{language === 'en' ? 'All Statuses' : 'Tous les Statuts'}</SelectItem>
-                          <SelectItem value="pending">{language === 'en' ? 'Pending' : 'En Attente'}</SelectItem>
-                          <SelectItem value="approved">{language === 'en' ? 'Approved' : 'Approuvé'}</SelectItem>
-                          <SelectItem value="rejected">{language === 'en' ? 'Rejected' : 'Rejeté'}</SelectItem>
-                          <SelectItem value="suspended">{language === 'en' ? 'Suspended' : 'Suspendu'}</SelectItem>
-                          <SelectItem value="removed">{language === 'en' ? 'Removed' : 'Retiré'}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-medium text-muted-foreground">{language === 'en' ? 'City:' : 'Ville:'}</Label>
-                      <Select
-                        value={applicationCityFilter}
-                        onValueChange={(value) => {
-                          setApplicationCityFilter(value);
-                          // Reset ville filter when city changes
-                          if (value !== 'all') {
-                            setApplicationVilleFilter('all');
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="w-[180px]">
-                          <SelectValue placeholder={language === 'en' ? 'All Cities' : 'Toutes les Villes'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{language === 'en' ? 'All Cities' : 'Toutes les Villes'}</SelectItem>
-                          {CITIES.map(city => (
-                            <SelectItem key={city} value={city}>{city}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    {(applicationCityFilter === 'Sousse' || applicationCityFilter === 'Tunis' || applicationCityFilter === 'all') && (
-                      <div className="flex items-center gap-2">
-                        <Label className="text-sm font-medium text-muted-foreground">{language === 'en' ? 'Ville (Neighborhood):' : 'Quartier:'}</Label>
-                        <div className="relative">
-                          <Select
-                            value={applicationVilleFilter}
-                            onValueChange={setApplicationVilleFilter}
-                            disabled={applicationCityFilter !== 'Sousse' && applicationCityFilter !== 'Tunis' && applicationCityFilter !== 'all'}
-                          >
-                            <SelectTrigger className="w-[200px]">
-                              <SelectValue placeholder={language === 'en' ? 'All Villes' : 'Tous les Quartiers'} />
-                            </SelectTrigger>
-                            <SelectContent 
-                            position="popper"
-                            side="bottom"
-                            sideOffset={4}
-                            avoidCollisions={false}
-                            className="[&[data-side=top]]:!hidden"
-                          >
-                            <SelectItem value="all">{language === 'en' ? 'All Villes' : 'Tous les Quartiers'}</SelectItem>
-                            {applicationCityFilter === 'Sousse' && SOUSSE_VILLES.map((ville) => (
-                              <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                            ))}
-                            {applicationCityFilter === 'Tunis' && TUNIS_VILLES.map((ville) => (
-                              <SelectItem key={ville} value={ville}>{ville}</SelectItem>
-                            ))}
-                            {applicationCityFilter === 'all' && (
-                              <>
-                                {SOUSSE_VILLES.map((ville) => (
-                                  <SelectItem key={`sousse-${ville}`} value={ville}>{ville} (Sousse)</SelectItem>
-                                ))}
-                                {TUNIS_VILLES.map((ville) => (
-                                  <SelectItem key={`tunis-${ville}`} value={ville}>{ville} (Tunis)</SelectItem>
-                                ))}
-                              </>
-                            )}
-                          </SelectContent>
-                        </Select>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {(applicationStatusFilter !== 'pending' || applicationCityFilter !== 'all' || applicationVilleFilter !== 'all') && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setApplicationStatusFilter('pending');
-                          setApplicationCityFilter('all');
-                          setApplicationVilleFilter('all');
-                        }}
-                        className="text-xs"
-                      >
-                        <X className="w-3 h-3 mr-1" />
-                        {language === 'en' ? 'Clear Filters' : 'Effacer les Filtres'}
-                      </Button>
-                    )}
-                  </div>
-                  
-                  {/* Date Range Filters */}
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-medium text-foreground/70 whitespace-nowrap">{language === 'en' ? 'From Date:' : 'Date de début:'}</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-[200px] justify-start text-left font-normal border-border/50 bg-background hover:bg-muted/30 hover:border-primary/30 transition-all duration-300 shadow-sm",
-                              !applicationDateFrom && "text-muted-foreground",
-                              applicationDateFrom && "border-primary/50 bg-primary/5"
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                            <span className="truncate">
-                              {applicationDateFrom ? (
-                                format(applicationDateFrom, "PPP")
-                              ) : (
-                                <span className="text-muted-foreground">{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>
-                              )}
-                            </span>
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={applicationDateFrom}
-                            onSelect={(date) => setApplicationDateFrom(date)}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-medium text-foreground/70 whitespace-nowrap">{language === 'en' ? 'To Date:' : 'Date de fin:'}</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-[200px] justify-start text-left font-normal border-border/50 bg-background hover:bg-muted/30 hover:border-primary/30 transition-all duration-300 shadow-sm",
-                              !applicationDateTo && "text-muted-foreground",
-                              applicationDateTo && "border-primary/50 bg-primary/5",
-                              !applicationDateFrom && "opacity-50 cursor-not-allowed"
-                            )}
-                            disabled={!applicationDateFrom}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                            <span className="truncate">
-                              {applicationDateTo ? (
-                                format(applicationDateTo, "PPP")
-                              ) : (
-                                <span className="text-muted-foreground">{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>
-                              )}
-                            </span>
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={applicationDateTo}
-                            onSelect={(date) => setApplicationDateTo(date)}
-                            disabled={(date) => applicationDateFrom ? date < applicationDateFrom : false}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    
-                    {(applicationDateFrom || applicationDateTo) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setApplicationDateFrom(undefined);
-                          setApplicationDateTo(undefined);
-                        }}
-                        className="text-xs border-border/50 hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive transition-all duration-300 shadow-sm"
-                      >
-                        <X className="w-3 h-3 mr-1.5" />
-                        {language === 'en' ? 'Clear Dates' : 'Effacer les Dates'}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-md border border-border overflow-hidden">
-                  <div className="overflow-x-hidden">
-                    <Table className="[&>div]:overflow-x-hidden">
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Name</TableHead>
-                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Age</TableHead>
-                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Phone</TableHead>
-                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Email</TableHead>
-                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">City</TableHead>
-                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">{language === 'en' ? 'Ville' : 'Quartier'}</TableHead>
-                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Status</TableHead>
-                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Applied</TableHead>
-                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto">Details</TableHead>
-                          <TableHead className="font-semibold text-xs px-2 py-2 h-auto text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                    <TableBody>
-                      {filteredApplications.map((application, index) => (
-                        <TableRow 
-                          key={application.id}
-                          className={`transform transition-all duration-300 hover:bg-muted/30 ${
-                            animatedApplications.has(application.id) 
-                              ? 'animate-in fade-in duration-300' 
-                              : ''
-                          }`}
-                        >
-                          <TableCell className="font-medium text-xs px-2 py-2">{application.full_name}</TableCell>
-                          <TableCell className="text-xs px-2 py-2">{application.age}</TableCell>
-                          <TableCell className="text-xs px-2 py-2">
-                            <div className="flex items-center space-x-1">
-                              <Phone className="w-3 h-3 text-muted-foreground" />
-                              <span>{application.phone_number}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs px-2 py-2">
-                            {application.email ? (
-                              <div className="flex items-center space-x-1 group cursor-pointer" 
-                                   onClick={() => {
-                                     navigator.clipboard.writeText(application.email);
-                                     toast({
-                                       title: "Email Copied!",
-                                       description: `${application.email} copied to clipboard`,
-                                     });
-                                   }}
-                                   title="Click to copy email">
-                                <Mail className="w-3 h-3 text-primary group-hover:text-primary/80 transition-colors" />
-                                <span className="text-xs break-all max-w-[100px] truncate text-primary group-hover:text-primary/80 transition-colors">
-                                  {application.email}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs px-2 py-2">
-                            <div className="flex items-center space-x-1">
-                              <MapPin className="w-3 h-3 text-muted-foreground" />
-                              <span>{application.city}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs px-2 py-2">
-                            {(() => {
-                              // Show ville if available
-                              if (application.ville) {
-                                return <span className="text-xs">{application.ville}</span>;
-                              }
-                              // If no ville but city is Sousse or Tunis, try to get it from corresponding ambassador
-                              if (application.city === 'Sousse' || application.city === 'Tunis') {
-                                // Try to find matching ambassador
-                                const matchingAmbassador = ambassadors.find(amb => 
-                                  amb.phone === application.phone_number || 
-                                  (application.email && amb.email === application.email)
-                                );
-                                if (matchingAmbassador?.ville) {
-                                  return <span className="text-xs text-muted-foreground italic">{matchingAmbassador.ville}*</span>;
-                                }
-                              }
-                              return <span className="text-muted-foreground text-xs">-</span>;
-                            })()}
-                          </TableCell>
-                          <TableCell className="text-xs px-2 py-2">
-                            <div className="flex items-center gap-2">
-                              {getStatusBadge(application.status)}
-                              {application.status === 'approved' && (
-                                <div className="flex items-center" title={
-                                  emailStatus[application.id] === 'sent' 
-                                    ? (language === 'en' ? 'Email sent successfully' : 'Email envoyé avec succès')
-                                    : emailStatus[application.id] === 'failed'
-                                    ? (language === 'en' ? 'Email failed to send' : 'Échec de l\'envoi de l\'email')
-                                    : emailStatus[application.id] === 'pending'
-                                    ? (language === 'en' ? 'Email sending...' : 'Envoi de l\'email...')
-                                    : (language === 'en' ? 'Email status unknown' : 'Statut de l\'email inconnu')
-                                }>
-                                  {emailStatus[application.id] === 'sent' ? (
-                                    <CheckCircle className="w-3 h-3 text-green-500" />
-                                  ) : emailStatus[application.id] === 'failed' ? (
-                                    <XCircle className="w-3 h-3 text-red-500" />
-                                  ) : emailStatus[application.id] === 'pending' ? (
-                                    <div className="w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
-                                  ) : emailFailedApplications.has(application.id) ? (
-                                    <XCircle className="w-3 h-3 text-red-500" />
-                                  ) : (
-                                    <Mail className="w-3 h-3 text-muted-foreground" />
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs px-2 py-2">
-                            <div className="flex items-center space-x-1">
-                              <CalendarIcon className="w-3 h-3 text-muted-foreground" />
-                              <span className="text-xs">{new Date(application.created_at).toLocaleDateString()}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs px-2 py-2">
-                            <div className="flex items-center gap-2">
-                              {application.motivation && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedMotivation({ application, motivation: application.motivation });
-                                    setIsMotivationDialogOpen(true);
-                                  }}
-                                  className="inline-flex items-center justify-center p-0 m-0 border-0 bg-transparent hover:opacity-80 transition-opacity cursor-pointer"
-                                  title={language === 'en' ? 'Click to view motivation' : 'Cliquer pour voir la motivation'}
-                                >
-                                  <FileText className="w-3 h-3 text-primary" />
-                                </button>
-                              )}
-                              {application.social_link && (
-                                <div className="flex items-center">
-                                  <SocialLink url={application.social_link} iconOnly={true} />
-                                </div>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right text-xs px-2 py-2">
-                            <div className="flex items-center justify-end gap-1">
-                              {application.status === 'pending' && (
-                                <>
-                                  <Button 
-                                    onClick={() => handleApprove(application)}
-                                    disabled={processingId === application.id}
-                                    size="sm"
-                                    style={{
-                                      background: '#22C55E',
-                                      color: '#FFFFFF',
-                                      fontSize: '0.7rem',
-                                      padding: '0.25rem 0.5rem',
-                                      height: 'auto'
-                                    }}
-                                    className="transform hover:scale-105 transition-all duration-300"
-                                    onMouseEnter={(e) => e.currentTarget.style.background = '#16A34A'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = '#22C55E'}
-                                  >
-                                    {processingId === application.id ? (
-                                      <>
-                                        <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
-                                        <span className="text-xs">{t.processing}</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <CheckCircle className="w-2.5 h-2.5 mr-1" />
-                                        <span className="text-xs">{t.approve}</span>
-                                      </>
-                                    )}
-                                  </Button>
-                                  <Button 
-                                    onClick={() => handleReject(application)}
-                                    disabled={processingId === application.id}
-                                    variant="destructive"
-                                    size="sm"
-                                    style={{
-                                      fontSize: '0.7rem',
-                                      padding: '0.25rem 0.5rem',
-                                      height: 'auto'
-                                    }}
-                                    className="transform hover:scale-105 transition-all duration-300"
-                                  >
-                                    {processingId === application.id ? (
-                                      <>
-                                        <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
-                                        <span className="text-xs">{t.processing}</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <XCircle className="w-2.5 h-2.5 mr-1" />
-                                        <span className="text-xs">{t.reject}</span>
-                                      </>
-                                    )}
-                                  </Button>
-                                </>
-                              )}
-                              {application.status === 'approved' && (
-                                <div className="flex gap-1">
-                                  <Button 
-                                    onClick={() => resendEmail(application)}
-                                    disabled={processingId === application.id}
-                                    size="sm"
-                                    style={{
-                                      background: '#3B82F6',
-                                      color: '#FFFFFF',
-                                      fontSize: '0.7rem',
-                                      padding: '0.25rem 0.5rem',
-                                      height: 'auto'
-                                    }}
-                                    className="transform hover:scale-105 transition-all duration-300"
-                                    onMouseEnter={(e) => e.currentTarget.style.background = '#2563EB'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = '#3B82F6'}
-                                    title={
-                                      emailStatus[application.id] === 'failed'
-                                        ? (language === 'en' ? 'Email failed - Click to resend' : 'Échec de l\'email - Cliquez pour renvoyer')
-                                        : emailStatus[application.id] === 'sent'
-                                        ? (language === 'en' ? 'Email sent - Click to resend' : 'Email envoyé - Cliquez pour renvoyer')
-                                        : (language === 'en' ? 'Resend approval email' : 'Renvoyer l\'email d\'approbation')
-                                    }
-                                  >
-                                    {processingId === application.id ? (
-                                      <>
-                                        <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></div>
-                                        <span className="text-xs">{language === 'en' ? 'Sending...' : 'Envoi...'}</span>
-                                      </>
-                                    ) : emailStatus[application.id] === 'failed' ? (
-                                      <>
-                                        <AlertCircle className="w-2.5 h-2.5 mr-1" />
-                                        <span className="text-xs">{language === 'en' ? 'Resend' : 'Renvoyer'}</span>
-                                      </>
-                                    ) : emailStatus[application.id] === 'sent' ? (
-                                      <>
-                                        <Mail className="w-2.5 h-2.5 mr-1" />
-                                        <span className="text-xs">{language === 'en' ? 'Resend' : 'Renvoyer'}</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Mail className="w-2.5 h-2.5 mr-1" />
-                                        <span className="text-xs">{language === 'en' ? 'Resend' : 'Renvoyer'}</span>
-                                      </>
-                                    )}
-                                  </Button>
-                                  <Button 
-                                    onClick={() => copyCredentials(application)}
-                                    size="sm"
-                                    variant="outline"
-                                    style={{
-                                      fontSize: '0.7rem',
-                                      padding: '0.25rem 0.4rem',
-                                      height: 'auto',
-                                      minWidth: 'auto'
-                                    }}
-                                    className="transform hover:scale-105 transition-all duration-300 p-1"
-                                    title={language === 'en' ? 'Copy credentials to clipboard' : 'Copier les identifiants dans le presse-papiers'}
-                                  >
-                                    <Copy className="w-3 h-3" />
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {filteredApplications.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={9} className="text-center py-8">
-                            {applicationSearchTerm ? (
-                              <div className="space-y-2">
-                                <p className="text-muted-foreground animate-pulse">No applications found matching "{applicationSearchTerm}"</p>
-                                <Button 
-                                  variant="outline" 
-                                  onClick={() => setApplicationSearchTerm('')}
-                                  className="transform hover:scale-105 transition-all duration-300"
-                                >
-                                  Clear Search
-                                </Button>
-                              </div>
-                            ) : (
-                              <p className="text-muted-foreground animate-pulse">{t.noApplications}</p>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                    </Table>
-                  </div>
-                </div>
-
-                {/* Motivation Dialog */}
-                <Dialog open={isMotivationDialogOpen} onOpenChange={setIsMotivationDialogOpen}>
-                  <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-                    <DialogHeader>
-                      <DialogTitle>
-                        {language === 'en' ? 'Application Motivation' : 'Motivation de la Candidature'}
-                      </DialogTitle>
-                    </DialogHeader>
-                    {selectedMotivation && (
-                      <div className="space-y-4">
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground mb-2">
-                            {language === 'en' ? 'Applicant:' : 'Candidat:'}
-                          </p>
-                          <p className="text-lg font-semibold">{selectedMotivation.application.full_name}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground mb-2">
-                            {language === 'en' ? 'Motivation:' : 'Motivation:'}
-                          </p>
-                          <div className="p-4 bg-muted/50 rounded-lg border border-border max-h-[60vh] overflow-y-auto">
-                            <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-                              {selectedMotivation.motivation}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex justify-end gap-2 mt-4">
-                      <DialogClose asChild>
-                        <Button variant="outline">
-                          {language === 'en' ? 'Close' : 'Fermer'}
-                        </Button>
-                      </DialogClose>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </TabsContent>
+              <ApplicationsTab
+                language={language}
+                t={t}
+                filteredApplications={filteredApplications}
+                applications={applications}
+                ambassadors={ambassadors}
+                applicationSearchTerm={applicationSearchTerm}
+                setApplicationSearchTerm={setApplicationSearchTerm}
+                applicationStatusFilter={applicationStatusFilter}
+                setApplicationStatusFilter={setApplicationStatusFilter}
+                applicationCityFilter={applicationCityFilter}
+                setApplicationCityFilter={setApplicationCityFilter}
+                applicationVilleFilter={applicationVilleFilter}
+                setApplicationVilleFilter={setApplicationVilleFilter}
+                applicationDateFrom={applicationDateFrom}
+                setApplicationDateFrom={setApplicationDateFrom}
+                applicationDateTo={applicationDateTo}
+                setApplicationDateTo={setApplicationDateTo}
+                animatedApplications={animatedApplications}
+                emailStatus={emailStatus}
+                emailFailedApplications={emailFailedApplications}
+                selectedMotivation={selectedMotivation}
+                setSelectedMotivation={setSelectedMotivation}
+                isMotivationDialogOpen={isMotivationDialogOpen}
+                setIsMotivationDialogOpen={setIsMotivationDialogOpen}
+                getStatusBadge={getStatusBadge}
+                onExportExcel={exportAmbassadorsToExcel}
+                onCleanupOrphaned={handleCleanupOrphanedApplications}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                onResendEmail={resendEmail}
+                onCopyCredentials={copyCredentials}
+                processingId={processingId}
+                orphanedCount={applications.filter(app => app.status === 'approved' && !ambassadors.some(amb => amb.phone === app.phone_number || (app.email && amb.email && amb.email === app.email))).length}
+              />
 
               {/* Sponsors Tab */}
-              <TabsContent value="sponsors" className="space-y-6">
-                <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-                  <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">Sponsors</h2>
-                  <Button 
-                    variant="default" 
-                    onClick={() => openSponsorDialog()}
-                    className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
-                  >
-                    <Plus className="w-4 h-4 mr-2 animate-pulse" />
-                    Add Sponsor
-                  </Button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {sponsors.map((sponsor, index) => (
-                    <div 
-                      key={sponsor.id} 
-                      className={`rounded-xl bg-card p-6 shadow-lg flex flex-col items-center justify-center transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-                        animatedSponsors.has(sponsor.id) 
-                          ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                          : 'opacity-0 translate-y-8'
-                      }`}
-                    >
-                      {sponsor.logo_url && (
-                        <div className="animate-in zoom-in-95 duration-500 delay-200">
-                          <img 
-                            src={sponsor.logo_url} 
-                            alt={sponsor.name} 
-                            className="w-32 h-20 object-contain mb-3 rounded-lg transform transition-transform duration-300 hover:scale-110" 
-                          />
-                        </div>
-                      )}
-                      <h3 className="font-semibold mb-1 animate-in slide-in-from-left-4 duration-500 delay-300">
-                        {sponsor.name}
-                      </h3>
-                      <p className="text-xs text-muted-foreground mb-2 animate-in slide-in-from-left-4 duration-500 delay-400">
-                        {sponsor.description || sponsor.category}
-                      </p>
-                      <div className="flex gap-2 mb-2 animate-in slide-in-from-bottom-4 duration-500 delay-500">
-                        <Badge className="bg-primary text-white animate-pulse">
-                          Global
-                        </Badge>
-                      </div>
-                      <div className="flex gap-2 mt-2 animate-in slide-in-from-bottom-4 duration-500 delay-600">
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => openSponsorDialog(sponsor)}
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="destructive" 
-                          onClick={() => openDeleteDialog(sponsor)}
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                                {sponsors.length === 0 && (
-                  <div className="text-center py-8 animate-in fade-in duration-500">
-                    <p className="text-muted-foreground animate-pulse">No sponsors found</p>
-                  </div>
-                )}
-
-                {/* Add/Edit Sponsor Dialog */}
-                <Dialog open={isSponsorDialogOpen} onOpenChange={setIsSponsorDialogOpen}>
-                  <DialogContent className="max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
-                    <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-                      <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
-                        {editingSponsor?.id ? 'Edit Sponsor' : 'Add Sponsor'}
-                      </DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleSponsorSave} className="animate-in slide-in-from-bottom-4 duration-700 delay-300">
-                      <div className="space-y-4">
-                        <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
-                          <Label htmlFor="sponsorName">Name</Label>
-                          <Input
-                            id="sponsorName"
-                            value={editingSponsor?.name || ''}
-                            onChange={(e) => setEditingSponsor(prev => ({ ...prev, name: e.target.value }))}
-                            required
-                            className="transition-all duration-300 focus:scale-105"
-                          />
-                        </div>
-                        <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
-                          <Label htmlFor="sponsorDescription">Description</Label>
-                          <Textarea
-                            id="sponsorDescription"
-                            value={editingSponsor?.description || ''}
-                            onChange={(e) => setEditingSponsor(prev => ({ ...prev, description: e.target.value }))}
-                            className="transition-all duration-300 focus:scale-105"
-                          />
-                        </div>
-                        <div className="animate-in slide-in-from-left-4 duration-500 delay-600">
-                          <Label htmlFor="sponsorWebsite">Website URL</Label>
-                          <Input
-                            id="sponsorWebsite"
-                            type="url"
-                            value={editingSponsor?.website_url || ''}
-                            onChange={(e) => setEditingSponsor(prev => ({ ...prev, website_url: e.target.value }))}
-                            className="transition-all duration-300 focus:scale-105"
-                          />
-                        </div>
-                        <div className="animate-in slide-in-from-right-4 duration-500 delay-700">
-                          <Label htmlFor="sponsorCategory">Category</Label>
-                          <Input
-                            id="sponsorCategory"
-                            value={editingSponsor?.category || ''}
-                            onChange={(e) => setEditingSponsor(prev => ({ ...prev, category: e.target.value }))}
-                            className="transition-all duration-300 focus:scale-105"
-                          />
-                        </div>
-                        <div className="animate-in slide-in-from-left-4 duration-500 delay-800">
-                          <Label>Logo</Label>
-                          <FileUpload
-                            onFileSelect={(file) => setEditingSponsor(prev => ({ ...prev, _uploadFile: file }))}
-                            onUrlChange={(url) => setEditingSponsor(prev => ({ ...prev, logo_url: url }))}
-                            currentUrl={editingSponsor?.logo_url}
-                            accept="image/*"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-900">
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          onClick={closeSponsorDialog}
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          Cancel
-                        </Button>
-                        <Button 
-                          type="submit"
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          <Save className="w-4 h-4 mr-2 animate-pulse" />
-                          Save
-                        </Button>
-                      </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-
-                {/* Delete Sponsor Dialog */}
-                <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                  <DialogContent className="animate-in zoom-in-95 duration-300">
-                    <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-                      <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
-                        Delete Sponsor
-                      </DialogTitle>
-                    </DialogHeader>
-                    <p className="animate-in slide-in-from-bottom-4 duration-500 delay-300">
-                      Are you sure you want to delete this sponsor?
-                    </p>
-                    <div className="flex justify-end gap-2 mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-500">
-                      <DialogClose asChild>
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          onClick={closeDeleteDialog}
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          Cancel
-                        </Button>
-                      </DialogClose>
-                      <Button 
-                        type="button" 
-                        variant="destructive" 
-                        onClick={handleDeleteSponsor}
-                        className="transform hover:scale-105 transition-all duration-300"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </TabsContent>
+              <SponsorsTab
+                sponsors={sponsors}
+                animatedSponsors={animatedSponsors}
+                editingSponsor={editingSponsor}
+                setEditingSponsor={setEditingSponsor}
+                isSponsorDialogOpen={isSponsorDialogOpen}
+                setIsSponsorDialogOpen={setIsSponsorDialogOpen}
+                isDeleteDialogOpen={isDeleteDialogOpen}
+                setIsDeleteDialogOpen={setIsDeleteDialogOpen}
+                onOpenAdd={() => openSponsorDialog()}
+                onOpenEdit={openSponsorDialog}
+                onOpenDelete={openDeleteDialog}
+                onSave={handleSponsorSave}
+                onCloseAddEdit={closeSponsorDialog}
+                onCloseDelete={closeDeleteDialog}
+                onConfirmDelete={handleDeleteSponsor}
+              />
 
               {/* Team Tab */}
-              <TabsContent value="team" className="space-y-6">
-                <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-                  <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">Team Members</h2>
-                  <Button 
-                    variant="default" 
-                    onClick={() => openTeamDialog()}
-                    className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
-                  >
-                    <Plus className="w-4 h-4 mr-2 animate-pulse" />
-                    Add Team Member
-                  </Button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full px-2">
-                  {teamMembers.map((member, index) => (
-                    <div 
-                      key={member.id} 
-                      className={`rounded-xl bg-card p-6 shadow-lg flex flex-col items-center justify-center transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-                        animatedTeamMembers.has(member.id) 
-                          ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                          : 'opacity-0 translate-y-8'
-                      }`}
-                    >
-                      {member.photo_url && (
-                        <div className="animate-in zoom-in-95 duration-500 delay-200">
-                          <img 
-                            src={member.photo_url} 
-                            alt={member.name} 
-                            className="w-24 h-24 object-cover mb-3 rounded-full transform transition-transform duration-300 hover:scale-110" 
-                          />
-                        </div>
-                      )}
-                      <h3 className="font-semibold mb-1 animate-in slide-in-from-left-4 duration-500 delay-300">
-                        {member.name}
-                      </h3>
-                      <p className="text-xs text-muted-foreground mb-1 animate-in slide-in-from-left-4 duration-500 delay-400">
-                        {member.role}
-                      </p>
-                      {member.bio && (
-                        <p className="text-xs text-muted-foreground mb-2 line-clamp-2 animate-in slide-in-from-left-4 duration-500 delay-500">
-                          {member.bio}
-                        </p>
-                      )}
-                      {member.social_url && (
-                        <div className="animate-in slide-in-from-bottom-4 duration-500 delay-600">
-                          <a 
-                            href={member.social_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="text-primary hover:underline text-xs mb-2 transform hover:scale-105 transition-all duration-300"
-                          >
-                            Social
-                          </a>
-                        </div>
-                      )}
-                      <div className="flex gap-2 mt-2 animate-in slide-in-from-bottom-4 duration-500 delay-700">
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => openTeamDialog(member)}
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="destructive" 
-                          onClick={() => openDeleteTeamDialog(member)}
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                                {teamMembers.length === 0 && (
-                  <div className="text-center py-8 animate-in fade-in duration-500">
-                    <p className="text-muted-foreground animate-pulse">No team members found</p>
-                  </div>
-                )}
-
-                {/* Add/Edit Team Member Dialog */}
-                <Dialog open={isTeamDialogOpen} onOpenChange={setIsTeamDialogOpen}>
-                  <DialogContent className="max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
-                    <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-                      <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
-                        {editingTeamMember?.id ? 'Edit Team Member' : 'Add Team Member'}
-                      </DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleTeamSave} className="animate-in slide-in-from-bottom-4 duration-700 delay-300">
-                      <div className="space-y-4">
-                        <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
-                          <Label htmlFor="memberName">Name</Label>
-                          <Input
-                            id="memberName"
-                            value={editingTeamMember?.name || ''}
-                            onChange={(e) => setEditingTeamMember(prev => ({ ...prev, name: e.target.value }))}
-                            required
-                            className="transition-all duration-300 focus:scale-105"
-                          />
-                        </div>
-                        <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
-                          <Label htmlFor="memberRole">Role</Label>
-                          <Input
-                            id="memberRole"
-                            value={editingTeamMember?.role || ''}
-                            onChange={(e) => setEditingTeamMember(prev => ({ ...prev, role: e.target.value }))}
-                            required
-                            className="transition-all duration-300 focus:scale-105"
-                          />
-                        </div>
-                        <div className="animate-in slide-in-from-left-4 duration-500 delay-600">
-                          <Label htmlFor="memberBio">Bio</Label>
-                          <Textarea
-                            id="memberBio"
-                            value={editingTeamMember?.bio || ''}
-                            onChange={(e) => setEditingTeamMember(prev => ({ ...prev, bio: e.target.value }))}
-                            className="transition-all duration-300 focus:scale-105"
-                          />
-                        </div>
-                        <div className="animate-in slide-in-from-right-4 duration-500 delay-700">
-                          <Label htmlFor="memberPhoto">Photo</Label>
-                          <div className="space-y-2">
-                            {editingTeamMember?.photo_url && (
-                              <div className="animate-in zoom-in-95 duration-300">
-                                <img 
-                                  src={editingTeamMember.photo_url} 
-                                  alt="Current photo" 
-                                  className="w-20 h-20 object-cover rounded-lg border-2 border-border"
-                                />
-                              </div>
-                            )}
-                            <div className="flex items-center gap-2">
-                              <Input
-                                id="memberPhoto"
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    // Handle file upload here
-                                    const reader = new FileReader();
-                                    reader.onload = (event) => {
-                                      const result = event.target?.result as string;
-                                      setEditingTeamMember(prev => ({ ...prev, photo_url: result }));
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }
-                                }}
-                                className="transition-all duration-300 focus:scale-105"
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const input = document.getElementById('memberPhoto') as HTMLInputElement;
-                                  input?.click();
-                                }}
-                                className="transform hover:scale-105 transition-all duration-300"
-                              >
-                                <Upload className="w-4 h-4 mr-2" />
-                                Upload
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="animate-in slide-in-from-left-4 duration-500 delay-800">
-                          <Label htmlFor="memberSocial">Social URL</Label>
-                          <Input
-                            id="memberSocial"
-                            type="url"
-                            value={editingTeamMember?.social_url || ''}
-                            onChange={(e) => setEditingTeamMember(prev => ({ ...prev, social_url: e.target.value }))}
-                            className="transition-all duration-300 focus:scale-105"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-900">
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          onClick={closeTeamDialog}
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          Cancel
-                        </Button>
-                        <Button 
-                          type="submit"
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          <Save className="w-4 h-4 mr-2 animate-pulse" />
-                          Save
-                        </Button>
-                      </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-
-                {/* Delete Team Member Dialog */}
-                <Dialog open={isDeleteTeamDialogOpen} onOpenChange={setIsDeleteTeamDialogOpen}>
-                  <DialogContent className="animate-in zoom-in-95 duration-300">
-                    <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-                      <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
-                        Delete Team Member
-                      </DialogTitle>
-                    </DialogHeader>
-                    <p className="animate-in slide-in-from-bottom-4 duration-500 delay-300">
-                      Are you sure you want to delete this team member?
-                    </p>
-                    <div className="flex justify-end gap-2 mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-500">
-                      <DialogClose asChild>
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          onClick={closeDeleteTeamDialog}
-                          className="transform hover:scale-105 transition-all duration-300"
-                        >
-                          Cancel
-                        </Button>
-                      </DialogClose>
-                      <Button 
-                        type="button" 
-                        variant="destructive" 
-                        onClick={handleDeleteTeamMember}
-                        className="transform hover:scale-105 transition-all duration-300"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </TabsContent>
+              <TeamTab
+                teamMembers={teamMembers}
+                animatedTeamMembers={animatedTeamMembers}
+                editingTeamMember={editingTeamMember}
+                setEditingTeamMember={setEditingTeamMember}
+                isTeamDialogOpen={isTeamDialogOpen}
+                setIsTeamDialogOpen={setIsTeamDialogOpen}
+                isDeleteTeamDialogOpen={isDeleteTeamDialogOpen}
+                setIsDeleteTeamDialogOpen={setIsDeleteTeamDialogOpen}
+                onOpenAdd={() => openTeamDialog()}
+                onOpenEdit={openTeamDialog}
+                onOpenDelete={openDeleteTeamDialog}
+                onSave={handleTeamSave}
+                onCloseAddEdit={closeTeamDialog}
+                onCloseDelete={closeDeleteTeamDialog}
+                onConfirmDelete={handleDeleteTeamMember}
+              />
 
               {/* Contact Messages Tab */}
-              <TabsContent value="contact" className="space-y-6">
-                <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-                  <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
-                    Contact Messages
-                  </h2>
-                  <div className="flex items-center gap-4 animate-in slide-in-from-right-4 duration-1000 delay-300">
-                    <Badge variant="secondary" className="animate-pulse">
-                      {filteredContactMessages.length} of {contactMessages.length} messages
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Enhanced Search Bar with Animation */}
-                <div className="animate-in slide-in-from-bottom-4 duration-500 delay-400">
-                  <div className="relative group">
-                    <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 transition-transform duration-300 group-hover:rotate-90" />
-                    <Input
-                      placeholder="Search messages by name, email, subject, or content..."
-                      value={contactMessageSearchTerm}
-                      onChange={(e) => setContactMessageSearchTerm(e.target.value)}
-                      className="pl-10 transition-all duration-300 focus:scale-105 focus:shadow-lg focus:shadow-primary/20"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-6">
-                  {filteredContactMessages.map((message, index) => (
-                    <div 
-                      key={message.id} 
-                      className={`bg-card rounded-xl p-6 shadow-lg transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl hover:shadow-primary/10 ${
-                        animatedContactMessages.has(message.id) 
-                          ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                          : 'opacity-0 translate-y-8'
-                      }`}
-                      style={{
-                        animationDelay: `${index * 200}ms`,
-                        transform: animatedContactMessages.has(message.id) ? 'translateY(0) scale(1)' : 'translateY(20px) scale(0.95)'
-                      }}
-                    >
-                      <div className="flex justify-between items-start mb-4 animate-in slide-in-from-left-4 duration-500 delay-200">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center animate-in zoom-in-95 duration-500 delay-300">
-                            <User className="w-5 h-5 text-primary" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-lg animate-in slide-in-from-left-4 duration-500 delay-300">
-                              {message.name}
-                            </h3>
-                            <p className="text-muted-foreground animate-in slide-in-from-left-4 duration-500 delay-400">
-                              {message.email}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right animate-in slide-in-from-right-4 duration-500 delay-500">
-                          <Badge variant="outline" className="mb-2 animate-in fade-in duration-500 delay-600">
-                            {new Date(message.created_at).toLocaleDateString()}
-                          </Badge>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(message.created_at).toLocaleTimeString()}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-3 animate-in slide-in-from-bottom-4 duration-500 delay-600">
-                        <div>
-                          <h4 className="font-medium text-primary mb-2 animate-in slide-in-from-left-4 duration-500 delay-700 flex items-center">
-                            <FileText className="w-4 h-4 mr-2 animate-pulse" />
-                            Subject: {message.subject}
-                          </h4>
-                        </div>
-                        
-                        <div className="bg-muted/50 rounded-lg p-4 animate-in slide-in-from-bottom-4 duration-500 delay-800 border-l-4 border-primary/20">
-                          <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                            {message.message}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2 mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-900">
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => {
-                            // Copy message details to clipboard
-                            const messageText = `Name: ${message.name}\nEmail: ${message.email}\nSubject: ${message.subject}\nMessage: ${message.message}\nDate: ${new Date(message.created_at).toLocaleString()}`;
-                            navigator.clipboard.writeText(messageText);
-                            toast({
-                              title: "Copied to clipboard",
-                              description: "Message details copied successfully.",
-                            });
-                          }}
-                          className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group"
-                        >
-                          <FileText className="w-4 h-4 mr-2 transition-transform duration-300 group-hover:rotate-12" />
-                          Copy Details
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => {
-                            window.open(`mailto:${message.email}?subject=Re: ${message.subject}`, '_blank');
-                          }}
-                          className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group"
-                        >
-                          <Mail className="w-4 h-4 mr-2 transition-transform duration-300 group-hover:scale-110" />
-                          Reply
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="destructive"
-                          onClick={() => openDeleteMessageDialog(message)}
-                          className="transform hover:scale-105 hover:shadow-md transition-all duration-300 group"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2 transition-transform duration-300 group-hover:rotate-12" />
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {filteredContactMessages.length === 0 && contactMessages.length > 0 && (
-                  <div className="text-center py-12 animate-in fade-in duration-500">
-                    <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
-                    <h3 className="text-lg font-semibold mb-2">No messages found</h3>
-                    <p className="text-muted-foreground">
-                      Try adjusting your search terms.
-                    </p>
-                  </div>
-                )}
-
-                {contactMessages.length === 0 && (
-                  <div className="text-center py-12 animate-in fade-in duration-500">
-                    <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
-                    <h3 className="text-lg font-semibold mb-2">No messages yet</h3>
-                    <p className="text-muted-foreground">
-                      Contact messages from the website will appear here.
-                    </p>
-                  </div>
-                )}
-              </TabsContent>
-
-              {/* Delete Message Dialog */}
-              <Dialog open={isDeleteMessageDialogOpen} onOpenChange={setIsDeleteMessageDialogOpen}>
-                <DialogContent className="animate-in zoom-in-95 duration-300">
-                  <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-                    <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
-                      Delete Message
-                    </DialogTitle>
-                  </DialogHeader>
-                  <div className="animate-in slide-in-from-bottom-4 duration-500 delay-300">
-                    <p className="mb-4">
-                      Are you sure you want to delete this message? This action cannot be undone.
-                    </p>
-                    {messageToDelete && (
-                      <div className="bg-muted/50 rounded-lg p-4 mb-4 animate-in slide-in-from-bottom-4 duration-500 delay-400">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <p className="font-semibold">{messageToDelete.name}</p>
-                            <p className="text-sm text-muted-foreground">{messageToDelete.email}</p>
-                          </div>
-                          <Badge variant="outline" className="text-xs">
-                            {new Date(messageToDelete.created_at).toLocaleDateString()}
-                          </Badge>
-                        </div>
-                        <p className="text-sm font-medium text-primary mb-1">
-                          Subject: {messageToDelete.subject}
-                        </p>
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {messageToDelete.message}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-500">
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      onClick={closeDeleteMessageDialog}
-                      className="transform hover:scale-105 transition-all duration-300"
-                    >
-                      Cancel
-                    </Button>
-                    <Button 
-                      type="button" 
-                      variant="destructive" 
-                      onClick={handleDeleteMessage}
-                      className="transform hover:scale-105 transition-all duration-300"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete Message
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+              <ContactTab
+                filteredContactMessages={filteredContactMessages}
+                contactMessages={contactMessages}
+                contactMessageSearchTerm={contactMessageSearchTerm}
+                setContactMessageSearchTerm={setContactMessageSearchTerm}
+                animatedContactMessages={animatedContactMessages}
+                messageToDelete={messageToDelete}
+                isDeleteMessageDialogOpen={isDeleteMessageDialogOpen}
+                setIsDeleteMessageDialogOpen={setIsDeleteMessageDialogOpen}
+                onOpenDelete={openDeleteMessageDialog}
+                onCloseDelete={closeDeleteMessageDialog}
+                onConfirmDelete={handleDeleteMessage}
+              />
 
               {/* Reports & Analytics Tab */}
               <TabsContent value="tickets" className="space-y-6">
@@ -14483,3126 +10475,154 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
               {/* Online Orders Tab */}
               <TabsContent value="online-orders" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</CardTitle>
-                      <Button onClick={fetchOnlineOrders} variant="outline" size="sm">
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                        {language === 'en' ? 'Refresh' : 'Actualiser'}
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {/* Filters */}
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-                      <Select
-                        value={onlineOrderFilters.status}
-                        onValueChange={(value) => {
-                          const newFilters = { ...onlineOrderFilters, status: value };
-                          setOnlineOrderFilters(newFilters);
-                          fetchOnlineOrdersWithFilters(newFilters);
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={language === 'en' ? 'Payment Status' : 'Statut de Paiement'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{language === 'en' ? 'All Statuses' : 'Tous les Statuts'}</SelectItem>
-                          <SelectItem value="PENDING_PAYMENT">{language === 'en' ? 'Pending Payment' : 'Paiement en Attente'}</SelectItem>
-                          <SelectItem value="PAID">{language === 'en' ? 'Paid' : 'Payé'}</SelectItem>
-                          <SelectItem value="FAILED">{language === 'en' ? 'Failed' : 'Échoué'}</SelectItem>
-                          <SelectItem value="REFUNDED">{language === 'en' ? 'Refunded' : 'Remboursé'}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={onlineOrderFilters.city}
-                        onValueChange={(value) => {
-                          const newFilters = { ...onlineOrderFilters, city: value };
-                          setOnlineOrderFilters(newFilters);
-                          // Fetch immediately with new filter
-                          fetchOnlineOrdersWithFilters(newFilters);
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={language === 'en' ? 'City' : 'Ville'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{language === 'en' ? 'All Cities' : 'Toutes les Villes'}</SelectItem>
-                          {CITIES.map(city => (
-                            <SelectItem key={city} value={city}>{city}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={onlineOrderFilters.passType}
-                        onValueChange={(value) => {
-                          const newFilters = { ...onlineOrderFilters, passType: value };
-                          setOnlineOrderFilters(newFilters);
-                          fetchOnlineOrdersWithFilters(newFilters);
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={language === 'en' ? 'Pass Type' : 'Type de Pass'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{language === 'en' ? 'All Types' : 'Tous les Types'}</SelectItem>
-                          <SelectItem value="standard">{language === 'en' ? 'Standard' : 'Standard'}</SelectItem>
-                          <SelectItem value="vip">{language === 'en' ? 'VIP' : 'VIP'}</SelectItem>
-                          <SelectItem value="mixed">{language === 'en' ? 'Mixed' : 'Mixte'}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        placeholder={language === 'en' ? 'Order ID (e.g., 98C1E3AC)' : 'ID Commande (ex: 98C1E3AC)'}
-                        value={onlineOrderFilters.orderId}
-                        onChange={(e) => {
-                          const newFilters = { ...onlineOrderFilters, orderId: e.target.value };
-                          setOnlineOrderFilters(newFilters);
-                        }}
-                        onKeyDown={(e) => {
-                          // Search immediately on Enter key
-                          if (e.key === 'Enter') {
-                            fetchOnlineOrdersWithFilters(onlineOrderFilters);
-                          }
-                        }}
-                        onBlur={() => {
-                          // Search when user leaves the input field
-                          fetchOnlineOrdersWithFilters(onlineOrderFilters);
-                        }}
-                        className="font-mono"
-                      />
-                      <div className="flex gap-2">
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-full">
-                              <CalendarIcon className="w-4 h-4 mr-2" />
-                              {language === 'en' ? 'Date Range' : 'Plage de Dates'}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <div className="p-4 space-y-4">
-                              <div>
-                                <Label>{language === 'en' ? 'From' : 'De'}</Label>
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                      {onlineOrderFilters.dateFrom ? format(onlineOrderFilters.dateFrom, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
-                                    </Button>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-auto p-0">
-                                    <Calendar
-                                      mode="single"
-                                      selected={onlineOrderFilters.dateFrom || undefined}
-                                      onSelect={(date) => {
-                                        const newFilters = { ...onlineOrderFilters, dateFrom: date || null };
-                                        setOnlineOrderFilters(newFilters);
-                                        fetchOnlineOrdersWithFilters(newFilters);
-                                      }}
-                                      initialFocus
-                                    />
-                                  </PopoverContent>
-                                </Popover>
-                              </div>
-                              <div>
-                                <Label>{language === 'en' ? 'To' : 'À'}</Label>
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                      {onlineOrderFilters.dateTo ? format(onlineOrderFilters.dateTo, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
-                                    </Button>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-auto p-0">
-                                    <Calendar
-                                      mode="single"
-                                      selected={onlineOrderFilters.dateTo || undefined}
-                                      onSelect={(date) => {
-                                        const newFilters = { ...onlineOrderFilters, dateTo: date || null };
-                                        setOnlineOrderFilters(newFilters);
-                                        fetchOnlineOrdersWithFilters(newFilters);
-                                      }}
-                                      initialFocus
-                                    />
-                                  </PopoverContent>
-                                </Popover>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const newFilters = { ...onlineOrderFilters, dateFrom: null, dateTo: null };
-                                  setOnlineOrderFilters(newFilters);
-                                  fetchOnlineOrdersWithFilters(newFilters);
-                                }}
-                                className="w-full"
-                              >
-                                {language === 'en' ? 'Clear Dates' : 'Effacer les Dates'}
-                              </Button>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
-
-                    {/* Orders Table */}
-                    {loadingOnlineOrders ? (
-                      <div className="text-center py-8">
-                        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                        <p className="text-muted-foreground">{language === 'en' ? 'Loading orders...' : 'Chargement des commandes...'}</p>
-                      </div>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{language === 'en' ? 'Customer Name' : 'Nom du Client'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Phone' : 'Téléphone'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Email' : 'Email'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Passes' : 'Passes'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Total Price' : 'Prix Total'}</TableHead>
-                            <TableHead>{language === 'en' ? 'City' : 'Ville'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Ville' : 'Quartier'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Payment Status' : 'Statut Paiement'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Created' : 'Créé'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {onlineOrders.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
-                                {language === 'en' ? 'No online orders found' : 'Aucune commande en ligne trouvée'}
-                              </TableCell>
-                            </TableRow>
-                          ) : (
-                            onlineOrders.map((order) => {
-                              // Parse passes from notes if available
-                              let passesDisplay = `${order.quantity}x ${order.pass_type?.toUpperCase() || 'STANDARD'}`;
-                              if (order.pass_type === 'mixed' && order.notes) {
-                                try {
-                                  const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
-                                  if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                                    passesDisplay = notesData.all_passes
-                                      .map((p: any) => `${p.quantity}x ${p.passType?.toUpperCase() || 'STANDARD'}`)
-                                      .join(', ');
-                                  }
-                                } catch (e) {
-                                  // Fall through to default
-                                }
-                              }
-
-                              // Truncate email for display (aggressive truncation to save space)
-                              const email = order.user_email || order.email || 'N/A';
-                              const truncateEmail = (email: string) => {
-                                if (email === 'N/A' || !email.includes('@')) return email;
-                                const [local, domain] = email.split('@');
-                                if (!domain) return email.length > 12 ? email.substring(0, 9) + '...' : email;
-                                // Very aggressive: first 6 chars of local + ...@ + first 8 chars of domain
-                                const truncatedLocal = local.length > 6 ? local.substring(0, 6) + '..' : local;
-                                const truncatedDomain = domain.length > 8 ? domain.substring(0, 8) + '..' : domain;
-                                return `${truncatedLocal}@${truncatedDomain}`;
-                              };
-
-                              const handleCopyEmail = async (email: string) => {
-                                if (email === 'N/A') return;
-                                try {
-                                  await navigator.clipboard.writeText(email);
-                                  toast({
-                                    title: language === 'en' ? 'Copied!' : 'Copié!',
-                                    description: language === 'en' ? 'Email copied to clipboard' : 'Email copié dans le presse-papiers',
-                                    variant: "default",
-                                  });
-                                } catch (err) {
-                                  console.error('Failed to copy email:', err);
-                                }
-                              };
-
-                              return (
-                                <TableRow key={order.id}>
-                                  <TableCell>{order.user_name || order.customer_name || 'N/A'}</TableCell>
-                                  <TableCell>{order.user_phone || order.phone || 'N/A'}</TableCell>
-                                  <TableCell>
-                                    <div 
-                                      className="flex items-center gap-2 cursor-pointer hover:text-primary transition-colors group"
-                                      onClick={() => handleCopyEmail(email)}
-                                      title={email !== 'N/A' ? (language === 'en' ? 'Click to copy email' : 'Cliquer pour copier l\'email') : ''}
-                                    >
-                                      <span className="text-sm">{truncateEmail(email)}</span>
-                                      {email !== 'N/A' && (
-                                        <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="text-sm">{passesDisplay}</TableCell>
-                                  <TableCell>{order.total_price?.toFixed(2) || '0.00'} TND</TableCell>
-                                  <TableCell>{order.city || 'N/A'}</TableCell>
-                                  <TableCell>{order.ville || '-'}</TableCell>
-                                  <TableCell>
-                                    <TooltipProvider>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <div
-                                            className={cn(
-                                              "w-3 h-3 rounded-full cursor-help transition-opacity hover:opacity-80",
-                                              order.payment_status === 'PAID' ? 'bg-green-500' :
-                                              order.payment_status === 'FAILED' || order.payment_status === 'REFUNDED' ? 'bg-red-500' :
-                                              'bg-yellow-500'
-                                            )}
-                                          />
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p>
-                                            {(() => {
-                                              const status = order.payment_status || 'PENDING_PAYMENT';
-                                              const statusMap: Record<string, string> = {
-                                                'PENDING_PAYMENT': language === 'en' ? 'Pending Payment' : 'Paiement en Attente',
-                                                'PAID': language === 'en' ? 'Paid' : 'Payé',
-                                                'FAILED': language === 'en' ? 'Failed' : 'Échoué',
-                                                'REFUNDED': language === 'en' ? 'Refunded' : 'Remboursé'
-                                              };
-                                              return statusMap[status] || status;
-                                            })()}
-                                          </p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  </TableCell>
-                                  <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
-                                  <TableCell>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => {
-                                        setSelectedOnlineOrder(order);
-                                        setIsOnlineOrderDetailsOpen(true);
-                                      }}
-                                    >
-                                      <Eye className="w-4 h-4 mr-2" />
-                                      {language === 'en' ? 'View' : 'Voir'}
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })
-                          )}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </CardContent>
-                </Card>
+                <OnlineOrdersTab
+                  language={language}
+                  onlineOrders={onlineOrders}
+                  onlineOrderFilters={onlineOrderFilters}
+                  setOnlineOrderFilters={setOnlineOrderFilters}
+                  loadingOnlineOrders={loadingOnlineOrders}
+                  onRefresh={fetchOnlineOrders}
+                  onFetchWithFilters={fetchOnlineOrdersWithFilters}
+                  onViewOrder={(order) => { setSelectedOnlineOrder(order); setIsOnlineOrderDetailsOpen(true); }}
+                />
               </TabsContent>
 
-              {/* Ambassador Sales System Tab */}
-              <TabsContent value="ambassador-sales" className="space-y-6">
-                <Tabs value={salesSystemTab} onValueChange={setSalesSystemTab} className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="cod-ambassador-orders">{language === 'en' ? 'COD Ambassador Orders' : 'Commandes COD Ambassadeur'}</TabsTrigger>
-                    <TabsTrigger value="order-logs">{language === 'en' ? 'Order Logs' : 'Journaux'}</TabsTrigger>
-                    <TabsTrigger value="performance">{language === 'en' ? 'Performance' : 'Performance'}</TabsTrigger>
-                  </TabsList>
+              <AmbassadorSalesTab
+                language={language}
+                salesSystemTab={salesSystemTab}
+                setSalesSystemTab={setSalesSystemTab}
+                orderFilters={orderFilters}
+                setOrderFilters={setOrderFilters}
+                filterOptions={filterOptions}
+                filteredCodOrders={filteredCodOrders}
+                selectedPassTypeTotal={selectedPassTypeTotal}
+                loadingOrders={loadingOrders}
+                orderLogs={orderLogs}
+                performanceReports={performanceReports}
+                onExportExcel={exportOrdersToExcel}
+                onRefresh={fetchAmbassadorSalesData}
+                onViewOrder={(order) => {
+                  setSelectedOrder(order);
+                  setIsOrderDetailsOpen(true);
+                }}
+                onViewAmbassador={handleViewAmbassador}
+              />
 
+              <MarketingTab
+                language={language}
+                marketingSubTab={marketingSubTab}
+                setMarketingSubTab={setMarketingSubTab}
+                emailSubscribers={emailSubscribers}
+                fetchEmailSubscribers={fetchEmailSubscribers}
+                loadingBalance={loadingBalance}
+                smsBalance={smsBalance}
+                fetchSmsBalance={fetchSmsBalance}
+                testPhoneNumber={testPhoneNumber}
+                setTestPhoneNumber={setTestPhoneNumber}
+                testSmsMessage={testSmsMessage}
+                setTestSmsMessage={setTestSmsMessage}
+                handleSendTestSms={handleSendTestSms}
+                sendingTestSms={sendingTestSms}
+                phoneSubscribers={phoneSubscribers}
+                handleExportPhones={handleExportPhones}
+                showImportDialog={showImportDialog}
+                setShowImportDialog={setShowImportDialog}
+                handleImportPhonesFromExcel={handleImportPhonesFromExcel}
+                importingPhones={importingPhones}
+                loadingLogs={loadingLogs}
+                smsLogs={smsLogs}
+                fetchSmsLogs={fetchSmsLogs}
+                fetchPhoneSubscribers={fetchPhoneSubscribers}
+                loadingEmailSubscribers={loadingEmailSubscribers}
+                handleExportEmails={handleExportEmails}
+                showEmailImportDialog={showEmailImportDialog}
+                setShowEmailImportDialog={setShowEmailImportDialog}
+                handleImportEmailsFromExcel={handleImportEmailsFromExcel}
+                importingEmails={importingEmails}
+                emailSubject={emailSubject}
+                setEmailSubject={setEmailSubject}
+                emailContent={emailContent}
+                setEmailContent={setEmailContent}
+                testEmailAddress={testEmailAddress}
+                setTestEmailAddress={setTestEmailAddress}
+                handleSendTestEmail={handleSendTestEmail}
+                sendingTestEmail={sendingTestEmail}
+                emailDelaySeconds={emailDelaySeconds}
+                setEmailDelaySeconds={setEmailDelaySeconds}
+                handleSendBulkEmails={handleSendBulkEmails}
+                sendingBulkEmails={sendingBulkEmails}
+                getSourceDisplayName={getSourceDisplayName}
+              />
 
-                  {/* COD Ambassador Orders */}
-                  <TabsContent value="cod-ambassador-orders" className="mt-6">
-                    <Card>
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <CardTitle>{language === 'en' ? 'COD Ambassador Orders' : 'Commandes COD Ambassadeur'}</CardTitle>
-                          <div className="flex gap-2">
-                            <Button onClick={exportOrdersToExcel} variant="outline" size="sm">
-                              <Download className="w-4 h-4 mr-2" />
-                              {language === 'en' ? 'Export Excel' : 'Exporter Excel'}
-                            </Button>
-                            <Button 
-                              onClick={() => {
-                                // Refresh with current status filter (includes REMOVED_BY_ADMIN if selected)
-                                const statusToFetch = orderFilters.status || undefined;
-                                fetchAmbassadorSalesData(statusToFetch);
-                              }} 
-                              variant="outline" 
-                              size="sm"
-                            >
-                              <RefreshCw className="w-4 h-4 mr-2" />
-                              {language === 'en' ? 'Refresh' : 'Actualiser'}
-                            </Button>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        {/* Filters */}
-                        <div className="flex items-end gap-4 mb-4 pb-4 border-b">
-                          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 flex-1">
-                          <div>
-                            <Label className="text-xs mb-2">{language === 'en' ? 'Order ID' : 'ID Commande'}</Label>
-                            <Input
-                              placeholder={language === 'en' ? 'Order ID (e.g., C29CA564)' : 'ID Commande (ex: C29CA564)'}
-                              value={orderFilters.orderId}
-                              onChange={(e) => {
-                                setOrderFilters({ ...orderFilters, orderId: e.target.value });
-                              }}
-                              onKeyDown={(e) => {
-                                // Filter immediately on Enter key
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                }
-                              }}
-                              className="h-8 text-xs font-mono"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs mb-2">{language === 'en' ? 'Status' : 'Statut'}</Label>
-                            <Select
-                              value={orderFilters.status || undefined}
-                              onValueChange={(value) => {
-                                const newStatus = value === 'all' || value === '' ? '' : value;
-                                setOrderFilters({ ...orderFilters, status: newStatus });
-                                // Immediately refetch when status changes, especially for REMOVED_BY_ADMIN
-                                const statusToFetch = newStatus || undefined;
-                                fetchAmbassadorSalesData(statusToFetch);
-                              }}
-                            >
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue placeholder={language === 'en' ? 'All Statuses' : 'Tous les Statuts'} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="PENDING_CASH">{language === 'en' ? 'Pending Cash' : 'En Attente Espèces'}</SelectItem>
-                                <SelectItem value="PENDING_ADMIN_APPROVAL">{language === 'en' ? 'Pending Approval' : 'En Attente d\'Approbation'}</SelectItem>
-                                <SelectItem value="PAID">{language === 'en' ? 'Paid' : 'Payé'}</SelectItem>
-                                <SelectItem value="REJECTED">{language === 'en' ? 'Rejected' : 'Rejeté'}</SelectItem>
-                                <SelectItem value="CANCELLED">{language === 'en' ? 'Cancelled' : 'Annulé'}</SelectItem>
-                                <SelectItem value="REMOVED_BY_ADMIN">{language === 'en' ? 'Removed by Admin' : 'Retiré par l\'administrateur'}</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label className="text-xs mb-2">{language === 'en' ? 'Phone' : 'Téléphone'}</Label>
-                            <Input
-                              placeholder={language === 'en' ? 'Search by phone...' : 'Rechercher par téléphone...'}
-                              value={orderFilters.phone}
-                              onChange={(e) => setOrderFilters({ ...orderFilters, phone: e.target.value })}
-                              className="h-8 text-xs"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs mb-2">{language === 'en' ? 'Ambassador' : 'Ambassadeur'}</Label>
-                            <Select
-                              value={orderFilters.ambassador || undefined}
-                              onValueChange={(value) => {
-                                setOrderFilters({ ...orderFilters, ambassador: value });
-                              }}
-                            >
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue placeholder={language === 'en' ? 'All Ambassadors' : 'Tous les Ambassadeurs'} />
-                              </SelectTrigger>
-                              <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
-                                {filterOptions.ambassadors.map((ambassador) => (
-                                  <SelectItem key={ambassador} value={ambassador}>
-                                    {ambassador}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label className="text-xs mb-2">{language === 'en' ? 'Pass Type' : 'Type de Pass'}</Label>
-                            <Select
-                              value={orderFilters.passType || undefined}
-                              onValueChange={(value) => {
-                                setOrderFilters({ ...orderFilters, passType: value === 'all' ? '' : value });
-                              }}
-                            >
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue placeholder={language === 'en' ? 'All Pass Types' : 'Tous les Types'} />
-                              </SelectTrigger>
-                              <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
-                                <SelectItem value="all">{language === 'en' ? 'All Pass Types' : 'Tous les Types'}</SelectItem>
-                                {filterOptions.passTypes.map((passType) => (
-                                  <SelectItem key={passType} value={passType}>
-                                    {passType}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            {orderFilters.passType && (
-                              <div className="mt-1 text-xs text-primary font-semibold">
-                                {language === 'en' ? 'Total:' : 'Total:'} {selectedPassTypeTotal}
-                              </div>
-                            )}
-                          </div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setOrderFilters({
-                                status: '',
-                                phone: '',
-                                ambassador: '',
-                                city: '',
-                                ville: '',
-                                orderId: '',
-                                passType: '',
-                              });
-                              // Refetch data to exclude REMOVED_BY_ADMIN orders after clearing filters
-                              fetchAmbassadorSalesData();
-                            }}
-                            className="h-8 text-xs"
-                          >
-                            <X className="w-4 h-4 mr-2" />
-                            {language === 'en' ? 'Clear All' : 'Tout Effacer'}
-                          </Button>
-                        </div>
-                        {loadingOrders ? (
-                          <div className="text-center py-8">
-                            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                            <p className="text-muted-foreground">{language === 'en' ? 'Loading orders...' : 'Chargement des commandes...'}</p>
-                          </div>
-                        ) : (
-                          <div className="overflow-x-auto">
-                            <Table className="text-xs">
-                              <TableHeader>
-                              <TableRow>
-                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Pass Types' : 'Types de Pass'}</TableHead>
-                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Client Name' : 'Nom Client'}</TableHead>
-                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Phone' : 'Téléphone'}</TableHead>
-                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Email' : 'Email'}</TableHead>
-                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Total Price' : 'Prix Total'}</TableHead>
-                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Ambassador' : 'Ambassadeur'}</TableHead>
-                                <TableHead className="py-2 whitespace-nowrap text-center w-16">{language === 'en' ? 'Status' : 'Statut'}</TableHead>
-                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Expires At' : 'Expire Le'}</TableHead>
-                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Created' : 'Créé'}</TableHead>
-                                <TableHead className="py-2 whitespace-nowrap text-center">{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {filteredCodOrders.length === 0 ? (
-                                <TableRow>
-                                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
-                                    {language === 'en' ? 'No COD ambassador orders found' : 'Aucune commande COD ambassadeur trouvée'}
-                                  </TableCell>
-                                </TableRow>
-                              ) : (
-                                filteredCodOrders
-                                  .map((order) => {
-                                    // Get passes array (already enriched in fetchAmbassadorSalesData)
-                                    const passes = order.passes || [];
-                                    
-                                    // Status color indicator - Normalized colors
-                                    const getStatusColor = () => {
-                                      if (order.status === 'PAID' || order.status === 'APPROVED') return 'bg-green-500';
-                                      if (order.status === 'CANCELLED' || order.status === 'REJECTED') return 'bg-red-500';
-                                      if (order.status === 'PENDING_ADMIN_APPROVAL') return 'bg-yellow-500';
-                                      if (order.status === 'PENDING_CASH') return 'bg-gray-500'; // Grey for pending cash
-                                      if (order.status === 'REMOVED_BY_ADMIN') return 'bg-gray-600'; // Dark grey for removed orders
-                                      return 'bg-gray-500';
-                                    };
-                                    
-                                    // Check if order has expiration
-                                    const hasExpiration = order.expires_at;
-                                    const expirationDate = hasExpiration ? new Date(order.expires_at) : null;
-                                    const isExpired = expirationDate ? expirationDate <= new Date() : false;
-                                    const isExpiringSoon = expirationDate ? {
-                                      hours: Math.floor((expirationDate.getTime() - new Date().getTime()) / (1000 * 60 * 60)),
-                                      minutes: Math.floor(((expirationDate.getTime() - new Date().getTime()) % (1000 * 60 * 60)) / (1000 * 60))
-                                    } : null;
-                                    const isExpiringWithin2Hours = isExpiringSoon && isExpiringSoon.hours < 2 && !isExpired;
+              <AioEventsTab
+                language={language}
+                submissions={aioEventsSubmissions}
+                loading={loadingAioEventsSubmissions}
+                pagination={aioEventsPagination}
+                setPagination={setAioEventsPagination}
+                onExport={exportAioEventsSubmissionsToExcel}
+                onRefresh={fetchAioEventsSubmissions}
+              />
 
-                                    // Mask email function
-                                    const maskEmail = (email: string) => {
-                                      if (!email || !email.includes('@')) return email;
-                                      const [localPart, domain] = email.split('@');
-                                      if (localPart.length <= 3) {
-                                        return `${localPart}***@${domain}`;
-                                      }
-                                      const visibleStart = localPart.substring(0, 3);
-                                      const visibleEnd = domain.substring(domain.length - 4);
-                                      return `${visibleStart}***@${visibleEnd}`;
-                                    };
+              <LogsTab
+                language={language}
+                logs={logs}
+                loading={loadingComprehensiveLogs}
+                logsFilters={logsFilters}
+                setLogsFilters={setLogsFilters}
+                logsPagination={logsPagination}
+                setLogsPagination={setLogsPagination}
+                autoRefresh={autoRefresh}
+                setAutoRefresh={setAutoRefresh}
+                selectedLog={selectedLog}
+                setSelectedLog={setSelectedLog}
+                isLogDrawerOpen={isLogDrawerOpen}
+                setIsLogDrawerOpen={setIsLogDrawerOpen}
+                onRefresh={fetchLogs}
+              />
 
-                                    // Copy email to clipboard
-                                    const handleCopyEmail = async (email: string) => {
-                                      try {
-                                        await navigator.clipboard.writeText(email);
-                                        toast({
-                                          title: language === 'en' ? 'Copied!' : 'Copié!',
-                                          description: language === 'en' ? 'Email copied to clipboard' : 'Email copié dans le presse-papiers',
-                                          duration: 2000,
-                                        });
-                                      } catch (err) {
-                                        console.error('Failed to copy email:', err);
-                                        toast({
-                                          title: language === 'en' ? 'Error' : 'Erreur',
-                                          description: language === 'en' ? 'Failed to copy email' : 'Échec de la copie de l\'email',
-                                          variant: 'destructive',
-                                        });
-                                      }
-                                    };
-                                    
-                                    return (
-                                      <TableRow key={order.id} className="text-xs">
-                                        <TableCell className="py-2 text-center">
-                                          {passes.length > 0 ? (
-                                            <div className="flex flex-col items-center gap-1">
-                                              {passes.map((p: any, idx: number) => (
-                                                <div key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-muted/30 text-xs">
-                                                  <span className="font-medium">{p.pass_type || p.passName}</span>
-                                                  <span className="text-muted-foreground">×{p.quantity}</span>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          ) : (
-                                            <span className="text-xs">{order.pass_type || 'N/A'}</span>
-                                          )}
-                                        </TableCell>
-                                        <TableCell className="py-2 text-center">{order.user_name || 'N/A'}</TableCell>
-                                        <TableCell className="py-2 text-center">{order.user_phone || 'N/A'}</TableCell>
-                                        <TableCell className="py-2 text-center text-xs">
-                                          {order.user_email ? (
-                                            <button
-                                              onClick={() => handleCopyEmail(order.user_email)}
-                                              className="hover:text-primary hover:underline cursor-pointer"
-                                              title={language === 'en' ? 'Click to copy email' : 'Cliquer pour copier l\'email'}
-                                            >
-                                              {maskEmail(order.user_email)}
-                                            </button>
-                                          ) : (
-                                            'N/A'
-                                          )}
-                                        </TableCell>
-                                        <TableCell className="py-2 text-center text-xs font-semibold">
-                                          {order.total_price ? `${parseFloat(order.total_price).toFixed(2)} TND` : 'N/A'}
-                                        </TableCell>
-                                        <TableCell className="py-2 text-center whitespace-nowrap">
-                                          {order.ambassador_id ? (
-                                            <button
-                                              onClick={async () => {
-                                                const { data: ambassadorData } = await (supabase as any)
-                                                  .from('ambassadors')
-                                                  .select('*')
-                                                  .eq('id', order.ambassador_id)
-                                                  .single();
-                                                setSelectedOrderAmbassador(ambassadorData);
-                                                setIsAmbassadorInfoDialogOpen(true);
-                                              }}
-                                              className="text-primary hover:underline cursor-pointer text-xs"
-                                            >
-                                              {order.ambassador_name || 'Unknown'}
-                                            </button>
-                                          ) : (
-                                            <span className="text-muted-foreground text-xs">N/A</span>
-                                          )}
-                                        </TableCell>
-                                        <TableCell className="py-2 text-center">
-                                          <div className="flex justify-center items-center gap-2">
-                                            <TooltipProvider>
-                                              <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                  <div className={`w-3 h-3 rounded-full cursor-help ${getStatusColor()}`} />
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                  <p className="text-xs">
-                                                    {order.status === 'PENDING_CASH'
-                                                      ? (language === 'en' ? 'Pending Cash' : 'En Attente Espèces')
-                                                      : order.status === 'PAID'
-                                                      ? (language === 'en' ? 'Paid' : 'Payé')
-                                                      : order.status === 'CANCELLED'
-                                                      ? (language === 'en' ? 'Cancelled' : 'Annulé')
-                                                      : order.status === 'PENDING_ADMIN_APPROVAL' 
-                                                      ? (language === 'en' ? 'Pending Approval' : 'En Attente')
-                                                      : order.status === 'APPROVED'
-                                                      ? (language === 'en' ? 'Approved' : 'Approuvé')
-                                                      : order.status === 'REJECTED'
-                                                      ? (language === 'en' ? 'Rejected' : 'Rejeté')
-                                                      : order.status === 'REMOVED_BY_ADMIN'
-                                                      ? (language === 'en' ? 'Removed by Admin' : 'Retiré par l\'administrateur')
-                                                      : order.status
-                                                    }
-                                                  </p>
-                                                </TooltipContent>
-                                              </Tooltip>
-                                            </TooltipProvider>
-                                          </div>
-                                        </TableCell>
-                                        <TableCell className="py-2 text-center whitespace-nowrap text-xs">
-                                          {order.status === 'REJECTED' && order.rejected_at ? (
-                                            <div className="flex flex-col items-center gap-1">
-                                              <Badge variant="destructive" className="text-xs px-1 py-0">
-                                                {language === 'en' ? 'Rejected' : 'Rejeté'}
-                                              </Badge>
-                                              {order.expires_at && (
-                                                <span className="text-xs text-muted-foreground">
-                                                  {new Date(order.expires_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
-                                                    month: 'short',
-                                                    day: 'numeric',
-                                                    hour: '2-digit',
-                                                    minute: '2-digit'
-                                                  })}
-                                                </span>
-                                              )}
-                                            </div>
-                                          ) : order.expires_at && order.status === 'PENDING_CASH' ? (
-                                            <div className="flex flex-col items-center gap-1">
-                                              <span className={cn(
-                                                "text-xs",
-                                                new Date(order.expires_at) <= new Date() ? "text-red-500 font-semibold" : 
-                                                (new Date(order.expires_at).getTime() - new Date().getTime()) < (2 * 60 * 60 * 1000) ? "text-orange-500 font-semibold" :
-                                                "text-yellow-500"
-                                              )}>
-                                                {new Date(order.expires_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
-                                                  month: 'short',
-                                                  day: 'numeric',
-                                                  hour: '2-digit',
-                                                  minute: '2-digit'
-                                                })}
-                                              </span>
-                                              {new Date(order.expires_at) <= new Date() && (
-                                                <Badge variant="destructive" className="text-xs px-1 py-0">
-                                                  {language === 'en' ? 'Expired' : 'Expiré'}
-                                                </Badge>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            <span className="text-muted-foreground text-xs">-</span>
-                                          )}
-                                        </TableCell>
-                                        <TableCell className="py-2 text-center whitespace-nowrap text-xs">
-                                          {new Date(order.created_at).toLocaleDateString(language)}
-                                        </TableCell>
-                                        <TableCell className="py-2 text-center">
-                                          {/* View Details Button - All actions available in the details dialog */}
-                                          <Button
-                                            size="sm"
-                                            variant="default"
-                                            className="bg-black hover:bg-gray-800 text-white border-none text-xs px-2 py-1 h-auto"
-                                            onClick={() => {
-                                              setSelectedOrder(order);
-                                              setIsOrderDetailsOpen(true);
-                                            }}
-                                            title={language === 'en' ? 'View order details and manage actions' : 'Voir les détails de la commande et gérer les actions'}
-                                          >
-                                            <Eye className="w-3 h-3 mr-1 text-white" />
-                                            {language === 'en' ? 'View' : 'Voir'}
-                                          </Button>
-                                        </TableCell>
-                                      </TableRow>
-                                    );
-                                  })
-                              )}
-                            </TableBody>
-                          </Table>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  {/* Order Logs */}
-                  <TabsContent value="order-logs" className="mt-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>{language === 'en' ? 'Order Logs' : 'Journaux de Commandes'}</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>{language === 'en' ? 'Order ID' : 'ID Commande'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Action' : 'Action'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Performed By' : 'Effectué Par'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Type' : 'Type'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Details' : 'Détails'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Timestamp' : 'Horodatage'}</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {orderLogs.length === 0 ? (
-                              <TableRow>
-                                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                                  {language === 'en' ? 'No order logs found' : 'Aucun journal de commande trouvé'}
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              orderLogs.map((log) => (
-                                <TableRow key={log.id}>
-                                  <TableCell className="font-mono text-xs">{log.order_id?.substring(0, 8)}...</TableCell>
-                                  <TableCell><Badge variant="outline">{log.action}</Badge></TableCell>
-                                  <TableCell>{log.performed_by || 'System'}</TableCell>
-                                  <TableCell>{log.performed_by_type || 'system'}</TableCell>
-                                  <TableCell className="max-w-xs truncate">{JSON.stringify(log.details || {})}</TableCell>
-                                  <TableCell>{new Date(log.created_at).toLocaleString()}</TableCell>
-                                </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  {/* Performance Reports */}
-                  <TabsContent value="performance" className="mt-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>{language === 'en' ? 'Performance Reports' : 'Rapports de Performance'}</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        {performanceReports ? (
-                          <div className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                              <Card>
-                                <CardHeader>
-                                  <CardTitle className="text-sm">{language === 'en' ? 'Total Orders' : 'Total Commandes'}</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                  <p className="text-2xl font-bold">{performanceReports.totalOrders || 0}</p>
-                                </CardContent>
-                              </Card>
-                              <Card>
-                                <CardHeader>
-                                  <CardTitle className="text-sm">{language === 'en' ? 'Success Rate' : 'Taux de Réussite'}</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                  <p className="text-2xl font-bold">{performanceReports.successRate || 0}%</p>
-                                </CardContent>
-                              </Card>
-                              <Card>
-                                <CardHeader>
-                                  <CardTitle className="text-sm">{language === 'en' ? 'Avg Response Time' : 'Temps de Réponse Moyen'}</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                  <p className="text-2xl font-bold">{performanceReports.avgResponseTime || 0} min</p>
-                                </CardContent>
-                              </Card>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-muted-foreground">
-                            {language === 'en' ? 'Performance data will be displayed here' : 'Les données de performance seront affichées ici'}
-                          </p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-                </Tabs>
-              </TabsContent>
-
-              {/* Marketing Tab */}
-              <TabsContent value="marketing" className="space-y-6">
-                {/* Sub-tabs for SMS and Email Marketing */}
-                <Tabs value={marketingSubTab} onValueChange={(value) => {
-                  setMarketingSubTab(value as 'sms' | 'email');
-                  // Fetch email subscribers when switching to email tab
-                  if (value === 'email' && emailSubscribers.length === 0) {
-                    fetchEmailSubscribers();
-                  }
-                }} className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 mb-6">
-                    <TabsTrigger value="sms" className="flex items-center gap-2">
-                      <PhoneCall className="w-4 h-4" />
-                      {language === 'en' ? 'SMS Marketing' : 'Marketing SMS'}
-                    </TabsTrigger>
-                    <TabsTrigger value="email" className="flex items-center gap-2">
-                      <Mail className="w-4 h-4" />
-                      {language === 'en' ? 'Email Marketing' : 'Marketing Email'}
-                    </TabsTrigger>
-                  </TabsList>
-
-                  {/* SMS Marketing Tab */}
-                  <TabsContent value="sms" className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full px-2">
-                  {/* SMS Balance Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <CreditCard className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'SMS Balance' : 'Solde SMS'}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {loadingBalance ? (
-                          <div className="flex flex-col items-center justify-center py-8 space-y-3">
-                            <RefreshCw className="w-8 h-8 animate-spin text-primary" />
-                            <p className="text-sm text-muted-foreground font-heading">
-                              {language === 'en' ? 'Checking balance...' : 'Vérification du solde...'}
-                            </p>
-                          </div>
-                        ) : smsBalance?.balance ? (
-                          <>
-                            <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border">
-                              <div className="flex-1">
-                                <p className="text-sm text-muted-foreground font-heading">{language === 'en' ? 'Current Balance' : 'Solde Actuel'}</p>
-                                {typeof smsBalance.balance === 'object' ? (
-                                    <div className="mt-1">
-                                    <p className="text-2xl font-heading font-bold text-primary">
-                                        {smsBalance.balance.balance || smsBalance.balance.solde || smsBalance.balance.credit || 'N/A'}
-                                      </p>
-                                      {smsBalance.balance.balance === 0 || smsBalance.balance.solde === 0 || smsBalance.balance.credit === 0 ? (
-                                      <p className="text-xs text-red-500 mt-1 font-heading">
-                                          ⚠️ {language === 'en' ? 'Insufficient balance!' : 'Solde insuffisant!'}
-                                        </p>
-                                      ) : null}
-                                    </div>
-                                  ) : (
-                                  <p className="text-2xl font-heading font-bold text-primary mt-1">
-                                      {smsBalance.balance}
-                                      {smsBalance.balance === '0' || smsBalance.balance === 0 ? (
-                                        <span className="text-xs text-red-500 ml-2">
-                                          ⚠️ {language === 'en' ? 'Insufficient!' : 'Insuffisant!'}
-                                        </span>
-                                      ) : null}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            <Button
-                              onClick={fetchSmsBalance}
-                              disabled={loadingBalance}
-                              variant="outline"
-                              size="sm"
-                              className="w-full font-heading"
-                            >
-                                <RefreshCw className="w-4 h-4 mr-2" />
-                              {language === 'en' ? 'Refresh Balance' : 'Actualiser le Solde'}
-                            </Button>
-                          </>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center py-8 space-y-4">
-                            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-                              <CreditCard className="w-8 h-8 text-primary" />
-                            </div>
-                            <p className="text-sm text-muted-foreground text-center font-heading">
-                              {language === 'en' 
-                                ? 'Click the button below to check your SMS balance' 
-                                : 'Cliquez sur le bouton ci-dessous pour vérifier votre solde SMS'}
-                            </p>
-                            <Button
-                              onClick={fetchSmsBalance}
-                              disabled={loadingBalance}
-                              className="w-full font-heading btn-gradient"
-                              size="lg"
-                            >
-                              <CreditCard className="w-5 h-5 mr-2" />
-                              {language === 'en' ? 'Check SMS Balance' : 'Vérifier le Solde SMS'}
-                            </Button>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Test SMS Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <PhoneCall className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'Test SMS' : 'SMS Test'}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {language === 'en' 
-                            ? 'Test SMS functionality with a specific phone number'
-                            : 'Tester la fonctionnalité SMS avec un numéro de téléphone spécifique'}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="testPhone">{language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'} *</Label>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-muted-foreground font-heading">+216</span>
-                            <Input
-                              id="testPhone"
-                              type="text"
-                              value={testPhoneNumber}
-                              onChange={(e) => setTestPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                              placeholder="21234567"
-                              className="flex-1 font-heading"
-                              maxLength={8}
-                            />
-                          </div>
-                          <p className="text-xs text-muted-foreground font-heading">
-                            {language === 'en' ? 'Enter 8 digits (e.g., 21234567)' : 'Entrez 8 chiffres (ex: 21234567)'}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="testMessage">{language === 'en' ? 'Test Message' : 'Message Test'} *</Label>
-                          <Textarea
-                            id="testMessage"
-                            value={testSmsMessage}
-                            onChange={(e) => setTestSmsMessage(e.target.value)}
-                            placeholder=""
-                            className="min-h-[100px] text-sm bg-background text-foreground font-heading"
-                          />
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{language === 'en' ? 'Characters' : 'Caractères'}: {testSmsMessage.length}</span>
-                            <span>{language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(testSmsMessage.length / 160)}</span>
-                          </div>
-                        </div>
-                        <Button
-                          onClick={handleSendTestSms}
-                          disabled={sendingTestSms || !testPhoneNumber.trim() || !testSmsMessage.trim()}
-                          className="w-full font-heading btn-gradient"
-                          size="lg"
-                        >
-                          {sendingTestSms ? (
-                            <>
-                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                              {language === 'en' ? 'Sending...' : 'Envoi...'}
-                            </>
-                          ) : (
-                            <>
-                              <Send className="w-5 h-5 mr-2" />
-                              {language === 'en' ? 'Send Test SMS' : 'Envoyer SMS Test'}
-                            </>
-                          )}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Export/Import Phone Subscribers Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Download className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'Export/Import Phone Subscribers' : 'Exporter/Importer Abonnés'}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {language === 'en' 
-                            ? `Export or import phone subscribers from Excel`
-                            : `Exporter ou importer des abonnés téléphone depuis Excel`}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {/* Subscriber Count */}
-                        <div className="p-3 bg-muted/30 rounded-lg border border-border">
-                          <div className="text-sm font-semibold text-foreground mb-1">
-                            {language === 'en' ? 'Subscribers Count' : 'Nombre d\'Abonnés'}
-                          </div>
-                          <div className="text-2xl font-bold text-primary">
-                            {phoneSubscribers.length}
-                          </div>
-                        </div>
-
-                        {/* Export/Import Buttons */}
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={handleExportPhones}
-                            disabled={phoneSubscribers.length === 0}
-                            variant="outline"
-                            size="sm"
-                            className="flex-1"
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            {language === 'en' ? 'Export Excel' : 'Exporter Excel'}
-                          </Button>
-                          <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex-1"
-                              >
-                                <Upload className="w-4 h-4 mr-2" />
-                                {language === 'en' ? 'Import Excel' : 'Importer Excel'}
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-2xl">
-                              <DialogHeader>
-                                <DialogTitle>
-                                  {language === 'en' ? 'Import Phone Numbers from Excel' : 'Importer des Numéros depuis Excel'}
-                                </DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                {/* Instructions */}
-                                <div className="p-4 bg-muted/50 rounded-lg space-y-3">
-                                  <div className="flex items-start gap-2">
-                                    <Info className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                                    <div className="space-y-2 text-sm">
-                                      <p className="font-semibold">
-                                        {language === 'en' ? 'Excel File Format:' : 'Format du Fichier Excel:'}
-                                      </p>
-                                      <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
-                                        <li>
-                                          {language === 'en' 
-                                            ? 'First column: Phone Number (8 digits, starts with 2, 4, 5, or 9)'
-                                            : 'Première colonne: Numéro de téléphone (8 chiffres, commence par 2, 4, 5 ou 9)'}
-                                        </li>
-                                        <li>
-                                          {language === 'en' 
-                                            ? 'First row should be headers (will be skipped)'
-                                            : 'La première ligne doit contenir les en-têtes (sera ignorée)'}
-                                        </li>
-                                        <li>
-                                          {language === 'en' 
-                                            ? 'Duplicate numbers will be automatically skipped'
-                                            : 'Les numéros en double seront automatiquement ignorés'}
-                                        </li>
-                                        <li>
-                                          {language === 'en' 
-                                            ? 'Subscription time will be set automatically to import time'
-                                            : 'La date d\'abonnement sera définie automatiquement à l\'heure d\'importation'}
-                                        </li>
-                                      </ul>
-                                      <div className="mt-3 p-2 bg-background rounded border border-border">
-                                        <p className="font-semibold text-xs mb-1">
-                                          {language === 'en' ? 'Example:' : 'Exemple:'}
-                                        </p>
-                                        <pre className="text-xs text-muted-foreground">
-                                          {language === 'en' 
-                                            ? 'Phone Number\n27169458\n98765432'
-                                            : 'Numéro de Téléphone\n27169458\n98765432'}
-                                        </pre>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* File Upload */}
-                                <div className="space-y-2">
-                                  <Label>
-                                    {language === 'en' ? 'Select Excel File (.xlsx)' : 'Sélectionner un Fichier Excel (.xlsx)'}
-                                  </Label>
-                                  <div className="flex items-center gap-2">
-                                    <Input
-                                      type="file"
-                                      accept=".xlsx,.xls"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          handleImportPhonesFromExcel(file);
-                                        }
-                                      }}
-                                      disabled={importingPhones}
-                                      className="flex-1"
-                                    />
-                                  </div>
-                                  {importingPhones && (
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                      <RefreshCw className="w-4 h-4 animate-spin" />
-                                      {language === 'en' ? 'Importing...' : 'Importation...'}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Bulk SMS Selector */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600 lg:col-span-2">
-                    <BulkSmsSelector
-                      language={language}
-                      onSendComplete={() => {
-                        fetchSmsLogs();
-                        fetchPhoneSubscribers();
-                      }}
-                    />
-                  </div>
-
-                  {/* SMS Logs Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 lg:col-span-3">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <FileText className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'SMS Logs' : 'Journal SMS'}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {language === 'en' 
-                            ? 'Recent SMS sending history and errors'
-                            : 'Historique récent d\'envoi SMS et erreurs'}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {loadingLogs ? (
-                          <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex justify-end">
-                              <Button
-                                onClick={fetchSmsLogs}
-                                variant="outline"
-                                size="sm"
-                              >
-                                <RefreshCw className="w-4 h-4 mr-2" />
-                                {language === 'en' ? 'Refresh' : 'Actualiser'}
-                              </Button>
-                            </div>
-                            {smsLogs.length === 0 ? (
-                              <div className="text-center py-8 text-muted-foreground">
-                                <p>{language === 'en' ? 'No SMS logs yet' : 'Aucun journal SMS pour le moment'}</p>
-                              </div>
-                            ) : (
-                              <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar">
-                                {smsLogs.map((log) => {
-                                  const logWithApiResponse = log as typeof log & { api_response?: any };
-                                  
-                                  // Parse API response to check actual status
-                                  let apiResponseParsed: any = null;
-                                  let actualStatus = log.status;
-                                  let apiMessage = '';
-                                  
-                                  if (logWithApiResponse.api_response) {
-                                    try {
-                                      apiResponseParsed = typeof logWithApiResponse.api_response === 'string' 
-                                        ? JSON.parse(logWithApiResponse.api_response)
-                                        : logWithApiResponse.api_response;
-                                      
-                                      // Check if API says success but log says failed (fix incorrect status)
-                                      if (apiResponseParsed.code === 'ok' || 
-                                          apiResponseParsed.code === '200' ||
-                                          (apiResponseParsed.message && apiResponseParsed.message.toLowerCase().includes('successfully'))) {
-                                        actualStatus = 'sent';
-                                        apiMessage = apiResponseParsed.message || 'Successfully sent';
-                                      }
-                                    } catch (e) {
-                                      // Keep original status if parsing fails
-                                    }
-                                  }
-                                  
-                                  const isSuccess = actualStatus === 'sent';
-                                  
-                                  return (
-                                  <div
-                                    key={log.id}
-                                    className={`p-4 rounded-lg border transition-all duration-300 hover:shadow-md ${
-                                      isSuccess
-                                        ? 'bg-green-500/10 border-green-500/30 hover:border-green-500/50'
-                                        : log.status === 'failed'
-                                        ? 'bg-red-500/10 border-red-500/30 hover:border-red-500/50'
-                                        : 'bg-yellow-500/10 border-yellow-500/30 hover:border-yellow-500/50'
-                                    }`}
-                                  >
-                                    <div className="flex items-start gap-3">
-                                      {/* Status Icon */}
-                                      <div className={`mt-0.5 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                                        isSuccess 
-                                          ? 'bg-green-500/20' 
-                                          : log.status === 'failed'
-                                          ? 'bg-red-500/20'
-                                          : 'bg-yellow-500/20'
-                                      }`}>
-                                        {isSuccess ? (
-                                          <CheckCircle className="w-5 h-5 text-green-500" />
-                                        ) : log.status === 'failed' ? (
-                                          <XCircle className="w-5 h-5 text-red-500" />
-                                        ) : (
-                                          <Clock className="w-5 h-5 text-yellow-500" />
-                                        )}
-                                      </div>
-                                      
-                                      <div className="flex-1 min-w-0">
-                                        {/* Header with Status and Phone */}
-                                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                          <Badge
-                                            variant={isSuccess ? 'default' : log.status === 'failed' ? 'destructive' : 'secondary'}
-                                            className={
-                                              isSuccess
-                                                ? 'bg-green-500/20 text-green-300 border-green-500/30'
-                                                : log.status === 'failed'
-                                                ? 'bg-red-500/20 text-red-300 border-red-500/30'
-                                                : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
-                                            }
-                                          >
-                                            {isSuccess
-                                              ? (language === 'en' ? 'Sent' : 'Envoyé')
-                                              : log.status === 'failed'
-                                              ? (language === 'en' ? 'Failed' : 'Échoué')
-                                              : (language === 'en' ? 'Pending' : 'En Attente')}
-                                          </Badge>
-                                          <div className="flex items-center gap-1.5 text-sm font-medium">
-                                            <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-                                            <span className="font-mono">+216 {log.phone_number}</span>
-                                          </div>
-                                          {(log as any).source && (
-                                            <Badge variant="outline" className="text-xs">
-                                              {getSourceDisplayName((log as any).source as any, language)}
-                                            </Badge>
-                                          )}
-                                        </div>
-                                        
-                                        {/* Message */}
-                                        <div className="mb-3">
-                                          <p className="text-sm text-foreground/90 leading-relaxed">
-                                            {log.message}
-                                          </p>
-                                        </div>
-                                        
-                                        {/* Success Message (if API says success) */}
-                                        {isSuccess && apiMessage && (
-                                          <div className="mb-2 p-2 bg-green-500/20 rounded-md border border-green-500/30">
-                                            <div className="flex items-center gap-1.5 text-xs text-green-300">
-                                              <CheckCircle className="w-3.5 h-3.5" />
-                                              <span className="font-medium">{apiMessage}</span>
-                                            </div>
-                                          </div>
-                                        )}
-                                        
-                                        {/* Error Message */}
-                                        {log.error_message && !isSuccess && (
-                                          <div className="mb-2 p-2 bg-red-500/20 rounded-md border border-red-500/30">
-                                            <div className="flex items-start gap-1.5">
-                                              <XCircle className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
-                                              <div className="text-xs text-red-300">
-                                                <span className="font-medium">{language === 'en' ? 'Error' : 'Erreur'}: </span>
-                                                <span>{log.error_message}</span>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        )}
-                                        
-                                        {/* API Response Details */}
-                                        {logWithApiResponse.api_response && (
-                                          <details className="mt-2 group">
-                                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors flex items-center gap-1.5 list-none">
-                                              <FileText className="w-3.5 h-3.5" />
-                                              <span>{language === 'en' ? 'View API Response' : 'Voir Réponse API'}</span>
-                                              <span className="ml-auto text-muted-foreground/50 group-open:hidden">▼</span>
-                                              <span className="ml-auto text-muted-foreground/50 hidden group-open:inline">▲</span>
-                                            </summary>
-                                            <div className="mt-2 p-3 bg-muted/50 rounded-md border border-border">
-                                              <pre className="text-xs font-mono text-foreground/80 overflow-auto max-h-40 whitespace-pre-wrap break-words">
-                                                {typeof logWithApiResponse.api_response === 'string' 
-                                                  ? logWithApiResponse.api_response 
-                                                  : JSON.stringify(logWithApiResponse.api_response, null, 2)}
-                                              </pre>
-                                            </div>
-                                          </details>
-                                        )}
-                                        
-                                        {/* Timestamp */}
-                                        <div className="flex items-center gap-1.5 mt-3 text-xs text-muted-foreground">
-                                          <Clock className="w-3.5 h-3.5" />
-                                          <span>
-                                            {log.sent_at
-                                              ? new Date(log.sent_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
-                                                  year: 'numeric',
-                                                  month: 'short',
-                                                  day: 'numeric',
-                                                  hour: '2-digit',
-                                                  minute: '2-digit',
-                                                  second: '2-digit'
-                                                })
-                                              : new Date(log.created_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
-                                                  year: 'numeric',
-                                                  month: 'short',
-                                                  day: 'numeric',
-                                                  hour: '2-digit',
-                                                  minute: '2-digit',
-                                                  second: '2-digit'
-                                                })}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
-                  </TabsContent>
-
-                  {/* Email Marketing Tab */}
-                  <TabsContent value="email" className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full px-2">
-                  {/* Email Subscribers Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Mail className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'Email Marketing' : 'Marketing Email'}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {language === 'en' 
-                            ? `Send emails to all newsletter subscribers`
-                            : `Envoyer des emails à tous les abonnés newsletter`}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {/* Subscriber Count */}
-                        <div className="p-3 bg-muted/30 rounded-lg border border-border">
-                          <div className="text-sm font-semibold text-foreground mb-1">
-                            {language === 'en' ? 'Subscribers Count' : 'Nombre d\'Abonnés'}
-                          </div>
-                          <div className="text-2xl font-bold text-primary">
-                            {loadingEmailSubscribers ? (
-                              <RefreshCw className="w-6 h-6 animate-spin" />
-                            ) : (
-                              emailSubscribers.length
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {language === 'en' 
-                              ? 'This email will be sent to all newsletter subscribers'
-                              : 'Cet email sera envoyé à tous les abonnés newsletter'}
-                          </div>
-                        </div>
-
-                        {/* Export/Import Buttons */}
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={handleExportEmails}
-                            disabled={emailSubscribers.length === 0 || loadingEmailSubscribers}
-                            variant="outline"
-                            size="sm"
-                            className="flex-1"
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            {language === 'en' ? 'Export Excel' : 'Exporter Excel'}
-                          </Button>
-                          <Dialog open={showEmailImportDialog} onOpenChange={setShowEmailImportDialog}>
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex-1"
-                              >
-                                <Upload className="w-4 h-4 mr-2" />
-                                {language === 'en' ? 'Import Excel' : 'Importer Excel'}
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-2xl">
-                              <DialogHeader>
-                                <DialogTitle>
-                                  {language === 'en' ? 'Import Email Addresses from Excel' : 'Importer des Adresses Email depuis Excel'}
-                                </DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                {/* Instructions */}
-                                <div className="p-4 bg-muted/50 rounded-lg space-y-3">
-                                  <div className="flex items-start gap-2">
-                                    <Info className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                                    <div className="space-y-2 text-sm">
-                                      <p className="font-semibold">
-                                        {language === 'en' ? 'Excel File Format:' : 'Format du Fichier Excel:'}
-                                      </p>
-                                      <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
-                                        <li>
-                                          {language === 'en' 
-                                            ? 'First column: Email Address (valid email format required)'
-                                            : 'Première colonne: Adresse Email (format email valide requis)'}
-                                        </li>
-                                        <li>
-                                          {language === 'en' 
-                                            ? 'First row should be headers (will be skipped)'
-                                            : 'La première ligne doit contenir les en-têtes (sera ignorée)'}
-                                        </li>
-                                        <li>
-                                          {language === 'en' 
-                                            ? 'Duplicate emails will be automatically skipped'
-                                            : 'Les emails en double seront automatiquement ignorés'}
-                                        </li>
-                                        <li>
-                                          {language === 'en' 
-                                            ? 'Subscription time will be set automatically to import time'
-                                            : 'La date d\'abonnement sera définie automatiquement à l\'heure d\'importation'}
-                                        </li>
-                                      </ul>
-                                      <div className="mt-3 p-2 bg-background rounded border border-border">
-                                        <p className="font-semibold text-xs mb-1">
-                                          {language === 'en' ? 'Example:' : 'Exemple:'}
-                                        </p>
-                                        <pre className="text-xs text-muted-foreground">
-                                          {language === 'en' 
-                                            ? 'Email\nuser@example.com\nsubscriber@example.com'
-                                            : 'Email\nuser@example.com\nsubscriber@example.com'}
-                                        </pre>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* File Upload */}
-                                <div className="space-y-2">
-                                  <Label>
-                                    {language === 'en' ? 'Select Excel File (.xlsx)' : 'Sélectionner un Fichier Excel (.xlsx)'}
-                                  </Label>
-                                  <div className="flex items-center gap-2">
-                                    <Input
-                                      type="file"
-                                      accept=".xlsx,.xls"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          handleImportEmailsFromExcel(file);
-                                        }
-                                      }}
-                                      disabled={importingEmails}
-                                      className="flex-1"
-                                    />
-                                  </div>
-                                  {importingEmails && (
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                      <RefreshCw className="w-4 h-4 animate-spin" />
-                                      {language === 'en' ? 'Importing...' : 'Importation...'}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Email Composition Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Mail className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'Compose Email' : 'Composer Email'}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {language === 'en' 
-                            ? `Create and send bulk emails to subscribers`
-                            : `Créer et envoyer des emails en masse aux abonnés`}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {/* Email Subject */}
-                        <div className="space-y-2">
-                          <Label>{language === 'en' ? 'Subject' : 'Sujet'} *</Label>
-                          <Input
-                            value={emailSubject}
-                            onChange={(e) => setEmailSubject(e.target.value)}
-                            placeholder={language === 'en' ? 'Enter email subject...' : 'Entrez le sujet de l\'email...'}
-                            className="bg-background text-foreground"
-                          />
-                        </div>
-
-                        {/* Email Content */}
-                        <div className="space-y-2 flex-1 flex flex-col">
-                          <Label>{language === 'en' ? 'Email Content' : 'Contenu Email'} *</Label>
-                          <Textarea
-                            value={emailContent}
-                            onChange={(e) => setEmailContent(e.target.value)}
-                            placeholder={language === 'en' ? 'Enter your email content (HTML supported)...' : 'Entrez le contenu de votre email (HTML supporté)...'}
-                            className="min-h-[300px] text-sm bg-background text-foreground"
-                          />
-                          <div className="text-xs text-muted-foreground">
-                            {language === 'en' 
-                              ? 'Your content will be wrapped in our email template. HTML tags are supported: <p>, <h1>, <strong>, <a>, etc.'
-                              : 'Votre contenu sera enveloppé dans notre modèle d\'email. Les balises HTML sont supportées: <p>, <h1>, <strong>, <a>, etc.'}
-                          </div>
-                        </div>
-
-                        {/* Test Email Section */}
-                        <div className="p-4 bg-muted/30 rounded-lg border border-border space-y-3">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Mail className="w-4 h-4 text-primary" />
-                            <Label className="font-semibold">
-                              {language === 'en' ? 'Test Email' : 'Email de Test'}
-                            </Label>
-                          </div>
-                          <div className="space-y-2">
-                            <Input
-                              type="email"
-                              value={testEmailAddress}
-                              onChange={(e) => setTestEmailAddress(e.target.value)}
-                              placeholder={language === 'en' ? 'Enter test email address...' : 'Entrez l\'adresse email de test...'}
-                              className="bg-background text-foreground"
-                            />
-                            <Button
-                              onClick={handleSendTestEmail}
-                              disabled={sendingTestEmail || !testEmailAddress.trim() || !emailSubject.trim() || !emailContent.trim()}
-                              variant="outline"
-                              size="sm"
-                              className="w-full"
-                            >
-                              {sendingTestEmail ? (
-                                <>
-                                  <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                                  {language === 'en' ? 'Sending Test...' : 'Envoi du Test...'}
-                                </>
-                              ) : (
-                                <>
-                                  <Send className="w-4 h-4 mr-2" />
-                                  {language === 'en' ? 'Send Test Email' : 'Envoyer Email de Test'}
-                                </>
-                              )}
-                            </Button>
-                            <div className="text-xs text-muted-foreground">
-                              {language === 'en' 
-                                ? 'Send a test email to preview how it will look before sending to all subscribers'
-                                : 'Envoyez un email de test pour prévisualiser son apparence avant de l\'envoyer à tous les abonnés'}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Delay Setting */}
-                        <div className="space-y-2">
-                          <Label>
-                            {language === 'en' ? 'Delay Between Emails (seconds)' : 'Délai Entre les Emails (secondes)'}
-                          </Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            max="60"
-                            value={emailDelaySeconds}
-                            onChange={(e) => setEmailDelaySeconds(Math.max(1, Math.min(60, parseInt(e.target.value) || 2)))}
-                            className="bg-background text-foreground"
-                          />
-                          <div className="text-xs text-muted-foreground">
-                            {language === 'en' 
-                              ? `Each email will be sent ${emailDelaySeconds} second(s) after the previous one`
-                              : `Chaque email sera envoyé ${emailDelaySeconds} seconde(s) après le précédent`}
-                          </div>
-                        </div>
-
-                        {/* Send Button */}
-                        <Button
-                          onClick={handleSendBulkEmails}
-                          disabled={sendingBulkEmails || !emailSubject.trim() || !emailContent.trim() || emailSubscribers.length === 0}
-                          className="w-full btn-gradient"
-                          size="lg"
-                        >
-                          {sendingBulkEmails ? (
-                            <>
-                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-                              {language === 'en' ? 'Sending Emails...' : 'Envoi des Emails...'}
-                            </>
-                          ) : (
-                            <>
-                              <Send className="w-5 h-5 mr-2" />
-                              {language === 'en' 
-                                ? `Send to ${emailSubscribers.length} Subscribers`
-                                : `Envoyer à ${emailSubscribers.length} Abonnés`}
-                            </>
-                          )}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
-                  </TabsContent>
-                </Tabs>
-              </TabsContent>
-
-              {/* AIO Events Submissions Tab */}
-              <TabsContent value="aio-events" className="space-y-6">
-                {/* Header */}
-                <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
-                      AIO Events Submissions
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {language === 'en' 
-                        ? 'View all AIO Events form submissions' 
-                        : 'Voir toutes les soumissions du formulaire AIO Events'}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={exportAioEventsSubmissionsToExcel}
-                      disabled={loadingAioEventsSubmissions}
-                      variant="outline"
-                      className="animate-in slide-in-from-right-4 duration-1000"
-                    >
-                      <Download className={`w-4 h-4 mr-2 ${loadingAioEventsSubmissions ? 'animate-spin' : ''}`} />
-                      {language === 'en' ? 'Export Excel' : 'Exporter Excel'}
-                    </Button>
-                    <Button
-                      onClick={() => fetchAioEventsSubmissions(true)}
-                      disabled={loadingAioEventsSubmissions}
-                      variant="outline"
-                      className="animate-in slide-in-from-right-4 duration-1000"
-                    >
-                      <RefreshCw className={`w-4 h-4 mr-2 ${loadingAioEventsSubmissions ? 'animate-spin' : ''}`} />
-                      {language === 'en' ? 'Refresh' : 'Actualiser'}
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Submissions Table */}
-                <Card className="shadow-lg">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Database className="w-5 h-5 text-primary" />
-                      {language === 'en' ? 'Submissions' : 'Soumissions'}
-                      <Badge variant="secondary" className="ml-2">
-                        {aioEventsPagination.total}
-                      </Badge>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {loadingAioEventsSubmissions ? (
-                      <div className="flex items-center justify-center py-12">
-                        <RefreshCw className="w-8 h-8 animate-spin text-primary" />
-                        <span className="ml-3 text-muted-foreground">
-                          {language === 'en' ? 'Loading submissions...' : 'Chargement des soumissions...'}
-                        </span>
-                      </div>
-                    ) : aioEventsSubmissions.length === 0 ? (
-                      <div className="text-center py-12 text-muted-foreground">
-                        {language === 'en' ? 'No submissions found' : 'Aucune soumission trouvée'}
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>{language === 'en' ? 'Name' : 'Nom'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Email' : 'Email'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Phone' : 'Téléphone'}</TableHead>
-                              <TableHead>{language === 'en' ? 'City' : 'Ville'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Event' : 'Événement'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Passes' : 'Passes'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Total' : 'Total'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Date' : 'Date'}</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {aioEventsSubmissions.map((submission) => (
-                              <TableRow key={submission.id}>
-                                <TableCell className="font-medium">{submission.full_name || '-'}</TableCell>
-                                <TableCell className="font-mono text-xs">{submission.email || '-'}</TableCell>
-                                <TableCell className="font-mono text-xs">{submission.phone || '-'}</TableCell>
-                                <TableCell>
-                                  <div className="flex flex-col">
-                                    <span>{submission.city || '-'}</span>
-                                    {submission.ville && (
-                                      <span className="text-xs text-muted-foreground">{submission.ville}</span>
-                                    )}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex flex-col max-w-[200px]">
-                                    <span className="font-medium truncate">{submission.event_name || '-'}</span>
-                                    {submission.event_date && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {format(new Date(submission.event_date), 'MMM dd, yyyy')}
-                                      </span>
-                                    )}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex flex-col">
-                                    <span className="text-sm font-medium">{submission.total_quantity || 0}</span>
-                                    {submission.selected_passes && Array.isArray(submission.selected_passes) && submission.selected_passes.length > 0 && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {submission.selected_passes.map((p: any, idx: number) => (
-                                          <span key={idx}>
-                                            {p.name || p.passName || 'Pass'} × {p.quantity || 1}
-                                            {idx < submission.selected_passes.length - 1 ? ', ' : ''}
-                                          </span>
-                                        ))}
-                                      </span>
-                                    )}
-                                  </div>
-                                </TableCell>
-                                <TableCell className="font-medium">
-                                  {submission.total_price ? `${submission.total_price.toFixed(2)} TND` : '-'}
-                                </TableCell>
-                                <TableCell className="font-mono text-xs">
-                                  {submission.submitted_at 
-                                    ? format(new Date(submission.submitted_at), 'MMM dd, yyyy HH:mm')
-                                    : '-'}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                    
-                    {/* Pagination */}
-                    {aioEventsPagination.total > 0 && (
-                      <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                        <div className="text-sm text-muted-foreground">
-                          {language === 'en' 
-                            ? `Showing ${aioEventsPagination.offset + 1} to ${Math.min(aioEventsPagination.offset + aioEventsPagination.limit, aioEventsPagination.total)} of ${aioEventsPagination.total} submissions`
-                            : `Affichage de ${aioEventsPagination.offset + 1} à ${Math.min(aioEventsPagination.offset + aioEventsPagination.limit, aioEventsPagination.total)} sur ${aioEventsPagination.total} soumissions`}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const newOffset = Math.max(0, aioEventsPagination.offset - aioEventsPagination.limit);
-                              setAioEventsPagination(prev => ({ ...prev, offset: newOffset }));
-                              fetchAioEventsSubmissions(false);
-                            }}
-                            disabled={aioEventsPagination.offset === 0 || loadingAioEventsSubmissions}
-                          >
-                            {language === 'en' ? 'Previous' : 'Précédent'}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const newOffset = aioEventsPagination.offset + aioEventsPagination.limit;
-                              setAioEventsPagination(prev => ({ ...prev, offset: newOffset }));
-                              fetchAioEventsSubmissions(false);
-                            }}
-                            disabled={!aioEventsPagination.hasMore || loadingAioEventsSubmissions}
-                          >
-                            {language === 'en' ? 'Next' : 'Suivant'}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Logs & Analytics Tab - Available to all admins */}
-              <TabsContent value="logs" className="space-y-6">
-                {/* Header */}
-                <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
-                      {language === 'en' ? 'Site Logs & Analytics' : 'Journaux et Analytiques du Site'}
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {language === 'en' 
-                        ? 'Comprehensive view of all system logs, security events, and activity' 
-                        : 'Vue complète de tous les journaux système, événements de sécurité et activités'}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border">
-                      <Switch
-                        checked={autoRefresh}
-                        onCheckedChange={setAutoRefresh}
-                        id="auto-refresh"
-                      />
-                      <Label htmlFor="auto-refresh" className="text-sm cursor-pointer">
-                        {language === 'en' ? 'Auto-refresh' : 'Actualisation auto'}
-                      </Label>
-                    </div>
-                    <Button
-                      onClick={() => fetchLogs(true)}
-                      disabled={loadingComprehensiveLogs}
-                      variant="outline"
-                      className="animate-in slide-in-from-right-4 duration-1000"
-                    >
-                      <RefreshCw className={`w-4 h-4 mr-2 ${loadingComprehensiveLogs ? 'animate-spin' : ''}`} />
-                      {language === 'en' ? 'Refresh' : 'Actualiser'}
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Filters Panel */}
-                <Card className="shadow-lg">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Filter className="w-5 h-5 text-primary" />
-                      {language === 'en' ? 'Filters' : 'Filtres'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {/* Log Type Filter */}
-                      <div className="space-y-2">
-                        <Label>{language === 'en' ? 'Log Type' : 'Type de Log'}</Label>
-                        <Select
-                          value={logsFilters.type[0] || 'all'}
-                          onValueChange={(value) => {
-                            setLogsFilters(prev => ({ ...prev, type: value && value !== 'all' ? [value] : [] }));
-                            setTimeout(() => fetchLogs(true), 100);
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={language === 'en' ? 'All types' : 'Tous les types'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">{language === 'en' ? 'All types' : 'Tous les types'}</SelectItem>
-                            <SelectItem value="info">Info</SelectItem>
-                            <SelectItem value="warning">Warning</SelectItem>
-                            <SelectItem value="error">Error</SelectItem>
-                            <SelectItem value="success">Success</SelectItem>
-                            <SelectItem value="action">Action</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* Category Filter */}
-                      <div className="space-y-2">
-                        <Label>{language === 'en' ? 'Category' : 'Catégorie'}</Label>
-                        <Input
-                          placeholder={language === 'en' ? 'Filter by category' : 'Filtrer par catégorie'}
-                          value={logsFilters.category}
-                          onChange={(e) => {
-                            setLogsFilters(prev => ({ ...prev, category: e.target.value }));
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              fetchLogs(true);
-                            }
-                          }}
-                        />
-                      </div>
-
-                      {/* User Role Filter */}
-                      <div className="space-y-2">
-                        <Label>{language === 'en' ? 'User Role' : 'Rôle Utilisateur'}</Label>
-                        <Select
-                          value={logsFilters.userRole || 'all'}
-                          onValueChange={(value) => {
-                            setLogsFilters(prev => ({ ...prev, userRole: value && value !== 'all' ? value : '' }));
-                            setTimeout(() => fetchLogs(true), 100);
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={language === 'en' ? 'All roles' : 'Tous les rôles'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">{language === 'en' ? 'All roles' : 'Tous les rôles'}</SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
-                            <SelectItem value="ambassador">Ambassador</SelectItem>
-                            <SelectItem value="guest">Guest</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* Search */}
-                      <div className="space-y-2">
-                        <Label>{language === 'en' ? 'Search' : 'Recherche'}</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder={language === 'en' ? 'Search messages...' : 'Rechercher messages...'}
-                            value={logsFilters.search}
-                            onChange={(e) => {
-                              setLogsFilters(prev => ({ ...prev, search: e.target.value }));
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                fetchLogs(true);
-                              }
-                            }}
-                          />
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => {
-                              setLogsFilters({
-                                type: [],
-                                category: '',
-                                userRole: '',
-                                startDate: null,
-                                endDate: null,
-                                search: '',
-                                sortBy: 'time',
-                                order: 'desc'
-                              });
-                              setTimeout(() => fetchLogs(true), 100);
-                            }}
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Date Range */}
-                      <div className="space-y-2">
-                        <Label>{language === 'en' ? 'Start Date' : 'Date de début'}</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full justify-start text-left font-normal",
-                                !logsFilters.startDate && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {logsFilters.startDate ? format(logsFilters.startDate, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <Calendar
-                              mode="single"
-                              selected={logsFilters.startDate || undefined}
-                              onSelect={(date) => {
-                                setLogsFilters(prev => ({ ...prev, startDate: date || null }));
-                                if (date) setTimeout(() => fetchLogs(true), 100);
-                              }}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>{language === 'en' ? 'End Date' : 'Date de fin'}</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full justify-start text-left font-normal",
-                                !logsFilters.endDate && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {logsFilters.endDate ? format(logsFilters.endDate, "PPP") : <span>{language === 'en' ? 'Pick a date' : 'Choisir une date'}</span>}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <Calendar
-                              mode="single"
-                              selected={logsFilters.endDate || undefined}
-                              onSelect={(date) => {
-                                setLogsFilters(prev => ({ ...prev, endDate: date || null }));
-                                if (date) setTimeout(() => fetchLogs(true), 100);
-                              }}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Logs Table */}
-                <Card className="shadow-lg">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Database className="w-5 h-5 text-primary" />
-                      {language === 'en' ? 'Activity Logs' : 'Journaux d\'Activité'}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      {language === 'en' 
-                        ? `Showing ${logs.length} of ${logsPagination.total} logs` 
-                        : `Affichage de ${logs.length} sur ${logsPagination.total} logs`}
-                    </p>
-                  </CardHeader>
-                  <CardContent>
-                    {loadingComprehensiveLogs ? (
-                      <div className="flex items-center justify-center py-12">
-                        <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-                        <span className="ml-2 text-muted-foreground">
-                          {language === 'en' ? 'Loading logs...' : 'Chargement des logs...'}
-                        </span>
-                      </div>
-                    ) : logs.length === 0 ? (
-                      <div className="text-center py-12 text-muted-foreground">
-                        <Database className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p>{language === 'en' ? 'No logs found' : 'Aucun log trouvé'}</p>
-                        <p className="text-xs mt-2">
-                          {language === 'en' 
-                            ? 'Try adjusting your filters or date range' 
-                            : 'Essayez d\'ajuster vos filtres ou votre plage de dates'}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <div className="overflow-x-auto">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>{language === 'en' ? 'Time' : 'Heure'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Type' : 'Type'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Category' : 'Catégorie'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Source' : 'Source'}</TableHead>
-                                <TableHead>{language === 'en' ? 'User' : 'Utilisateur'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Message' : 'Message'}</TableHead>
-                                <TableHead>{language === 'en' ? 'Actions' : 'Actions'}</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {logs.map((log) => (
-                                <TableRow 
-                                  key={log.id} 
-                                  className={cn(
-                                    "hover:bg-muted/30 transition-colors cursor-pointer",
-                                    log.log_type === 'error' && "bg-red-500/5"
-                                  )}
-                                  onClick={() => {
-                                    setSelectedLog(log);
-                                    setIsLogDrawerOpen(true);
-                                  }}
-                                >
-                                  <TableCell className="text-sm text-muted-foreground">
-                                    <TooltipProvider>
-                                      <Tooltip>
-                                        <TooltipTrigger>
-                                          {format(new Date(log.created_at), "MMM dd, yyyy HH:mm:ss")}
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p>{new Date(log.created_at).toISOString()}</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge 
-                                      variant={
-                                        log.log_type === 'error' ? 'destructive' :
-                                        log.log_type === 'warning' ? 'default' :
-                                        log.log_type === 'success' ? 'default' :
-                                        'secondary'
-                                      }
-                                      className={cn(
-                                        log.log_type === 'error' && 'bg-red-500',
-                                        log.log_type === 'warning' && 'bg-yellow-500',
-                                        log.log_type === 'success' && 'bg-green-500'
-                                      )}
-                                    >
-                                      {log.log_type}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell className="text-sm">{log.category}</TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline" className="text-xs">
-                                      {log.source}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline">
-                                      {log.user_type || 'guest'}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell className="max-w-md">
-                                    <p className="truncate text-sm">{log.message}</p>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedLog(log);
-                                        setIsLogDrawerOpen(true);
-                                      }}
-                                    >
-                                      <Eye className="w-4 h-4" />
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-
-                        {/* Pagination */}
-                        <div className="flex items-center justify-between pt-4">
-                          <div className="text-sm text-muted-foreground">
-                            {language === 'en' 
-                              ? `Showing ${logsPagination.offset + 1}-${Math.min(logsPagination.offset + logs.length, logsPagination.total)} of ${logsPagination.total}` 
-                              : `Affichage de ${logsPagination.offset + 1}-${Math.min(logsPagination.offset + logs.length, logsPagination.total)} sur ${logsPagination.total}`}
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setLogsPagination(prev => ({ ...prev, offset: Math.max(0, prev.offset - prev.limit) }));
-                                setTimeout(() => fetchLogs(), 100);
-                              }}
-                              disabled={logsPagination.offset === 0}
-                            >
-                              {language === 'en' ? 'Previous' : 'Précédent'}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setLogsPagination(prev => ({ ...prev, offset: prev.offset + prev.limit }));
-                                setTimeout(() => fetchLogs(), 100);
-                              }}
-                              disabled={!logsPagination.hasMore}
-                            >
-                              {language === 'en' ? 'Next' : 'Suivant'}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Log Details Drawer */}
-                <Drawer open={isLogDrawerOpen} onOpenChange={setIsLogDrawerOpen}>
-                  <DrawerContent className="max-h-[80vh]">
-                    <DrawerHeader>
-                      <DrawerTitle>
-                        {language === 'en' ? 'Log Details' : 'Détails du Log'}
-                      </DrawerTitle>
-                      <DrawerDescription>
-                        {selectedLog?.message}
-                      </DrawerDescription>
-                    </DrawerHeader>
-                    {selectedLog && (
-                      <div className="px-4 pb-4 overflow-y-auto">
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Type' : 'Type'}</Label>
-                              <Badge className="mt-1">{selectedLog.log_type}</Badge>
-                            </div>
-                            <div>
-                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Category' : 'Catégorie'}</Label>
-                              <p className="mt-1 text-sm">{selectedLog.category}</p>
-                            </div>
-                            <div>
-                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Source' : 'Source'}</Label>
-                              <p className="mt-1 text-sm">{selectedLog.source}</p>
-                            </div>
-                            <div>
-                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'User Type' : 'Type d\'Utilisateur'}</Label>
-                              <p className="mt-1 text-sm">{selectedLog.user_type || 'guest'}</p>
-                            </div>
-                            <div>
-                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Created At' : 'Créé le'}</Label>
-                              <p className="mt-1 text-sm">{new Date(selectedLog.created_at).toLocaleString()}</p>
-                            </div>
-                            {selectedLog.ip_address && (
-                              <div>
-                                <Label className="text-xs text-muted-foreground">IP Address</Label>
-                                <p className="mt-1 text-sm">{selectedLog.ip_address}</p>
-                              </div>
-                            )}
-                            {selectedLog.request_method && (
-                              <div>
-                                <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Request Method' : 'Méthode de Requête'}</Label>
-                                <p className="mt-1 text-sm">{selectedLog.request_method}</p>
-                              </div>
-                            )}
-                            {selectedLog.request_path && (
-                              <div>
-                                <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Request Path' : 'Chemin de Requête'}</Label>
-                                <p className="mt-1 text-sm font-mono text-xs">{selectedLog.request_path}</p>
-                              </div>
-                            )}
-                            {selectedLog.response_status && (
-                              <div>
-                                <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Response Status' : 'Statut de Réponse'}</Label>
-                                <Badge className={cn(
-                                  "mt-1",
-                                  selectedLog.response_status >= 200 && selectedLog.response_status < 300 && "bg-green-500",
-                                  selectedLog.response_status >= 400 && selectedLog.response_status < 500 && "bg-yellow-500",
-                                  selectedLog.response_status >= 500 && "bg-red-500"
-                                )}>
-                                  {selectedLog.response_status}
-                                </Badge>
-                              </div>
-                            )}
-                          </div>
-
-                          {selectedLog.details && (
-                            <div>
-                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Details (JSON)' : 'Détails (JSON)'}</Label>
-                              <pre className="mt-2 p-4 bg-muted/50 rounded-lg text-xs overflow-auto max-h-64">
-                                {JSON.stringify(selectedLog.details, null, 2)}
-                              </pre>
-                            </div>
-                          )}
-
-                          {selectedLog.error_stack && (
-                            <div>
-                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'Error Stack' : 'Pile d\'Erreur'}</Label>
-                              <pre className="mt-2 p-4 bg-red-500/10 rounded-lg text-xs overflow-auto max-h-64 font-mono">
-                                {selectedLog.error_stack}
-                              </pre>
-                            </div>
-                          )}
-
-                          {selectedLog.user_agent && (
-                            <div>
-                              <Label className="text-xs text-muted-foreground">{language === 'en' ? 'User Agent' : 'Agent Utilisateur'}</Label>
-                              <p className="mt-1 text-xs font-mono break-all">{selectedLog.user_agent}</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </DrawerContent>
-                </Drawer>
-              </TabsContent>
-
-              {/* Settings Tab - Only visible to super_admin */}
               {currentAdminRole === 'super_admin' && (
-                <TabsContent value="settings" className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full px-2">
-                  {/* Sales Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
-                    <Card className="shadow-lg h-full flex flex-col">
-                    <CardHeader className="pb-4">
-                      <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                        <Settings className="w-5 h-5 text-primary" />
-                        {t.salesSettings}
-                      </CardTitle>
-                      <p className="text-sm text-foreground/70 mt-2">{t.salesSettingsDescription}</p>
-                    </CardHeader>
-                    <CardContent className="flex-1 flex flex-col space-y-4">
-                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border transition-all duration-300 hover:shadow-md">
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
-                            salesEnabled 
-                              ? 'bg-green-500 shadow-md shadow-green-500/50' 
-                              : 'bg-gray-500'
-                          }`}>
-                            {salesEnabled ? (
-                              <CheckCircle className="w-5 h-5 text-white" />
-                            ) : (
-                              <XCircle className="w-5 h-5 text-white" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm text-foreground">
-                              {salesEnabled ? t.salesEnabled : t.salesDisabled}
-                            </p>
-                            <p className="text-xs text-foreground/60 line-clamp-2">
-                              {salesEnabled 
-                                ? (language === 'en' ? 'Ambassadors can add sales' : 'Les ambassadeurs peuvent ajouter des ventes')
-                                : (language === 'en' ? 'Sales are disabled' : 'Les ventes sont désactivées')
-                              }
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          onClick={() => updateSalesSettingsData(!salesEnabled)}
-                          disabled={loadingSalesSettings}
-                          variant={salesEnabled ? "default" : "destructive"}
-                          size="sm"
-                          className="ml-2 flex-shrink-0 transition-all duration-300"
-                        >
-                          {loadingSalesSettings ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : salesEnabled ? (
-                            <CheckCircle className="w-4 h-4" />
-                          ) : (
-                            <XCircle className="w-4 h-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  </div>
-
-                  {/* Maintenance Mode Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
-                    <Card className="shadow-lg h-full flex flex-col">
-                    <CardHeader className="pb-4">
-                      <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                        <Settings className="w-5 h-5 text-primary" />
-                        {t.maintenanceSettings}
-                      </CardTitle>
-                      <p className="text-sm text-foreground/70 mt-2">{t.maintenanceSettingsDescription}</p>
-                    </CardHeader>
-                    <CardContent className="flex-1 flex flex-col space-y-4">
-                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border transition-all duration-300 hover:shadow-md">
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
-                            maintenanceEnabled 
-                              ? 'bg-orange-500 shadow-md shadow-orange-500/50' 
-                              : 'bg-gray-500'
-                          }`}>
-                            {maintenanceEnabled ? (
-                              <Wrench className="w-5 h-5 text-white" />
-                            ) : (
-                              <CheckCircle className="w-5 h-5 text-white" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm text-foreground">
-                              {maintenanceEnabled ? t.maintenanceEnabled : t.maintenanceDisabled}
-                            </p>
-                            <p className="text-xs text-foreground/60 line-clamp-2">
-                              {maintenanceEnabled 
-                                ? (language === 'en' ? 'Website in maintenance' : 'Site en maintenance')
-                                : (language === 'en' ? 'Website accessible' : 'Site accessible')
-                              }
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          onClick={() => updateMaintenanceSettings(!maintenanceEnabled, maintenanceMessage)}
-                          disabled={loadingMaintenanceSettings}
-                          variant={maintenanceEnabled ? "default" : "destructive"}
-                          size="sm"
-                          className="ml-2 flex-shrink-0 transition-all duration-300"
-                        >
-                          {loadingMaintenanceSettings ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : maintenanceEnabled ? (
-                            <CheckCircle className="w-4 h-4" />
-                          ) : (
-                            <XCircle className="w-4 h-4" />
-                          )}
-                        </Button>
-                      </div>
-
-                      {/* Maintenance Message Input */}
-                      <div className="space-y-2">
-                        <Label htmlFor="maintenance-message" className="text-sm text-foreground">{t.maintenanceMessage}</Label>
-                        <Textarea
-                          id="maintenance-message"
-                          placeholder={t.maintenanceMessagePlaceholder}
-                          value={maintenanceMessage}
-                          onChange={(e) => setMaintenanceMessage(e.target.value)}
-                          onBlur={() => {
-                            updateMaintenanceSettings(maintenanceEnabled, maintenanceMessage, allowAmbassadorApplication);
-                          }}
-                          className="min-h-[80px] text-sm bg-background text-foreground"
-                        />
-                      </div>
-
-                      {/* Allow Ambassador Application Checkbox */}
-                      {maintenanceEnabled && (
-                        <div className="space-y-2 p-4 bg-muted/30 rounded-lg border border-border">
-                          <div className="flex items-start space-x-3">
-                            <Checkbox
-                              id="allow-ambassador-application"
-                              checked={allowAmbassadorApplication}
-                              onCheckedChange={(checked) => {
-                                const newValue = checked === true;
-                                setAllowAmbassadorApplication(newValue);
-                                updateMaintenanceSettings(maintenanceEnabled, maintenanceMessage, newValue);
-                              }}
-                              className="mt-1"
-                            />
-                            <div className="flex-1 space-y-1">
-                              <Label 
-                                htmlFor="allow-ambassador-application" 
-                                className="text-sm font-medium text-foreground cursor-pointer"
-                              >
-                                {t.allowAmbassadorApplication}
-                              </Label>
-                              <p className="text-xs text-foreground/60">
-                                {t.allowAmbassadorApplicationDescription}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                  </div>
-
-                  {/* Order Expiration Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Clock className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'Order Expiration Settings' : 'Paramètres d\'Expiration des Commandes'}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {language === 'en' 
-                            ? 'Set default expiration time for Pending Cash orders. Orders will be automatically rejected when expired. Use external cron service to call /api/auto-reject-expired-orders every 5 minutes.' 
-                            : 'Définir le délai d\'expiration par défaut pour les commandes Pending Cash. Les commandes seront automatiquement rejetées à l\'expiration. Utilisez un service cron externe pour appeler /api/auto-reject-expired-orders toutes les 5 minutes.'}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {/* Manual trigger section - Dark theme compatible */}
-                        <div className="mb-4 p-4 bg-muted/50 dark:bg-muted/30 rounded-lg border border-border">
-                          <div className="flex items-start gap-4">
-                            <div className="flex-shrink-0 mt-1">
-                              <div className="w-10 h-10 rounded-full bg-red-500/20 dark:bg-red-500/30 flex items-center justify-center border border-red-500/30">
-                                <XCircle className="w-5 h-5 text-red-500 dark:text-red-400" />
-                              </div>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-sm font-semibold text-foreground">
-                                  {language === 'en' ? 'Manual Rejection' : 'Rejet Manuel'}
-                                </h4>
-                                <Badge variant="outline" className="text-xs bg-red-500/10 dark:bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/30">
-                                  {language === 'en' ? 'Instant Action' : 'Action Immédiate'}
-                                </Badge>
-                              </div>
-                              <p className="text-xs text-foreground/70 mb-3 leading-relaxed">
-                                {language === 'en' 
-                                  ? 'Click the button below to immediately reject all expired PENDING_CASH orders. Stock will be automatically released and orders will be marked as REJECTED.' 
-                                  : 'Cliquez sur le bouton ci-dessous pour rejeter immédiatement toutes les commandes PENDING_CASH expirées. Le stock sera automatiquement libéré et les commandes seront marquées comme REJETÉES.'}
-                              </p>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <Button
-                                  onClick={triggerAutoRejectExpired}
-                                  disabled={rejectingExpired}
-                                  variant="destructive"
-                                  size="sm"
-                                  className="shadow-md hover:shadow-lg transition-all duration-200"
-                                >
-                                  {rejectingExpired ? (
-                                    <>
-                                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                                      {language === 'en' ? 'Processing...' : 'Traitement...'}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <XCircle className="w-4 h-4 mr-2" />
-                                      {language === 'en' ? 'Reject Expired Orders' : 'Rejeter les Commandes Expirées'}
-                                    </>
-                                  )}
-                                </Button>
-                                <span className="text-xs text-foreground/50">
-                                  {language === 'en' ? 'For automatic rejection every 5 minutes, set up an external cron service' : 'Pour un rejet automatique toutes les 5 minutes, configurez un service cron externe'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        {loadingExpirationSettings ? (
-                          <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
-                          </div>
-                        ) : (
-                          <>
-                            {['PENDING_CASH'].map((status) => {
-                              const setting = expirationSettings.find(s => s.order_status === status);
-                              const statusLabel = {
-                                'PENDING_CASH': language === 'en' ? 'Pending Cash' : 'Espèces en Attente'
-                              }[status] || status;
-                              
-                              return (
-                                <div key={status} className="p-4 bg-muted/30 rounded-lg border border-border">
-                                  <div className="flex items-center justify-between mb-3">
-                                    <Label className="text-sm font-semibold text-foreground">{statusLabel}</Label>
-                                    <Switch
-                                      checked={setting?.is_active !== false}
-                                      onCheckedChange={(checked) => {
-                                        const updated = expirationSettings.map(s =>
-                                          s.order_status === status
-                                            ? { ...s, is_active: checked }
-                                            : s
-                                        );
-                                        if (!updated.find(s => s.order_status === status)) {
-                                          updated.push({
-                                            order_status: status,
-                                            default_expiration_hours: setting?.default_expiration_hours || 48,
-                                            is_active: checked
-                                          });
-                                        }
-                                        // Only send PENDING_CASH settings
-                                        const pendingCashOnly = updated.filter(s => s.order_status === 'PENDING_CASH');
-                                        updateExpirationSettings(pendingCashOnly);
-                                      }}
-                                      disabled={loadingExpirationSettings}
-                                    />
-                                  </div>
-                                  {/* Always show time input, even when inactive */}
-                                  <div className="space-y-2">
-                                    <Label className="text-xs text-foreground/70">
-                                      {language === 'en' ? 'Default Expiration (hours)' : 'Expiration par Défaut (heures)'}
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                      <Input
-                                        type="number"
-                                        min="1"
-                                        value={setting?.default_expiration_hours || 48}
-                                        onChange={(e) => {
-                                          const hours = parseInt(e.target.value) || 48;
-                                          const updated = expirationSettings.map(s =>
-                                            s.order_status === status
-                                              ? { ...s, default_expiration_hours: hours }
-                                              : s
-                                          );
-                                          if (!updated.find(s => s.order_status === status)) {
-                                            updated.push({
-                                              order_status: status,
-                                              default_expiration_hours: hours,
-                                              is_active: setting?.is_active !== false
-                                            });
-                                          }
-                                          // Only send PENDING_CASH settings
-                                          const pendingCashOnly = updated.filter(s => s.order_status === 'PENDING_CASH');
-                                          updateExpirationSettings(pendingCashOnly);
-                                        }}
-                                        disabled={loadingExpirationSettings}
-                                        className="w-20"
-                                      />
-                                      <span className="text-xs text-foreground/60">
-                                        {language === 'en' ? 'hours' : 'heures'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Ambassador Application Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
-                    <Card className="shadow-lg h-full flex flex-col">
-                    <CardHeader className="pb-4">
-                      <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                        <Settings className="w-5 h-5 text-primary" />
-                        {t.ambassadorApplicationSettings}
-                      </CardTitle>
-                      <p className="text-sm text-foreground/70 mt-2">{t.ambassadorApplicationSettingsDescription}</p>
-                    </CardHeader>
-                    <CardContent className="flex-1 flex flex-col space-y-4">
-                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border transition-all duration-300 hover:shadow-md">
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
-                            ambassadorApplicationEnabled 
-                              ? 'bg-blue-500 shadow-md shadow-blue-500/50' 
-                              : 'bg-gray-500'
-                          }`}>
-                            {ambassadorApplicationEnabled ? (
-                              <CheckCircle className="w-5 h-5 text-white" />
-                            ) : (
-                              <XCircle className="w-5 h-5 text-white" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm text-foreground">
-                              {ambassadorApplicationEnabled ? t.ambassadorApplicationEnabled : t.ambassadorApplicationDisabled}
-                            </p>
-                            <p className="text-xs text-foreground/60 line-clamp-2">
-                              {ambassadorApplicationEnabled 
-                                ? (language === 'en' ? 'Applications are open' : 'Les candidatures sont ouvertes')
-                                : (language === 'en' ? 'Applications are closed' : 'Les candidatures sont fermées')
-                              }
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            updateAmbassadorApplicationSettings(!ambassadorApplicationEnabled, ambassadorApplicationMessage);
-                          }}
-                          disabled={loadingAmbassadorApplicationSettings}
-                          variant={ambassadorApplicationEnabled ? "default" : "destructive"}
-                          size="sm"
-                          className="ml-2 flex-shrink-0 transition-all duration-300"
-                        >
-                          {loadingAmbassadorApplicationSettings ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : ambassadorApplicationEnabled ? (
-                            <CheckCircle className="w-4 h-4" />
-                          ) : (
-                            <XCircle className="w-4 h-4" />
-                          )}
-                        </Button>
-                      </div>
-
-                      {/* Ambassador Application Closed Message Input */}
-                      <div className="space-y-2">
-                        <Label htmlFor="ambassador-application-message" className="text-sm text-foreground">{t.ambassadorApplicationMessage}</Label>
-                        <Textarea
-                          id="ambassador-application-message"
-                          placeholder={t.ambassadorApplicationMessagePlaceholder}
-                          value={ambassadorApplicationMessage}
-                          onChange={(e) => setAmbassadorApplicationMessage(e.target.value)}
-                          onBlur={() => {
-                            updateAmbassadorApplicationSettings(ambassadorApplicationEnabled, ambassadorApplicationMessage);
-                          }}
-                          className="min-h-[80px] text-sm bg-background text-foreground"
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
-                  </div>
-
-                  {/* Hero Images Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Video className="w-5 h-5 text-primary" />
-                          {t.heroImagesSettings}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">{t.heroImagesSettingsDescription}</p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {loadingHeroImages ? (
-                          <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-                          </div>
-                        ) : (
-                          <>
-                            {/* Upload Hero Image/Video */}
-                            <div className="space-y-2">
-                              <Label>{t.uploadHeroImage}</Label>
-                              <FileUpload
-                                onFileSelect={(file) => {
-                                  if (file) {
-                                    handleUploadHeroImage(file);
-                                  }
-                                }}
-                                onUrlChange={() => {}}
-                                accept="image/*,video/mp4,video/quicktime,.mp4,.mov"
-                                maxSize={50}
-                                label={uploadingHeroImage ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload Image or Video' : 'Télécharger une Image ou une Vidéo')}
-                              />
-                              {uploadingHeroImage && (
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <RefreshCw className="w-4 h-4 animate-spin" />
-                                  {language === 'en' ? 'Uploading media...' : 'Téléchargement du média...'}
-                                </div>
-                              )}
-                              <p className="text-xs text-muted-foreground">
-                                {language === 'en' 
-                                  ? 'Supports images (JPG, PNG) and videos (MP4, MOV). Recommended: MP4 (H.264), 5-10 seconds, under 2MB for fast loading. Videos will auto-play muted and loop.' 
-                                  : 'Prend en charge les images (JPG, PNG) et les vidéos (MP4, MOV). Recommandé: MP4 (H.264), 5-10 secondes, moins de 2MB pour un chargement rapide. Les vidéos se liront automatiquement en muet et en boucle.'}
-                              </p>
-                            </div>
-
-                            {/* Hero Images List */}
-                            {heroImages.length === 0 ? (
-                              <div className="flex items-center justify-center py-8 text-center text-muted-foreground">
-                                <p>{t.noHeroImages}</p>
-                              </div>
-                            ) : (
-                              <div className="space-y-3">
-                                <Label className="text-sm">{t.reorderImages}</Label>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                  {heroImages.map((item, index) => (
-                                    <Card key={index} className="relative group overflow-hidden">
-                                      <div className="relative aspect-video w-full">
-                                        {item.type === 'video' ? (
-                                          <video
-                                            src={item.src}
-                                            poster={item.poster}
-                                            className="w-full h-full object-cover"
-                                            muted
-                                            playsInline
-                                            loop
-                                            preload="metadata"
-                                            style={{ objectFit: 'cover' }}
-                                            onLoadedData={(e) => {
-                                              const video = e.currentTarget;
-                                              video.muted = true;
-                                              video.volume = 0;
-                                            }}
-                                          />
-                                        ) : (
-                                          <img
-                                            src={item.src}
-                                            alt={item.alt}
-                                            className="w-full h-full object-cover"
-                                          />
-                                        )}
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                                          <div className="flex flex-col gap-2">
-                                            <div className="flex gap-2">
-                                              <Button
-                                                size="sm"
-                                                variant="secondary"
-                                                onClick={() => {
-                                                  if (index > 0) {
-                                                    const newOrder = [...heroImages];
-                                                    [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
-                                                    handleReorderHeroImages(newOrder);
-                                                  }
-                                                }}
-                                                disabled={index === 0}
-                                                className="shadow-lg"
-                                              >
-                                                <ArrowUp className="w-4 h-4" />
-                                              </Button>
-                                              <Button
-                                                size="sm"
-                                                variant="secondary"
-                                                onClick={() => {
-                                                  if (index < heroImages.length - 1) {
-                                                    const newOrder = [...heroImages];
-                                                    [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
-                                                    handleReorderHeroImages(newOrder);
-                                                  }
-                                                }}
-                                                disabled={index === heroImages.length - 1}
-                                                className="shadow-lg"
-                                              >
-                                                <ArrowDown className="w-4 h-4" />
-                                              </Button>
-                                            </div>
-                                            <Button
-                                              size="sm"
-                                              variant="destructive"
-                                              onClick={() => handleDeleteHeroImage(index)}
-                                              className="shadow-lg"
-                                            >
-                                              <Trash2 className="w-4 h-4 mr-1" />
-                                              {t.deleteHeroImage}
-                                            </Button>
-                                          </div>
-                                        </div>
-                                      </div>
-                                      <CardContent className="p-3">
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xs text-muted-foreground">
-                                            {item.type === 'video' 
-                                              ? (language === 'en' ? 'Video' : 'Vidéo') 
-                                              : (language === 'en' ? 'Image' : 'Image')} {index + 1}
-                                          </span>
-                                          <div className="flex items-center gap-2">
-                                            <Badge variant={item.type === 'video' ? 'default' : 'outline'} className="text-xs">
-                                              {item.type === 'video' ? <Video className="w-3 h-3 mr-1" /> : <Image className="w-3 h-3 mr-1" />}
-                                              {item.type === 'video' ? (language === 'en' ? 'Video' : 'Vidéo') : (language === 'en' ? 'Image' : 'Image')}
-                                            </Badge>
-                                            <Badge variant="outline" className="text-xs">
-                                              {item.alt || 'No alt text'}
-                                            </Badge>
-                                          </div>
-                                        </div>
-                                      </CardContent>
-                                    </Card>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* About Images Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Image className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'About Page Images' : 'Images de la Page À Propos'}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {language === 'en' 
-                            ? 'Manage images displayed on the About page. Upload, reorder, or remove images. Recommended: 4 images for best display.' 
-                            : 'Gérez les images affichées sur la page À propos. Téléchargez, réorganisez ou supprimez des images. Recommandé: 4 images pour un meilleur affichage.'}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {loadingAboutImages ? (
-                          <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-                          </div>
-                        ) : (
-                          <>
-                            {/* Upload About Image */}
-                            <div className="space-y-2">
-                              <Label>{language === 'en' ? 'Upload About Image' : 'Télécharger une Image'}</Label>
-                              <FileUpload
-                                onFileSelect={(file) => {
-                                  if (file) {
-                                    handleUploadAboutImage(file);
-                                  }
-                                }}
-                                onUrlChange={() => {}}
-                                accept="image/*"
-                                maxSize={10}
-                                label={uploadingAboutImage ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload About Image' : 'Télécharger une Image')}
-                              />
-                              {uploadingAboutImage && (
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <RefreshCw className="w-4 h-4 animate-spin" />
-                                  {language === 'en' ? 'Uploading image...' : 'Téléchargement de l\'image...'}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* About Images List */}
-                            {aboutImages.length === 0 ? (
-                              <div className="flex items-center justify-center py-8 text-center text-muted-foreground">
-                                <p>{language === 'en' ? 'No about images uploaded yet' : 'Aucune image À propos téléchargée'}</p>
-                              </div>
-                            ) : (
-                              <div className="space-y-3">
-                                <Label className="text-sm">{language === 'en' ? 'Reorder Images' : 'Réorganiser les Images'}</Label>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                  {aboutImages.map((image, index) => (
-                                    <Card key={index} className="relative group overflow-hidden">
-                                      <div className="relative aspect-square w-full">
-                                        <img
-                                          src={image.src}
-                                          alt={image.alt || `About image ${index + 1}`}
-                                          className="w-full h-full object-cover"
-                                        />
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                                          <div className="flex flex-col gap-2">
-                                            <div className="flex gap-2">
-                                              <Button
-                                                size="sm"
-                                                variant="secondary"
-                                                onClick={() => {
-                                                  if (index > 0) {
-                                                    const newOrder = [...aboutImages];
-                                                    [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
-                                                    handleReorderAboutImages(newOrder);
-                                                  }
-                                                }}
-                                                disabled={index === 0}
-                                                className="shadow-lg"
-                                              >
-                                                <ArrowUp className="w-4 h-4" />
-                                              </Button>
-                                              <Button
-                                                size="sm"
-                                                variant="secondary"
-                                                onClick={() => {
-                                                  if (index < aboutImages.length - 1) {
-                                                    const newOrder = [...aboutImages];
-                                                    [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
-                                                    handleReorderAboutImages(newOrder);
-                                                  }
-                                                }}
-                                                disabled={index === aboutImages.length - 1}
-                                                className="shadow-lg"
-                                              >
-                                                <ArrowDown className="w-4 h-4" />
-                                              </Button>
-                                            </div>
-                                            <Button
-                                              size="sm"
-                                              variant="destructive"
-                                              onClick={() => handleDeleteAboutImage(index)}
-                                              className="shadow-lg"
-                                            >
-                                              <Trash2 className="w-4 h-4 mr-1" />
-                                              {language === 'en' ? 'Delete' : 'Supprimer'}
-                                            </Button>
-                                          </div>
-                                        </div>
-                                      </div>
-                                      <CardContent className="p-3">
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xs text-muted-foreground">
-                                            {language === 'en' ? 'Image' : 'Image'} {index + 1}
-                                          </span>
-                                          <Badge variant="outline" className="text-xs">
-                                            {image.alt || 'No alt text'}
-                                          </Badge>
-                                        </div>
-                                      </CardContent>
-                                    </Card>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Favicon Management Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Image className="w-5 h-5 text-primary" />
-                          {language === 'en' ? 'Favicon Management' : 'Gestion des Favicons'}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {language === 'en' 
-                            ? 'Upload favicons that appear in browser tabs and bookmarks. Different sizes are used for different contexts.' 
-                            : 'Téléchargez des favicons qui apparaissent dans les onglets du navigateur et les signets. Différentes tailles sont utilisées pour différents contextes.'}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {loadingFaviconSettings ? (
-                          <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-                          </div>
-                        ) : (
-                          <div className="space-y-6">
-                            {/* Favicon ICO (16x16) */}
-                            <div className="space-y-2">
-                              <Label className="text-sm font-semibold flex items-center gap-2">
-                                <Image className="w-4 h-4" />
-                                {language === 'en' ? 'Favicon ICO (16x16)' : 'Favicon ICO (16x16)'}
-                                <span className="text-xs text-muted-foreground font-normal">
-                                  {language === 'en' ? '(Browser tab icon)' : '(Icône d\'onglet du navigateur)'}
-                                </span>
-                              </Label>
-                              <FileUpload
-                                onFileSelect={(file) => {
-                                  if (file) {
-                                    handleUploadFavicon(file, 'favicon_ico');
-                                  }
-                                }}
-                                onUrlChange={() => {}}
-                                accept="image/x-icon,image/vnd.microsoft.icon,.ico"
-                                label={uploadingFavicon.type === 'favicon_ico' && uploadingFavicon.loading ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload ICO Favicon' : 'Télécharger le Favicon ICO')}
-                                maxSize={1 * 1024 * 1024}
-                                currentUrl={faviconSettings.favicon_ico}
-                              />
-                              {faviconSettings.favicon_ico && (
-                                <div className="mt-2 flex items-center gap-4 p-3 bg-muted/30 rounded-lg">
-                                  <img 
-                                    src={faviconSettings.favicon_ico} 
-                                    alt="Favicon ICO" 
-                                    className="w-8 h-8 object-contain flex-shrink-0 border border-border/50 rounded" 
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs text-muted-foreground break-all">{faviconSettings.favicon_ico}</p>
-                                  </div>
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() => handleDeleteFavicon('favicon_ico')}
-                                    className="flex-shrink-0"
-                                  >
-                                    <Trash2 className="w-3 h-3 mr-2" />
-                                    {language === 'en' ? 'Delete' : 'Supprimer'}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Favicon 32x32 */}
-                            <div className="space-y-2">
-                              <Label className="text-sm font-semibold flex items-center gap-2">
-                                <Image className="w-4 h-4" />
-                                {language === 'en' ? 'Favicon PNG (32x32)' : 'Favicon PNG (32x32)'}
-                                <span className="text-xs text-muted-foreground font-normal">
-                                  {language === 'en' ? '(High DPI displays)' : '(Écrans haute résolution)'}
-                                </span>
-                              </Label>
-                              <FileUpload
-                                onFileSelect={(file) => {
-                                  if (file) {
-                                    handleUploadFavicon(file, 'favicon_32x32');
-                                  }
-                                }}
-                                onUrlChange={() => {}}
-                                accept="image/png"
-                                label={uploadingFavicon.type === 'favicon_32x32' && uploadingFavicon.loading ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload 32x32 Favicon' : 'Télécharger le Favicon 32x32')}
-                                maxSize={1 * 1024 * 1024}
-                                currentUrl={faviconSettings.favicon_32x32}
-                              />
-                              {faviconSettings.favicon_32x32 && (
-                                <div className="mt-2 flex items-center gap-4 p-3 bg-muted/30 rounded-lg">
-                                  <img 
-                                    src={faviconSettings.favicon_32x32} 
-                                    alt="Favicon 32x32" 
-                                    className="w-8 h-8 object-contain flex-shrink-0 border border-border/50 rounded" 
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs text-muted-foreground break-all">{faviconSettings.favicon_32x32}</p>
-                                  </div>
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() => handleDeleteFavicon('favicon_32x32')}
-                                    className="flex-shrink-0"
-                                  >
-                                    <Trash2 className="w-3 h-3 mr-2" />
-                                    {language === 'en' ? 'Delete' : 'Supprimer'}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Favicon 16x16 */}
-                            <div className="space-y-2">
-                              <Label className="text-sm font-semibold flex items-center gap-2">
-                                <Image className="w-4 h-4" />
-                                {language === 'en' ? 'Favicon PNG (16x16)' : 'Favicon PNG (16x16)'}
-                                <span className="text-xs text-muted-foreground font-normal">
-                                  {language === 'en' ? '(Standard displays)' : '(Écrans standard)'}
-                                </span>
-                              </Label>
-                              <FileUpload
-                                onFileSelect={(file) => {
-                                  if (file) {
-                                    handleUploadFavicon(file, 'favicon_16x16');
-                                  }
-                                }}
-                                onUrlChange={() => {}}
-                                accept="image/png"
-                                label={uploadingFavicon.type === 'favicon_16x16' && uploadingFavicon.loading ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload 16x16 Favicon' : 'Télécharger le Favicon 16x16')}
-                                maxSize={1 * 1024 * 1024}
-                                currentUrl={faviconSettings.favicon_16x16}
-                              />
-                              {faviconSettings.favicon_16x16 && (
-                                <div className="mt-2 flex items-center gap-4 p-3 bg-muted/30 rounded-lg">
-                                  <img 
-                                    src={faviconSettings.favicon_16x16} 
-                                    alt="Favicon 16x16" 
-                                    className="w-8 h-8 object-contain flex-shrink-0 border border-border/50 rounded" 
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs text-muted-foreground break-all">{faviconSettings.favicon_16x16}</p>
-                                  </div>
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() => handleDeleteFavicon('favicon_16x16')}
-                                    className="flex-shrink-0"
-                                  >
-                                    <Trash2 className="w-3 h-3 mr-2" />
-                                    {language === 'en' ? 'Delete' : 'Supprimer'}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Apple Touch Icon */}
-                            <div className="space-y-2">
-                              <Label className="text-sm font-semibold flex items-center gap-2">
-                                <Image className="w-4 h-4" />
-                                {language === 'en' ? 'Apple Touch Icon (180x180)' : 'Icône Apple Touch (180x180)'}
-                                <span className="text-xs text-muted-foreground font-normal">
-                                  {language === 'en' ? '(iOS home screen)' : '(Écran d\'accueil iOS)'}
-                                </span>
-                              </Label>
-                              <FileUpload
-                                onFileSelect={(file) => {
-                                  if (file) {
-                                    handleUploadFavicon(file, 'apple_touch_icon');
-                                  }
-                                }}
-                                onUrlChange={() => {}}
-                                accept="image/png"
-                                label={uploadingFavicon.type === 'apple_touch_icon' && uploadingFavicon.loading ? (language === 'en' ? 'Uploading...' : 'Téléchargement...') : (language === 'en' ? 'Upload Apple Touch Icon' : 'Télécharger l\'Icône Apple Touch')}
-                                maxSize={2 * 1024 * 1024}
-                                currentUrl={faviconSettings.apple_touch_icon}
-                              />
-                              {faviconSettings.apple_touch_icon && (
-                                <div className="mt-2 flex items-center gap-4 p-3 bg-muted/30 rounded-lg">
-                                  <img 
-                                    src={faviconSettings.apple_touch_icon} 
-                                    alt="Apple Touch Icon" 
-                                    className="w-12 h-12 object-contain flex-shrink-0 border border-border/50 rounded" 
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs text-muted-foreground break-all">{faviconSettings.apple_touch_icon}</p>
-                                  </div>
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() => handleDeleteFavicon('apple_touch_icon')}
-                                    className="flex-shrink-0"
-                                  >
-                                    <Trash2 className="w-3 h-3 mr-2" />
-                                    {language === 'en' ? 'Delete' : 'Supprimer'}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-
-                            <Alert className="bg-blue-500/10 border-blue-500/20 text-blue-200">
-                              <AlertCircle className="h-4 w-4" />
-                              <AlertDescription className="text-xs">
-                                {language === 'en' 
-                                  ? 'After uploading new favicons, you may need to hard refresh your browser (Ctrl+Shift+R or Cmd+Shift+R) to see the changes. Browsers cache favicons aggressively.' 
-                                  : 'Après avoir téléchargé de nouveaux favicons, vous devrez peut-être actualiser votre navigateur (Ctrl+Shift+R ou Cmd+Shift+R) pour voir les changements. Les navigateurs mettent en cache les favicons de manière agressive.'}
-                              </AlertDescription>
-                            </Alert>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                </div>
-              </TabsContent>
+                <SettingsTab
+                  language={language}
+                  t={t}
+                  salesEnabled={salesEnabled}
+                  updateSalesSettingsData={updateSalesSettingsData}
+                  loadingSalesSettings={loadingSalesSettings}
+                  maintenanceEnabled={maintenanceEnabled}
+                  maintenanceMessage={maintenanceMessage}
+                  allowAmbassadorApplication={allowAmbassadorApplication}
+                  updateMaintenanceSettings={updateMaintenanceSettings}
+                  loadingMaintenanceSettings={loadingMaintenanceSettings}
+                  setMaintenanceMessage={setMaintenanceMessage}
+                  setAllowAmbassadorApplication={setAllowAmbassadorApplication}
+                  expirationSettings={expirationSettings}
+                  loadingExpirationSettings={loadingExpirationSettings}
+                  updateExpirationSettings={updateExpirationSettings}
+                  triggerAutoRejectExpired={triggerAutoRejectExpired}
+                  rejectingExpired={rejectingExpired}
+                  ambassadorApplicationEnabled={ambassadorApplicationEnabled}
+                  ambassadorApplicationMessage={ambassadorApplicationMessage}
+                  updateAmbassadorApplicationSettings={updateAmbassadorApplicationSettings}
+                  loadingAmbassadorApplicationSettings={loadingAmbassadorApplicationSettings}
+                  setAmbassadorApplicationMessage={setAmbassadorApplicationMessage}
+                  heroImages={heroImages}
+                  handleUploadHeroImage={handleUploadHeroImage}
+                  uploadingHeroImage={uploadingHeroImage}
+                  loadingHeroImages={loadingHeroImages}
+                  handleReorderHeroImages={handleReorderHeroImages}
+                  handleDeleteHeroImage={handleDeleteHeroImage}
+                  aboutImages={aboutImages}
+                  handleUploadAboutImage={handleUploadAboutImage}
+                  uploadingAboutImage={uploadingAboutImage}
+                  loadingAboutImages={loadingAboutImages}
+                  handleReorderAboutImages={handleReorderAboutImages}
+                  handleDeleteAboutImage={handleDeleteAboutImage}
+                  faviconSettings={faviconSettings}
+                  handleUploadFavicon={handleUploadFavicon}
+                  handleDeleteFavicon={handleDeleteFavicon}
+                  loadingFaviconSettings={loadingFaviconSettings}
+                  uploadingFavicon={uploadingFavicon}
+                />
               )}
             </Tabs>
           </div>
@@ -17617,7 +10637,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           <div className="py-4">
             <p>{language === 'en'
               ? 'Are you sure you want to delete this ambassador? This action cannot be undone.'
-              : 'Êtes-vous sûr de vouloir supprimer cet ambassadeur ? Cette action est irréversible.'}
+              : 'ÃŠtes-vous sÃ»r de vouloir supprimer cet ambassadeur ? Cette action est irrÃ©versible.'}
             </p>
             {ambassadorToDelete && (
               <div className="mt-2 text-sm text-muted-foreground">
@@ -17636,12 +10656,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       <Dialog open={!!eventToDelete} onOpenChange={open => { if (!open) setEventToDelete(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{language === 'en' ? 'Delete Event' : 'Supprimer l\'événement'}</DialogTitle>
+            <DialogTitle>{language === 'en' ? 'Delete Event' : 'Supprimer l\'Ã©vÃ©nement'}</DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <p>{language === 'en'
               ? 'Are you sure you want to delete this event? This action cannot be undone.'
-              : 'Êtes-vous sûr de vouloir supprimer cet événement ? Cette action est irréversible.'}
+              : 'ÃŠtes-vous sÃ»r de vouloir supprimer cet Ã©vÃ©nement ? Cette action est irrÃ©versible.'}
             </p>
             {eventToDelete && (
               <div className="mt-2 text-sm text-muted-foreground">
@@ -17656,1851 +10676,61 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         </DialogContent>
       </Dialog>
 
-      {/* Order Details Dialog */}
-      <Dialog open={isOrderDetailsOpen} onOpenChange={(open) => {
-        setIsOrderDetailsOpen(open);
-        if (!open) {
-          setSelectedOrder(null);
-          setSelectedOrderAmbassador(null);
-          setEmailDeliveryLogs([]);
-          setIsEditingEmail(false);
-          setEditingEmailValue('');
-          setIsEditingAdminNotes(false);
-          setEditingAdminNotesValue('');
-        }
-      }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{language === 'en' ? 'Order Details' : 'Détails de la Commande'}</DialogTitle>
-          </DialogHeader>
-          {selectedOrder && (
-            <div className="space-y-6">
-              {/* Order Summary Card */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Package className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Order Summary' : 'Résumé de la Commande'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <FileText className="w-3 h-3" />
-                        {language === 'en' ? 'Order ID' : 'ID Commande'}
-                      </Label>
-                      <p className="font-mono text-sm break-all">{selectedOrder.id}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Activity className="w-3 h-3" />
-                        {language === 'en' ? 'Status' : 'Statut'}
-                      </Label>
-                      <div className="flex items-center gap-2">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div
-                                className={cn(
-                                  "w-3 h-3 rounded-full cursor-help",
-                                  selectedOrder.status === 'PAID' || selectedOrder.status === 'APPROVED' || selectedOrder.status === 'COMPLETED' ? 'bg-green-500' :
-                                  selectedOrder.status === 'REJECTED' || selectedOrder.status?.includes('CANCELLED') ? 'bg-red-500' :
-                                  selectedOrder.status === 'REMOVED_BY_ADMIN' ? 'bg-gray-600' :
-                                  selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'bg-yellow-500' :
-                                  selectedOrder.status === 'PENDING_CASH' ? 'bg-gray-500' :
-                                  'bg-gray-500'
-                                )}
-                              />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{selectedOrder.status}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        <Badge 
-                          variant={
-                            selectedOrder.status === 'PAID' || selectedOrder.status === 'APPROVED' || selectedOrder.status === 'COMPLETED' ? 'default' :
-                            selectedOrder.status === 'REJECTED' || selectedOrder.status?.includes('CANCELLED') ? 'destructive' :
-                            selectedOrder.status === 'REMOVED_BY_ADMIN' ? 'secondary' :
-                            selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'secondary' :
-                            selectedOrder.status === 'PENDING_CASH' ? 'secondary' :
-                            'secondary'
-                          }
-                          className={
-                            selectedOrder.status === 'PAID' || selectedOrder.status === 'APPROVED' || selectedOrder.status === 'COMPLETED' ? 'bg-green-500 text-white border-green-600' :
-                            selectedOrder.status === 'REJECTED' || selectedOrder.status?.includes('CANCELLED') ? 'bg-red-500 text-white border-red-600' :
-                            selectedOrder.status === 'REMOVED_BY_ADMIN' ? 'bg-gray-600 text-white border-gray-700' :
-                            selectedOrder.status === 'PENDING_ADMIN_APPROVAL' ? 'bg-yellow-500 text-white border-yellow-600' :
-                            selectedOrder.status === 'PENDING_CASH' ? 'bg-gray-500 text-white border-gray-600' :
-                            ''
-                          }
-                        >
-                          {selectedOrder.status}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Database className="w-3 h-3" />
-                        {language === 'en' ? 'Order Type' : 'Type de Commande'}
-                      </Label>
-                      <Badge variant="outline" className="font-normal">
-                        {selectedOrder.source === 'platform_online' ? (language === 'en' ? 'Platform Online' : 'Plateforme En Ligne') :
-                         selectedOrder.source === 'ambassador_manual' ? (language === 'en' ? 'Ambassador Manual (COD)' : 'Manuel Ambassadeur (COD)') :
-                         selectedOrder.source}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <CalendarIcon className="w-3 h-3" />
-                        {language === 'en' ? 'Created At' : 'Créé Le'}
-                      </Label>
-                      <p className="text-sm">{new Date(selectedOrder.created_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}</p>
-                    </div>
-                    {selectedOrder.total_price && (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                          <DollarSign className="w-3 h-3" />
-                          {language === 'en' ? 'Total Amount' : 'Montant Total'}
-                        </Label>
-                        <p className="text-lg font-bold text-primary">{selectedOrder.total_price.toFixed(2)} TND</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+      <OrderDetailsDialog
+        open={isOrderDetailsOpen}
+        onOpenChange={(open) => {
+          setIsOrderDetailsOpen(open);
+          if (!open) {
+            setSelectedOrder(null);
+            setSelectedOrderAmbassador(null);
+            setEmailDeliveryLogs([]);
+          }
+        }}
+        order={selectedOrder}
+        ambassador={selectedOrderAmbassador}
+        orderLogs={orderLogs}
+        language={language}
+        resendingTicketEmail={resendingTicketEmail}
+        onOrderUpdate={(updates) => setSelectedOrder(prev => prev ? { ...prev, ...updates } : null)}
+        onRefresh={(status) => fetchAmbassadorSalesData(status)}
+        orderFilters={orderFilters}
+        onApprove={handleApproveOrderAsAdmin}
+        onReject={handleRejectCodAmbassadorOrder}
+        onRemove={handleRemoveOrder}
+        onSkip={handleSkipAmbassadorConfirmation}
+        onComplete={handleCompleteOrderAsAdmin}
+        onResendTicket={handleResendTicketEmail}
+      />
+      
 
-              {/* Customer Information */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <User className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Customer Information' : 'Informations Client'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        {language === 'en' ? 'Name' : 'Nom'}
-                      </Label>
-                      <p className="font-semibold text-base">{selectedOrder.user_name || selectedOrder.customer_name || 'N/A'}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Phone className="w-3 h-3" />
-                        {language === 'en' ? 'Phone' : 'Téléphone'}
-                      </Label>
-                      <p className="text-base">{selectedOrder.user_phone || selectedOrder.phone || 'N/A'}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Mail className="w-3 h-3" />
-                        {language === 'en' ? 'Email' : 'Email'}
-                      </Label>
-                      {isEditingEmail ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="email"
-                            value={editingEmailValue}
-                            onChange={(e) => setEditingEmailValue(e.target.value)}
-                            className="flex-1 text-base"
-                            placeholder={language === 'en' ? 'Enter email address' : 'Entrez l\'adresse email'}
-                            disabled={updatingEmail}
-                          />
-                          <Button
-                            size="sm"
-                            variant="default"
-                            onClick={async () => {
-                              if (!editingEmailValue.trim()) {
-                                toast({
-                                  title: language === 'en' ? 'Error' : 'Erreur',
-                                  description: language === 'en' ? 'Email cannot be empty' : 'L\'email ne peut pas être vide',
-                                  variant: 'destructive'
-                                });
-                                return;
-                              }
-                              
-                              const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                              if (!emailRegex.test(editingEmailValue.trim())) {
-                                toast({
-                                  title: language === 'en' ? 'Error' : 'Erreur',
-                                  description: language === 'en' ? 'Invalid email format' : 'Format d\'email invalide',
-                                  variant: 'destructive'
-                                });
-                                return;
-                              }
-                              
-                              setUpdatingEmail(true);
-                              try {
-                                const apiBase = getApiBaseUrl();
-                                const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_UPDATE_ORDER_EMAIL, apiBase);
-                                
-                                if (!apiUrl) {
-                                  throw new Error('Invalid API URL configuration');
-                                }
-                                
-                                const response = await fetch(apiUrl, {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                  },
-                                  credentials: 'include',
-                                  body: JSON.stringify({
-                                    orderId: selectedOrder.id,
-                                    newEmail: editingEmailValue.trim()
-                                  }),
-                                });
-                                
-                                const data = await response.json();
-                                
-                                if (!response.ok) {
-                                  throw new Error(data.error || data.details || 'Failed to update email');
-                                }
-                                
-                                toast({
-                                  title: language === 'en' ? 'Success' : 'Succès',
-                                  description: language === 'en' 
-                                    ? 'Email updated successfully' 
-                                    : 'Email mis à jour avec succès',
-                                  variant: 'default'
-                                });
-                                
-                                // Update local state
-                                setSelectedOrder({
-                                  ...selectedOrder,
-                                  user_email: editingEmailValue.trim()
-                                });
-                                
-                                setIsEditingEmail(false);
-                                setEditingEmailValue('');
-                              } catch (error: any) {
-                                console.error('Error updating email:', error);
-                                toast({
-                                  title: language === 'en' ? 'Error' : 'Erreur',
-                                  description: error.message || (language === 'en' ? 'Failed to update email' : 'Échec de la mise à jour de l\'email'),
-                                  variant: 'destructive'
-                                });
-                              } finally {
-                                setUpdatingEmail(false);
-                              }
-                            }}
-                            disabled={updatingEmail}
-                          >
-                            <Save className="w-4 h-4 mr-1" />
-                            {language === 'en' ? 'Save' : 'Enregistrer'}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setIsEditingEmail(false);
-                              setEditingEmailValue('');
-                            }}
-                            disabled={updatingEmail}
-                          >
-                            <X className="w-4 h-4 mr-1" />
-                            {language === 'en' ? 'Cancel' : 'Annuler'}
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <p className="text-base break-all flex-1">{selectedOrder.user_email || selectedOrder.email || 'N/A'}</p>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setEditingEmailValue(selectedOrder.user_email || selectedOrder.email || '');
-                              setIsEditingEmail(true);
-                            }}
-                            className="h-8 w-8 p-0"
-                            title={language === 'en' ? 'Edit email' : 'Modifier l\'email'}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {language === 'en' ? 'City/Ville' : 'Ville/Quartier'}
-                      </Label>
-                      <p className="text-base">{selectedOrder.city || 'N/A'}{selectedOrder.ville ? ` - ${selectedOrder.ville}` : ''}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+      <OnlineOrderDetailsDialog
+        open={isOnlineOrderDetailsOpen}
+        onOpenChange={(open) => {
+          setIsOnlineOrderDetailsOpen(open);
+          if (!open) setSelectedOnlineOrder(null);
+        }}
+        order={selectedOnlineOrder}
+        language={language}
+        onUpdateStatus={updateOnlineOrderStatus}
+      />
 
-              {/* Order Expiration Display (Read-Only) */}
-              {selectedOrder.status === 'PENDING_CASH' && selectedOrder.expires_at && (
-                <Card className="bg-muted/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Clock className="w-5 h-5 text-primary" />
-                      {language === 'en' ? 'Order Expiration' : 'Expiration de la Commande'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Clock className="w-4 h-4 text-yellow-500" />
-                        <Label className="text-sm font-semibold text-foreground">
-                          {language === 'en' ? 'Expires At' : 'Expire Le'}
-                        </Label>
-                      </div>
-                      <p className="text-sm text-foreground">
-                        {new Date(selectedOrder.expires_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {language === 'en' 
-                          ? 'This order will be automatically rejected when the expiration date is reached. Expired orders are checked when you view the orders list.' 
-                          : 'Cette commande sera automatiquement rejetée lorsque la date d\'expiration sera atteinte. Les commandes expirées sont vérifiées lorsque vous consultez la liste des commandes.'}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Order Items */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Ticket className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Order Items' : 'Articles de Commande'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                {(() => {
-                  // Try to parse notes to get detailed pass breakdown
-                  let allPasses: any[] = [];
-                  try {
-                    if (selectedOrder.notes) {
-                      const notesData = typeof selectedOrder.notes === 'string' 
-                        ? JSON.parse(selectedOrder.notes) 
-                        : selectedOrder.notes;
-                      if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                        allPasses = notesData.all_passes;
-                      }
-                    }
-                  } catch (e) {
-                    console.error('Error parsing notes:', e);
-                  }
-
-                  // If we have detailed pass breakdown, show it
-                  if (allPasses.length > 0) {
-                    // Calculate total from passes array to ensure accuracy
-                    const calculatedTotal = allPasses.reduce((sum: number, pass: any) => {
-                      return sum + ((pass.price || 0) * (pass.quantity || 0));
-                    }, 0);
-                    
-                    return (
-                      <div className="space-y-4">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Unit Price' : 'Prix Unitaire'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Subtotal' : 'Sous-total'}</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {allPasses.map((pass: any, index: number) => (
-                              <TableRow key={index}>
-                                <TableCell>
-                                  <Badge variant={pass.passType === 'vip' ? 'default' : 'secondary'}>
-                                    {pass.passType?.toUpperCase() || 'STANDARD'}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
-                                <TableCell>{pass.price?.toFixed(2) || '0.00'} TND</TableCell>
-                                <TableCell className="font-semibold">
-                                  {((pass.price || 0) * (pass.quantity || 0)).toFixed(2)} TND
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                            <TableRow className="font-bold border-t-2">
-                              <TableCell colSpan={3} className="text-right">
-                                {language === 'en' ? 'Total' : 'Total'}
-                              </TableCell>
-                              <TableCell className="text-lg">
-                                {calculatedTotal.toFixed(2)} TND
-                              </TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-                      </div>
-                    );
-                  }
-
-                  // Fallback to simple display for old orders
-                  return (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <Label className="text-muted-foreground">{language === 'en' ? 'Pass Type' : 'Type Pass'}</Label>
-                        <p className="font-semibold uppercase">{selectedOrder.pass_type}</p>
-                      </div>
-                      <div>
-                        <Label className="text-muted-foreground">{language === 'en' ? 'Quantity' : 'Quantité'}</Label>
-                        <p className="font-semibold">{selectedOrder.quantity}</p>
-                      </div>
-                      <div>
-                        <Label className="text-muted-foreground">{language === 'en' ? 'Total Price' : 'Prix Total'}</Label>
-                        <p className="font-semibold text-lg">{selectedOrder.total_price?.toFixed(2) || '0.00'} TND</p>
-                      </div>
-                    </div>
-                  );
-                })()}
-                </CardContent>
-              </Card>
-
-              {/* Ambassador Information */}
-              {selectedOrder.ambassador_id && (
-                <Card className="bg-muted/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Users className="w-5 h-5 text-primary" />
-                      {language === 'en' ? 'Assigned Ambassador' : 'Ambassadeur Assigné'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {selectedOrderAmbassador ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <User className="w-3 h-3" />
-                            {language === 'en' ? 'Name' : 'Nom'}
-                          </Label>
-                          <p className="font-semibold text-base">{selectedOrderAmbassador.full_name}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Phone className="w-3 h-3" />
-                            {language === 'en' ? 'Phone' : 'Téléphone'}
-                          </Label>
-                          <p className="text-base">{selectedOrderAmbassador.phone}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Mail className="w-3 h-3" />
-                            {language === 'en' ? 'Email' : 'Email'}
-                          </Label>
-                          <p className="text-base break-all">{selectedOrderAmbassador.email || 'N/A'}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            {language === 'en' ? 'City/Ville' : 'Ville/Quartier'}
-                          </Label>
-                          <p className="text-base">{selectedOrderAmbassador.city || 'N/A'}{selectedOrderAmbassador.ville ? ` - ${selectedOrderAmbassador.ville}` : ''}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Activity className="w-3 h-3" />
-                            {language === 'en' ? 'Status' : 'Statut'}
-                          </Label>
-                          <Badge variant={selectedOrderAmbassador.status === 'approved' ? 'default' : 'secondary'}>
-                            {selectedOrderAmbassador.status}
-                          </Badge>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Percent className="w-3 h-3" />
-                            {language === 'en' ? 'Commission Rate' : 'Taux de Commission'}
-                          </Label>
-                          <p className="text-base font-semibold">{selectedOrderAmbassador.commission_rate || 0}%</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground font-mono">{selectedOrder.ambassador_id}</p>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Timestamps */}
-              <div className="border-t pt-4">
-                <h3 className="font-semibold mb-4">{language === 'en' ? 'Timestamps' : 'Horodatages'}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  {selectedOrder.assigned_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Assigned At' : 'Assigné Le'}</Label>
-                      <p>{new Date(selectedOrder.assigned_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {selectedOrder.accepted_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Accepted At' : 'Accepté Le'}</Label>
-                      <p>{new Date(selectedOrder.accepted_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {selectedOrder.approved_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Approved At' : 'Approuvé Le'}</Label>
-                      <p>{new Date(selectedOrder.approved_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {selectedOrder.rejected_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Rejected At' : 'Rejeté Le'}</Label>
-                      <p>{new Date(selectedOrder.rejected_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {selectedOrder.rejection_reason && (
-                    <div className="col-span-2">
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Rejection Reason' : 'Raison du Rejet'}</Label>
-                      <p className="text-sm text-destructive">{selectedOrder.rejection_reason}</p>
-                    </div>
-                  )}
-                  {selectedOrder.completed_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Completed At' : 'Terminé Le'}</Label>
-                      <p>{new Date(selectedOrder.completed_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {selectedOrder.cancelled_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Cancelled At' : 'Annulé Le'}</Label>
-                      <p>{new Date(selectedOrder.cancelled_at).toLocaleString()}</p>
-                      {selectedOrder.cancellation_reason && (
-                        <p className="mt-1 text-muted-foreground italic">{language === 'en' ? 'Reason' : 'Raison'}: {selectedOrder.cancellation_reason}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Admin Notes */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Admin Notes' : 'Notes Administrateur'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {isEditingAdminNotes ? (
-                    <div className="space-y-2">
-                      <Textarea
-                        value={editingAdminNotesValue}
-                        onChange={(e) => setEditingAdminNotesValue(e.target.value)}
-                        className="min-h-[100px] text-base"
-                        placeholder={language === 'en' ? 'Enter admin notes...' : 'Entrez les notes administrateur...'}
-                        disabled={updatingAdminNotes}
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="default"
-                          onClick={async (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setUpdatingAdminNotes(true);
-                            try {
-                              const apiBase = getApiBaseUrl();
-                              const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_UPDATE_ORDER_NOTES, apiBase);
-                              
-                              if (!apiUrl) {
-                                throw new Error('Invalid API URL configuration');
-                              }
-                              
-                              console.log('Updating admin notes:', { orderId: selectedOrder.id, apiUrl });
-                              
-                              const response = await fetch(apiUrl, {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                },
-                                credentials: 'include',
-                                body: JSON.stringify({
-                                  orderId: selectedOrder.id,
-                                  adminNotes: editingAdminNotesValue.trim() || null
-                                }),
-                              });
-                              
-                              const data = await response.json();
-                              
-                              if (!response.ok) {
-                                throw new Error(data.error || data.details || 'Failed to update admin notes');
-                              }
-                              
-                              toast({
-                                title: language === 'en' ? 'Success' : 'Succès',
-                                description: language === 'en' 
-                                  ? 'Admin notes updated successfully' 
-                                  : 'Notes administrateur mises à jour avec succès',
-                                variant: 'default'
-                              });
-                              
-                              // Update local state
-                              setSelectedOrder({
-                                ...selectedOrder,
-                                admin_notes: editingAdminNotesValue.trim() || null
-                              });
-                              
-                              setIsEditingAdminNotes(false);
-                              setEditingAdminNotesValue('');
-                              
-                              // Refresh orders list
-                              const statusToFetch = orderFilters.status || undefined;
-                              fetchAmbassadorSalesData(statusToFetch);
-                            } catch (error: any) {
-                              console.error('Error updating admin notes:', error);
-                              toast({
-                                title: language === 'en' ? 'Error' : 'Erreur',
-                                description: error.message || (language === 'en' ? 'Failed to update admin notes' : 'Échec de la mise à jour des notes administrateur'),
-                                variant: 'destructive'
-                              });
-                            } finally {
-                              setUpdatingAdminNotes(false);
-                            }
-                          }}
-                          disabled={updatingAdminNotes}
-                        >
-                          <Save className="w-4 h-4 mr-1" />
-                          {language === 'en' ? 'Save' : 'Enregistrer'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setIsEditingAdminNotes(false);
-                            setEditingAdminNotesValue('');
-                          }}
-                          disabled={updatingAdminNotes}
-                        >
-                          <X className="w-4 h-4 mr-1" />
-                          {language === 'en' ? 'Cancel' : 'Annuler'}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="min-h-[100px] p-3 bg-background border rounded-md">
-                        {selectedOrder.admin_notes ? (
-                          <p className="text-base whitespace-pre-wrap">{selectedOrder.admin_notes}</p>
-                        ) : (
-                          <p className="text-base text-muted-foreground italic">
-                            {language === 'en' ? 'No admin notes added yet' : 'Aucune note administrateur ajoutée pour le moment'}
-                          </p>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setEditingAdminNotesValue(selectedOrder.admin_notes || '');
-                          setIsEditingAdminNotes(true);
-                        }}
-                        className="h-8"
-                      >
-                        <Edit className="w-4 h-4 mr-1" />
-                        {language === 'en' ? 'Edit Notes' : 'Modifier les Notes'}
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Order Logs */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Order Activity Log' : 'Journal d\'Activité de la Commande'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="max-h-96 overflow-y-auto">
-                    {orderLogs.filter((log: any) => log.order_id === selectedOrder.id).length > 0 ? (
-                      <div className="space-y-3">
-                        {orderLogs
-                          .filter((log: any) => log.order_id === selectedOrder.id)
-                          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                          .map((log: any, index: number) => {
-                            const getActionIcon = () => {
-                              switch (log.action) {
-                                case 'approved':
-                                  return <CheckCircle className="w-4 h-4 text-green-500" />;
-                                case 'rejected':
-                                  return <XCircle className="w-4 h-4 text-red-500" />;
-                                case 'cancelled':
-                                  return <XCircle className="w-4 h-4 text-orange-500" />;
-                                case 'status_changed':
-                                  return <RefreshCw className="w-4 h-4 text-blue-500" />;
-                                case 'created':
-                                  return <Plus className="w-4 h-4 text-purple-500" />;
-                                default:
-                                  return <Clock className="w-4 h-4 text-muted-foreground" />;
-                              }
-                            };
-
-                            const getActionBadge = () => {
-                              const actionMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-                                'approved': { label: language === 'en' ? 'Approved' : 'Approuvé', variant: 'default' },
-                                'rejected': { label: language === 'en' ? 'Rejected' : 'Rejeté', variant: 'destructive' },
-                                'cancelled': { label: language === 'en' ? 'Cancelled' : 'Annulé', variant: 'destructive' },
-                                'status_changed': { label: language === 'en' ? 'Status Changed' : 'Statut Modifié', variant: 'secondary' },
-                                'created': { label: language === 'en' ? 'Created' : 'Créé', variant: 'outline' },
-                              };
-                              const actionInfo = actionMap[log.action] || { label: log.action, variant: 'outline' as const };
-                              return (
-                                <Badge 
-                                  variant={actionInfo.variant}
-                                  className={actionInfo.variant === 'default' ? 'bg-green-500/20 text-green-300 border-green-500/30' : ''}
-                                >
-                                  {actionInfo.label}
-                                </Badge>
-                              );
-                            };
-
-                            const getPerformedByBadge = () => {
-                              const typeMap: Record<string, { label: string; color: string }> = {
-                                'admin': { label: language === 'en' ? 'Admin' : 'Admin', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
-                                'ambassador': { label: language === 'en' ? 'Ambassador' : 'Ambassadeur', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
-                                'system': { label: language === 'en' ? 'System' : 'Système', color: 'bg-gray-500/20 text-gray-300 border-gray-500/30' },
-                              };
-                              const typeInfo = typeMap[log.performed_by_type] || { label: log.performed_by_type || 'N/A', color: 'bg-muted text-muted-foreground border-border' };
-                              return (
-                                <Badge variant="outline" className={typeInfo.color}>
-                                  {typeInfo.label}
-                                </Badge>
-                              );
-                            };
-
-                            const formatTimestamp = (timestamp: string) => {
-                              const date = new Date(timestamp);
-                              const now = new Date();
-                              const diffMs = now.getTime() - date.getTime();
-                              const diffMins = Math.floor(diffMs / 60000);
-                              const diffHours = Math.floor(diffMs / 3600000);
-                              const diffDays = Math.floor(diffMs / 86400000);
-
-                              if (diffMins < 1) return language === 'en' ? 'Just now' : 'À l\'instant';
-                              if (diffMins < 60) return `${diffMins} ${language === 'en' ? 'min ago' : 'min'}`;
-                              if (diffHours < 24) return `${diffHours} ${language === 'en' ? 'hours ago' : 'heures'}`;
-                              if (diffDays < 7) return `${diffDays} ${language === 'en' ? 'days ago' : 'jours'}`;
-                              return date.toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              });
-                            };
-
-                            return (
-                              <div 
-                                key={log.id} 
-                                className="flex items-start gap-3 p-3 rounded-lg border border-border bg-background/50 hover:bg-muted/50 transition-colors"
-                              >
-                                <div className="mt-0.5">
-                                  {getActionIcon()}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                                    {getActionBadge()}
-                                    {getPerformedByBadge()}
-                                  </div>
-                                  {log.details && typeof log.details === 'object' && (
-                                    <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                                      {log.details.old_status && log.details.new_status && (
-                                        <p>
-                                          {language === 'en' ? 'Status' : 'Statut'}: 
-                                          <span className="ml-1 font-medium">{log.details.old_status}</span>
-                                          <span className="mx-1">→</span>
-                                          <span className="font-medium">{log.details.new_status}</span>
-                                        </p>
-                                      )}
-                                      {log.details.reason && (
-                                        <p className="italic">
-                                          {language === 'en' ? 'Reason' : 'Raison'}: {log.details.reason}
-                                        </p>
-                                      )}
-                                      {log.details.email_sent !== undefined && (
-                                        <p>
-                                          {language === 'en' ? 'Email' : 'Email'}: 
-                                          <span className={`ml-1 ${log.details.email_sent ? 'text-green-500' : 'text-red-500'}`}>
-                                            {log.details.email_sent ? (language === 'en' ? 'Sent' : 'Envoyé') : (language === 'en' ? 'Failed' : 'Échoué')}
-                                          </span>
-                                        </p>
-                                      )}
-                                      {log.details.sms_sent !== undefined && (
-                                        <p>
-                                          {language === 'en' ? 'SMS' : 'SMS'}: 
-                                          <span className={`ml-1 ${log.details.sms_sent ? 'text-green-500' : 'text-red-500'}`}>
-                                            {log.details.sms_sent ? (language === 'en' ? 'Sent' : 'Envoyé') : (language === 'en' ? 'Failed' : 'Échoué')}
-                                          </span>
-                                        </p>
-                                      )}
-                                      {log.details.tickets_generated !== undefined && (
-                                        <p>
-                                          {language === 'en' ? 'Tickets' : 'Billets'}: 
-                                          <span className={`ml-1 ${log.details.tickets_generated ? 'text-green-500' : 'text-red-500'}`}>
-                                            {log.details.tickets_generated ? (language === 'en' ? 'Generated' : 'Générés') : (language === 'en' ? 'Failed' : 'Échoué')}
-                                          </span>
-                                        </p>
-                                      )}
-                                    </div>
-                                  )}
-                                  <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                                    <Clock className="w-3 h-3" />
-                                    <span>{formatTimestamp(log.created_at)}</span>
-                                    <span className="text-muted-foreground/50">•</span>
-                                    <span>{new Date(log.created_at).toLocaleTimeString(language === 'en' ? 'en-US' : 'fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <FileText className="w-12 h-12 text-muted-foreground/50 mx-auto mb-3" />
-                        <p className="text-sm text-muted-foreground">{language === 'en' ? 'No activity logs found for this order' : 'Aucun journal d\'activité trouvé pour cette commande'}</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Email Delivery Status */}
-              {(selectedOrder.status === 'COMPLETED' || selectedOrder.status === 'MANUAL_COMPLETED') && selectedOrder.payment_method === 'ambassador_cash' && (
-                <Card className="bg-muted/30">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Mail className="w-5 h-5 text-primary" />
-                        {language === 'en' ? 'Email Delivery Status' : 'Statut de Livraison Email'}
-                      </CardTitle>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={async () => {
-                          setLoadingEmailLogs(true);
-                          try {
-                            const response = await apiFetch(API_ROUTES.EMAIL_DELIVERY_LOGS(selectedOrder.id));
-                            if (response.ok) {
-                              const data = await response.json();
-                              setEmailDeliveryLogs(data.logs || []);
-                            }
-                          } catch (error) {
-                            console.error('Error fetching email logs:', error);
-                          } finally {
-                            setLoadingEmailLogs(false);
-                          }
-                        }}
-                        disabled={loadingEmailLogs}
-                      >
-                        <RefreshCw className={`w-4 h-4 mr-2 ${loadingEmailLogs ? 'animate-spin' : ''}`} />
-                        {language === 'en' ? 'Refresh' : 'Actualiser'}
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {emailDeliveryLogs.length > 0 ? (
-                      <div className="space-y-3">
-                        {emailDeliveryLogs.map((log: any) => (
-                          <div key={log.id} className="border rounded-lg p-3 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Badge 
-                                  variant={
-                                    log.status === 'sent' ? 'default' :
-                                    log.status === 'failed' ? 'destructive' :
-                                    log.status === 'pending_retry' ? 'secondary' :
-                                    'outline'
-                                  }
-                                >
-                                  {log.status === 'sent' ? (language === 'en' ? 'Sent' : 'Envoyé') :
-                                   log.status === 'failed' ? (language === 'en' ? 'Failed' : 'Échoué') :
-                                   log.status === 'pending_retry' ? (language === 'en' ? 'Pending Retry' : 'Nouvelle Tentative') :
-                                   language === 'en' ? 'Pending' : 'En Attente'}
-                                </Badge>
-                                {log.retry_count > 0 && (
-                                  <span className="text-xs text-muted-foreground">
-                                    {language === 'en' ? `Retry ${log.retry_count}` : `Tentative ${log.retry_count}`}
-                                  </span>
-                                )}
-                              </div>
-                              {log.sent_at && (
-                                <span className="text-xs text-muted-foreground">
-                                  {new Date(log.sent_at).toLocaleString()}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-sm">
-                              <p className="text-muted-foreground">
-                                <strong>{language === 'en' ? 'To:' : 'À:'}</strong> {log.recipient_email}
-                              </p>
-                              {log.error_message && (
-                                <p className="text-destructive text-xs mt-1">
-                                  <strong>{language === 'en' ? 'Error:' : 'Erreur:'}</strong> {log.error_message}
-                                </p>
-                              )}
-                            </div>
-                            {(log.status === 'failed' || log.status === 'pending_retry') && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={async () => {
-                                  setResendingEmail(true);
-                                  try {
-                                    const response = await apiFetch(API_ROUTES.RESEND_ORDER_COMPLETION_EMAIL, {
-                                      method: 'POST',
-                                      headers: {
-                                        'Content-Type': 'application/json',
-                                      },
-                                      body: JSON.stringify({ orderId: selectedOrder.id }),
-                                    });
-                                    if (response.ok) {
-                                      toast({
-                                        title: language === 'en' ? 'Email Resent' : 'Email Renvoyé',
-                                        description: language === 'en' ? 'The completion email has been resent successfully.' : 'L\'email de confirmation a été renvoyé avec succès.',
-                                        variant: 'default',
-                                      });
-                                      // Refresh email logs
-                                      const logsResponse = await apiFetch(API_ROUTES.EMAIL_DELIVERY_LOGS(selectedOrder.id));
-                                      if (logsResponse.ok) {
-                                        const data = await logsResponse.json();
-                                        setEmailDeliveryLogs(data.logs || []);
-                                      }
-                                    } else {
-                                      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-                                      toast({
-                                        title: language === 'en' ? 'Error' : 'Erreur',
-                                        description: errorData.details || errorData.error || (language === 'en' ? 'Failed to resend email.' : 'Échec du renvoi de l\'email.'),
-                                        variant: 'destructive',
-                                      });
-                                    }
-                                  } catch (error) {
-                                    console.error('Error resending email:', error);
-                                    toast({
-                                      title: language === 'en' ? 'Error' : 'Erreur',
-                                      description: language === 'en' ? 'Failed to resend email.' : 'Échec du renvoi de l\'email.',
-                                      variant: 'destructive',
-                                    });
-                                  } finally {
-                                    setResendingEmail(false);
-                                  }
-                                }}
-                                disabled={resendingEmail}
-                                className="w-full"
-                              >
-                                <Send className={`w-4 h-4 mr-2 ${resendingEmail ? 'animate-spin' : ''}`} />
-                                {language === 'en' ? 'Resend Email' : 'Renvoyer l\'Email'}
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-4 space-y-3">
-                        <p className="text-sm text-muted-foreground">
-                          {language === 'en' ? 'No email delivery logs found. The completion email may not have been sent yet.' : 'Aucun journal de livraison email trouvé. L\'email de confirmation n\'a peut-être pas encore été envoyé.'}
-                        </p>
-                        {selectedOrder.user_email && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              setResendingEmail(true);
-                              try {
-                                const response = await apiFetch(API_ROUTES.RESEND_ORDER_COMPLETION_EMAIL, {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                  },
-                                  body: JSON.stringify({ orderId: selectedOrder.id }),
-                                });
-                                if (response.ok) {
-                                  toast({
-                                    title: language === 'en' ? 'Email Sent' : 'Email Envoyé',
-                                    description: language === 'en' ? 'The completion email has been sent successfully.' : 'L\'email de confirmation a été envoyé avec succès.',
-                                    variant: 'default',
-                                  });
-                                  // Refresh email logs
-                                  const logsResponse = await apiFetch(`/api/email-delivery-logs/${selectedOrder.id}`);
-                                  if (logsResponse.ok) {
-                                    const data = await logsResponse.json();
-                                    setEmailDeliveryLogs(data.logs || []);
-                                  }
-                                } else {
-                                  const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-                                  toast({
-                                    title: language === 'en' ? 'Error' : 'Erreur',
-                                    description: errorData.details || errorData.error || (language === 'en' ? 'Failed to send email.' : 'Échec de l\'envoi de l\'email.'),
-                                    variant: 'destructive',
-                                  });
-                                }
-                              } catch (error: any) {
-                                console.error('Error sending email:', error);
-                                toast({
-                                  title: language === 'en' ? 'Error' : 'Erreur',
-                                  description: error?.message || (language === 'en' ? 'Failed to send email. Please check server logs for details.' : 'Échec de l\'envoi de l\'email. Veuillez vérifier les journaux du serveur.'),
-                                  variant: 'destructive',
-                                });
-                              } finally {
-                                setResendingEmail(false);
-                              }
-                            }}
-                            disabled={resendingEmail}
-                          >
-                            <Send className={`w-4 h-4 mr-2 ${resendingEmail ? 'animate-spin' : ''}`} />
-                            {language === 'en' ? 'Send Completion Email' : 'Envoyer l\'Email de Confirmation'}
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Remove Order Action - Show for all non-PAID orders */}
-              {selectedOrder.status !== 'PAID' && selectedOrder.status !== 'REMOVED_BY_ADMIN' && (
-                <Card className="bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
-                      {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">
-                        {language === 'en' 
-                          ? 'Remove this order (soft delete). The order will be hidden from reports but data will be preserved for audit purposes.'
-                          : 'Retirer cette commande (suppression douce). La commande sera masquée des rapports mais les données seront conservées à des fins d\'audit.'}
-                      </p>
-                      <Button
-                        onClick={() => {
-                          setRemovingOrderId(selectedOrder.id);
-                          setIsRemoveOrderDialogOpen(true);
-                        }}
-                        variant="destructive"
-                        size="sm"
-                        className="w-full sm:w-auto"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Admin Actions */}
-              {(selectedOrder.status === 'PENDING_CASH' || 
-                (selectedOrder.status === 'PENDING_ADMIN_APPROVAL' && selectedOrder.payment_method === 'ambassador_cash')) && (
-                <Card className="bg-primary/5 border-primary/20">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Wrench className="w-5 h-5 text-primary" />
-                      {language === 'en' ? 'Admin Actions' : 'Actions Admin'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {/* Admin Approve/Reject - For PENDING_ADMIN_APPROVAL (after ambassador confirms cash) */}
-                      {selectedOrder.payment_method === 'ambassador_cash' && selectedOrder.status === 'PENDING_ADMIN_APPROVAL' && (
-                        <>
-                          <Button
-                            onClick={() => handleApproveOrderAsAdmin(selectedOrder.id)}
-                            variant="default"
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            <CheckCircle className="w-4 h-4 mr-2" />
-                            {language === 'en' ? 'Approve Order' : 'Approuver la Commande'}
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              // Open reject dialog (reason required for ambassador cash orders)
-                              setRejectingOrderId(selectedOrder.id);
-                              setIsRejectDialogOpen(true);
-                            }}
-                            variant="destructive"
-                            size="sm"
-                          >
-                            <XCircle className="w-4 h-4 mr-2" />
-                            {language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}
-                          </Button>
-                        </>
-                      )}
-                      
-                      {/* Admin Skip Ambassador Confirmation - Only for PENDING_CASH (before ambassador confirms) */}
-                      {selectedOrder.status === 'PENDING_CASH' && (
-                        <Button
-                          onClick={() => {
-                            setSkippingOrderId(selectedOrder.id);
-                            setIsSkipConfirmationDialogOpen(true);
-                          }}
-                          variant="outline"
-                          size="sm"
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-600"
-                        >
-                          <Zap className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Approve Without Ambassador' : 'Approuver sans Ambassadeur'}
-                        </Button>
-                      )}
-                      
-                      {/* Approved COD orders can be completed */}
-                      {selectedOrder.payment_method === 'ambassador_cash' && selectedOrder.status === 'APPROVED' && (
-                        <Button
-                          onClick={() => handleCompleteOrderAsAdmin(selectedOrder.id)}
-                          variant="default"
-                          size="sm"
-                        >
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Complete Order' : 'Terminer la Commande'}
-                        </Button>
-                      )}
-                      
-                      {/* Legacy status support (for backward compatibility) */}
-                      {selectedOrder.status === 'PENDING' && selectedOrder.payment_method !== 'ambassador_cash' && (
-                        <Button
-                          onClick={() => handleApproveOrderAsAdmin(selectedOrder.id)}
-                          variant="default"
-                          size="sm"
-                        >
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Accept Order' : 'Accepter la Commande'}
-                        </Button>
-                      )}
-                      {selectedOrder.status === 'ACCEPTED' && selectedOrder.payment_method !== 'ambassador_cash' && (
-                        <Button
-                          onClick={() => handleCompleteOrderAsAdmin(selectedOrder.id)}
-                          variant="default"
-                          size="sm"
-                        >
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Complete Order' : 'Terminer la Commande'}
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Admin Resend Ticket Email - NEW FEATURE */}
-              {selectedOrder.status === 'PAID' && (
-                <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <MailCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                      {language === 'en' ? 'Ticket Email Actions' : 'Actions Email de Billets'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        onClick={() => handleResendTicketEmail(selectedOrder.id)}
-                        variant="outline"
-                        size="sm"
-                        disabled={resendingTicketEmail}
-                        className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-950/40"
-                      >
-                        <Send className={`w-4 h-4 mr-2 ${resendingTicketEmail ? 'animate-spin' : ''}`} />
-                        {resendingTicketEmail 
-                          ? (language === 'en' ? 'Resending...' : 'Renvoi en cours...')
-                          : (language === 'en' ? 'Resend Ticket Email' : 'Renvoyer l\'Email des Billets')
-                        }
-                      </Button>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {language === 'en' 
-                          ? 'Resend ticket email using existing tickets (max 5 per hour per order)'
-                          : 'Renvoyer l\'email des billets en utilisant les billets existants (max 5 par heure par commande)'
-                        }
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Remove Order Dialog */}
-      <Dialog open={isRemoveOrderDialogOpen} onOpenChange={(open) => {
-        setIsRemoveOrderDialogOpen(open);
-        if (!open) {
-          setRemovingOrderId(null);
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Trash2 className="w-5 h-5 text-red-500" />
-              {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                {language === 'en' 
-                  ? 'Are you sure you want to remove this order? This action will hide the order from reports and calculations, but all data will be preserved for audit purposes. This action cannot be undone.'
-                  : 'Êtes-vous sûr de vouloir retirer cette commande ? Cette action masquera la commande des rapports et calculs, mais toutes les données seront conservées à des fins d\'audit. Cette action ne peut pas être annulée.'}
-              </AlertDescription>
-            </Alert>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsRemoveOrderDialogOpen(false);
-                  setRemovingOrderId(null);
-                }}
-                disabled={removingOrder}
-              >
-                {language === 'en' ? 'Cancel' : 'Annuler'}
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  if (removingOrderId) {
-                    handleRemoveOrder(removingOrderId);
-                  }
-                }}
-                disabled={removingOrder}
-              >
-                {removingOrder ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    {language === 'en' ? 'Removing...' : 'Retrait en cours...'}
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Reject Order Dialog */}
-      <Dialog open={isRejectDialogOpen} onOpenChange={(open) => {
-        setIsRejectDialogOpen(open);
-        if (!open) {
-          setRejectingOrderId(null);
-          setRejectionReason('');
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>{language === 'en' ? 'Rejection Reason' : 'Raison du Rejet'} *</Label>
-              <Textarea
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder={language === 'en' ? 'Enter rejection reason...' : 'Entrez la raison du rejet...'}
-                rows={4}
-                required
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsRejectDialogOpen(false);
-                  setRejectingOrderId(null);
-                  setRejectionReason('');
-                }}
-              >
-                {language === 'en' ? 'Cancel' : 'Annuler'}
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  if (rejectingOrderId && rejectionReason.trim()) {
-                    handleRejectCodAmbassadorOrder(rejectingOrderId, rejectionReason.trim());
-                  } else {
-                    toast({
-                      title: language === 'en' ? 'Error' : 'Erreur',
-                      description: language === 'en' ? 'Rejection reason is required' : 'La raison du rejet est requise',
-                      variant: 'destructive'
-                    });
-                  }
-                }}
-                disabled={!rejectionReason.trim()}
-              >
-                <XCircle className="w-4 h-4 mr-2" />
-                {language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Admin Skip Ambassador Confirmation Dialog - NEW FEATURE */}
-      <Dialog open={isSkipConfirmationDialogOpen} onOpenChange={(open) => {
-        setIsSkipConfirmationDialogOpen(open);
-        if (!open) {
-          setSkippingOrderId(null);
-          setSkipReason('');
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-orange-600" />
-              {language === 'en' ? 'Skip Ambassador Confirmation' : 'Ignorer la Confirmation de l\'Ambassadeur'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Alert variant="default" className="border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800">
-              <AlertCircle className="h-4 w-4 text-orange-600" />
-              <AlertDescription className="text-sm text-orange-900 dark:text-orange-200">
-                {language === 'en' 
-                  ? 'This action will approve the order and generate tickets WITHOUT waiting for ambassador cash confirmation. Use only when ambassador has confirmed payment separately.'
-                  : 'Cette action approuvera la commande et générera les billets SANS attendre la confirmation de l\'ambassadeur. Utilisez uniquement lorsque l\'ambassadeur a confirmé le paiement séparément.'
-                }
-              </AlertDescription>
-            </Alert>
-            <div>
-              <Label htmlFor="skip-reason">
-                {language === 'en' ? 'Reason (Optional)' : 'Raison (Optionnel)'}
-              </Label>
-              <Textarea
-                id="skip-reason"
-                value={skipReason}
-                onChange={(e) => setSkipReason(e.target.value)}
-                placeholder={language === 'en' 
-                  ? 'Enter reason for skipping ambassador confirmation (optional)...' 
-                  : 'Entrez la raison de l\'ignorance de la confirmation de l\'ambassadeur (optionnel)...'
-                }
-                rows={3}
-                className="mt-1"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsSkipConfirmationDialogOpen(false);
-                  setSkippingOrderId(null);
-                  setSkipReason('');
-                }}
-                disabled={skippingOrder}
-              >
-                {language === 'en' ? 'Cancel' : 'Annuler'}
-              </Button>
-              <Button
-                variant="default"
-                onClick={() => {
-                  if (skippingOrderId) {
-                    handleSkipAmbassadorConfirmation(skippingOrderId, skipReason.trim() || undefined);
-                  }
-                }}
-                disabled={skippingOrder || !skippingOrderId}
-                className="bg-orange-600 hover:bg-orange-700 text-white"
-              >
-                {skippingOrder ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    {language === 'en' ? 'Processing...' : 'Traitement...'}
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4 mr-2" />
-                    {language === 'en' ? 'Skip & Approve' : 'Ignorer et Approuver'}
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Online Order Details Dialog */}
-      <Dialog open={isOnlineOrderDetailsOpen} onOpenChange={(open) => {
-        setIsOnlineOrderDetailsOpen(open);
-        if (!open) {
-          setSelectedOnlineOrder(null);
-        }
-      }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{language === 'en' ? 'Online Order Details' : 'Détails de la Commande en Ligne'}</DialogTitle>
-          </DialogHeader>
-          {selectedOnlineOrder && (
-            <div className="space-y-6">
-              {/* Order Summary Card */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Package className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Order Summary' : 'Résumé de la Commande'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <FileText className="w-3 h-3" />
-                        {language === 'en' ? 'Order ID' : 'ID Commande'}
-                      </Label>
-                      <p className="font-mono text-sm break-all">{selectedOnlineOrder.id}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Activity className="w-3 h-3" />
-                        {language === 'en' ? 'Payment Status' : 'Statut de Paiement'}
-                      </Label>
-                      <div className="flex items-center gap-2">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div
-                                className={cn(
-                                  "w-3 h-3 rounded-full cursor-help",
-                                  selectedOnlineOrder.payment_status === 'PAID' ? 'bg-green-500' :
-                                  selectedOnlineOrder.payment_status === 'FAILED' || selectedOnlineOrder.payment_status === 'REFUNDED' ? 'bg-red-500' :
-                                  'bg-yellow-500'
-                                )}
-                              />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{selectedOnlineOrder.payment_status || 'PENDING_PAYMENT'}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        <Badge
-                          variant={
-                            selectedOnlineOrder.payment_status === 'PAID' ? 'default' :
-                            selectedOnlineOrder.payment_status === 'FAILED' || selectedOnlineOrder.payment_status === 'REFUNDED' ? 'destructive' :
-                            'outline'
-                          }
-                          className={
-                            selectedOnlineOrder.payment_status === 'PAID' ? 'bg-green-500 text-white border-green-600' :
-                            selectedOnlineOrder.payment_status === 'FAILED' || selectedOnlineOrder.payment_status === 'REFUNDED' ? 'bg-red-500 text-white border-red-600' :
-                            ''
-                          }
-                        >
-                          {selectedOnlineOrder.payment_status || 'PENDING_PAYMENT'}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Database className="w-3 h-3" />
-                        {language === 'en' ? 'Order Type' : 'Type de Commande'}
-                      </Label>
-                      <Badge variant="outline" className="font-normal">
-                        {selectedOnlineOrder.source === 'platform_online' ? (language === 'en' ? 'Platform Online' : 'Plateforme En Ligne') : selectedOnlineOrder.source}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <CalendarIcon className="w-3 h-3" />
-                        {language === 'en' ? 'Created At' : 'Créé Le'}
-                      </Label>
-                      <p className="text-sm">{new Date(selectedOnlineOrder.created_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}</p>
-                    </div>
-                    {selectedOnlineOrder.updated_at && selectedOnlineOrder.updated_at !== selectedOnlineOrder.created_at && (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {language === 'en' ? 'Updated At' : 'Mis à Jour Le'}
-                        </Label>
-                        <p className="text-sm">{new Date(selectedOnlineOrder.updated_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}</p>
-                      </div>
-                    )}
-                    {selectedOnlineOrder.total_price && (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                          <DollarSign className="w-3 h-3" />
-                          {language === 'en' ? 'Total Amount' : 'Montant Total'}
-                        </Label>
-                        <p className="text-lg font-bold text-primary">{selectedOnlineOrder.total_price.toFixed(2)} TND</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Customer Information */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <User className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Customer Information' : 'Informations Client'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        {language === 'en' ? 'Name' : 'Nom'}
-                      </Label>
-                      <p className="font-semibold text-base">{selectedOnlineOrder.user_name || selectedOnlineOrder.customer_name || 'N/A'}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Phone className="w-3 h-3" />
-                        {language === 'en' ? 'Phone' : 'Téléphone'}
-                      </Label>
-                      <p className="text-base">{selectedOnlineOrder.user_phone || selectedOnlineOrder.phone || 'N/A'}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Mail className="w-3 h-3" />
-                        {language === 'en' ? 'Email' : 'Email'}
-                      </Label>
-                      <p className="text-base break-all">{selectedOnlineOrder.user_email || selectedOnlineOrder.email || 'N/A'}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {language === 'en' ? 'City/Ville' : 'Ville/Quartier'}
-                      </Label>
-                      <p className="text-base">{selectedOnlineOrder.city || 'N/A'}{selectedOnlineOrder.ville ? ` - ${selectedOnlineOrder.ville}` : ''}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Passes List */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Ticket className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Passes Purchased' : 'Passes Achetés'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                {(() => {
-                  let allPasses: any[] = [];
-                  try {
-                    if (selectedOnlineOrder.notes) {
-                      const notesData = typeof selectedOnlineOrder.notes === 'string' 
-                        ? JSON.parse(selectedOnlineOrder.notes) 
-                        : selectedOnlineOrder.notes;
-                      if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                        allPasses = notesData.all_passes;
-                      }
-                    }
-                  } catch (e) {
-                    console.error('Error parsing notes:', e);
-                  }
-
-                  if (allPasses.length > 0) {
-                    // Calculate total from passes array to ensure accuracy
-                    const calculatedTotal = allPasses.reduce((sum: number, pass: any) => {
-                      return sum + ((pass.price || 0) * (pass.quantity || 0));
-                    }, 0);
-                    
-                    return (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Unit Price' : 'Prix Unitaire'}</TableHead>
-                            <TableHead>{language === 'en' ? 'Subtotal' : 'Sous-total'}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {allPasses.map((pass: any, index: number) => (
-                            <TableRow key={index}>
-                              <TableCell>
-                                <Badge variant={pass.passType === 'vip' ? 'default' : 'secondary'}>
-                                  {pass.passType?.toUpperCase() || 'STANDARD'}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
-                              <TableCell>{pass.price?.toFixed(2) || '0.00'} TND</TableCell>
-                              <TableCell className="font-semibold">
-                                {((pass.quantity || 0) * (pass.price || 0)).toFixed(2)} TND
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          <TableRow className="font-bold border-t-2">
-                            <TableCell colSpan={3} className="text-right">
-                              {language === 'en' ? 'Total' : 'Total'}
-                            </TableCell>
-                            <TableCell className="text-lg">
-                              {calculatedTotal.toFixed(2)} TND
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    );
-                  } else {
-                    return (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <Label className="text-muted-foreground">{language === 'en' ? 'Pass Type' : 'Type Pass'}</Label>
-                          <p className="font-semibold uppercase">{selectedOnlineOrder.pass_type}</p>
-                        </div>
-                        <div>
-                          <Label className="text-muted-foreground">{language === 'en' ? 'Quantity' : 'Quantité'}</Label>
-                          <p className="font-semibold">{selectedOnlineOrder.quantity}</p>
-                        </div>
-                        <div>
-                          <Label className="text-muted-foreground">{language === 'en' ? 'Total Price' : 'Prix Total'}</Label>
-                          <p className="font-semibold text-lg">{selectedOnlineOrder.total_price?.toFixed(2) || '0.00'} TND</p>
-                        </div>
-                      </div>
-                    );
-                  }
-                })()}
-                </CardContent>
-              </Card>
-
-              {/* Payment Gateway Information */}
-              {(selectedOnlineOrder.transaction_id || selectedOnlineOrder.payment_gateway_reference || selectedOnlineOrder.payment_response_data) && (
-                <Card className="bg-muted/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <CreditCard className="w-5 h-5 text-primary" />
-                      {language === 'en' ? 'Payment Gateway Information' : 'Informations Passerelle de Paiement'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {selectedOnlineOrder.transaction_id && (
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <FileText className="w-3 h-3" />
-                            {language === 'en' ? 'Transaction ID' : 'ID Transaction'}
-                          </Label>
-                          <p className="font-mono text-sm break-all">{selectedOnlineOrder.transaction_id}</p>
-                        </div>
-                      )}
-                      {selectedOnlineOrder.payment_gateway_reference && (
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Database className="w-3 h-3" />
-                            {language === 'en' ? 'Payment Gateway Reference' : 'Référence Passerelle'}
-                          </Label>
-                          <p className="font-mono text-sm break-all">{selectedOnlineOrder.payment_gateway_reference}</p>
-                        </div>
-                      )}
-                      {selectedOnlineOrder.payment_response_data && (
-                        <div className="md:col-span-2 space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <FileText className="w-3 h-3" />
-                            {language === 'en' ? 'Payment Response Data' : 'Données de Réponse'}
-                          </Label>
-                          <pre className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-auto max-h-40">
-                            {JSON.stringify(selectedOnlineOrder.payment_response_data, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Payment Logs Section (Future-ready, empty for now) */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Payment Logs' : 'Journaux de Paiement'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="p-4 bg-background border rounded-lg text-center text-muted-foreground">
-                    <p className="text-sm">
-                      {language === 'en' 
-                        ? 'Payment logs will appear here once the payment gateway integration is complete.'
-                        : 'Les journaux de paiement apparaîtront ici une fois l\'intégration de la passerelle de paiement terminée.'}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Admin Actions */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Admin Actions' : 'Actions Administrateur'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="default"
-                    onClick={() => updateOnlineOrderStatus(selectedOnlineOrder.id, 'PAID')}
-                    disabled={selectedOnlineOrder.payment_status === 'PAID'}
-                  >
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    {language === 'en' ? 'Mark as Paid' : 'Marquer comme Payé'}
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => updateOnlineOrderStatus(selectedOnlineOrder.id, 'FAILED')}
-                    disabled={selectedOnlineOrder.payment_status === 'FAILED'}
-                  >
-                    <XCircle className="w-4 h-4 mr-2" />
-                    {language === 'en' ? 'Mark as Failed' : 'Marquer comme Échoué'}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => updateOnlineOrderStatus(selectedOnlineOrder.id, 'REFUNDED')}
-                    disabled={selectedOnlineOrder.payment_status === 'REFUNDED'}
-                  >
-                    <ArrowDown className="w-4 h-4 mr-2" />
-                    {language === 'en' ? 'Mark as Refunded' : 'Marquer comme Remboursé'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      toast({
-                        title: language === 'en' ? 'Coming Soon' : 'Bientôt Disponible',
-                        description: language === 'en' ? 'Email/SMS templates will be available soon' : 'Les modèles d\'email/SMS seront bientôt disponibles',
-                        variant: "default",
-                      });
-                    }}
-                  >
-                    <Send className="w-4 h-4 mr-2" />
-                    {language === 'en' ? 'Resend Email/SMS' : 'Renvoyer Email/SMS'}
-                  </Button>
-                </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Ambassador Information Dialog */}
-      <Dialog open={isAmbassadorInfoDialogOpen} onOpenChange={(open) => {
-        setIsAmbassadorInfoDialogOpen(open);
-        if (!open) {
-          setSelectedOrderAmbassador(null);
-        }
-      }}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="text-2xl flex items-center gap-2">
-              <User className="w-6 h-6 text-primary" />
-              {language === 'en' ? 'Ambassador Information' : 'Informations Ambassadeur'}
-            </DialogTitle>
-          </DialogHeader>
-          {selectedOrderAmbassador && (
-            <div className="space-y-6">
-              {/* Contact Information */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Phone className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Contact Information' : 'Informations de Contact'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-2">
-                        <User className="w-4 h-4" />
-                        {language === 'en' ? 'Full Name' : 'Nom Complet'}
-                      </Label>
-                      <p className="text-sm font-semibold">{selectedOrderAmbassador.full_name}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-2">
-                        <Phone className="w-4 h-4" />
-                        {language === 'en' ? 'Phone' : 'Téléphone'}
-                      </Label>
-                      <p className="text-sm font-mono">{selectedOrderAmbassador.phone}</p>
-                    </div>
-                    {selectedOrderAmbassador.email && (
-                      <div className="space-y-2 md:col-span-2">
-                        <Label className="text-xs text-muted-foreground flex items-center gap-2">
-                          <Mail className="w-4 h-4" />
-                          {language === 'en' ? 'Email' : 'Email'}
-                        </Label>
-                        <p className="text-sm break-all">{selectedOrderAmbassador.email}</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Location Information */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Location' : 'Localisation'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground flex items-center gap-2">
-                        <MapPin className="w-4 h-4" />
-                        {language === 'en' ? 'City' : 'Ville'}
-                      </Label>
-                      <p className="text-sm font-semibold">{selectedOrderAmbassador.city}</p>
-                    </div>
-                    {selectedOrderAmbassador.ville && (
-                      <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground flex items-center gap-2">
-                          <MapPin className="w-4 h-4" />
-                          {language === 'en' ? 'Neighborhood' : 'Quartier'}
-                        </Label>
-                        <p className="text-sm font-semibold">{selectedOrderAmbassador.ville}</p>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Commission Information */}
-              {selectedOrderAmbassador.commission_rate !== undefined && (
-                <Card className="bg-muted/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <DollarSign className="w-5 h-5 text-primary" />
-                      {language === 'en' ? 'Commission Details' : 'Détails de Commission'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-4">
-                      <div className="flex-1">
-                        <Label className="text-xs text-muted-foreground">
-                          {language === 'en' ? 'Commission Rate' : 'Taux de Commission'}
-                        </Label>
-                        <div className="mt-2 flex items-baseline gap-2">
-                          <span className="text-3xl font-bold text-primary">
-                            {selectedOrderAmbassador.commission_rate || 0}%
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            {language === 'en' ? 'per order' : 'par commande'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AmbassadorInfoDialog
+        open={isAmbassadorInfoDialogOpen}
+        onOpenChange={(open) => {
+          setIsAmbassadorInfoDialogOpen(open);
+          if (!open) setSelectedOrderAmbassador(null);
+        }}
+        ambassador={selectedOrderAmbassador}
+        language={language}
+      />
 
       {confirmDelete && (
         <ConfirmDialog
           open={!!confirmDelete}
           onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}
           title={confirmDelete.kind === 'delete-admin'
-            ? (language === 'en' ? 'Are you sure you want to delete this admin? This action cannot be undone.' : 'Êtes-vous sûr de vouloir supprimer cet admin? Cette action ne peut pas être annulée.')
-            : (language === 'en' ? `Are you sure you want to delete "${confirmDelete.passName}"? This action cannot be undone.` : `Êtes-vous sûr de vouloir supprimer "${confirmDelete.passName}" ? Cette action est irréversible.`)}
+            ? (language === 'en' ? 'Are you sure you want to delete this admin? This action cannot be undone.' : 'ÃŠtes-vous sÃ»r de vouloir supprimer cet admin? Cette action ne peut pas Ãªtre annulÃ©e.')
+            : (language === 'en' ? `Are you sure you want to delete "${confirmDelete.passName}"? This action cannot be undone.` : `ÃŠtes-vous sÃ»r de vouloir supprimer "${confirmDelete.passName}" ? Cette action est irrÃ©versible.`)}
           confirmLabel={language === 'en' ? 'Confirm' : 'Confirmer'}
           cancelLabel={language === 'en' ? 'Cancel' : 'Annuler'}
           onConfirm={() => {

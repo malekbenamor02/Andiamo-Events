@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
+import { HelmetProvider, Helmet } from "react-helmet-async";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { JsonLdOrganization, JsonLdLocalBusiness, JsonLdWebSite } from "@/components/JsonLd";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import Navigation from "./components/layout/Navigation";
@@ -16,7 +18,6 @@ import About from "./pages/About";
 import Contact from "./pages/Contact";
 import NotFound from "./pages/NotFound";
 import Terms from "./pages/Terms";
-import RefundPolicy from "./pages/RefundPolicy";
 import ScrollToTop from "./components/layout/ScrollToTop";
 import Auth from "./pages/ambassador/Auth";
 import AdminLogin from "./pages/admin/Login";
@@ -71,9 +72,21 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
 
   return (
     <>
+      <Helmet>
+        <html lang={language === "fr" ? "fr" : "en"} />
+        <meta property="og:locale" content={language === "fr" ? "fr_FR" : "en_US"} />
+        <meta property="og:locale:alternate" content={language === "fr" ? "en_US" : "fr_FR"} />
+      </Helmet>
       <FaviconLoader />
       <DisableInspect />
       <ScrollToTop />
+      {!isScanner && !isPos && (
+          <>
+            <JsonLdWebSite />
+            <JsonLdOrganization />
+            <JsonLdLocalBusiness />
+          </>
+        )}
       <MaintenanceMode language={language}>
         <div className="min-h-screen bg-background">
           {!isScanner && !isPos && <Navigation language={language} toggleLanguage={toggleLanguage} />}
@@ -105,7 +118,6 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
             } />
             <Route path="/contact" element={<Contact language={language} />} />
             <Route path="/terms" element={<Terms language={language} />} />
-            <Route path="/refund-policy" element={<RefundPolicy language={language} />} />
             {/* Friendly URL route for event pass purchase: /event-slug */}
             <Route path="/:eventSlug" element={<PassPurchase language={language} />} />
             <Route path="*" element={<NotFound />} />
@@ -131,17 +143,19 @@ const App = () => {
 
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AppContent language={language} toggleLanguage={toggleLanguage} />
-          </BrowserRouter>
-          <Analytics />
-          <SpeedInsights />
-        </TooltipProvider>
-      </QueryClientProvider>
+      <HelmetProvider>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <AppContent language={language} toggleLanguage={toggleLanguage} />
+            </BrowserRouter>
+            <Analytics />
+            <SpeedInsights />
+          </TooltipProvider>
+        </QueryClientProvider>
+      </HelmetProvider>
     </ErrorBoundary>
   );
 };

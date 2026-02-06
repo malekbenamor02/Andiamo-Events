@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import TeamSection from "@/components/home/TeamSection";
+import { PageMeta } from "@/components/PageMeta";
+import { JsonLdFAQ, JsonLdBreadcrumb } from "@/components/JsonLd";
 
 interface AboutProps {
   language: 'en' | 'fr';
@@ -251,7 +253,32 @@ const About = ({ language }: AboutProps) => {
   }
 
   return (
-    <div className="min-h-screen bg-background pt-16 overflow-x-hidden">
+    <main className="min-h-screen bg-background pt-16 overflow-x-hidden" id="main-content">
+      <PageMeta
+        title="About Us"
+        description="Andiamo Events and Born To Lead (BTL) – creating innovative event experiences in Tunisia. Our mission, team and cities. Youth-focused nightlife."
+        path="/about"
+      />
+      <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "About", url: "/about" }]} />
+      <JsonLdFAQ
+        items={
+          language === "en"
+            ? [
+                { question: "What is Andiamo Events?", answer: "Andiamo Events is Tunisia's premier nightlife and events brand, creating memorable experiences including concerts, parties, and festivals across Tunis, Sousse, and other cities." },
+                { question: "How can I buy tickets for Andiamo events?", answer: "You can buy tickets online on our website. Select an event, choose your pass, and pay securely by card or via our ambassador network. You will receive your e-ticket with QR code by email." },
+                { question: "Where do Andiamo events take place?", answer: "We organize events in major cities in Tunisia including Tunis, Sousse, Monastir, Hammamet, and Sfax. Each event page shows the exact venue and address." },
+                { question: "How do I get my ticket after purchase?", answer: "After payment, you receive an email with your e-ticket and a unique QR code. Present this QR code (on your phone or printed) at the entrance on the day of the event." },
+                { question: "Who organizes Andiamo Events?", answer: "Andiamo Events is a brand of Born To Lead (BTL), a Tunisian event agency run by young professionals, focused on innovative and safe events for youth." },
+              ]
+            : [
+                { question: "Qu'est-ce qu'Andiamo Events ?", answer: "Andiamo Events est la marque tunisienne de nuit et d'événements qui crée des expériences mémorables : concerts, soirées et festivals à Tunis, Sousse et d'autres villes." },
+                { question: "Comment acheter des billets pour les événements Andiamo ?", answer: "Vous pouvez acheter vos billets en ligne sur notre site : choisissez l'événement, le pass, et payez par carte ou via notre réseau d'ambassadeurs. Vous recevrez votre e-billet avec QR code par email." },
+                { question: "Où ont lieu les événements Andiamo ?", answer: "Nous organisons des événements dans les grandes villes de Tunisie : Tunis, Sousse, Monastir, Hammamet, Sfax. La page de chaque événement indique le lieu et l'adresse exacte." },
+                { question: "Comment recevoir mon billet après l'achat ?", answer: "Après le paiement, vous recevez un email avec votre e-billet et un QR code unique. Présentez ce QR code (sur téléphone ou imprimé) à l'entrée le jour de l'événement." },
+                { question: "Qui organise Andiamo Events ?", answer: "Andiamo Events est une marque de Born To Lead (BTL), agence événementielle tunisienne gérée par de jeunes professionnels, dédiée à des événements innovants et sécurisés pour la jeunesse." },
+              ]
+        }
+      />
       {/* 1️⃣ BTL Hero Section - Left Aligned */}
       <section className="relative py-20 md:py-32 overflow-hidden animate-page-intro">
         {/* Enhanced animated background elements */}
@@ -488,6 +515,38 @@ const About = ({ language }: AboutProps) => {
         <TeamSection language={language} />
       </section>
 
+      {/* FAQ Section */}
+      <section className="py-16 md:py-24 relative bg-gradient-to-b from-muted/30 to-transparent" aria-label={language === "en" ? "Frequently asked questions" : "Questions fréquentes"}>
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-2xl md:text-3xl font-heading font-bold mb-10 text-center text-gradient-neon uppercase">
+            {language === "en" ? "Frequently Asked Questions" : "Questions Fréquentes"}
+          </h2>
+          <div className="space-y-6">
+            {(language === "en"
+              ? [
+                  { q: "What is Andiamo Events?", a: "Andiamo Events is Tunisia's premier nightlife and events brand, creating memorable experiences including concerts, parties, and festivals across Tunis, Sousse, and other cities." },
+                  { q: "How can I buy tickets?", a: "Buy tickets online on our website: select an event, choose your pass, and pay securely. You will receive your e-ticket with QR code by email." },
+                  { q: "Where do events take place?", a: "We organize events in Tunis, Sousse, Monastir, Hammamet, and Sfax. Each event page shows the exact venue and address." },
+                  { q: "How do I get my ticket after purchase?", a: "After payment you receive an email with your e-ticket and a unique QR code. Present this QR code at the entrance on the day of the event." },
+                  { q: "Who organizes Andiamo Events?", a: "Andiamo Events is a brand of Born To Lead (BTL), a Tunisian event agency run by young professionals." },
+                ]
+              : [
+                  { q: "Qu'est-ce qu'Andiamo Events ?", a: "Andiamo Events est la marque tunisienne de nuit et d'événements qui crée des expériences mémorables : concerts, soirées et festivals à Tunis, Sousse et d'autres villes." },
+                  { q: "Comment acheter des billets ?", a: "Achetez vos billets en ligne sur notre site : choisissez l'événement, le pass, et payez en toute sécurité. Vous recevrez votre e-billet avec QR code par email." },
+                  { q: "Où ont lieu les événements ?", a: "Nous organisons des événements à Tunis, Sousse, Monastir, Hammamet et Sfax. La page de chaque événement indique le lieu et l'adresse." },
+                  { q: "Comment recevoir mon billet après l'achat ?", a: "Après le paiement vous recevez un email avec votre e-billet et un QR code unique. Présentez ce QR code à l'entrée le jour de l'événement." },
+                  { q: "Qui organise Andiamo Events ?", a: "Andiamo Events est une marque de Born To Lead (BTL), agence événementielle tunisienne gérée par de jeunes professionnels." },
+                ]
+            ).map((faq, i) => (
+              <div key={i} className="border border-border/50 rounded-xl p-5 bg-card/50 backdrop-blur-sm">
+                <h3 className="font-semibold text-lg mb-2 text-foreground">{faq.q}</h3>
+                <p className="text-muted-foreground leading-relaxed">{faq.a}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section - Modern Redesign */}
       <section className="py-20 md:py-32 bg-gradient-to-br from-primary via-primary/80 to-primary/60 relative overflow-hidden">
         {/* Enhanced animated background elements */}
@@ -515,7 +574,7 @@ const About = ({ language }: AboutProps) => {
           <div className="w-32 h-1 bg-gradient-to-r from-transparent via-white/50 to-transparent mx-auto rounded-full"></div>
         </div>
       </section>
-    </div>
+    </main>
   );
 };
 

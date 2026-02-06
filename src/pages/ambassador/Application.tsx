@@ -15,6 +15,7 @@ import { User, Users, Zap, Mail, Phone, MapPin, Instagram, FileText, Calendar, A
 // @ts-ignore
 import DOMPurify from 'dompurify';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import { PageMeta } from '@/components/PageMeta';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
 interface ApplicationProps {
@@ -471,7 +472,12 @@ const Application = ({ language }: ApplicationProps) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-dark flex flex-col items-center justify-start p-0 md:p-8 relative overflow-hidden animate-page-intro">
+    <main className="min-h-screen bg-gradient-dark flex flex-col items-center justify-start p-0 md:p-8 relative overflow-hidden animate-page-intro" id="main-content">
+      <PageMeta
+        title="Become an Ambassador"
+        description="Join Andiamo Events as an ambassador. Earn commissions, get exclusive perks and be part of Tunisia's nightlife community. Apply now."
+        path="/ambassador"
+      />
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-float" />
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-float delay-1000" />
@@ -812,7 +818,7 @@ const Application = ({ language }: ApplicationProps) => {
             </CardContent>
         </Card>
       </div>
-    </div>
+    </main>
   );
 };
 

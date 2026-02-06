@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Calendar, MapPin, ExternalLink } from "lucide-react";
+import { Link } from "react-router-dom";
 import HeroSection from "@/components/home/HeroSection";
+import { PageMeta } from "@/components/PageMeta";
+import { JsonLdWebPage } from "@/components/JsonLd";
 import placeholder from "/placeholder.svg";
 import { supabase } from "@/integrations/supabase/client";
 import CounterSection from "@/components/home/CounterSection";
@@ -27,6 +30,12 @@ interface Event {
 interface IndexProps {
   language: 'en' | 'fr';
 }
+
+const INDEX_META = {
+  title: "Andiamo Events | Nightlife & Events in Tunisia – We Create Memories",
+  description:
+    "Andiamo Events – Tunisia's premier nightlife & events. Discover upcoming parties, concerts and experiences. Buy tickets online. We create memories.",
+};
 
 const Index = ({ language }: IndexProps) => {
   const navigate = useNavigate();
@@ -142,7 +151,13 @@ const Index = ({ language }: IndexProps) => {
   };
 
   return (
-    <div className="relative">
+    <main className="relative" id="main-content">
+      <PageMeta title={INDEX_META.title} description={INDEX_META.description} path="/" />
+      <JsonLdWebPage
+        name="Andiamo Events – Nightlife & Events in Tunisia | Buy Tickets"
+        description="Andiamo Events – Tunisia's premier nightlife and events. Discover upcoming concerts, parties and festivals in Tunis, Sousse and across Tunisia. Buy tickets online. We create memories."
+        path="/"
+      />
       {/* Loading Screen - Appears instantly to prevent blank screen */}
       {/* Only waits for critical hero assets: images (decoded) + videos (first frame) */}
       {!heroMediaLoaded && (
@@ -173,6 +188,31 @@ const Index = ({ language }: IndexProps) => {
         >
         <HeroSection language={language} onMediaLoaded={() => setHeroMediaLoaded(true)} />
         </div>
+
+      {/* SEO: Keyword-rich intro + internal links */}
+      <section className="py-10 px-4 sm:px-6 lg:px-8 bg-background/50" aria-label={language === "en" ? "About Andiamo Events" : "À propos d'Andiamo Events"}>
+        <div className="max-w-4xl mx-auto text-center">
+          <p className="text-lg md:text-xl text-muted-foreground leading-relaxed">
+            {language === "en" ? (
+              <>
+                <strong className="text-foreground">Andiamo Events</strong> is Tunisia's leading event and nightlife brand. Discover{" "}
+                <Link to="/events" className="text-primary font-medium hover:underline">upcoming events</Link>
+                {" "}— concerts, parties and festivals in <strong className="text-foreground">Tunis</strong>, <strong className="text-foreground">Sousse</strong> and across Tunisia.{" "}
+                <Link to="/about" className="text-primary font-medium hover:underline">Learn more about us</Link>
+                {" "}or <Link to="/contact" className="text-primary font-medium hover:underline">get in touch</Link>. Buy tickets online and create memories.
+              </>
+            ) : (
+              <>
+                <strong className="text-foreground">Andiamo Events</strong> est la marque tunisienne d'événements et de vie nocturne. Découvrez nos{" "}
+                <Link to="/events" className="text-primary font-medium hover:underline">prochains événements</Link>
+                {" "}— concerts, soirées et festivals à <strong className="text-foreground">Tunis</strong>, <strong className="text-foreground">Sousse</strong> et en Tunisie.{" "}
+                <Link to="/about" className="text-primary font-medium hover:underline">En savoir plus</Link>
+                {" "}ou <Link to="/contact" className="text-primary font-medium hover:underline">nous contacter</Link>. Achetez vos billets en ligne.
+              </>
+            )}
+          </p>
+        </div>
+      </section>
 
       {/* Counter Section with Scroll Animation */}
       <div 
@@ -210,7 +250,7 @@ const Index = ({ language }: IndexProps) => {
       <SponsorsSection language={language} />
       </div>
       </div>
-    </div>
+    </main>
   );
 };
 

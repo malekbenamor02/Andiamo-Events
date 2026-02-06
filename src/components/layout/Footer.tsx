@@ -101,17 +101,17 @@ const Footer = ({ language }: FooterProps) => {
   const quickLinks = {
     en: [
       { name: "Events", href: "/events" },
-      
       { name: "About", href: "/about" },
       { name: "Ambassador", href: "/ambassador" },
       { name: "Contact", href: "/contact" },
+      { name: "Terms", href: "/terms" },
     ],
     fr: [
       { name: "Événements", href: "/events" },
-      
       { name: "À Propos", href: "/about" },
       { name: "Ambassadeur", href: "/ambassador" },
       { name: "Contact", href: "/contact" },
+      { name: "CGV", href: "/terms" },
     ]
   };
 

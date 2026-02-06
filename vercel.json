@@ -316,8 +316,19 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemap"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/refund-policy",
+      "destination": "/terms",
+      "permanent": true
     }
   ],
   "functions": {

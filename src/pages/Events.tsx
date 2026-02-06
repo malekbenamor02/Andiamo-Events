@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import LoadingScreen from "@/components/ui/LoadingScreen";
+import { PageMeta } from "@/components/PageMeta";
+import { JsonLdWebPage, JsonLdBreadcrumb, JsonLdItemList } from "@/components/JsonLd";
 import { generateSlug } from "@/lib/utils";
 import { useEvents, type Event } from "@/hooks/useEvents";
 
@@ -485,7 +487,26 @@ const Events = ({ language }: EventsProps) => {
   }
 
   return (
-    <div className="pt-16 min-h-screen bg-background animate-page-intro">
+    <main className="pt-16 min-h-screen bg-background animate-page-intro" id="main-content">
+      <PageMeta
+        title="Upcoming Events"
+        description="Discover upcoming nightlife events and parties in Tunisia. Andiamo Events – concerts, festivals and experiences. Get tickets online."
+        path="/events"
+      />
+      <JsonLdWebPage
+        name="Upcoming Events | Andiamo Events – Tunisia Concerts & Parties"
+        description="Discover upcoming events in Tunisia. Concerts, parties and festivals in Tunis, Sousse and more. Buy tickets online. Andiamo Events."
+        path="/events"
+      />
+      <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Events", url: "/events" }]} />
+      {upcomingEvents.length > 0 && (
+        <JsonLdItemList
+          items={upcomingEvents.slice(0, 20).map((e) => ({
+            name: e.name,
+            url: `/event/event-${e.id}`,
+          }))}
+        />
+      )}
       {/* Header */}
       <section className="py-20 bg-gradient-dark">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -494,6 +515,11 @@ const Events = ({ language }: EventsProps) => {
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto animate-in slide-in-from-bottom-4 duration-1000 delay-300">
             {content[language].subtitle}
+          </p>
+          <p className="text-base text-muted-foreground/90 max-w-2xl mx-auto mt-4 animate-in slide-in-from-bottom-4 duration-1000 delay-500">
+            {language === "en"
+              ? "Find concerts, parties and festivals in Tunis, Sousse, Monastir, Hammamet and across Tunisia. Book your tickets online."
+              : "Trouvez concerts, soirées et festivals à Tunis, Sousse, Monastir, Hammamet et en Tunisie. Réservez vos billets en ligne."}
           </p>
         </div>
       </section>
@@ -532,6 +558,8 @@ const Events = ({ language }: EventsProps) => {
                         src={event.poster_url || "/api/placeholder/400/300"}
                         alt={event.name}
                         className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-90"
+                        loading="lazy"
+                        decoding="async"
                       />
                       
                       {/* Overlay Layer - Smooth fade in, not too strong */}
@@ -820,6 +848,8 @@ const Events = ({ language }: EventsProps) => {
                           src={media.url}
                           alt={`Thumbnail ${index + 1}`}
                           className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
                         />
                       )}
                     </button>
@@ -1489,7 +1519,7 @@ const Events = ({ language }: EventsProps) => {
           )}
         </div>
       )}
-    </div>
+    </main>
   );
 };
 

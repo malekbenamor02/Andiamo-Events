@@ -72,9 +72,16 @@ const app = express();
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
 // Default production origins (can be overridden via ALLOWED_ORIGINS env var)
+// Include localhost for local dev when NODE_ENV=production (e.g. npm run dev with production build)
 const defaultProductionOrigins = [
   'https://www.andiamoevents.com',
-  'https://andiamoevents.com'
+  'https://andiamoevents.com',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+  /^http:\/\/localhost:\d+$/,
+  /^http:\/\/127\.0\.0\.1:\d+$/
 ];
 
 const allowedOrigins = isDevelopment

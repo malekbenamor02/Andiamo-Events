@@ -1,3 +1,6 @@
+import { PageMeta } from "@/components/PageMeta";
+import { JsonLdBreadcrumb } from "@/components/JsonLd";
+
 interface TermsProps {
   language: 'en' | 'fr';
 }
@@ -291,7 +294,13 @@ const Terms = ({ language }: TermsProps) => {
   const pageContent = content[language];
 
   return (
-    <div className="pt-16 min-h-screen bg-background">
+    <main className="pt-16 min-h-screen bg-background" id="main-content">
+      <PageMeta
+        title="Terms and Conditions"
+        description="Andiamo Events terms and conditions of sale. Tickets, payment, QR code access and event rules. Tunisia."
+        path="/terms"
+      />
+      <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Terms and Conditions", url: "/terms" }]} />
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-4 uppercase">
@@ -326,7 +335,7 @@ const Terms = ({ language }: TermsProps) => {
           </a>
         </div>
       </div>
-    </div>
+    </main>
   );
 };
 

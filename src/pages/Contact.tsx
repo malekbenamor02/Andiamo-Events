@@ -6,6 +6,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { logFormSubmission, logger } from "@/lib/logger";
 import { Mail, Phone, MapPin } from "lucide-react";
+import { PageMeta } from "@/components/PageMeta";
+import { JsonLdBreadcrumb } from "@/components/JsonLd";
 
 interface ContactProps {
   language: 'en' | 'fr';
@@ -197,7 +199,13 @@ const Contact = ({ language }: ContactProps) => {
   // Content will update when data is fetched
 
   return (
-    <div className="pt-16 min-h-screen bg-background relative overflow-hidden">
+    <main className="pt-16 min-h-screen bg-background relative overflow-hidden" id="main-content">
+      <PageMeta
+        title="Contact"
+        description="Get in touch with Andiamo Events – customer service, inquiries and support. Tunisia events and ticketing."
+        path="/contact"
+      />
+      <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Contact", url: "/contact" }]} />
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 relative z-10">
         {/* Hero Section with Animation */}
         <div 
@@ -379,7 +387,7 @@ const Contact = ({ language }: ContactProps) => {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 };
 

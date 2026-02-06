@@ -20,6 +20,7 @@ import { useActiveAmbassadors } from '@/hooks/useActiveAmbassadors';
 import { PaymentMethod } from '@/lib/constants/orderStatuses';
 import { CustomerInfo, SelectedPass, Ambassador } from '@/types/orders';
 import { createOrder } from '@/lib/orders/orderService';
+import { PageMeta } from '@/components/PageMeta';
 
 interface EventPass {
   id: string;
@@ -779,8 +780,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     );
   }
 
+  const purchasePath = eventSlug ? `/${eventSlug}` : '/pass-purchase';
+  const purchaseTitle = event ? `Buy Tickets – ${event.name} | Andiamo Events` : 'Buy Tickets | Andiamo Events';
+  const purchaseDescription = event
+    ? (event.description?.slice(0, 155) || `Get tickets for ${event.name} – ${event.venue}, ${event.city}.`)
+    : 'Purchase event passes and tickets for Andiamo Events. Secure online payment. Tunisia.';
+
   return (
-    <div className="min-h-screen bg-gradient-dark pt-16">
+    <main className="min-h-screen bg-gradient-dark pt-16" id="main-content">
+      <PageMeta title={purchaseTitle} description={purchaseDescription} path={purchasePath} />
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="flex items-center mb-8">
@@ -1259,7 +1267,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           </div>
         </form>
       </div>
-    </div>
+    </main>
   );
 };
 

@@ -365,7 +365,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
               ) : (
                 <img
                   src={slide.src}
-                  alt={slide.alt || `Hero slide ${index + 1}`}
+                  alt={slide.alt || `Andiamo Events – Hero image ${index + 1}`}
                   className="w-full h-full object-cover"
                   style={{ objectFit: 'cover' }}
                   loading="eager"

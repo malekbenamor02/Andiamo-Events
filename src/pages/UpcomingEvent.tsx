@@ -19,6 +19,10 @@ import LoadingScreen from "@/components/ui/LoadingScreen";
 import { generateSlug } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ExpandableText } from "@/components/ui/expandable-text";
+import { Helmet } from "react-helmet-async";
+import { PageMeta } from "@/components/PageMeta";
+import { JsonLdEvent, JsonLdBreadcrumb } from "@/components/JsonLd";
+import { SITE_URL } from "@/lib/seo";
 import { useEvents, useFeaturedEvents, type Event } from "@/hooks/useEvents";
 
 // Event type is imported from useEvents hook
@@ -173,6 +177,9 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
   }
 
   const eventUrl = `event-${event.id}`;
+  const eventPath = `/event/${eventSlug}`;
+  const eventImage = event.poster_url?.startsWith("http") ? event.poster_url : event.poster_url ? `${SITE_URL}${event.poster_url}` : undefined;
+  const startDateIso = event.date?.includes("T") ? event.date : event.date ? `${event.date}T20:00:00` : "";
 
   // Past or completed events: no Book Now, no pass purchase
   const isEventPastOrCompleted = useMemo(() => {
@@ -183,7 +190,37 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
   }, [event?.date, event?.event_status]);
 
   return (
-    <div className="pt-16 min-h-screen bg-background animate-page-intro">
+    <main className="pt-16 min-h-screen bg-background animate-page-intro" id="main-content">
+      <PageMeta
+        title={`${event.name} | ${event.date ? new Date(event.date).toLocaleDateString(language, { month: "short", day: "numeric", year: "numeric" }) : ""} | ${event.venue}`}
+        description={event.description?.slice(0, 155) || `${event.name} – ${event.venue}, ${event.city}. Get tickets.`}
+        path={eventPath}
+        image={eventImage}
+      />
+      {startDateIso && (
+        <JsonLdEvent
+          name={event.name}
+          description={event.description || event.name}
+          startDate={startDateIso}
+          venue={event.venue}
+          city={event.city}
+          image={event.poster_url || ""}
+          eventUrl={eventPath}
+          status={event.event_status === "cancelled" ? "cancelled" : event.event_status === "completed" ? "completed" : "scheduled"}
+        />
+      )}
+      <JsonLdBreadcrumb
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Events", url: "/events" },
+          { name: event.name, url: eventPath },
+        ]}
+      />
+      {eventImage && (
+        <Helmet>
+          <link rel="preload" as="image" href={eventImage} />
+        </Helmet>
+      )}
       {/* Hero Section */}
       <section className="relative w-full h-[70vh] md:h-[80vh] overflow-hidden">
         <div className="absolute inset-0 animate-blur-to-sharp">
@@ -468,7 +505,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
           </div>
         </section>
       )}
-    </div>
+    </main>
   );
 };
 

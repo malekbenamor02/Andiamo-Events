@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
+import { PageMeta } from "@/components/PageMeta";
 import { Home, ArrowLeft, Search, Sparkles, Zap, Star, Heart } from "lucide-react";
 
 interface NotFoundContent {
@@ -63,7 +64,8 @@ const NotFound = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background pt-16 relative overflow-hidden flex items-center justify-center">
+    <main className="min-h-screen bg-background pt-16 relative overflow-hidden flex items-center justify-center" id="main-content">
+      <PageMeta title="Page Not Found" description="The page you are looking for does not exist." path={location.pathname} noIndex />
       {/* Animated Background Elements */}
       <div className="absolute inset-0 pointer-events-none">
         {/* Gradient Orbs */}
@@ -172,7 +174,7 @@ const NotFound = () => {
           <div className="absolute -bottom-10 -right-10 w-16 h-16 bg-primary/10 rounded-full blur-xl animate-pulse delay-1000" />
         </div>
       </div>
-    </div>
+    </main>
   );
 };
 

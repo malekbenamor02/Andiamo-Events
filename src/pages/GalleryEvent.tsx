@@ -25,6 +25,10 @@ import LoadingScreen from "@/components/ui/LoadingScreen";
 import { generateSlug } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ExpandableText } from "@/components/ui/expandable-text";
+import { Helmet } from "react-helmet-async";
+import { PageMeta } from "@/components/PageMeta";
+import { JsonLdEvent, JsonLdBreadcrumb } from "@/components/JsonLd";
+import { SITE_URL } from "@/lib/seo";
 
 interface Event {
   id: string;
@@ -350,8 +354,42 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
     );
   }
 
+  const eventPath = `/gallery/${eventSlug}`;
+  const eventImage = event.poster_url?.startsWith("http") ? event.poster_url : event.poster_url ? `${SITE_URL}${event.poster_url}` : undefined;
+  const startDateIso = event.date?.includes("T") ? event.date : event.date ? `${event.date}T20:00:00` : "";
+
   return (
-    <div className="pt-16 min-h-screen bg-background animate-page-intro">
+    <main className="pt-16 min-h-screen bg-background animate-page-intro" id="main-content">
+      <PageMeta
+        title={`${event.name} – Gallery | Andiamo Events`}
+        description={event.description?.slice(0, 155) || `${event.name} – ${event.venue}, ${event.city}. Past event gallery.`}
+        path={eventPath}
+        image={eventImage}
+      />
+      {startDateIso && (
+        <JsonLdEvent
+          name={event.name}
+          description={event.description || event.name}
+          startDate={startDateIso}
+          venue={event.venue}
+          city={event.city}
+          image={event.poster_url || ""}
+          eventUrl={eventPath}
+          status="completed"
+        />
+      )}
+      <JsonLdBreadcrumb
+        items={[
+          { name: "Home", url: "/" },
+          { name: "Events", url: "/events" },
+          { name: `${event.name} – Gallery`, url: eventPath },
+        ]}
+      />
+      {eventImage && (
+        <Helmet>
+          <link rel="preload" as="image" href={eventImage} />
+        </Helmet>
+      )}
       {/* 1️⃣ Hero Section – Event Memory Cover */}
       <section className="relative w-full h-[70vh] md:h-[80vh] overflow-hidden">
         <div className="absolute inset-0 animate-blur-to-sharp">
@@ -540,7 +578,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
                     allMedia[0].type === 'video' ? (
                       <video src={allMedia[0].url} className="w-full h-full object-cover" muted playsInline loop />
                     ) : (
-                      <img src={allMedia[0].url} alt="Highlight 1" className="w-full h-full object-cover" />
+                      <img src={allMedia[0].url} alt={`${event.name} – Gallery highlight 1`} className="w-full h-full object-cover" />
                     )
                   )}
                 </div>
@@ -556,7 +594,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
                       allMedia[1].type === 'video' ? (
                         <video src={allMedia[1].url} className="w-full h-full object-cover" muted playsInline loop />
                       ) : (
-                        <img src={allMedia[1].url} alt="Highlight 2" className="w-full h-full object-cover" />
+                        <img src={allMedia[1].url} alt={`${event.name} – Gallery highlight 2`} className="w-full h-full object-cover" />
                       )
                     )}
                   </div>
@@ -573,7 +611,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
                       allMedia[2].type === 'video' ? (
                         <video src={allMedia[2].url} className="w-full h-full object-cover" muted playsInline loop />
                       ) : (
-                        <img src={allMedia[2].url} alt="Highlight 3" className="w-full h-full object-cover" />
+                        <img src={allMedia[2].url} alt={`${event.name} – Gallery highlight 3`} className="w-full h-full object-cover" />
                       )
                     )}
                   </div>
@@ -609,7 +647,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
                   {media.type === 'video' ? (
                     <video src={media.url} className="w-full h-full object-cover" muted playsInline loop />
                   ) : (
-                    <img src={media.url} alt={`People ${index + 1}`} className="w-full h-full object-cover" />
+                    <img src={media.url} alt={`${event.name} – Gallery photo ${index + 1}`} className="w-full h-full object-cover" />
                   )}
                 </div>
               ))}
@@ -788,7 +826,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 };
 
