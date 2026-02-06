@@ -9,5 +9,5 @@ Disallow: /ambassador/auth
 Disallow: /payment-processing
 Disallow: /cod-order
 
-# Sitemap (submit this in Google Search Console)
+
 Sitemap: https://www.andiamoevents.com/sitemap.xml
