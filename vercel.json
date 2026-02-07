@@ -325,47 +325,47 @@
     },
     {
       "source": "/xmlrpc.php",
-      "destination": "/api/blocked.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/wp-login.php",
-      "destination": "/api/blocked.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/wp-admin",
-      "destination": "/api/blocked.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/wp-admin/(.*)",
-      "destination": "/api/blocked.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/wp-includes/(.*)",
-      "destination": "/api/blocked.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/wp-config.php",
-      "destination": "/api/blocked.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/.env",
-      "destination": "/api/blocked.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/.git",
-      "destination": "/api/blocked.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/admin.php",
-      "destination": "/api/blocked.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/administrator",
-      "destination": "/api/blocked.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/phpmyadmin",
-      "destination": "/api/blocked.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/((?!api).*)",

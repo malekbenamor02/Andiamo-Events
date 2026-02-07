@@ -408,6 +408,15 @@ export default async (req, res) => {
   const queryString = req.url && req.url.includes('?') ? req.url.split('?')[1] : '';
   const queryParams = queryString ? Object.fromEntries(new URLSearchParams(queryString)) : {};
 
+  // Block scanner/bot paths (WordPress, etc.) - return 410 Gone (avoids extra serverless function)
+  const BLOCKED_PATHS = ['/xmlrpc.php', '/wp-login.php', '/wp-admin', '/wp-config.php', '/.env', '/.git', '/admin.php', '/administrator', '/phpmyadmin'];
+  if (BLOCKED_PATHS.some(p => path === p || path.startsWith(p + '/'))) {
+    return res.status(410).end();
+  }
+  if (/^\/wp-includes\//.test(path)) {
+    return res.status(410).end();
+  }
+
   // Route based on path and method
   try {
     // ============================================
