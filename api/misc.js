@@ -5268,6 +5268,47 @@ We Create Memories`;
     }
     
     // ============================================
+    // GET /api/admin/csp-reports (Admin: View CSP violation reports)
+    // ============================================
+    if (path === '/api/admin/csp-reports' && method === 'GET') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            details: authResult.details || authResult.reason
+          });
+        }
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+        const limit = Math.min(parseInt(req.query?.limit || '100', 10) || 100, 500);
+        const offset = Math.max(parseInt(req.query?.offset || '0', 10) || 0, 0);
+        const { data: reports, error, count } = await supabase
+          .from('csp_reports')
+          .select('*', { count: 'exact' })
+          .order('created_at', { ascending: false })
+          .range(offset, offset + limit - 1);
+        if (error) {
+          return res.status(500).json({ error: 'Failed to fetch CSP reports', details: error.message });
+        }
+        const total = count ?? (reports?.length ?? 0);
+        return res.status(200).json({
+          reports: reports || [],
+          pagination: { total, limit, offset, hasMore: (offset + (reports?.length || 0)) < total }
+        });
+      } catch (error) {
+        console.error('Error in /api/admin/csp-reports:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+    }
+    
+    // ============================================
     // /api/csp-report (CSP Violation Reporting)
     // ============================================
     if (path === '/api/csp-report' && method === 'POST') {
@@ -5296,7 +5337,7 @@ We Create Memories`;
           statusCode: cspReport['status-code'] || cspReport.statusCode || null,
         };
 
-        // Log violation (console for now, can be extended to database)
+        // Log violation to console
         console.warn('🚨 CSP Violation Report:', {
           timestamp: new Date().toISOString(),
           violation: violation.violatedDirective,
@@ -5307,15 +5348,27 @@ We Create Memories`;
           columnNumber: violation.columnNumber,
         });
 
-        // Optional: Store in database for analysis
-        if (process.env.ENABLE_CSP_LOGGING === 'true' && process.env.SUPABASE_URL) {
+        // Store in database for admin viewing (when Supabase is configured)
+        if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
           try {
             const { createClient } = await import('@supabase/supabase-js');
             const supabase = createClient(
               process.env.SUPABASE_URL,
-              process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+              process.env.SUPABASE_SERVICE_ROLE_KEY
             );
-            // Database logging can be enabled here if needed
+            await supabase.from('csp_reports').insert({
+              document_uri: violation.documentUri,
+              referrer: violation.referrer,
+              violated_directive: violation.violatedDirective,
+              effective_directive: violation.effectiveDirective,
+              original_policy: violation.originalPolicy,
+              blocked_uri: violation.blockedUri,
+              source_file: violation.sourceFile,
+              line_number: violation.lineNumber,
+              column_number: violation.columnNumber,
+              status_code: violation.statusCode,
+              raw_report: cspReport,
+            });
           } catch (dbError) {
             console.error('Failed to log CSP violation to database:', dbError);
           }

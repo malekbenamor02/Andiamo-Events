@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -265,6 +265,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
   const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [cspReports, setCspReports] = useState<any[]>([]);
+  const [loadingCspReports, setLoadingCspReports] = useState(false);
   
   // AIO Events Submissions state
   const [aioEventsSubmissions, setAioEventsSubmissions] = useState<any[]>([]);
@@ -4590,6 +4592,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  // Fetch CSP violation reports
+  const fetchCspReports = async () => {
+    try {
+      setLoadingCspReports(true);
+      const url = buildFullApiUrl(API_ROUTES.ADMIN_CSP_REPORTS) + '?limit=100&offset=0';
+      const response = await fetch(url, { credentials: 'include' });
+      if (!response.ok) {
+        if (response.status === 404) return; // Table may not exist yet
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      setCspReports(data.reports || []);
+    } catch (error: any) {
+      console.warn('Failed to fetch CSP reports:', error?.message);
+      setCspReports([]);
+    } finally {
+      setLoadingCspReports(false);
+    }
+  };
+
   // Export AIO Events Submissions to Excel
   const exportAioEventsSubmissionsToExcel = async () => {
     try {
@@ -4792,10 +4814,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [autoRefresh, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load logs when tab is opened
+  // Load logs and CSP reports when tab is opened
   useEffect(() => {
-    if (activeTab === 'logs' && logs.length === 0 && !loadingComprehensiveLogs) {
-      fetchLogs(true);
+    if (activeTab === 'logs') {
+      if (logs.length === 0 && !loadingComprehensiveLogs) fetchLogs(true);
+      fetchCspReports();
     }
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -10579,6 +10602,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 isLogDrawerOpen={isLogDrawerOpen}
                 setIsLogDrawerOpen={setIsLogDrawerOpen}
                 onRefresh={fetchLogs}
+                cspReports={cspReports}
+                loadingCspReports={loadingCspReports}
+                onRefreshCspReports={fetchCspReports}
               />
 
               {currentAdminRole === 'super_admin' && (

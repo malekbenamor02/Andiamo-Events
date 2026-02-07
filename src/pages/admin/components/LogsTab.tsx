@@ -45,7 +45,7 @@ import {
   DrawerDescription,
 } from "@/components/ui/drawer";
 import { Calendar } from "@/components/ui/calendar";
-import { Database, Filter, RefreshCw, Eye, X } from "lucide-react";
+import { Database, Filter, RefreshCw, Eye, X, ShieldAlert } from "lucide-react";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -62,6 +62,19 @@ const DEFAULT_LOGS_FILTERS: LogsFilters = {
   order: "desc",
 };
 
+export interface CspReport {
+  id: string;
+  document_uri: string;
+  referrer?: string;
+  violated_directive: string;
+  effective_directive?: string;
+  blocked_uri: string;
+  source_file?: string;
+  line_number?: number;
+  column_number?: number;
+  created_at: string;
+}
+
 export interface LogsTabProps {
   language: "en" | "fr";
   logs: AdminLog[];
@@ -77,6 +90,9 @@ export interface LogsTabProps {
   isLogDrawerOpen: boolean;
   setIsLogDrawerOpen: (v: boolean) => void;
   onRefresh: (reset?: boolean) => void;
+  cspReports?: CspReport[];
+  loadingCspReports?: boolean;
+  onRefreshCspReports?: () => void;
 }
 
 export function LogsTab({
@@ -94,6 +110,9 @@ export function LogsTab({
   isLogDrawerOpen,
   setIsLogDrawerOpen,
   onRefresh,
+  cspReports = [],
+  loadingCspReports = false,
+  onRefreshCspReports,
 }: LogsTabProps) {
   return (
     <TabsContent value="logs" className="space-y-6">
@@ -446,6 +465,91 @@ export function LogsTab({
                   </Button>
                 </div>
               </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-amber-500" />
+            {language === "en" ? "CSP Violations" : "Violations CSP"}
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {language === "en"
+              ? "Content Security Policy violation reports from browsers"
+              : "Rapports de violations CSP envoyés par les navigateurs"}
+          </p>
+          {onRefreshCspReports && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={onRefreshCspReports}
+              disabled={loadingCspReports}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${loadingCspReports ? "animate-spin" : ""}`} />
+              {language === "en" ? "Refresh" : "Actualiser"}
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          {loadingCspReports ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+              <span className="ml-2 text-muted-foreground">
+                {language === "en" ? "Loading CSP reports..." : "Chargement des rapports CSP..."}
+              </span>
+            </div>
+          ) : cspReports.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <ShieldAlert className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>{language === "en" ? "No CSP violations reported" : "Aucune violation CSP signalée"}</p>
+              <p className="text-xs mt-2">
+                {language === "en"
+                  ? "Browser will send reports when CSP rules are violated"
+                  : "Le navigateur enverra des rapports lorsque les règles CSP sont violées"}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{language === "en" ? "Time" : "Heure"}</TableHead>
+                    <TableHead>{language === "en" ? "Directive" : "Directive"}</TableHead>
+                    <TableHead>{language === "en" ? "Blocked URI" : "URI bloquée"}</TableHead>
+                    <TableHead>{language === "en" ? "Document" : "Document"}</TableHead>
+                    <TableHead>{language === "en" ? "Source" : "Source"}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cspReports.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {format(new Date(r.created_at), "MMM dd, HH:mm:ss")}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {r.violated_directive}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate font-mono text-xs" title={r.blocked_uri}>
+                        {r.blocked_uri}
+                      </TableCell>
+                      <TableCell className="max-w-[150px] truncate text-xs" title={r.document_uri}>
+                        {r.document_uri}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {r.source_file && r.line_number != null
+                          ? `${r.source_file}:${r.line_number}`
+                          : "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>

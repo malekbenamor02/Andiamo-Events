@@ -156,6 +156,10 @@
       "destination": "/api/admin/logs.js"
     },
     {
+      "source": "/api/admin/csp-reports",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/pos/:path*",
       "destination": "/api/pos.js"
     },
@@ -318,6 +322,50 @@
     {
       "source": "/sitemap.xml",
       "destination": "/api/misc?route=sitemap"
+    },
+    {
+      "source": "/xmlrpc.php",
+      "destination": "/api/blocked.js"
+    },
+    {
+      "source": "/wp-login.php",
+      "destination": "/api/blocked.js"
+    },
+    {
+      "source": "/wp-admin",
+      "destination": "/api/blocked.js"
+    },
+    {
+      "source": "/wp-admin/(.*)",
+      "destination": "/api/blocked.js"
+    },
+    {
+      "source": "/wp-includes/(.*)",
+      "destination": "/api/blocked.js"
+    },
+    {
+      "source": "/wp-config.php",
+      "destination": "/api/blocked.js"
+    },
+    {
+      "source": "/.env",
+      "destination": "/api/blocked.js"
+    },
+    {
+      "source": "/.git",
+      "destination": "/api/blocked.js"
+    },
+    {
+      "source": "/admin.php",
+      "destination": "/api/blocked.js"
+    },
+    {
+      "source": "/administrator",
+      "destination": "/api/blocked.js"
+    },
+    {
+      "source": "/phpmyadmin",
+      "destination": "/api/blocked.js"
     },
     {
       "source": "/((?!api).*)",
