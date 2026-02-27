@@ -11,7 +11,7 @@ import https from 'https';
 let corsUtils = null;
 async function getCorsUtils() {
   if (!corsUtils) {
-    corsUtils = await import('./utils/cors.js');
+    corsUtils = await import('../lib/cors.js');
   }
   return corsUtils;
 }
