@@ -9,109 +9,11 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
-export interface SelectedPass {
-  passId: string;
-  passName: string;
-  quantity: number;
-  price: number;
-}
-
-export interface CustomerInfo {
-  fullName: string;
-  phone: string;
-  email: string;
-  city: string;
-  ville: string;
-}
-
-export interface OrderData {
-  source: 'platform_online' | 'ambassador_manual'; // platform_cod is deprecated
-  user_name: string;
-  user_phone: string;
-  user_email: string | null;
-  city: string;
-  ville: string | null;
-  event_id: string | null;
-  pass_type: string;
-  quantity: number;
-  total_price: number;
-  payment_method: 'cod' | 'online';
-  status: string;
-  notes?: string;
-}
-
-
 export interface EnrichedOrder {
   id: string;
   ambassador_id?: string;
   ambassador_name?: string | null;
   [key: string]: any;
-}
-
-/**
- * Create a COD (Cash on Delivery) order
- */
-export async function createCODOrder(
-  passes: SelectedPass[],
-  totalPrice: number,
-  customerInfo: CustomerInfo,
-  eventId: string | null
-): Promise<any> {
-  if (customerInfo.city !== 'Sousse' || !customerInfo.ville.trim()) {
-    throw new Error('COD is only available in Sousse');
-  }
-
-  // Calculate total quantity across all pass types
-  const totalQuantity = passes.reduce((sum, pass) => sum + pass.quantity, 0);
-  
-  // Determine primary pass name (first selected pass name, or 'mixed' if multiple types)
-  const primaryPassName = passes.length === 1 ? passes[0].passName : 'mixed';
-
-  // DEPRECATED: This function should not be used - COD orders are now created by ambassadors only
-  // Create ONE order with all pass types stored in notes
-  const orderData: OrderData = {
-    source: 'ambassador_manual', // COD orders must use ambassador_manual source
-    user_name: customerInfo.fullName.trim(),
-    user_phone: customerInfo.phone.trim(),
-    user_email: customerInfo.email.trim() || null,
-    city: customerInfo.city.trim(),
-    ville: customerInfo.ville.trim() || null,
-    event_id: eventId || null,
-    pass_type: primaryPassName,
-    quantity: totalQuantity,
-    total_price: totalPrice,
-    payment_method: 'cod',
-    status: 'PENDING'
-  };
-
-  // Add notes if column exists (optional field)
-  try {
-    orderData.notes = JSON.stringify({
-      all_passes: passes.map(p => ({
-        passId: p.passId,
-        passName: p.passName,
-        quantity: p.quantity,
-        price: p.price
-      })),
-      total_order_price: totalPrice,
-      pass_count: passes.length
-    });
-  } catch (e) {
-    console.warn('Could not add notes to order:', e);
-  }
-
-  const { data: order, error } = await supabase
-    .from('orders')
-    .insert(orderData)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error creating order:', error);
-    throw new Error(error.message || 'Failed to create order');
-  }
-
-  return order;
 }
 
 /**

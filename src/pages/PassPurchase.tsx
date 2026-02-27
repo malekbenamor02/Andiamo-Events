@@ -167,7 +167,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       submitOrder: "Submit Order",
       processing: "Processing...",
       success: "Order submitted successfully!",
-      successMessageOnline: "Your order has been submitted. Redirecting to payment...",
+      successMessageOnline: "Your order has been submitted. You will receive payment instructions by email.",
       successMessageAmbassador: "Your order has been submitted. An ambassador will contact you soon.",
       error: "Error",
       required: "This field is required",
@@ -192,7 +192,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       submitOrder: "Soumettre la Commande",
       processing: "Traitement...",
       success: "Commande soumise avec succès!",
-      successMessageOnline: "Votre commande a été soumise. Redirection vers le paiement...",
+      successMessageOnline: "Votre commande a été soumise. Vous recevrez les instructions de paiement par email.",
       successMessageAmbassador: "Votre commande a été soumise. Un ambassadeur vous contactera bientôt.",
       error: "Erreur",
       required: "Ce champ est requis",
@@ -231,7 +231,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         window.location.hostname === 'localhost' ||
         window.location.hostname === '127.0.0.1' ||
         window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.0.')
+        window.location.hostname.startsWith('10.0.') ||
+        window.location.hostname.startsWith('172.')
       );
 
       let eventData: any = null;
@@ -622,12 +623,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
       // Handle redirect based on payment method
       if (paymentMethod === PaymentMethod.ONLINE) {
-        toast({
-          title: t[language].success,
-          description: t[language].successMessageOnline,
-          variant: "default",
-        });
-        navigate(`/payment-processing?orderId=${order.id}`);
+        // Redirect to payment processing (ClicToPay flow)
+        navigate(`/payment-processing?orderId=${order.id}&init=1`, { replace: true });
       } else if (paymentMethod === PaymentMethod.EXTERNAL_APP) {
         const option = paymentOptions.find(o => o.option_type === 'external_app');
         if (option?.external_link) {

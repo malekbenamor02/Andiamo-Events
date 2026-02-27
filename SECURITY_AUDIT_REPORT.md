@@ -14,7 +14,7 @@
 
 This report summarizes the security posture of the Andiamo Events platform based on a review of the repository (Vercel config, API routes, Supabase migrations, CORS, auth, and env usage). It does **not** include access to Hosting.fr, Cloudflare, or Vercel/Supabase dashboards, so those areas are covered as checks you should perform and as recommendations.
 
-**Overall:** The app has solid basics (security headers, CORS, JWT auth, RLS, env-based secrets). Main gaps: **admin login has no reCAPTCHA and no rate limiting on Vercel**, **CSP is report-only**, **no 2FA**, **cron and payment endpoints need hardening**, and **Flouci payment routes are only in `server.cjs` (not in Vercel API), which may break payment on Vercel-only deployments.**
+**Overall:** The app has solid basics (security headers, CORS, JWT auth, RLS, env-based secrets). Main gaps: **admin login has no reCAPTCHA and no rate limiting on Vercel**, **CSP is report-only**, **no 2FA**, **cron and payment endpoints need hardening**.
 
 ---
 
@@ -81,7 +81,7 @@ This report summarizes the security posture of the Andiamo Events platform based
 
 - **Current:** `Content-Security-Policy-Report-Only` is set in `vercel.json` with `report-uri /api/csp-report`.
 - **Gap:** CSP is **not enforced**. Violations are reported only; blocked content can still run.
-- **CSP content:** Includes `'unsafe-inline'` and `'unsafe-eval'` for scripts, which weakens XSS protection. `connect-src` allows `*.supabase.co`, `*.flouci.com`, `*.google.com`, etc., which is reasonable for the stack.
+- **CSP content:** Includes `'unsafe-inline'` and `'unsafe-eval'` for scripts, which weakens XSS protection. `connect-src` allows `*.supabase.co`, `*.google.com`, etc., which is reasonable for the stack.
 - **report-uri:** Handled by `/api/csp-report` → `api/misc.js`; logs to console and optionally to DB if `ENABLE_CSP_LOGGING=true`.
 
 **Recommendations:**
@@ -121,7 +121,7 @@ This report summarizes the security posture of the Andiamo Events platform based
 ### 4.3 API Keys and Environment Variables
 
 - **Client (browser):** Only `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (and other `VITE_*`) are used in `src/`. No service role or other secrets are exposed to the client. ✅
-- **Server (API):** Uses `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`, `RECAPTCHA_SECRET_KEY`, `FLOUCI_SECRET_KEY`, etc., from `process.env` only. ✅
+- **Server (API):** Uses `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET`, `RECAPTCHA_SECRET_KEY`, etc., from `process.env` only. ✅
 - **env.example:** Documents required and optional variables without real values. ✅
 
 ---
@@ -160,19 +160,6 @@ This report summarizes the security posture of the Andiamo Events platform based
 - **Development:** All origins allowed when not on Vercel and `NODE_ENV !== 'production'`.
 
 No change requested for CORS logic; ensure Cloudflare or app-level rate limiting covers high-risk endpoints.
-
-### 5.5 Flouci Payment Endpoints (Critical for Vercel-only deploy)
-
-- **In repo:** Flouci payment logic lives in **`server.cjs`** only:  
-  `/api/flouci-webhook`, `/api/flouci-generate-payment`, `/api/flouci-verify-payment`, `/api/flouci-verify-payment-by-order`.
-- **Vercel:** There are **no** rewrites in `vercel.json` and **no** handlers under `api/` for these paths. So when the app is deployed **only** on Vercel (no `server.cjs` running elsewhere), requests to `/api/flouci-*` will **404** and the payment flow will not work.
-- **Conclusion:** Either (1) you run `server.cjs` (or equivalent) somewhere that serves these routes, or (2) you need to implement these handlers as Vercel serverless functions (e.g. in `api/`) and add the corresponding rewrites. Until then, Flouci payment on a Vercel-only deployment is broken.
-
-**Recommendations:**
-
-1. If production is Vercel-only: implement Flouci handlers in `api/` (e.g. `api/flouci-webhook.js`, `api/flouci-generate-payment.js`, `api/flouci-verify-payment.js`) and add rewrites in `vercel.json`.
-2. For `/api/flouci-webhook`: verify webhook authenticity (e.g. signature or shared secret like `FLOUCI_WEBHOOK_SECRET`) if Flouci supports it; do not trust payloads without verification.
-3. Keep Flouci secret key only in server env; never in client.
 
 ---
 

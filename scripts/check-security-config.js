@@ -16,12 +16,6 @@ const checks = {
 };
 
 // Required security variables
-if (!process.env.FLOUCI_PUBLIC_KEY) {
-  checks.required.push('FLOUCI_PUBLIC_KEY - Required for payment processing');
-}
-if (!process.env.FLOUCI_SECRET_KEY) {
-  checks.required.push('FLOUCI_SECRET_KEY - Required for payment processing');
-}
 if (!process.env.RECAPTCHA_SECRET_KEY) {
   checks.recommended.push('RECAPTCHA_SECRET_KEY - Recommended for CAPTCHA protection');
 }
@@ -35,11 +29,6 @@ if (!process.env.SECURITY_ALERT_EMAIL) {
 }
 if (!process.env.ENABLE_SECURITY_LOGGING) {
   checks.recommended.push('ENABLE_SECURITY_LOGGING - Recommended for security audit logging in development');
-}
-
-// Optional security variables
-if (!process.env.FLOUCI_WEBHOOK_SECRET) {
-  checks.optional.push('FLOUCI_WEBHOOK_SECRET - Optional (webhook already secured via API verification)');
 }
 
 // Display results

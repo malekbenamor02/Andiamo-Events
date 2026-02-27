@@ -71,7 +71,8 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     const isLocalhost = window.location.hostname === 'localhost' || 
                        window.location.hostname === '127.0.0.1' ||
                        window.location.hostname.startsWith('192.168.') ||
-                       window.location.hostname.startsWith('10.0.');
+                       window.location.hostname.startsWith('10.0.') ||
+                       window.location.hostname.startsWith('172.');
     
     if (isLocalhost) {
       return 'localhost-bypass-token';
@@ -125,7 +126,8 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     const isLocalhost = window.location.hostname === 'localhost' || 
                        window.location.hostname === '127.0.0.1' ||
                        window.location.hostname.startsWith('192.168.') ||
-                       window.location.hostname.startsWith('10.0.');
+                       window.location.hostname.startsWith('10.0.') ||
+                       window.location.hostname.startsWith('172.');
     
     if (!isLocalhost && !recaptchaToken) {
       setError(language === 'en' ? 'reCAPTCHA verification failed. Please try again.' : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.');
@@ -441,7 +443,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
               <Button
                 type="submit"
                 className="w-full h-10 btn-gradient text-base font-semibold relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
-                disabled={loading || (!RECAPTCHA_SITE_KEY && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.hostname.startsWith('192.168.') && !window.location.hostname.startsWith('10.0.'))}
+                disabled={loading || (!RECAPTCHA_SITE_KEY && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.hostname.startsWith('192.168.') && !window.location.hostname.startsWith('10.0.') && !window.location.hostname.startsWith('172.'))}
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
                   {loading ? (

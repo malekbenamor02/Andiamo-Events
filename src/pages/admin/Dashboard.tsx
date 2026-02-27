@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -1059,6 +1059,30 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     return () => {
       supabase.removeChannel(channel);
     };
+  }, []);
+
+  // Realtime: keep online orders in sync without refresh
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-online-orders-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: 'source=eq.platform_online',
+        },
+        () => {
+          fetchOnlineOrders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Animation effect for overview cards

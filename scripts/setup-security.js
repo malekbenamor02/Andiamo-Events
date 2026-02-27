@@ -42,24 +42,6 @@ async function main() {
 
   const updates = [];
 
-  // Check FLOUCI_WEBHOOK_SECRET
-  if (!envContent.includes('FLOUCI_WEBHOOK_SECRET=') || 
-      envContent.match(/FLOUCI_WEBHOOK_SECRET=.*your_|FLOUCI_WEBHOOK_SECRET=$/)) {
-    const generate = await question('Generate FLOUCI_WEBHOOK_SECRET? (y/n, default: n): ');
-    if (generate.toLowerCase() === 'y') {
-      const secret = crypto.randomBytes(32).toString('hex');
-      if (envContent.includes('FLOUCI_WEBHOOK_SECRET=')) {
-        envContent = envContent.replace(
-          /FLOUCI_WEBHOOK_SECRET=.*/,
-          `FLOUCI_WEBHOOK_SECRET=${secret}`
-        );
-      } else {
-        envContent += `\n# Flouci Webhook Security (Optional)\nFLOUCI_WEBHOOK_SECRET=${secret}\n`;
-      }
-      updates.push('✅ Generated FLOUCI_WEBHOOK_SECRET');
-    }
-  }
-
   // Check SECURITY_ALERT_EMAIL
   if (!envContent.includes('SECURITY_ALERT_EMAIL=')) {
     const email = await question('Enter SECURITY_ALERT_EMAIL (optional, press Enter to skip): ');

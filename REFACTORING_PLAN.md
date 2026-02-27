@@ -74,7 +74,6 @@ For each large page or component:
 | **P2** | `src/components/admin/StockManagement.tsx` | **~749** | Stock UI. |
 | **P2** | `src/components/admin/BulkSmsSelector.tsx` | **~709** | SMS selector UI. |
 | **P2** | `src/lib/ticketGenerationService.tsx` | **~653** | Ticket generation logic + templates. |
-| **P2** | `src/pages/PaymentProcessing.tsx` | **~619** | Payment status / callback page. |
 | **P2** | `src/pages/scanner/ScannerScan.tsx` | **~596** | Scanner scan UI. |
 | **P2** | `src/hooks/useAnalytics.ts` | **~585** | Analytics data hooks. |
 
@@ -87,7 +86,7 @@ For each large page or component:
 
 - **Phase 1 (P0):** Admin Dashboard + `email.ts`. Highest impact and risk.
 - **Phase 2 (P1):** Ambassador Dashboard, Events, PassPurchase.
-- **Phase 3 (P2):** Remaining large components and libs (PosTab, OfficialInvitations, Application, GalleryEvent, StockManagement, BulkSmsSelector, ticketGenerationService, PaymentProcessing, ScannerScan, useAnalytics).
+- **Phase 3 (P2):** Remaining large components and libs (PosTab, OfficialInvitations, Application, GalleryEvent, StockManagement, BulkSmsSelector, ticketGenerationService,  ScannerScan, useAnalytics).
 
 ---
 
@@ -210,7 +209,6 @@ See **REFACTORING_LARGE_FILES.md** for the full plan. Summary:
 | **StockManagement.tsx** (~749) | Extract: table row, pass row, dialogs; hook for stock data and updates. |
 | **BulkSmsSelector.tsx** (~709) | Extract: phone list, filters, preview; hook for selection and send. |
 | **ticketGenerationService.tsx** (~653) | Split: template builders (HTML) vs generation logic; or one file per template type. |
-| **PaymentProcessing.tsx** (~619) | Extract: success/error views; hook `usePaymentStatus(sessionId)` for polling and result. |
 | **ScannerScan.tsx** (~596) | Extract: scan result UI, history list; hook for scan and list state. |
 | **useAnalytics.ts** (~585) | Split by domain: `useOverviewAnalytics`, `useSalesAnalytics`, `useEventsAnalytics`, shared helpers. |
 
@@ -230,7 +228,7 @@ See **REFACTORING_LARGE_FILES.md** for the full plan. Summary:
 4. **Events.tsx, PassPurchase.tsx**
    - Types, components, hooks as in the table above.
 5. **Remaining P2**
-   - PosTab, OfficialInvitationsList, Application, GalleryEvent, StockManagement, BulkSmsSelector, ticketGenerationService, PaymentProcessing, ScannerScan, useAnalytics — in any order, using the same ideas (extract types, UI pieces, hooks).
+   - PosTab, OfficialInvitationsList, Application, GalleryEvent, StockManagement, BulkSmsSelector, ticketGenerationService,  ScannerScan, useAnalytics — in any order, using the same ideas (extract types, UI pieces, hooks).
 
 ---
 

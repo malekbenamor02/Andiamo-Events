@@ -6,7 +6,6 @@ Disallow: /scanner
 Disallow: /pos
 Disallow: /ambassador/dashboard
 Disallow: /ambassador/auth
-Disallow: /payment-processing
 Disallow: /cod-order
 
 

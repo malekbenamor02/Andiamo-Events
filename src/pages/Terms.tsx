@@ -60,7 +60,7 @@ const Terms = ({ language }: TermsProps) => {
         {
           title: "7. Rôle du prestataire de paiement",
           content: [
-            "Les paiements sont traités par un prestataire de services de paiement tiers, notamment Flouci, agissant exclusivement en qualité d'intermédiaire technique.",
+            "Les paiements sont traités par un prestataire de services de paiement tiers, agissant exclusivement en qualité d'intermédiaire technique.",
             "Le prestataire de paiement n'intervient en aucun cas dans l'organisation, la gestion, la livraison ou le déroulement des événements.",
             "Toute réclamation, contestation ou demande de remboursement liée à un événement ou à un billet doit être adressée directement à l'Organisateur.",
             "La responsabilité du prestataire de paiement ne saurait être engagée en cas d'annulation, de report, de modification ou de litige lié à l'événement."
@@ -201,7 +201,7 @@ const Terms = ({ language }: TermsProps) => {
         {
           title: "7. Role of the payment provider",
           content: [
-            "Payments are processed by a third-party payment service provider, including Flouci, acting exclusively as a technical intermediary.",
+            "Payments are processed by a third-party payment service provider, acting exclusively as a technical intermediary.",
             "The payment provider does not intervene in any way in the organization, management, delivery or conduct of events.",
             "Any complaint, dispute or refund request related to an event or ticket must be addressed directly to the Organizer.",
             "The payment provider cannot be held liable in the event of cancellation, postponement, modification or dispute related to the event."

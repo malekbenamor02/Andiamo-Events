@@ -28,10 +28,9 @@ import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute
 
 import AmbassadorApplication from "./pages/ambassador/Application";
 import PassPurchase from "./pages/PassPurchase";
-import CODOrder from "./pages/CODOrder";
+import PaymentProcessing from "./pages/PaymentProcessing";
 import GalleryEvent from "./pages/GalleryEvent";
 import UpcomingEvent from "./pages/UpcomingEvent";
-import PaymentProcessing from "./pages/PaymentProcessing";
 import ScannerApp from "./pages/scanner/ScannerApp";
 import PosApp from "./pages/pos/PosApp";
 import DisableInspect from "./components/security/DisableInspect";
@@ -98,7 +97,6 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
             <Route path="/gallery/:eventSlug" element={<GalleryEvent language={language} />} />
             <Route path="/event/:eventSlug" element={<UpcomingEvent language={language} />} />
             <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
-            <Route path="/cod-order" element={<CODOrder language={language} />} />
             <Route path="/payment-processing" element={<PaymentProcessing language={language} />} />
     
             <Route path="/about" element={<About language={language} />} />

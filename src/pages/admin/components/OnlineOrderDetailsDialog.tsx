@@ -30,6 +30,7 @@ import {
   XCircle,
   ArrowDown,
   Send,
+  Copy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -58,6 +59,7 @@ export interface OnlineOrderDetailsDialogProps {
     transaction_id?: string;
     payment_gateway_reference?: string;
     payment_response_data?: unknown;
+    payment_confirm_response?: unknown;
   } | null;
   language: "en" | "fr";
   onUpdateStatus: (orderId: string, newStatus: "PENDING_PAYMENT" | "PAID" | "FAILED" | "REFUNDED") => void | Promise<void>;
@@ -71,6 +73,26 @@ export function OnlineOrderDetailsDialog({
   onUpdateStatus,
 }: OnlineOrderDetailsDialogProps) {
   const { toast } = useToast();
+
+  const handleCopy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(
+      () => toast({ title: language === "en" ? "Copied" : "Copié", description: `${label} ${language === "en" ? "copied to clipboard" : "copié dans le presse-papiers"}`, variant: "default" }),
+      () => toast({ title: language === "en" ? "Copy failed" : "Échec de la copie", variant: "destructive" })
+    );
+  };
+
+  const CopyButton = ({ text, label }: { text: string; label: string }) => (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-8 px-2"
+      onClick={() => handleCopy(text, label)}
+      title={language === "en" ? "Copy" : "Copier"}
+    >
+      <Copy className="w-4 h-4" />
+    </Button>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -335,10 +357,16 @@ export function OnlineOrderDetailsDialog({
                     )}
                     {order.payment_response_data && (
                       <div className="md:col-span-2 space-y-1">
-                        <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                          <FileText className="w-3 h-3" />
-                          {language === "en" ? "Payment Response Data" : "Données de Réponse"}
-                        </Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                            <FileText className="w-3 h-3" />
+                            {language === "en" ? "Payment Response Data" : "Données de Réponse"}
+                          </Label>
+                          <CopyButton
+                            text={JSON.stringify(order.payment_response_data, null, 2)}
+                            label={language === "en" ? "Payment Response Data" : "Données de Réponse"}
+                          />
+                        </div>
                         <pre className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-auto max-h-40">
                           {JSON.stringify(order.payment_response_data, null, 2)}
                         </pre>
@@ -358,13 +386,31 @@ export function OnlineOrderDetailsDialog({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="p-4 bg-background border rounded-lg text-center text-muted-foreground">
-                  <p className="text-sm">
-                    {language === "en"
-                      ? "Payment logs will appear here once the payment gateway integration is complete."
-                      : "Les journaux de paiement apparaîtront ici une fois l'intégration de la passerelle de paiement terminée."}
-                  </p>
-                </div>
+                {order.payment_confirm_response ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Activity className="w-3 h-3" />
+                        {language === "en" ? "ClicToPay getOrderStatus Response" : "Réponse ClicToPay getOrderStatus"}
+                      </Label>
+                      <CopyButton
+                        text={JSON.stringify(order.payment_confirm_response, null, 2)}
+                        label={language === "en" ? "Payment Logs" : "Journaux de Paiement"}
+                      />
+                    </div>
+                    <pre className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-auto max-h-40">
+                      {JSON.stringify(order.payment_confirm_response, null, 2)}
+                    </pre>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-background border rounded-lg text-center text-muted-foreground">
+                    <p className="text-sm">
+                      {language === "en"
+                        ? "Payment logs will appear here after the payment confirmation (return from ClicToPay)."
+                        : "Les journaux de paiement apparaîtront ici après la confirmation du paiement (retour de ClicToPay)."}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

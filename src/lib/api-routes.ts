@@ -54,6 +54,10 @@ export const API_ROUTES = {
   GENERATE_QR_CODE: '/api/generate-qr-code',
   GENERATE_TICKETS_FOR_ORDER: '/api/generate-tickets-for-order',
   
+  // ClicToPay Payment Gateway
+  CLICTOPAY_GENERATE_PAYMENT: '/api/clictopay-generate-payment',
+  CLICTOPAY_CONFIRM_PAYMENT: '/api/clictopay-confirm-payment',
+
   // Admin Order Management
   ADMIN_SKIP_AMBASSADOR_CONFIRMATION: '/api/admin-skip-ambassador-confirmation',
   ADMIN_APPROVE_ORDER: '/api/admin-approve-order',
@@ -202,6 +206,7 @@ export function getApiBaseUrl(): string {
                                 hostname !== '127.0.0.1' && 
                                 !hostname.startsWith('192.168.') &&
                                 !hostname.startsWith('10.0.') &&
+                                !hostname.startsWith('172.') &&
                                 hostname !== '';
     
     // If we're on a production domain, ALWAYS use same-origin (empty string)
@@ -228,6 +233,7 @@ if (typeof window !== 'undefined') {
                             hostname !== '127.0.0.1' && 
                             !hostname.startsWith('192.168.') &&
                             !hostname.startsWith('10.0.') &&
+                            !hostname.startsWith('172.') &&
                             hostname !== '';
   
   // If we're on a production domain and getApiBaseUrl returns localhost, that's a critical error

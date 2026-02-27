@@ -9,14 +9,24 @@
 const isDevelopment = !(process.env.VERCEL === '1' || process.env.VERCEL_URL) && process.env.NODE_ENV !== 'production';
 
 // Default production origins (can be overridden via ALLOWED_ORIGINS env var)
+// Include localhost for vercel dev and local testing
 const defaultProductionOrigins = [
   'https://www.andiamoevents.com',
-  'https://andiamoevents.com'
+  'https://andiamoevents.com',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+  'http://172.20.10.4:3000',
+  /^http:\/\/localhost(:\d+)?$/,
+  /^http:\/\/127\.0\.0\.1(:\d+)?$/,
+  /^http:\/\/172\.\d+\.\d+\.\d+(:\d+)?$/,
+  /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/
 ];
 
 function getAllowedOrigins() {
   if (isDevelopment) {
-    return ['http://localhost:8080', 'http://localhost:3000', 'http://localhost:5173', 'http://192.168.1.*', 'http://10.0.*', 'http://127.0.0.1:3000'];
+    return ['http://localhost:8080', 'http://localhost:3000', 'http://localhost:5173', 'http://192.168.1.*', 'http://10.0.*', 'http://127.0.0.1:3000', 'http://172.20.10.4:3000', /^http:\/\/172\.\d+\.\d+\.\d+(:\d+)?$/, /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/];
   }
   
   return process.env.ALLOWED_ORIGINS 

@@ -2469,6 +2469,246 @@ We Create Memories`;
     }
     
     // ============================================
+    // /api/clictopay-confirm-payment (POST)
+    // ClicToPay callback: marks PENDING_ONLINE order as PAID and generates tickets
+    // ============================================
+    if ((path === '/api/clictopay-confirm-payment' || path?.startsWith('/api/clictopay-confirm-payment')) && (method === 'POST' || method === 'GET')) {
+      try {
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+        // Do not trust frontend: only accept orderId. Payment success/failure is determined by ClicToPay API only.
+        let orderId = null;
+        if (method === 'POST') {
+          const bodyData = await parseBody(req).catch(() => ({}));
+          orderId = bodyData?.orderId || bodyData?.order_id;
+        } else {
+          const urlObj = new URL(req.url || '', 'http://localhost');
+          orderId = urlObj.searchParams.get('orderId') || urlObj.searchParams.get('order_id');
+        }
+        if (!orderId) return res.status(400).json({ error: 'orderId is required' });
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+        let supabaseService = null;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+        }
+        const dbClient = supabaseService || supabase;
+
+        const { data: order, error: orderError } = await dbClient
+          .from('orders')
+          .select('id, status, event_id, payment_gateway_reference')
+          .eq('id', orderId)
+          .single();
+        if (orderError || !order) return res.status(404).json({ error: 'Order not found' });
+        if (order.status !== 'PENDING_ONLINE') {
+          if (order.status === 'PAID') {
+            return res.status(200).json({ success: true, message: 'Order already paid', orderId, alreadyPaid: true });
+          }
+          return res.status(400).json({ error: 'Order is not pending online payment', details: `Status: ${order.status}` });
+        }
+
+        // Verify payment status with ClicToPay only (Manuel Intégration V2.2: getOrderStatusExtended / getOrderStatus).
+        let gatewayStatusOk = false;
+        let paymentConfirmResponse = null;
+        const ctpOrderId = order.payment_gateway_reference;
+        const apiUser = process.env.CLICTOPAY_API_USER;
+        const apiPassword = process.env.CLICTOPAY_API_PASSWORD;
+        const isProd = process.env.NODE_ENV === 'production';
+        const ctpBaseUrl = process.env.CLICTOPAY_BASE_URL || (isProd ? '' : 'https://test.clictopay.com/payment/rest');
+        if (ctpOrderId && apiUser && apiPassword && ctpBaseUrl) {
+          try {
+            const statusUrl = ctpBaseUrl.replace(/\/$/, '') + '/getOrderStatusExtended.do';
+            const statusParams = new URLSearchParams({
+              userName: apiUser,
+              password: apiPassword,
+              orderId: String(ctpOrderId)
+            });
+            const statusRes = await fetch(statusUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: statusParams.toString()
+            });
+            const statusText = await statusRes.text();
+            let statusData = {};
+            try {
+              statusData = JSON.parse(statusText);
+            } catch (e) {
+              // try getOrderStatus.do if Extended not available (confirm with Manuel)
+              const altUrl = ctpBaseUrl.replace(/\/$/, '') + '/getOrderStatus.do';
+              const altRes = await fetch(altUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: statusParams.toString()
+              });
+              const altText = await altRes.text();
+              try {
+                statusData = JSON.parse(altText);
+              } catch (e2) {
+                console.error('ClicToPay status response not JSON:', altText?.slice(0, 300));
+              }
+            }
+            // Log full gateway response for debugging (e.g. wrong CVV still succeeding in test)
+            console.log('ClicToPay status response:', { orderId, ctpOrderId, statusData: typeof statusData === 'object' ? statusData : { raw: String(statusData).slice(0, 200) } });
+            // orderStatus 2 = deposited successfully. Also require errorCode 0 (or absent) — non-zero means declined.
+            const orderStatus = statusData.orderStatus ?? statusData.order_status;
+            const errorCode = statusData.errorCode ?? statusData.error_code;
+            const errMsg = statusData.errorMessage ?? statusData.error_message ?? statusData.message ?? '';
+            const isOrderStatusSuccess = orderStatus != null && String(orderStatus) === '2';
+            const isErrorCodeOk = errorCode === undefined || errorCode === null || Number(errorCode) === 0;
+            const hasDeclineIndicator = typeof errMsg === 'string' && (errMsg.toLowerCase().includes('declined') || errMsg.toLowerCase().includes('refus') || errMsg.toLowerCase().includes('invalid'));
+            if (isOrderStatusSuccess && isErrorCodeOk && !hasDeclineIndicator) {
+              gatewayStatusOk = true;
+            }
+            if (!gatewayStatusOk) {
+              console.log('ClicToPay status rejected:', { orderId, orderStatus, errorCode, isOrderStatusSuccess, isErrorCodeOk, hasDeclineIndicator });
+            }
+            paymentConfirmResponse = statusData;
+          } catch (err) {
+            console.error('ClicToPay getOrderStatus error:', err);
+          }
+        } else {
+          if (!ctpOrderId) console.warn('ClicToPay confirm: no payment_gateway_reference for order', orderId);
+        }
+
+        if (!gatewayStatusOk) {
+          try {
+            await dbClient.rpc('release_order_stock_internal', { order_id_param: orderId });
+          } catch (e) { /* ignore */ }
+          const failUpdate = { status: 'FAILED', payment_status: 'FAILED', updated_at: new Date().toISOString() };
+          if (paymentConfirmResponse != null) failUpdate.payment_confirm_response = paymentConfirmResponse;
+          await dbClient.from('orders').update(failUpdate).eq('id', orderId);
+          return res.status(200).json({ success: false, status: 'failed', orderId, message: 'Payment failed or could not be verified with the gateway' });
+        }
+
+        const oldStatus = order.status;
+        const paidUpdate = { status: 'PAID', payment_status: 'PAID', approved_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+        if (paymentConfirmResponse != null) paidUpdate.payment_confirm_response = paymentConfirmResponse;
+        const { data: updatedOrder, error: updateError } = await dbClient
+          .from('orders')
+          .update(paidUpdate)
+          .eq('id', orderId)
+          .eq('status', 'PENDING_ONLINE')
+          .select('id, status')
+          .single();
+        if (updateError || !updatedOrder) {
+          const { data: check } = await dbClient.from('orders').select('status').eq('id', orderId).single();
+          if (check?.status === 'PAID') return res.status(200).json({ success: true, orderId, alreadyPaid: true });
+          return res.status(500).json({ error: 'Failed to update order', details: updateError?.message });
+        }
+
+        let ticketResult = { success: false, message: 'Ticket generation not started', ticketsCount: 0, emailSent: false, smsSent: false, error: null };
+        try {
+          const { data: fullOrderData, error: fullOrderError } = await dbClient
+            .from('orders')
+            .select(`*, events (id, name, date, venue), ambassadors (id, full_name, phone)`)
+            .eq('id', orderId)
+            .single();
+          if (fullOrderError || !fullOrderData) throw new Error('Failed to fetch order');
+          const fullOrder = fullOrderData;
+          const { data: existingTickets } = await dbClient.from('tickets').select('id').eq('order_id', orderId).limit(1);
+          if (existingTickets?.length > 0) {
+            ticketResult = { success: true, message: 'Tickets already generated', ticketsCount: existingTickets.length, emailSent: true, smsSent: true };
+          } else {
+            const { data: orderPasses, error: passesError } = await dbClient.from('order_passes').select('*').eq('order_id', orderId);
+            if (passesError || !orderPasses?.length) throw new Error('No passes found');
+            const { v4: uuidv4 } = await import('uuid');
+            const QRCode = await import('qrcode');
+            const orderAccessToken = uuidv4();
+            let urlExpiresAt = fullOrder.events?.date ? (() => { const d = new Date(fullOrder.events.date); d.setDate(d.getDate() + 1); return d.toISOString(); })() : (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString(); })();
+            await dbClient.from('orders').update({ qr_access_token: orderAccessToken, qr_url_accessed: false, qr_url_expires_at: urlExpiresAt }).eq('id', orderId);
+            const tickets = [];
+            const storageClient = supabaseService || supabase;
+            for (const pass of orderPasses) {
+              for (let i = 0; i < pass.quantity; i++) {
+                const secureToken = uuidv4();
+                const qrCodeBuffer = await QRCode.default.toBuffer(secureToken, { type: 'png', width: 300, margin: 2 });
+                const fileName = `tickets/${orderId}/${secureToken}.png`;
+                const { error: uploadError } = await storageClient.storage.from('tickets').upload(fileName, qrCodeBuffer, { contentType: 'image/png', upsert: true });
+                if (uploadError) continue;
+                const { data: urlData } = storageClient.storage.from('tickets').getPublicUrl(fileName);
+                const { data: ticketData, error: ticketError } = await dbClient.from('tickets').insert({
+                  order_id: orderId, order_pass_id: pass.id, secure_token: secureToken, qr_code_url: urlData?.publicUrl || null, status: 'GENERATED', generated_at: new Date().toISOString()
+                }).select().single();
+                if (ticketError || !ticketData) continue;
+                tickets.push(ticketData);
+                try {
+                  const ambassador = fullOrder.ambassadors || null;
+                  const event = fullOrder.events || null;
+                  await dbClient.from('qr_tickets').insert({
+                    secure_token: ticketData.secure_token, ticket_id: ticketData.id, order_id: fullOrder.id, source: fullOrder.source, payment_method: fullOrder.payment_method || 'online',
+                    ambassador_id: fullOrder.ambassador_id || null, ambassador_name: ambassador?.full_name || null, ambassador_phone: ambassador?.phone || null,
+                    buyer_name: fullOrder.user_name, buyer_phone: fullOrder.user_phone, buyer_email: fullOrder.user_email || null, buyer_city: fullOrder.city, buyer_ville: fullOrder.ville || null,
+                    event_id: fullOrder.event_id || null, event_name: event?.name || null, event_date: event?.date || null, event_venue: event?.venue || null,
+                    order_pass_id: pass?.id || ticketData.order_pass_id, pass_type: pass?.pass_type || 'Standard', pass_price: pass?.price || 0, ticket_status: 'VALID',
+                    qr_code_url: ticketData.qr_code_url, generated_at: ticketData.generated_at || new Date().toISOString()
+                  });
+                } catch (e) { /* ignore */ }
+              }
+            }
+            if (tickets.length === 0) throw new Error('Failed to generate any tickets');
+            ticketResult.ticketsCount = tickets.length;
+            const ticketsByPassType = new Map();
+            tickets.forEach(t => {
+              const p = orderPasses.find(x => x.id === t.order_pass_id);
+              if (p) { if (!ticketsByPassType.has(p.pass_type)) ticketsByPassType.set(p.pass_type, []); ticketsByPassType.get(p.pass_type).push({ ...t, passType: p.pass_type }); }
+            });
+            const passesSummary = orderPasses.map(p => ({ passType: p.pass_type, quantity: p.quantity, price: p.price }));
+            const ticketsHtml = Array.from(ticketsByPassType.entries()).map(([passType, passTickets]) => {
+              const list = passTickets.map((ticket, idx) => `<div style="margin: 20px 0; padding: 20px; background: #E8E8E8; border-radius: 8px; text-align: center;"><h4 style="margin: 0 0 15px 0; color: #E21836;">${passType} - Ticket ${idx + 1}</h4><img src="${ticket.qr_code_url}" alt="QR" style="max-width: 250px; height: auto;" /><p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">Token: ${ticket.secure_token.substring(0, 8)}...</p></div>`).join('');
+              return `<div style="margin: 30px 0;"><h3 style="color: #E21836;">${passType} Tickets (${passTickets.length})</h3>${list}</div>`;
+            }).join('');
+            const passesSummaryHtml = passesSummary.map(p => `<tr><td style="padding: 12px 0;">${p.passType}</td><td style="padding: 12px 0; text-align: center;">${p.quantity}</td><td style="padding: 12px 0; text-align: right;">${p.price.toFixed(2)} TND</td></tr>`).join('');
+            if (fullOrder.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
+              try {
+                const nodemailer = await import('nodemailer');
+                const transporter = nodemailer.default.createTransport({ host: process.env.EMAIL_HOST, port: parseInt(process.env.EMAIL_PORT || '587'), secure: false, auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+                const emailHtml = `<!DOCTYPE html><html><body style="font-family: Arial,sans-serif; line-height: 1.6; color: #1A1A1A;"><div style="max-width: 600px; margin: 0 auto; padding: 20px;"><h1 style="color: #E21836;">Your Tickets Are Ready</h1><p>Dear ${fullOrder.user_name || 'Valued Customer'},</p><p>Your order has been successfully processed. Your digital tickets with unique QR codes are below.</p><div style="background: #E8E8E8; padding: 20px; border-radius: 8px; margin: 20px 0;"><p><strong>Order:</strong> ${fullOrder.order_number != null ? '#' + fullOrder.order_number : orderId.substring(0, 8)}</p><p><strong>Event:</strong> ${fullOrder.events?.name || 'Event'}</p><p><strong>Venue:</strong> ${fullOrder.events?.venue || 'TBA'}</p></div><table style="width:100%; border-collapse: collapse;"><thead><tr style="border-bottom: 2px solid #E21836;"><th style="text-align:left;">Pass</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th></tr></thead><tbody>${passesSummaryHtml}</tbody></table><div style="margin: 30px 0;">${ticketsHtml}</div><p>Present these QR codes at the entrance. Need help? Contact@andiamoevents.com</p><p>— Andiamo Events</p></div></body></html>`;
+                await transporter.sendMail({ from: '"Andiamo Events" <contact@andiamoevents.com>', replyTo: '"Andiamo Events" <contact@andiamoevents.com>', to: fullOrder.user_email, subject: 'Your Digital Tickets Are Ready - Andiamo Events', html: emailHtml });
+                await dbClient.from('tickets').update({ status: 'DELIVERED', email_delivery_status: 'sent', delivered_at: new Date().toISOString() }).in('id', tickets.map(t => t.id));
+                await dbClient.from('email_delivery_logs').insert({ order_id: orderId, email_type: 'ticket_delivery', recipient_email: fullOrder.user_email, recipient_name: fullOrder.user_name, subject: 'Your Digital Tickets Are Ready - Andiamo Events', status: 'sent', sent_at: new Date().toISOString() });
+                ticketResult.emailSent = true;
+              } catch (e) { ticketResult.error = (ticketResult.error || '') + ' Email: ' + e.message; }
+            }
+            if (fullOrder.user_phone && process.env.WINSMS_API_KEY) {
+              try {
+                let cleaned = fullOrder.user_phone.replace(/\D/g, '');
+                if (cleaned.startsWith('216')) cleaned = cleaned.substring(3);
+                cleaned = cleaned.replace(/^0+/, '');
+                if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
+                  const formattedPhone = '+216' + cleaned;
+                  const smsMsg = `Paiement confirmé #${fullOrder.order_number != null ? fullOrder.order_number : ''}\nTotal: ${parseFloat(fullOrder.total_price).toFixed(0)} DT\nBillets envoyés par email. We Create Memories`;
+                  const qs = (await import('querystring')).default;
+                  const https = (await import('https')).default;
+                  const url = `https://www.winsmspro.com/sms/sms/api?${qs.stringify({ action: 'send-sms', api_key: process.env.WINSMS_API_KEY, to: formattedPhone, sms: smsMsg, from: 'Andiamo', response: 'json' })}`;
+                  const smsRes = await new Promise((resolve, reject) => { https.get(url, (r) => { let d = ''; r.on('data', c => d += c); r.on('end', () => { try { resolve({ status: r.statusCode, data: JSON.parse(d) }); } catch { resolve({ status: r.statusCode, data: d }); } }); }).on('error', reject); });
+                  if (smsRes.status === 200 && smsRes.data && (smsRes.data.code === 'ok' || smsRes.data.code === '200')) { ticketResult.smsSent = true; }
+                }
+              } catch (e) { ticketResult.error = (ticketResult.error || '') + ' SMS: ' + e.message; }
+            }
+            ticketResult.success = true;
+            ticketResult.message = 'Tickets generated';
+          }
+        } catch (ticketErr) {
+          ticketResult.error = ticketErr.message;
+        }
+        try {
+          await dbClient.from('order_logs').insert({
+            order_id: orderId, action: 'clictopay_confirm', performed_by: null, performed_by_type: 'system', details: { old_status: oldStatus, new_status: 'PAID', ticket_result: ticketResult }
+          });
+        } catch (e) { /* ignore */ }
+        return res.status(200).json({
+          success: true, orderId, status: 'PAID',
+          ticketsGenerated: ticketResult?.success, ticketsCount: ticketResult?.ticketsCount || 0, emailSent: ticketResult?.emailSent || false, smsSent: ticketResult?.smsSent || false, ticketError: ticketResult?.error || null
+        });
+      } catch (err) {
+        console.error('ClicToPay confirm error:', err);
+        return res.status(500).json({ error: 'Payment confirmation failed', details: err.message });
+      }
+    }
+    
+    // ============================================
     // /api/admin/update-order-email (POST)
     // ============================================
     if (path === '/api/admin/update-order-email' && method === 'POST') {

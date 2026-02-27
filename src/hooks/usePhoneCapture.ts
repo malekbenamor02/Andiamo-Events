@@ -49,8 +49,6 @@ export const usePhoneCapture = (pathname: string) => {
       '/ambassador/dashboard',
       '/contact',
       '/pass-purchase',
-      '/cod-order',
-      '/payment-processing',
       '/pos',
       '/scanner',
       '/event',
@@ -66,7 +64,7 @@ export const usePhoneCapture = (pathname: string) => {
     });
 
     // Also exclude pass booking by event slug (e.g. /el-daheeh-live-show-in-tunis)
-    const reservedSegments = ['events', 'about', 'contact', 'terms', 'ambassador', 'pass-purchase', 'cod-order', 'payment-processing', 'admin', 'gallery'];
+    const reservedSegments = ['events', 'about', 'contact', 'terms', 'ambassador', 'pass-purchase', 'admin', 'gallery'];
     if (pathname.match(/^\/[^/]+$/)) {
       const segment = pathname.slice(1);
       if (segment && !reservedSegments.includes(segment)) {

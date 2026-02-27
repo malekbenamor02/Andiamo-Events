@@ -100,7 +100,6 @@ Set `<link rel="canonical" href="https://www.andiamoevents.com/current-path" />`
   - `Disallow: /pos`
   - `Disallow: /ambassador/dashboard`
   - `Disallow: /ambassador/auth`
-  - `Disallow: /payment-processing`
   - `Disallow: /cod-order` (or allow if you want these indexed; usually not needed)
 
 Keep: `Allow: /` for main site.
