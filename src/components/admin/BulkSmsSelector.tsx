@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
+import Loader from '@/components/ui/Loader';
 import { 
   Phone, Send, RefreshCw, Users, Filter, CheckCircle2, XCircle, 
   AlertCircle, Info, Download, Upload, FileText
@@ -598,14 +599,14 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
                   onClick={fetchPhoneNumbersPreview}
                   disabled={loadingPreview}
                 >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${loadingPreview ? 'animate-spin' : ''}`} />
+                  {loadingPreview ? <Loader size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                   {t.refresh}
                 </Button>
               </div>
 
               {loadingPreview ? (
                 <div className="flex items-center justify-center py-8">
-                  <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                  <Loader size="md" />
                 </div>
               ) : previewData ? (
                 <div className="space-y-4">
@@ -675,7 +676,7 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
           >
             {sendingBulkSms ? (
               <>
-                <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                <Loader size="sm" className="mr-2" />
                 {t.sending}
               </>
             ) : (

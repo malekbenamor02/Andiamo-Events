@@ -13,7 +13,8 @@ import { Switch } from "@/components/ui/switch";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
 import { format } from "date-fns";
-import { Store, Building2, Users, Package, ShoppingCart, Activity, Plus, RefreshCw, Edit, Trash2, Copy, Check, X, Loader2, Eye, Mail, Send, BarChart3, TrendingUp } from "lucide-react";
+import Loader from "@/components/ui/Loader";
+import { Store, Building2, Users, Package, ShoppingCart, Activity, Plus, RefreshCw, Edit, Trash2, Copy, Check, X, Eye, Mail, Send, BarChart3, TrendingUp } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 
@@ -562,9 +563,9 @@ export function PosTab({ language }: PosTabProps) {
               </div>
             </CardHeader>
             <CardContent>
-              {loading && <p className="text-[#B0B0B0] flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />...</p>}
+              {loading && <p className="text-[#B0B0B0] flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />...</p>}
               {ordersLoading ? (
-                <p className="text-[#B0B0B0] flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />{language === "en" ? "Loading orders…" : "Chargement des commandes…"}</p>
+                <p className="text-[#B0B0B0] flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />{language === "en" ? "Loading orders…" : "Chargement des commandes…"}</p>
               ) : orders.length === 0 ? (
                 <p className="text-[#B0B0B0]">{t.noOrders}</p>
               ) : (
@@ -626,11 +627,11 @@ export function PosTab({ language }: PosTabProps) {
                 </Select>
                 <Input type="date" className="w-[140px] bg-[#252525] border-[#2A2A2A] text-white" value={statsFrom} onChange={e => setStatsFrom(e.target.value)} placeholder="From" />
                 <Input type="date" className="w-[140px] bg-[#252525] border-[#2A2A2A] text-white" value={statsTo} onChange={e => setStatsTo(e.target.value)} placeholder="To" />
-                <Button size="sm" variant="ghost" onClick={loadStats} disabled={statsLoading}><RefreshCw className={`w-4 h-4 ${statsLoading ? "animate-spin" : ""}`} /></Button>
+                <Button size="sm" variant="ghost" onClick={loadStats} disabled={statsLoading}>{statsLoading ? <Loader size="sm" className="[background:#E21836]" /> : <RefreshCw className="w-4 h-4" />}</Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              {statsLoading ? <p className="text-[#B0B0B0] flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Loading…</p> : stats ? (
+              {statsLoading ? <p className="text-[#B0B0B0] flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />Loading…</p> : stats ? (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
@@ -904,13 +905,13 @@ export function PosTab({ language }: PosTabProps) {
                 <Label className="text-[#B0B0B0]">{t.email}</Label>
                 <div className="flex gap-2 mt-1">
                   <Input className="bg-[#252525] border-[#2A2A2A] text-white flex-1" type="email" value={orderDetailEmail} onChange={e => setOrderDetailEmail(e.target.value)} />
-                  <Button size="sm" className="bg-[#E21836] hover:bg-[#c4142e] shrink-0" onClick={onSaveOrderEmail} disabled={orderDetailSaving}>{orderDetailSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : t.saveEmail}</Button>
+                  <Button size="sm" className="bg-[#E21836] hover:bg-[#c4142e] shrink-0" onClick={onSaveOrderEmail} disabled={orderDetailSaving}>{orderDetailSaving ? <Loader size="sm" className="[background:white] shrink-0" /> : t.saveEmail}</Button>
                 </div>
               </div>
               <DialogFooter className="flex flex-wrap gap-2 sm:justify-start">
                 {selectedOrder.status === "PAID" && (
                   <Button size="sm" variant="outline" className="border-[#2A2A2A] text-[#B0B0B0]" onClick={onResendTickets} disabled={orderDetailResendLoading || !selectedOrder.user_email}>
-                    {orderDetailResendLoading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}{t.resendTickets}
+                    {orderDetailResendLoading ? <Loader size="sm" className="[background:white] shrink-0 mr-1" /> : <Send className="w-4 h-4 mr-1" />}{t.resendTickets}
                   </Button>
                 )}
               </DialogFooter>

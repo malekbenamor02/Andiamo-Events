@@ -2,6 +2,7 @@
 // Server-side order creation with atomic stock reservation
 // Vercel serverless function
 
+import '../lib/sentry-server.js';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 import querystring from 'querystring';
@@ -399,6 +400,7 @@ export default async (req, res) => {
     }
 
     // STEP 6: Create order
+    const isOnline = paymentMethod !== 'ambassador_cash';
     const orderData = {
       source: paymentMethod === 'ambassador_cash' ? 'platform_cod' : 'platform_online',
       user_name: customerInfo.full_name.trim(),
@@ -412,6 +414,7 @@ export default async (req, res) => {
       total_price: totalPrice,
       payment_method: paymentMethod,
       status: initialStatus,
+      payment_status: isOnline ? 'PENDING_PAYMENT' : null,  // So "Pending Payment" filter works
       stock_released: false,  // Stock is reserved, not released
       assigned_at: ambassadorId ? new Date().toISOString() : null,
       notes: JSON.stringify({

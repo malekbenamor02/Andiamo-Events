@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -98,7 +99,7 @@ export function MarketingTab(p: MarketingTabProps) {
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {p.loadingBalance ? (
                           <div className="flex flex-col items-center justify-center py-8 space-y-3">
-                            <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+                            <Loader size="lg" />
                             <p className="text-sm text-muted-foreground font-heading">
                               {p.language === 'en' ? 'Checking balance...' : 'Vérification du solde...'}
                             </p>
@@ -222,7 +223,7 @@ export function MarketingTab(p: MarketingTabProps) {
                         >
                           {p.sendingTestSms ? (
                             <>
-                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                              <Loader size="sm" className="mr-2" />
                               {p.language === 'en' ? 'Sending...' : 'Envoi...'}
                             </>
                           ) : (
@@ -356,7 +357,7 @@ export function MarketingTab(p: MarketingTabProps) {
                                   </div>
                                   {p.importingPhones && (
                                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                      <RefreshCw className="w-4 h-4 animate-spin" />
+                                      <Loader size="sm" />
                                       {p.language === 'en' ? 'Importing...' : 'Importation...'}
                                     </div>
                                   )}
@@ -397,7 +398,7 @@ export function MarketingTab(p: MarketingTabProps) {
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {p.loadingLogs ? (
                           <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                            <Loader size="md" />
                           </div>
                         ) : (
                           <>
@@ -616,7 +617,7 @@ export function MarketingTab(p: MarketingTabProps) {
                           </div>
                           <div className="text-2xl font-bold text-primary">
                             {p.loadingEmailSubscribers ? (
-                              <RefreshCw className="w-6 h-6 animate-spin" />
+                              <Loader size="md" />
                             ) : (
                               p.emailSubscribers.length
                             )}
@@ -723,7 +724,7 @@ export function MarketingTab(p: MarketingTabProps) {
                                   </div>
                                   {p.importingEmails && (
                                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                      <RefreshCw className="w-4 h-4 animate-spin" />
+                                      <Loader size="sm" />
                                       {p.language === 'en' ? 'Importing...' : 'Importation...'}
                                     </div>
                                   )}
@@ -850,7 +851,7 @@ export function MarketingTab(p: MarketingTabProps) {
                         >
                           {p.sendingBulkEmails ? (
                             <>
-                              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+                              <Loader size="sm" className="mr-2" />
                               {p.language === 'en' ? 'Sending Emails...' : 'Envoi des Emails...'}
                             </>
                           ) : (

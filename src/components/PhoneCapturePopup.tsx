@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { API_ROUTES } from '@/lib/api-routes';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import Loader from '@/components/ui/Loader';
 
 interface PhoneCapturePopupProps {
   language: 'en' | 'fr';
@@ -227,7 +228,7 @@ const PhoneCapturePopup: React.FC<PhoneCapturePopupProps> = ({
               >
                 {isSubmitting ? (
                   <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <Loader size="sm" className="shrink-0 [background:white]" />
                     {t.submit}
                   </span>
                 ) : (
@@ -314,7 +315,7 @@ const PhoneCapturePopup: React.FC<PhoneCapturePopupProps> = ({
             >
               {isSubmitting ? (
                 <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <Loader size="sm" className="shrink-0 [background:white]" />
                   {t.submit}
                 </span>
               ) : (

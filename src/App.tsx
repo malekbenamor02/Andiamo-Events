@@ -6,8 +6,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { JsonLdOrganization, JsonLdLocalBusiness, JsonLdWebSite } from "@/components/JsonLd";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/react";
 import Navigation from "./components/layout/Navigation";
 import Footer from "./components/layout/Footer";
 import MaintenanceMode from "./components/layout/MaintenanceMode";
@@ -149,8 +147,6 @@ const App = () => {
             <BrowserRouter>
               <AppContent language={language} toggleLanguage={toggleLanguage} />
             </BrowserRouter>
-            <Analytics />
-            <SpeedInsights />
           </TooltipProvider>
         </QueryClientProvider>
       </HelmetProvider>

@@ -56,6 +56,7 @@ export interface OnlineOrderDetailsDialogProps {
     pass_type?: string;
     quantity?: number;
     notes?: string | Record<string, unknown>;
+    order_passes?: Array<{ pass_type?: string; quantity?: number; price?: number }>;
     transaction_id?: string;
     payment_gateway_reference?: string;
     payment_response_data?: unknown;
@@ -231,9 +232,16 @@ export function OnlineOrderDetailsDialog({
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground flex items-center gap-1">
                       <MapPin className="w-3 h-3" />
-                      {language === "en" ? "City/Ville" : "Ville/Quartier"}
+                      {language === "en" ? "City" : "Ville"}
                     </Label>
-                    <p className="text-base">{order.city || "N/A"}{order.ville ? ` - ${order.ville}` : ""}</p>
+                    <p className="text-base">{order.city || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {language === "en" ? "Neighborhood" : "Quartier"}
+                    </Label>
+                    <p className="text-base">{order.ville || "—"}</p>
                   </div>
                 </div>
               </CardContent>
@@ -249,24 +257,35 @@ export function OnlineOrderDetailsDialog({
               </CardHeader>
               <CardContent>
                 {(() => {
-                  let allPasses: { passType?: string; quantity?: number; price?: number }[] = [];
-                  try {
-                    if (order.notes) {
-                      const notesData = typeof order.notes === "string"
-                        ? JSON.parse(order.notes)
-                        : order.notes;
-                      if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                        allPasses = notesData.all_passes;
+                  // Prefer order_passes (from pass stock); fallback to notes.all_passes
+                  let allPasses: { passType?: string; pass_type?: string; quantity?: number; price?: number }[] = [];
+                  if (order.order_passes && order.order_passes.length > 0) {
+                    allPasses = order.order_passes.map((p) => ({
+                      passType: p.pass_type,
+                      pass_type: p.pass_type,
+                      quantity: p.quantity,
+                      price: p.price,
+                    }));
+                  } else {
+                    try {
+                      if (order.notes) {
+                        const notesData = typeof order.notes === "string"
+                          ? JSON.parse(order.notes)
+                          : order.notes;
+                        if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
+                          allPasses = notesData.all_passes;
+                        }
                       }
+                    } catch (e) {
+                      console.error("Error parsing notes:", e);
                     }
-                  } catch (e) {
-                    console.error("Error parsing notes:", e);
                   }
 
                   if (allPasses.length > 0) {
                     const calculatedTotal = allPasses.reduce((sum: number, pass: { price?: number; quantity?: number }) => {
                       return sum + ((pass.price || 0) * (pass.quantity || 0));
                     }, 0);
+                    const passName = (p: { passType?: string; pass_type?: string }) => p.pass_type ?? p.passType ?? "STANDARD";
 
                     return (
                       <Table>
@@ -279,11 +298,11 @@ export function OnlineOrderDetailsDialog({
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {allPasses.map((pass: { passType?: string; quantity?: number; price?: number }, index: number) => (
+                          {allPasses.map((pass: { passType?: string; pass_type?: string; quantity?: number; price?: number }, index: number) => (
                             <TableRow key={index}>
                               <TableCell>
-                                <Badge variant={pass.passType === "vip" ? "default" : "secondary"}>
-                                  {pass.passType?.toUpperCase() || "STANDARD"}
+                                <Badge variant={passName(pass).toLowerCase() === "vip" ? "default" : "secondary"}>
+                                  {passName(pass).toUpperCase()}
                                 </Badge>
                               </TableCell>
                               <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>

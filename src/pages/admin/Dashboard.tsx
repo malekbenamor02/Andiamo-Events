@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -29,8 +29,9 @@ import {
   PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
   Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Database,
   Search, Filter, MoreVertical, ExternalLink, Ticket, TrendingDown, Percent, Target, Package, Pause,
-  Zap, MailCheck, ArrowRight, Shield, QrCode, Store, History
+  Zap, MailCheck, ArrowRight, Shield, QrCode, Store, History, Menu, PanelLeft
 } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useNavigate } from "react-router-dom";
 import bcrypt from 'bcryptjs';
 import LoadingScreen from '@/components/ui/LoadingScreen';
@@ -367,7 +368,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [isMotivationDialogOpen, setIsMotivationDialogOpen] = useState(false);
   const [selectedMotivation, setSelectedMotivation] = useState<{application: AmbassadorApplication; motivation: string} | null>(null);
   const [orderLogs, setOrderLogs] = useState<any[]>([]);
-  const [performanceReports, setPerformanceReports] = useState<any>(null);
   const [salesSystemTab, setSalesSystemTab] = useState('cod-ambassador-orders');
   
   const [resendingTicketEmail, setResendingTicketEmail] = useState(false);
@@ -734,7 +734,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }, [applications, codAmbassadorOrders, onlineOrdersForChart]);
 
   const [loadingOrders, setLoadingOrders] = useState(false);
-  const [loadingPerformance, setLoadingPerformance] = useState(false);
 
   // Online Orders state
   const [onlineOrders, setOnlineOrders] = useState<any[]>([]);
@@ -1010,7 +1009,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   useEffect(() => {
     fetchAllData();
-    fetchAmbassadorSalesData(); // Fetch ambassador orders data on initial load for pending count
+    fetchAmbassadorSalesData();
   }, []);
 
   // Realtime: keep applications in sync without refresh
@@ -1458,32 +1457,25 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
   
-  // Fetch order expiration settings
   const fetchExpirationSettings = async () => {
     setLoadingExpirationSettings(true);
     try {
       const apiBase = getApiBaseUrl();
-      const url = buildFullApiUrl(API_ROUTES.ORDER_EXPIRATION_SETTINGS, apiBase);
-      const response = await fetch(url, {
-        credentials: 'include'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch expiration settings');
+      const url = buildFullApiUrl(API_ROUTES.ORDER_EXPIRATION_SETTINGS, apiBase) ?? `${apiBase || ''}${API_ROUTES.ORDER_EXPIRATION_SETTINGS}`;
+      const response = await fetch(url, { credentials: 'include' });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          const filtered = (result.data as any[]).filter((s: any) => s.order_status === 'PENDING_CASH');
+          setExpirationSettings(filtered);
+        }
       }
-      
-      const result = await response.json();
-      if (result.success && result.data) {
-        // Only keep PENDING_CASH settings (filter out others)
-        const filteredData = result.data.filter((setting: any) => setting.order_status === 'PENDING_CASH');
-        setExpirationSettings(filteredData);
-      }
-    } catch (error) {
-      console.error('Error fetching expiration settings:', error);
+    } catch (err) {
+      console.error('Error fetching expiration settings:', err);
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: language === 'en' ? 'Failed to fetch expiration settings' : 'Ã‰chec de la rÃ©cupÃ©ration des paramÃ¨tres d\'expiration',
-        variant: 'destructive'
+        description: language === 'en' ? 'Failed to fetch expiration settings' : 'Échec de la récupération des paramètres d\'expiration',
+        variant: 'destructive',
       });
     } finally {
       setLoadingExpirationSettings(false);
@@ -1871,18 +1863,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchAmbassadorSalesData = async (statusFilter?: string) => {
     setLoadingOrders(true);
     try {
-      // First, fetch all ambassadors to create name mapping
+      // First, fetch ALL ambassadors (including paused/removed) so we can show names and status
       const { data: allAmbassadorsData, error: ambassadorsError } = await (supabase as any)
         .from('ambassadors')
-        .select('id, full_name, ville, status, city')
-        .eq('status', 'approved');
+        .select('id, full_name, ville, status, city');
       
       if (ambassadorsError) throw ambassadorsError;
       
-      // Create ambassador name mapping
       const ambassadorNameMap = new Map<string, string>();
+      const ambassadorStatusMap = new Map<string, string>();
       (allAmbassadorsData || []).forEach((amb: any) => {
         ambassadorNameMap.set(amb.id, amb.full_name);
+        ambassadorStatusMap.set(amb.id, amb.status || '');
       });
 
       // Use API endpoint instead of direct Supabase queries
@@ -1953,7 +1945,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
         return {
           ...order,
-          ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || 'Unknown') : null,
+          ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || null) : null,
+          ambassador_status: order.ambassador_id ? (ambassadorStatusMap.get(order.ambassador_id) || null) : null,
           ambassador_id: order.ambassador_id,
           passes: passes
         };
@@ -1981,13 +1974,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       
       const enrichedManualOrders = (manualData || []).map((order: any) => ({
         ...order,
-        ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || 'Unknown') : null
+        ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || null) : null,
+        ambassador_status: order.ambassador_id ? (ambassadorStatusMap.get(order.ambassador_id) || null) : null
       }));
       setManualOrders(enrichedManualOrders);
       
       const enrichedAllOrders = (allData || []).map((order: any) => ({
         ...order,
-        ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || 'Unknown') : null
+        ambassador_name: order.ambassador_id ? (ambassadorNameMap.get(order.ambassador_id) || null) : null,
+        ambassador_status: order.ambassador_id ? (ambassadorStatusMap.get(order.ambassador_id) || null) : null
       }));
       setAllAmbassadorOrders(enrichedAllOrders);
 
@@ -2002,8 +1997,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setOrderLogs(logsData || []);
 
 
-      // Calculate performance reports
-      await fetchPerformanceReports();
     } catch (error: any) {
       // Only log to console if it's not a network error (to avoid duplicate logs)
       if (error?.message && !error.message.includes('Failed to fetch') && !error.message.includes('NetworkError')) {
@@ -2028,7 +2021,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // TODO: Create /api/admin/online-orders endpoint that excludes REMOVED_BY_ADMIN
       let query = (supabase as any)
         .from('orders')
-        .select('*')
+        .select('*, order_passes (*)')
         .eq('source', 'platform_online')
         .order('created_at', { ascending: false });
 
@@ -2037,16 +2030,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         query = query.eq('event_id', selectedEventId);
       }
 
-      // Apply filters
+      // Apply filters (Pending: include null payment_status for legacy orders)
       if (onlineOrderFilters.status !== 'all') {
-        query = query.eq('payment_status', onlineOrderFilters.status);
+        if (onlineOrderFilters.status === 'PENDING_PAYMENT') {
+          query = query.or('payment_status.eq.PENDING_PAYMENT,payment_status.is.null');
+        } else {
+          query = query.eq('payment_status', onlineOrderFilters.status);
+        }
       }
       if (onlineOrderFilters.city !== 'all') {
         query = query.eq('city', onlineOrderFilters.city);
       }
-      if (onlineOrderFilters.passType !== 'all') {
-        query = query.eq('pass_type', onlineOrderFilters.passType);
-      }
+      // passType filter applied client-side (orders can have order_passes with multiple types)
       if (onlineOrderFilters.dateFrom) {
         query = query.gte('created_at', onlineOrderFilters.dateFrom.toISOString());
       }
@@ -2060,15 +2055,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (error) throw error;
       
-      // Apply client-side filtering for order ID (UUID doesn't support ilike directly)
+      // Apply client-side filtering for order ID and pass type (order_passes)
       let filteredData = data || [];
       if (onlineOrderFilters.orderId && onlineOrderFilters.orderId.trim() !== '') {
         const orderIdSearch = onlineOrderFilters.orderId.trim().toUpperCase();
-        filteredData = filteredData.filter((order: any) => 
+        filteredData = filteredData.filter((order: any) =>
           order.id && order.id.toUpperCase().includes(orderIdSearch)
         );
       }
-      
+      if (onlineOrderFilters.passType !== 'all') {
+        const pt = onlineOrderFilters.passType;
+        filteredData = filteredData.filter((order: any) =>
+          order.pass_type === pt || (order.order_passes && order.order_passes.some((op: any) => op.pass_type === pt))
+        );
+      }
       setOnlineOrders(filteredData);
     } catch (error: any) {
       console.error('Error fetching online orders:', error);
@@ -2090,7 +2090,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // TODO: Create /api/admin/online-orders endpoint that excludes REMOVED_BY_ADMIN
       let query = (supabase as any)
         .from('orders')
-        .select('*')
+        .select('*, order_passes (*)')
         .eq('source', 'platform_online')
         .order('created_at', { ascending: false });
 
@@ -2099,16 +2099,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         query = query.eq('event_id', selectedEventId);
       }
 
-      // Apply filters
+      // Apply filters (Pending: include null payment_status for legacy orders)
       if (filters.status !== 'all') {
-        query = query.eq('payment_status', filters.status);
+        if (filters.status === 'PENDING_PAYMENT') {
+          query = query.or('payment_status.eq.PENDING_PAYMENT,payment_status.is.null');
+        } else {
+          query = query.eq('payment_status', filters.status);
+        }
       }
       if (filters.city !== 'all') {
         query = query.eq('city', filters.city);
       }
-      if (filters.passType !== 'all') {
-        query = query.eq('pass_type', filters.passType);
-      }
+      // passType filter applied client-side (orders can have order_passes with multiple types)
       if (filters.dateFrom) {
         query = query.gte('created_at', filters.dateFrom.toISOString());
       }
@@ -2122,15 +2124,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (error) throw error;
       
-      // Apply client-side filtering for order ID (UUID doesn't support ilike directly)
+      // Apply client-side filtering for order ID and pass type (order_passes)
       let filteredData = data || [];
       if (filters.orderId && filters.orderId.trim() !== '') {
         const orderIdSearch = filters.orderId.trim().toUpperCase();
-        filteredData = filteredData.filter((order: any) => 
+        filteredData = filteredData.filter((order: any) =>
           order.id && order.id.toUpperCase().includes(orderIdSearch)
         );
       }
-      
+      if (filters.passType !== 'all') {
+        const pt = filters.passType;
+        filteredData = filteredData.filter((order: any) =>
+          order.pass_type === pt || (order.order_passes && order.order_passes.some((op: any) => op.pass_type === pt))
+        );
+      }
       setOnlineOrders(filteredData);
     } catch (error: any) {
       console.error('Error fetching online orders:', error);
@@ -3128,63 +3135,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         description: error.message || (language === 'en' ? 'Failed to update order status' : 'Ã‰chec de la mise Ã  jour du statut'),
         variant: "destructive",
       });
-    }
-  };
-
-  const fetchPerformanceReports = async () => {
-    setLoadingPerformance(true);
-    try {
-      // Fetch all orders (ambassador + online)
-      const { data: allOrders } = await (supabase as any)
-        .from('orders')
-        .select('*');
-
-      if (!allOrders) return;
-
-      // Separate ambassador orders and online orders
-      const ambassadorOrders = (allOrders as any[]).filter((o: any) => 
-        o.source === 'platform_cod' || o.source === 'ambassador_manual'
-      );
-      const onlineOrders = (allOrders as any[]).filter((o: any) => o.source === 'platform_online');
-
-      // Total orders (all sources)
-      const total = allOrders.length;
-      
-      // Completed orders: 
-      // - For ambassador orders: status === 'COMPLETED'
-      // - For online orders: payment_status === 'PAID'
-      const completedAmbassador = ambassadorOrders.filter((o: any) => 
-        o.status?.toUpperCase() === 'COMPLETED'
-      ).length;
-      const completedOnline = onlineOrders.filter((o: any) => 
-        o.payment_status === 'PAID'
-      ).length;
-      const totalCompleted = completedAmbassador + completedOnline;
-      
-      const successRate = total > 0 ? ((totalCompleted / total) * 100).toFixed(1) : '0';
-
-      // Calculate average response time (only for ambassador orders with assigned/accepted)
-      const acceptedOrders = ambassadorOrders.filter((o: any) => o.accepted_at && o.assigned_at);
-      const avgResponseTime = acceptedOrders.length > 0
-        ? (acceptedOrders.reduce((sum: number, o: any) => {
-            const assigned = new Date(o.assigned_at).getTime();
-            const accepted = new Date(o.accepted_at).getTime();
-            return sum + (accepted - assigned);
-          }, 0) / acceptedOrders.length / 1000 / 60).toFixed(1)
-        : '0';
-
-      setPerformanceReports({
-        totalOrders: total,
-        totalCompleted,
-        completedAmbassador,
-        completedOnline,
-        successRate,
-        avgResponseTime
-      });
-    } catch (error) {
-      console.error('Error fetching performance reports:', error);
-    } finally {
-      setLoadingPerformance(false);
     }
   };
 
@@ -9789,84 +9739,287 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     };
   }, [navigate, toast, language]);
 
+  // Mobile nav drawer open state (must be before any conditional return to satisfy Rules of Hooks)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Desktop: sidebar nav hidden when cursor not on it; slides in from left on hover
+  const [sidebarNavVisible, setSidebarNavVisible] = useState(false);
+
+  // Allowed tabs on mobile: Overview, Events, Ambassadors, Applications, Online orders, Ambassador sales, Ticket management, POS, Official invitations (super_admin only)
+  const mobileAllowedTabs = useMemo(() => {
+    const base = ["overview", "events", "ambassadors", "applications", "online-orders", "ambassador-sales", "tickets", "pos"];
+    if (currentAdminRole === "super_admin") {
+      return [...base, "official-invitations"];
+    }
+    return base;
+  }, [currentAdminRole]);
+
+  // On mobile, if current tab is not allowed, switch to first allowed tab
+  useEffect(() => {
+    if (isMobile && activeTab && !mobileAllowedTabs.includes(activeTab)) {
+      setActiveTab(mobileAllowedTabs[0] ?? "overview");
+    }
+  }, [isMobile, activeTab, mobileAllowedTabs]);
+
   if (loading) {
     return (
       <LoadingScreen 
-        variant="default" 
         size="fullscreen" 
         text="Loading dashboard..."
       />
     );
   }
 
-  // Show mobile message if accessed from mobile device (after all hooks are called)
+  // Mobile: Overview tab only (step-by-step build). Desktop-only message saved for later.
   if (isMobile) {
-
+    const handleMobileLogout = () => {
+      try {
+        sessionStorage.removeItem('mobileAdminSession');
+      } catch (_) {}
+      window.location.href = '/admin/login';
+    };
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-4">
-        <div className="max-w-md w-full">
-          <div className="bg-card/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-primary/20 p-8 text-center space-y-6 animate-in fade-in-0 zoom-in-95 duration-500">
-            {/* Icon */}
-            <div className="flex justify-center">
-              <div className="relative">
-                <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse" />
-                <div className="relative bg-gradient-to-br from-primary to-primary/80 p-4 rounded-2xl shadow-lg">
-                  <Settings className="w-12 h-12 text-primary-foreground" />
-                </div>
-              </div>
-            </div>
-
-            {/* Title */}
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary bg-clip-text text-transparent mb-2">
-                {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
-              </h1>
-              <p className="text-muted-foreground text-lg">
-                {language === 'en' 
-                  ? 'Admin Dashboard'
-                  : 'Tableau de Bord Administrateur'}
-              </p>
-            </div>
-
-            {/* Message */}
-            <div className="space-y-3">
-              <p className="text-foreground/90 leading-relaxed">
-                {language === 'en' 
-                  ? 'The admin dashboard is only available on desktop computers and laptops. Please access it from a PC for the best experience and full functionality.'
-                  : 'Le tableau de bord administrateur est uniquement disponible sur les ordinateurs de bureau et les ordinateurs portables. Veuillez y accÃ©der depuis un PC pour une meilleure expÃ©rience et toutes les fonctionnalitÃ©s.'}
-              </p>
-            </div>
-
-            {/* Action Button */}
-            <div className="pt-4">
-              <Button 
-                onClick={() => navigate('/admin/login')}
-                className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 h-12 text-base font-semibold"
-              >
-                {language === 'en' ? 'Back to Login' : 'Retour Ã  la Connexion'}
-              </Button>
-            </div>
-
-            {/* Decorative elements */}
-            <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
-            <div className="absolute -top-10 -left-10 w-24 h-24 bg-primary/5 rounded-full blur-2xl" />
-          </div>
-        </div>
+      <div className="min-h-screen min-w-0 flex flex-col" style={{ backgroundColor: '#1A1A1A' }}>
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-2 px-4 py-3 border-b shrink-0" style={{ borderColor: '#2A2A2A', background: '#1A1A1A' }}>
+          <h1 className="text-lg font-semibold truncate" style={{ color: '#FFF' }}>{t.overview}</h1>
+          <Button variant="ghost" size="sm" onClick={handleMobileLogout} className="shrink-0" style={{ color: '#E21836' }}>
+            <LogOut className="w-4 h-4 mr-1" />
+            {language === 'en' ? 'Log out' : 'Déconnexion'}
+          </Button>
+        </header>
+        <main className="flex-1 min-w-0 overflow-x-hidden p-4">
+          <OverviewTab
+            language={language}
+            t={t}
+            applications={applications}
+            pendingApplications={pendingApplications}
+            approvedCount={approvedCount}
+            events={events}
+            displayStats={displayStats}
+            pendingAmbassadorOrdersCount={pendingAmbassadorOrdersCount}
+            previousPendingAmbassadorOrdersCount={previousPendingAmbassadorOrdersCount}
+            activityChartData={activityChartData}
+            animatedCards={animatedCards}
+            setActiveTab={setActiveTab}
+            getStatusBadge={getStatusBadge}
+          />
+        </main>
       </div>
     );
   }
-  
+
+  const isTabAllowedOnMobile = (tab: string) => mobileAllowedTabs.includes(tab);
+
+  const handleMobileNavSelect = (tab: string) => {
+    if (!isTabAllowedOnMobile(tab)) return;
+    setActiveTab(tab);
+    setMobileNavOpen(false);
+  };
+
   return (
-    <div className="pt-16 min-h-screen min-w-0" style={{ backgroundColor: '#1A1A1A' }}>
+    <div className={cn("min-h-screen min-w-0", isMobile ? "pt-14" : "pt-16")} style={{ backgroundColor: '#1A1A1A' }}>
+      {/* Mobile top bar with menu */}
+      {isMobile && (
+        <header
+          className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between gap-2 px-3 sm:px-4 h-14 border-b shrink-0"
+          style={{ background: '#1A1A1A', borderColor: '#2A2A2A' }}
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0 flex items-center gap-2 -ml-1 min-w-0"
+            onClick={() => setMobileNavOpen(true)}
+            aria-label={language === 'en' ? 'Open menu to switch tabs' : 'Ouvrir le menu pour changer d\'onglet'}
+          >
+            <Menu className="w-6 h-6 shrink-0" style={{ color: '#E21836' }} />
+            <span className="text-sm font-medium" style={{ color: '#E21836' }}>
+              {language === 'en' ? 'Menu' : 'Menu'}
+            </span>
+          </Button>
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            className="flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-2"
+            aria-label={language === 'en' ? 'Tap to change tab' : 'Appuyer pour changer d\'onglet'}
+          >
+            <span className="text-xs font-medium truncate w-full text-center" style={{ color: '#B8B8B8' }}>
+              {language === 'en' ? 'Current:' : 'Actuel :'}
+            </span>
+            <span className="text-base font-semibold truncate w-full text-center" style={{ color: '#E21836' }}>
+              {activeTab === "overview" && t.overview}
+              {activeTab === "events" && t.events}
+              {activeTab === "ambassadors" && t.ambassadors}
+              {activeTab === "applications" && t.applications}
+              {activeTab === "pos" && (language === 'en' ? 'Point de Vente' : 'Point de Vente')}
+              {activeTab === "official-invitations" && (language === 'en' ? 'Official Invitations' : 'Invitations Officielles')}
+              {activeTab === "online-orders" && (language === 'en' ? 'Online Orders' : 'Commandes en Ligne')}
+              {activeTab === "tickets" && (language === 'en' ? 'Ticket Management' : 'Ticket Management')}
+              {activeTab === "ambassador-sales" && (language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs')}
+              {!["overview","events","ambassadors","applications","pos","official-invitations","online-orders","tickets","ambassador-sales"].includes(activeTab) && t.title}
+            </span>
+          </button>
+          <div className="flex items-center gap-1.5 shrink-0 text-xs font-medium" style={{ color: '#B8B8B8' }}>
+            <Clock className="w-3.5 h-3.5" style={{ color: '#E21836' }} />
+            <span>{Math.floor(sessionTimeLeft / 3600)}h {Math.floor((sessionTimeLeft % 3600) / 60)}m</span>
+          </div>
+        </header>
+      )}
+
+      {/* Mobile nav Sheet */}
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent
+          side="left"
+          className="w-[280px] p-0 border-r flex flex-col"
+          style={{ background: '#1A1A1A', borderColor: '#2A2A2A' }}
+        >
+          <SheetHeader className="p-4 border-b text-left" style={{ borderColor: '#2A2A2A' }}>
+            <SheetTitle style={{ color: '#FFFFFF' }}>
+              {language === 'en' ? 'Switch tab' : 'Changer d\'onglet'}
+            </SheetTitle>
+            <p className="text-sm mt-1" style={{ color: '#B0B0B0' }}>
+              {language === 'en' ? 'Tap a tab below to view it' : 'Appuyez sur un onglet ci-dessous'}
+            </p>
+          </SheetHeader>
+          <nav className="p-2 flex-1 overflow-y-auto">
+            <div className="space-y-1">
+              {isTabAllowedOnMobile("overview") && (
+                <button
+                  onClick={() => handleMobileNavSelect("overview")}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "overview" && "shadow-lg")}
+                  style={{ color: activeTab === "overview" ? '#E21836' : '#B0B0B0', background: activeTab === "overview" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <BarChart3 className="w-4 h-4 shrink-0" />
+                  <span>{t.overview}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("events") && (
+                <button
+                  onClick={() => handleMobileNavSelect("events")}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "events" && "shadow-lg")}
+                  style={{ color: activeTab === "events" ? '#E21836' : '#B0B0B0', background: activeTab === "events" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <CalendarIcon className="w-4 h-4 shrink-0" />
+                  <span>{t.events}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("ambassadors") && (
+                <button
+                  onClick={() => handleMobileNavSelect("ambassadors")}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "ambassadors" && "shadow-lg")}
+                  style={{ color: activeTab === "ambassadors" ? '#E21836' : '#B0B0B0', background: activeTab === "ambassadors" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <Users className="w-4 h-4 shrink-0" />
+                  <span>{t.ambassadors}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("applications") && (
+                <button
+                  onClick={() => handleMobileNavSelect("applications")}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "applications" && "shadow-lg")}
+                  style={{ color: activeTab === "applications" ? '#E21836' : '#B0B0B0', background: activeTab === "applications" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <FileText className="w-4 h-4 shrink-0" />
+                  <span>{t.applications}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("pos") && (
+                <button
+                  onClick={() => handleMobileNavSelect("pos")}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "pos" && "shadow-lg")}
+                  style={{ color: activeTab === "pos" ? '#E21836' : '#B0B0B0', background: activeTab === "pos" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <Store className="w-4 h-4 shrink-0" />
+                  <span>{language === 'en' ? 'Point de Vente' : 'Point de Vente'}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("official-invitations") && currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => handleMobileNavSelect("official-invitations")}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "official-invitations" && "shadow-lg")}
+                  style={{ color: activeTab === "official-invitations" ? '#E21836' : '#B0B0B0', background: activeTab === "official-invitations" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <Mail className="w-4 h-4 shrink-0" />
+                  <span>{language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("online-orders") && (
+                <button
+                  onClick={() => {
+                    handleMobileNavSelect("online-orders");
+                    if (onlineOrders.length === 0) fetchOnlineOrders();
+                  }}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "online-orders" && "shadow-lg")}
+                  style={{ color: activeTab === "online-orders" ? '#E21836' : '#B0B0B0', background: activeTab === "online-orders" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <CreditCard className="w-4 h-4 shrink-0" />
+                  <span>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("tickets") && (
+                <button
+                  onClick={() => handleMobileNavSelect("tickets")}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "tickets" && "shadow-lg")}
+                  style={{ color: activeTab === "tickets" ? '#E21836' : '#B0B0B0', background: activeTab === "tickets" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <DollarSign className="w-4 h-4 shrink-0" />
+                  <span>Ticket Management</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("ambassador-sales") && (
+                <button
+                  onClick={() => {
+                    handleMobileNavSelect("ambassador-sales");
+                    if (codAmbassadorOrders.length === 0) fetchAmbassadorSalesData();
+                  }}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "ambassador-sales" && "shadow-lg")}
+                  style={{ color: activeTab === "ambassador-sales" ? '#E21836' : '#B0B0B0', background: activeTab === "ambassador-sales" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <Package className="w-4 h-4 shrink-0" />
+                  <span>{language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs'}</span>
+                </button>
+              )}
+            </div>
+          </nav>
+          <div className="p-4 border-t" style={{ borderColor: '#2A2A2A' }}>
+            <Button variant="outline" onClick={handleLogout} className="w-full flex items-center gap-2">
+              <LogOut className="w-4 h-4" />
+              <span>{t.logout}</span>
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <div className="flex">
-        {/* Sidebar */}
-        <div 
-          className="w-64 min-h-screen flex flex-col"
+        {/* Desktop: nav wrapper in flow - scrolls with page; width collapses to trigger strip when hidden */}
+        <div
+          className="hidden lg:block shrink-0 min-h-screen overflow-hidden relative transition-[width] duration-300 ease-out"
           style={{
-            background: '#1A1A1A',
+            width: sidebarNavVisible ? '16rem' : '12px',
             borderRight: '1px solid #2A2A2A'
           }}
+          onMouseEnter={() => setSidebarNavVisible(true)}
+          onMouseLeave={() => setSidebarNavVisible(false)}
         >
+          {/* Trigger strip when collapsed */}
+          <div
+            className="absolute left-0 top-0 bottom-0 w-3 flex items-center justify-center pointer-events-none"
+            style={{
+              background: 'rgba(26, 26, 26, 0.85)',
+              opacity: sidebarNavVisible ? 0 : 1,
+              transition: 'opacity 0.2s'
+            }}
+            aria-hidden
+          >
+            <PanelLeft className="w-3.5 h-3.5 shrink-0" style={{ color: '#E21836' }} />
+          </div>
+          {/* Sidebar - slides in from left on hover */}
+          <div 
+            className="absolute left-0 top-0 w-64 min-h-full flex flex-col transition-transform duration-300 ease-out"
+            style={{
+              background: '#1A1A1A',
+              borderRight: '1px solid #2A2A2A',
+              transform: sidebarNavVisible ? 'translateX(0)' : 'translateX(-100%)'
+            }}
+          >
           <div className="p-4 border-b" style={{ borderColor: '#2A2A2A' }}>
             <h2 className="text-lg font-semibold" style={{ color: '#FFFFFF' }}>Navigation</h2>
           </div>
@@ -10204,16 +10357,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             </Button>
           </div>
         </div>
+        </div>
 
-        {/* Main Content */}
-        <div className="flex-1">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 min-w-0">
-            {/* Header */}
-            <div className="mb-8 flex flex-col gap-4 min-w-0 animate-in slide-in-from-top-4 fade-in duration-700">
-              <div className="flex justify-between items-start">
-                <div>
+        {/* Main Content - overflow hidden to prevent horizontal scroll on mobile */}
+        <div className="flex-1 min-w-0 overflow-x-hidden">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 min-w-0">
+            {/* Header - responsive: stack on mobile, hide main title on mobile (shown in top bar) */}
+            <div className="mb-6 sm:mb-8 flex flex-col gap-4 min-w-0 animate-in slide-in-from-top-4 fade-in duration-700">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-4">
+                <div className={cn("min-w-0", isMobile && "hidden")}>
                   <h1 
-                    className="text-4xl font-heading font-bold mb-2 animate-in slide-in-from-left-4 duration-1000 uppercase"
+                    className="text-2xl sm:text-4xl font-heading font-bold mb-2 animate-in slide-in-from-left-4 duration-1000 uppercase"
                     style={{
                       color: '#E21836',
                       textShadow: '0 0 12px rgba(226, 24, 54, 0.45)'
@@ -10228,9 +10382,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     {t.subtitle}
                   </p>
                 </div>
-                {/* Session Timer */}
+                {/* Session Timer - compact on mobile */}
                 <div 
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg"
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg shrink-0"
                   style={{
                     background: '#1F1F1F',
                     border: '1px solid #2A2A2A',
@@ -10244,9 +10398,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </div>
               </div>
               
-              {/* Event Selector */}
-              <div className="flex items-center gap-4">
-                <Label htmlFor="event-selector" className="text-sm font-medium" style={{ color: '#B0B0B0' }}>
+              {/* Event Selector - full width on mobile */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
+                <Label htmlFor="event-selector" className="text-sm font-medium shrink-0" style={{ color: '#B0B0B0' }}>
                   {language === 'en' ? 'Filter by Event:' : 'Filtrer par Événement:'}
                 </Label>
                 <Select
@@ -10257,7 +10411,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 >
                   <SelectTrigger 
                     id="event-selector"
-                    className="w-[300px]"
+                    className="w-full sm:w-[300px] min-w-0"
                     style={{
                       background: '#1F1F1F',
                       borderColor: '#2A2A2A',
@@ -10302,16 +10456,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <Tabs 
               value={activeTab} 
               onValueChange={(value) => {
+                // On mobile, only allow mobile-allowed tabs
+                if (isMobile && !mobileAllowedTabs.includes(value)) return;
                 // Prevent regular admins from accessing super_admin-only tabs
                 if (currentAdminRole !== 'super_admin' && (value === 'logs' || value === 'settings' || value === 'admins' || value === 'official-invitations' || value === 'scanners')) {
                   return; // Don't allow tab change
                 }
                 setActiveTab(value);
               }} 
-              className="space-y-6 min-w-0"
+              className="space-y-6 min-w-0 [&>[data-state=active]]:animate-in [&>[data-state=active]]:fade-in-50 [&>[data-state=active]]:duration-300"
             >
-              {/* Tabs Content - separated from navigation */}
-              <TabsContent value="overview" className="space-y-6 mt-20 sm:mt-0">
+              {/* Tabs Content - separated from navigation; smooth transition when switching tabs */}
+              <TabsContent value="overview" className="space-y-6 mt-20 sm:mt-0 data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:duration-300">
                 <OverviewTab
                   language={language}
                   t={t}
@@ -10531,6 +10687,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   onRefresh={fetchOnlineOrders}
                   onFetchWithFilters={fetchOnlineOrdersWithFilters}
                   onViewOrder={(order) => { setSelectedOnlineOrder(order); setIsOnlineOrderDetailsOpen(true); }}
+                  eventPassTypes={selectedEventId
+                    ? (events.find((e: { id: string }) => e.id === selectedEventId)?.passes?.map((p: { name: string }) => p.name).filter(Boolean) ?? [])
+                    : [...new Set((events || []).flatMap((e: { passes?: { name: string }[] }) => (e.passes || []).map((p) => p.name).filter(Boolean)))]}
                 />
               </TabsContent>
 
@@ -10542,10 +10701,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 setOrderFilters={setOrderFilters}
                 filterOptions={filterOptions}
                 filteredCodOrders={filteredCodOrders}
+                codAmbassadorOrders={codAmbassadorOrders}
+                events={events}
                 selectedPassTypeTotal={selectedPassTypeTotal}
                 loadingOrders={loadingOrders}
                 orderLogs={orderLogs}
-                performanceReports={performanceReports}
                 onExportExcel={exportOrdersToExcel}
                 onRefresh={fetchAmbassadorSalesData}
                 onViewOrder={(order) => {

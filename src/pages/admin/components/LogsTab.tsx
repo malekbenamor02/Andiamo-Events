@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -144,7 +145,7 @@ export function LogsTab({
             variant="outline"
             className="animate-in slide-in-from-right-4 duration-1000"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            {loading ? <Loader size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
             {language === "en" ? "Refresh" : "Actualiser"}
           </Button>
         </div>
@@ -324,9 +325,9 @@ export function LogsTab({
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-              <span className="ml-2 text-muted-foreground">
+            <div className="flex items-center justify-center py-12 gap-3">
+              <Loader size="md" />
+              <span className="text-muted-foreground">
                 {language === "en" ? "Loading logs..." : "Chargement des logs..."}
               </span>
             </div>
@@ -489,16 +490,16 @@ export function LogsTab({
               onClick={onRefreshCspReports}
               disabled={loadingCspReports}
             >
-              <RefreshCw className={`w-4 h-4 mr-2 ${loadingCspReports ? "animate-spin" : ""}`} />
+              {loadingCspReports ? <Loader size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
               {language === "en" ? "Refresh" : "Actualiser"}
             </Button>
           )}
         </CardHeader>
         <CardContent>
           {loadingCspReports ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-              <span className="ml-2 text-muted-foreground">
+            <div className="flex items-center justify-center py-8 gap-3">
+              <Loader size="md" />
+              <span className="text-muted-foreground">
                 {language === "en" ? "Loading CSP reports..." : "Chargement des rapports CSP..."}
               </span>
             </div>

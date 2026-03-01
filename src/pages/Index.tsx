@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Calendar, MapPin, ExternalLink } from "lucide-react";
-import { Link } from "react-router-dom";
 import HeroSection from "@/components/home/HeroSection";
 import { PageMeta } from "@/components/PageMeta";
 import { JsonLdWebPage } from "@/components/JsonLd";
@@ -163,7 +162,6 @@ const Index = ({ language }: IndexProps) => {
       {!heroMediaLoaded && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center min-h-screen bg-black">
           <LoadingScreen 
-            variant="default" 
             text="Loading Experience..." 
             size="fullscreen"
           />
@@ -188,31 +186,6 @@ const Index = ({ language }: IndexProps) => {
         >
         <HeroSection language={language} onMediaLoaded={() => setHeroMediaLoaded(true)} />
         </div>
-
-      {/* SEO: Keyword-rich intro + internal links */}
-      <section className="py-10 px-4 sm:px-6 lg:px-8 bg-background/50" aria-label={language === "en" ? "About Andiamo Events" : "À propos d'Andiamo Events"}>
-        <div className="max-w-4xl mx-auto text-center">
-          <p className="text-lg md:text-xl text-muted-foreground leading-relaxed">
-            {language === "en" ? (
-              <>
-                <strong className="text-foreground">Andiamo Events</strong> is Tunisia's leading event and nightlife brand. Discover{" "}
-                <Link to="/events" className="text-primary font-medium hover:underline">upcoming events</Link>
-                {" "}— concerts, parties and festivals in <strong className="text-foreground">Tunis</strong>, <strong className="text-foreground">Sousse</strong> and across Tunisia.{" "}
-                <Link to="/about" className="text-primary font-medium hover:underline">Learn more about us</Link>
-                {" "}or <Link to="/contact" className="text-primary font-medium hover:underline">get in touch</Link>. Buy tickets online and create memories.
-              </>
-            ) : (
-              <>
-                <strong className="text-foreground">Andiamo Events</strong> est la marque tunisienne d'événements et de vie nocturne. Découvrez nos{" "}
-                <Link to="/events" className="text-primary font-medium hover:underline">prochains événements</Link>
-                {" "}— concerts, soirées et festivals à <strong className="text-foreground">Tunis</strong>, <strong className="text-foreground">Sousse</strong> et en Tunisie.{" "}
-                <Link to="/about" className="text-primary font-medium hover:underline">En savoir plus</Link>
-                {" "}ou <Link to="/contact" className="text-primary font-medium hover:underline">nous contacter</Link>. Achetez vos billets en ligne.
-              </>
-            )}
-          </p>
-        </div>
-      </section>
 
       {/* Counter Section with Scroll Animation */}
       <div 

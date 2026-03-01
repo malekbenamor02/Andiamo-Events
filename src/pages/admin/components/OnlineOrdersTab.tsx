@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -52,15 +53,21 @@ export interface OnlineOrdersTabProps {
   onRefresh: () => void;
   onFetchWithFilters: (filters: OnlineOrderFilters) => void;
   onViewOrder: (order: OnlineOrder) => void;
+  /** Pass type names from the selected event (event_passes.name). When empty, "All Types" only. */
+  eventPassTypes?: string[];
 }
 
+/** Hide most of email in table; full email is copyable on click. */
 function truncateEmail(email: string) {
   if (email === "N/A" || !email.includes("@")) return email;
   const [local, domain] = email.split("@");
-  if (!domain) return email.length > 12 ? email.substring(0, 9) + "..." : email;
-  const truncatedLocal = local.length > 6 ? local.substring(0, 6) + ".." : local;
-  const truncatedDomain = domain.length > 8 ? domain.substring(0, 8) + ".." : domain;
-  return `${truncatedLocal}@${truncatedDomain}`;
+  if (!domain) return "***";
+  const showLocal = local.length <= 2 ? local + "***" : local.substring(0, 2) + "***";
+  const dotIdx = domain.indexOf(".");
+  const baseDomain = dotIdx >= 0 ? domain.substring(0, dotIdx) : domain;
+  const suffix = dotIdx >= 0 ? domain.substring(dotIdx) : "";
+  const showDomain = (baseDomain.length <= 2 ? baseDomain : baseDomain.substring(0, 2) + "***") + suffix;
+  return `${showLocal}@${showDomain}`;
 }
 
 export function OnlineOrdersTab({
@@ -72,6 +79,7 @@ export function OnlineOrdersTab({
   onRefresh,
   onFetchWithFilters,
   onViewOrder,
+  eventPassTypes = [],
 }: OnlineOrdersTabProps) {
   const { toast } = useToast();
 
@@ -186,15 +194,11 @@ export function OnlineOrdersTab({
                 <SelectItem value="all">
                   {language === "en" ? "All Types" : "Tous les Types"}
                 </SelectItem>
-                <SelectItem value="standard">
-                  {language === "en" ? "Standard" : "Standard"}
-                </SelectItem>
-                <SelectItem value="vip">
-                  {language === "en" ? "VIP" : "VIP"}
-                </SelectItem>
-                <SelectItem value="mixed">
-                  {language === "en" ? "Mixed" : "Mixte"}
-                </SelectItem>
+                {eventPassTypes.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Input
@@ -313,7 +317,7 @@ export function OnlineOrdersTab({
 
           {loadingOnlineOrders ? (
             <div className="text-center py-8">
-              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <Loader size="md" className="mx-auto mb-2" />
               <p className="text-muted-foreground">
                 {language === "en"
                   ? "Loading orders..."
@@ -337,9 +341,6 @@ export function OnlineOrdersTab({
                   </TableHead>
                   <TableHead>{language === "en" ? "City" : "Ville"}</TableHead>
                   <TableHead>
-                    {language === "en" ? "Neighborhood" : "Quartier"}
-                  </TableHead>
-                  <TableHead>
                     {language === "en"
                       ? "Payment Status"
                       : "Statut Paiement"}
@@ -356,7 +357,7 @@ export function OnlineOrdersTab({
                 {onlineOrders.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={10}
+                      colSpan={9}
                       className="text-center text-muted-foreground py-8"
                     >
                       {language === "en"
@@ -366,8 +367,17 @@ export function OnlineOrdersTab({
                   </TableRow>
                 ) : (
                   onlineOrders.map((order) => {
-                    let passesDisplay = `${order.quantity ?? 0}x ${(order.pass_type ?? "STANDARD").toUpperCase()}`;
-                    if (order.pass_type === "mixed" && order.notes) {
+                    // Pass display: prefer order_passes (names + prices from pass stock), else notes all_passes, else order fields
+                    let passesDisplay: string;
+                    const orderPasses = order.order_passes as { pass_type?: string; quantity?: number; price?: number }[] | undefined;
+                    if (orderPasses && orderPasses.length > 0) {
+                      passesDisplay = orderPasses
+                        .map(
+                          (p) =>
+                            `${p.quantity ?? 0}x ${(p.pass_type ?? "—").toUpperCase()} (${(p.price ?? 0).toFixed(0)} TND)`
+                        )
+                        .join(", ");
+                    } else if (order.pass_type === "mixed" && order.notes) {
                       try {
                         const notesData =
                           typeof order.notes === "string"
@@ -379,14 +389,18 @@ export function OnlineOrdersTab({
                         ) {
                           passesDisplay = notesData.all_passes
                             .map(
-                              (p: { quantity?: number; passType?: string }) =>
-                                `${p.quantity ?? 0}x ${(p.passType ?? "STANDARD").toUpperCase()}`
+                              (p: { quantity?: number; passType?: string; price?: number }) =>
+                                `${p.quantity ?? 0}x ${(p.passType ?? "STANDARD").toUpperCase()}${p.price != null ? ` (${Number(p.price).toFixed(0)} TND)` : ""}`
                             )
                             .join(", ");
+                        } else {
+                          passesDisplay = `${order.quantity ?? 0}x ${(order.pass_type ?? "STANDARD").toUpperCase()}`;
                         }
                       } catch {
-                        // fall through
+                        passesDisplay = `${order.quantity ?? 0}x ${(order.pass_type ?? "STANDARD").toUpperCase()}`;
                       }
+                    } else {
+                      passesDisplay = `${order.quantity ?? 0}x ${(order.pass_type ?? "STANDARD").toUpperCase()}`;
                     }
                     const email =
                       order.user_email ?? order.email ?? "N/A";
@@ -440,7 +454,6 @@ export function OnlineOrdersTab({
                           {(order.total_price ?? 0).toFixed(2)} TND
                         </TableCell>
                         <TableCell>{order.city ?? "N/A"}</TableCell>
-                        <TableCell>{order.ville ?? "-"}</TableCell>
                         <TableCell>
                           <TooltipProvider>
                             <Tooltip>
@@ -463,16 +476,20 @@ export function OnlineOrdersTab({
                             </Tooltip>
                           </TooltipProvider>
                         </TableCell>
-                        <TableCell>
-                          {new Date(
-                            order.created_at
-                          ).toLocaleDateString()}
+                        <TableCell className="whitespace-nowrap">
+                          <div className="flex flex-col">
+                            <span>{format(new Date(order.created_at), "PP")}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(order.created_at), "p")}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => onViewOrder(order)}
+                            title={order.ville ? `${language === "en" ? "Neighborhood" : "Quartier"}: ${order.ville}` : undefined}
                           >
                             <Eye className="w-4 h-4 mr-2" />
                             {language === "en" ? "View" : "Voir"}

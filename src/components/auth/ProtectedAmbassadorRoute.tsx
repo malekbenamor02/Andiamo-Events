@@ -18,7 +18,6 @@ const ProtectedAmbassadorRoute = ({ children, language }) => {
   if (!isAuth) {
     return (
       <LoadingScreen 
-        variant="default" 
         size="fullscreen" 
         text={language === 'en' ? 'Redirecting to login...' : 'Redirection vers la connexion...'}
       />

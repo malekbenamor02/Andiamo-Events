@@ -6,7 +6,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAmbassadorSalesOverview } from '@/hooks/useAmbassadorSales';
-import { Loader2 } from 'lucide-react';
+import Loader from '@/components/ui/Loader';
 import { AmbassadorPerformance } from './AmbassadorPerformance';
 import { AmbassadorAnalytics } from './AmbassadorAnalytics';
 
@@ -33,7 +33,7 @@ export function AmbassadorSalesOverview({ language = 'en' }: AmbassadorSalesOver
   if (loadingPerformance || loadingAnalytics) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        <Loader size="lg" className="[background:hsl(var(--muted-foreground))]" />
         <span className="ml-2 text-muted-foreground">{t.loading}</span>
       </div>
     );

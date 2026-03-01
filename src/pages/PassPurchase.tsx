@@ -7,6 +7,7 @@ import { ExpandableText } from '@/components/ui/expandable-text';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import Loader from '@/components/ui/Loader';
 import { getApiBaseUrl, API_ROUTES } from '@/lib/api-routes';
 
 // New unified order system components
@@ -660,7 +661,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   if (loading) {
     return (
       <LoadingScreen 
-        variant="default" 
         size="fullscreen" 
         text={language === 'en' ? "Loading..." : "Chargement..."}
       />
@@ -759,7 +759,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                   <p className="text-sm text-muted-foreground">{t[language].orderDetails}</p>
                   <p className="font-semibold">{event.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(event.date).toLocaleDateString(language)}
+                    {new Date(event.date).toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                   </p>
                 </div>
                 <div>
@@ -835,7 +835,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center">
                       <Calendar className="w-4 h-4 mr-2 text-primary" />
-                      <span>{new Date(event.date).toLocaleDateString(language)}</span>
+                      <span>{new Date(event.date).toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                     </div>
                     <div className="flex items-center">
                       <MapPin className="w-4 h-4 mr-2 text-primary" />
@@ -1248,7 +1248,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                     >
                       {processing ? (
                         <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                          <Loader size="sm" className="mr-2 shrink-0 [background:white]" />
                           {t[language].processing}
                         </>
                       ) : (

@@ -40,6 +40,7 @@ export function ExpandableText({
         {displayText}
       </p>
       <Button
+        type="button"
         variant="ghost"
         size="sm"
         onClick={() => setIsExpanded(!isExpanded)}

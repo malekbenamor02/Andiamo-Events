@@ -20,8 +20,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
+import Loader from '@/components/ui/Loader';
 import { 
-  Loader2, 
   Mail, 
   Search, 
   Filter, 
@@ -475,7 +475,7 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
               onClick={fetchInvitations}
               disabled={loading}
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? <Loader size="sm" className="mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               {language === 'en' ? 'Refresh' : 'Actualiser'}
             </Button>
           </div>
@@ -512,7 +512,7 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
           {/* Table */}
           {loading && invitations.length === 0 ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Loader size="lg" className="[background:hsl(var(--muted-foreground))]" />
             </div>
           ) : invitations.length === 0 ? (
             <Alert>
@@ -649,7 +649,7 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
           </DialogHeader>
           {detailsLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Loader size="lg" className="[background:hsl(var(--muted-foreground))]" />
             </div>
           ) : selectedInvitation ? (
             <div className="space-y-6">
@@ -837,7 +837,7 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
             >
               {deleting ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader size="sm" className="mr-2" />
                   {language === 'en' ? 'Deleting...' : 'Suppression...'}
                 </>
               ) : (

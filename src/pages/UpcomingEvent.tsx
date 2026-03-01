@@ -155,7 +155,6 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
     return (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center min-h-screen bg-black">
         <LoadingScreen 
-          variant="default" 
           size="fullscreen" 
           text={t.loading}
         />

@@ -6,6 +6,7 @@
  * scanner/scans, scanner/statistics.
  */
 
+import '../lib/sentry-server.js';
 import { createClient } from '@supabase/supabase-js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';

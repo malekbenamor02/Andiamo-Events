@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useState, useRef } from "react";
+import { Navigate, useLocation } from "react-router-dom";
 import LoadingScreen from '@/components/ui/LoadingScreen';
-import { apiFetch } from '@/lib/api-client';
 import { API_ROUTES } from '@/lib/api-routes';
+import { getApiBaseUrl } from '@/lib/api-routes';
+const MOBILE_SESSION_KEY = 'mobileAdminSession';
 
 interface ProtectedAdminRouteProps {
   children: React.ReactNode;
@@ -13,47 +13,57 @@ interface ProtectedAdminRouteProps {
 const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const location = useLocation();
+  const cancelled = useRef(false);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Since the cookie is httpOnly, we can't read it directly
-        // Just make the API call and let the server handle the cookie
-        // Use apiFetch to automatically handle 401 errors
-        const response = await apiFetch(API_ROUTES.VERIFY_ADMIN, {
-          method: 'GET',
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          
-          if (data.valid) {
-            setIsAuthenticated(true);
-          } else {
-            setIsAuthenticated(false);
-          }
+    cancelled.current = false;
+
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(MOBILE_SESSION_KEY)) {
+      setIsAuthenticated(true);
+      setLoading(false);
+      return;
+    }
+
+    const fromLogin = (location.state as { fromLogin?: boolean })?.fromLogin === true;
+
+    if (fromLogin) {
+      setIsAuthenticated(true);
+      setLoading(false);
+      return;
+    }
+
+    const base = getApiBaseUrl();
+    const verifyUrl = base ? `${base}${API_ROUTES.VERIFY_ADMIN}` : API_ROUTES.VERIFY_ADMIN;
+
+    fetch(verifyUrl, { method: 'GET', credentials: 'include' })
+      .then((res) => {
+        if (cancelled.current) return;
+        if (res.ok) return res.json().catch(() => ({}));
+        return null;
+      })
+      .then((data) => {
+        if (cancelled.current) return;
+        if (data?.valid) {
+          setIsAuthenticated(true);
         } else {
-          // If 401, apiFetch already handled redirect, just set auth to false
           setIsAuthenticated(false);
         }
-      } catch (error) {
-        // Network errors are fine to catch here
-        setIsAuthenticated(false);
-      } finally {
-        setLoading(false);
-      }
-    };
+      })
+      .catch(() => {
+        if (!cancelled.current) setIsAuthenticated(false);
+      })
+      .finally(() => {
+        if (!cancelled.current) setLoading(false);
+      });
 
-    // Add a small delay to ensure cookies are set
-    const timer = setTimeout(checkAuth, 100);
-    return () => clearTimeout(timer);
-  }, []);
+    return () => { cancelled.current = true; };
+  }, [location.state]);
 
   if (loading) {
     return (
-      <LoadingScreen 
-        variant="default" 
-        size="fullscreen" 
+      <LoadingScreen
+        size="fullscreen"
         text={language === 'fr' ? 'Vérification...' : 'Verifying...'}
       />
     );
@@ -66,4 +76,4 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
   return <>{children}</>;
 };
 
-export default ProtectedAdminRoute; 
+export default ProtectedAdminRoute;

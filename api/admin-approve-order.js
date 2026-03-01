@@ -491,17 +491,17 @@ export default async (req, res) => {
                 contentType: 'image/png',
                 upsert: true
               });
-            
+
             if (uploadError) {
               console.error(`❌ Error uploading QR code:`, uploadError);
               continue;
             }
-            
+
             // Get public URL
             const { data: urlData } = storageClient.storage
               .from('tickets')
               .getPublicUrl(fileName);
-            
+
             // Create ticket entry
             const { data: ticketData, error: ticketError } = await dbClient
               .from('tickets')

@@ -1,8 +1,15 @@
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
+import { initSentry, Sentry } from './lib/sentry'
+import { initClarity } from './lib/clarity'
 import { logger } from './lib/logger'
 import { sanitizeConsoleArgs, sanitizeObject, sanitizeString } from './lib/sanitize'
+
+// Initialize Sentry as early as possible for error tracking
+initSentry()
+// Microsoft Clarity for session recordings and heatmaps (when VITE_CLARITY_PROJECT_ID is set)
+initClarity()
 
 // Early error handler to catch errors before main setup
 const suppressBrowserExtensionError = (error: any) => {
@@ -108,6 +115,7 @@ const setupErrorHandlers = async () => {
         type: 'ErrorEvent'
       })
     });
+    Sentry.captureException(event.error || new Error(errorMessage));
   });
 
   // Handle unhandled promise rejections
@@ -166,6 +174,7 @@ const setupErrorHandlers = async () => {
         type: 'PromiseRejectionEvent'
       })
     });
+    Sentry.captureException(event.reason instanceof Error ? event.reason : new Error(errorMessage));
   });
 
   // Handle fetch/API errors globally
@@ -210,6 +219,7 @@ const setupErrorHandlers = async () => {
       
       // Only log unexpected errors (not service worker or handled network errors)
       if (!isServiceWorkerError && !isNetworkError) {
+        Sentry.captureException(error, { extra: { url: sanitizedUrl } });
         logger.error('Fetch Error', sanitizeObject(error), {
           category: 'api_call',
           details: sanitizeObject({
@@ -344,4 +354,20 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+const root = document.getElementById("root")!;
+createRoot(root).render(
+  <Sentry.ErrorBoundary
+    fallback={({ error, resetError }) => (
+      <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Montserrat' }}>
+        <h2>Something went wrong</h2>
+        <p>We've been notified and are looking into it.</p>
+        <button onClick={resetError} style={{ marginTop: 16, padding: '8px 16px', cursor: 'pointer' }}>
+          Try again
+        </button>
+      </div>
+    )}
+    onError={(error) => Sentry.captureException(error)}
+  >
+    <App />
+  </Sentry.ErrorBoundary>
+);

@@ -7,7 +7,8 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, CheckCircle, XCircle } from 'lucide-react';
+import Loader from '@/components/ui/Loader';
+import { CheckCircle, XCircle } from 'lucide-react';
 import { getApiBaseUrl } from '@/lib/api-routes';
 
 interface PaymentProcessingProps {
@@ -131,7 +132,7 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
         <CardContent className="p-8">
           {(state === 'loading' || state === 'redirecting') && (
             <div className="text-center">
-              <Loader2 className="w-16 h-16 mx-auto mb-4 text-primary animate-spin" />
+              <Loader size="xl" className="mx-auto mb-4" />
               <h1 className="text-xl font-heading font-bold text-foreground mb-2">{t.title}</h1>
               <p className="text-muted-foreground">{state === 'redirecting' ? (language === 'en' ? 'Redirecting to payment...' : 'Redirection vers le paiement...') : 'Please wait...'}</p>
             </div>

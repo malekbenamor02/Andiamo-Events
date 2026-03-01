@@ -8,7 +8,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
-import { Loader2, Mail, User, Phone, Calendar, Ticket, Hash } from 'lucide-react';
+import Loader from '@/components/ui/Loader';
+import { Mail, User, Phone, Calendar, Ticket, Hash } from 'lucide-react';
 
 interface Event {
   id: string;
@@ -459,7 +460,7 @@ export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({
           >
             {loading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader size="sm" className="mr-2" />
                 {language === 'en' ? 'Creating...' : 'Création...'}
               </>
             ) : (

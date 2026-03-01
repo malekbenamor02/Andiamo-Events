@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -115,7 +116,7 @@ export function SettingsTab(p: SettingsTabProps) {
                           className="ml-2 flex-shrink-0 transition-all duration-300"
                         >
                           {p.loadingSalesSettings ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <Loader size="sm" />
                           ) : p.salesEnabled ? (
                             <CheckCircle className="w-4 h-4" />
                           ) : (
@@ -171,7 +172,7 @@ export function SettingsTab(p: SettingsTabProps) {
                           className="ml-2 flex-shrink-0 transition-all duration-300"
                         >
                           {p.loadingMaintenanceSettings ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <Loader size="sm" />
                           ) : p.maintenanceEnabled ? (
                             <CheckCircle className="w-4 h-4" />
                           ) : (
@@ -274,7 +275,7 @@ export function SettingsTab(p: SettingsTabProps) {
                                 >
                                   {p.rejectingExpired ? (
                                     <>
-                                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                      <Loader size="sm" className="mr-2" />
                                       {p.language === 'en' ? 'Processing...' : 'Traitement...'}
                                     </>
                                   ) : (
@@ -293,7 +294,7 @@ export function SettingsTab(p: SettingsTabProps) {
                         </div>
                         {p.loadingExpirationSettings ? (
                           <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+                            <Loader size="sm" className="[background:hsl(var(--muted-foreground))]" />
                           </div>
                         ) : (
                           <>
@@ -422,7 +423,7 @@ export function SettingsTab(p: SettingsTabProps) {
                           className="ml-2 flex-shrink-0 transition-all duration-300"
                         >
                           {p.loadingAmbassadorApplicationSettings ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <Loader size="sm" />
                           ) : p.ambassadorApplicationEnabled ? (
                             <CheckCircle className="w-4 h-4" />
                           ) : (
@@ -462,7 +463,7 @@ export function SettingsTab(p: SettingsTabProps) {
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {p.loadingHeroImages ? (
                           <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                            <Loader size="md" />
                           </div>
                         ) : (
                           <>
@@ -482,7 +483,7 @@ export function SettingsTab(p: SettingsTabProps) {
                               />
                               {p.uploadingHeroImage && (
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                  <Loader size="sm" />
                                   {p.language === 'en' ? 'Uploading media...' : 'TÃ©lÃ©chargement du mÃ©dia...'}
                                 </div>
                               )}
@@ -620,7 +621,7 @@ export function SettingsTab(p: SettingsTabProps) {
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {p.loadingAboutImages ? (
                           <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                            <Loader size="md" />
                           </div>
                         ) : (
                           <>
@@ -640,7 +641,7 @@ export function SettingsTab(p: SettingsTabProps) {
                               />
                               {p.uploadingAboutImage && (
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                  <Loader size="sm" />
                                   {p.language === 'en' ? 'Uploading image...' : 'TÃ©lÃ©chargement de l\'image...'}
                                 </div>
                               )}
@@ -747,7 +748,7 @@ export function SettingsTab(p: SettingsTabProps) {
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {p.loadingFaviconSettings ? (
                           <div className="flex items-center justify-center py-8">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                            <Loader size="md" />
                           </div>
                         ) : (
                           <div className="space-y-6">

@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -144,7 +145,7 @@ export function AdminsTab({
                 <Button onClick={onAddAdmin} disabled={processingId === "new-admin"}>
                   {processingId === "new-admin" ? (
                     <>
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      <Loader size="sm" className="mr-2" />
                       {language === "en" ? "Creating..." : "Création..."}
                     </>
                   ) : (
@@ -259,7 +260,7 @@ export function AdminsTab({
                 >
                   {processingId === `edit-admin-${editingAdmin.id}` ? (
                     <>
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      <Loader size="sm" className="mr-2" />
                       {language === "en" ? "Saving..." : "Enregistrement..."}
                     </>
                   ) : (

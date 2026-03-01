@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Wrench, RefreshCw } from "lucide-react";
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import Loader from '@/components/ui/Loader';
 import { isExcludedFromMaintenance } from "@/lib/maintenanceMode";
 
 interface MaintenanceModeProps {
@@ -103,7 +104,6 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
   if (loading) {
     return (
       <LoadingScreen 
-        variant="default" 
         size="fullscreen" 
         text={language === 'en' ? 'Loading...' : 'Chargement...'}
       />
@@ -138,7 +138,7 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
               <div className="relative bg-gradient-to-br from-primary via-primary/80 to-primary/60 p-8 rounded-full shadow-2xl" style={{
                 boxShadow: '0 0 40px hsl(var(--primary) / 0.5), 0 0 80px hsl(var(--primary) / 0.3)'
               }}>
-                <Wrench className="w-16 h-16 text-white animate-spin" style={{ animationDuration: '3s' }} />
+                <Loader size="xl" className="[background:white]" />
               </div>
             </div>
           </div>
@@ -154,7 +154,7 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
 
           <div className="pt-8">
             <div className="inline-flex items-center gap-2 text-primary">
-              <RefreshCw className="w-5 h-5 animate-spin" />
+              <Loader size="sm" className="[background:hsl(var(--primary))]" />
               <span className="text-sm">
                 {language === 'en' 
                   ? 'We\'ll be back soon!' 

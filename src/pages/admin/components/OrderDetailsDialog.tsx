@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from "react";
+import Loader from "@/components/ui/Loader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Package, FileText, Activity, Database, Calendar as CalendarIcon, Clock, DollarSign,
-  User, Phone, Mail, MapPin, Ticket, Users, Percent, Save, X, Edit, RefreshCw, Send,
+  User, Phone, Mail, MapPin, Ticket, Users, Save, X, Edit, RefreshCw, Send,
   Trash2, Wrench, CheckCircle, XCircle, CheckCircle2, Zap, MailCheck, Shield, AlertCircle
 } from "lucide-react";
 
@@ -519,13 +520,6 @@ export function OrderDetailsDialog({
                             {ambassador.status}
                           </Badge>
                         </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Percent className="w-3 h-3" />
-                            {language === 'en' ? 'Commission Rate' : 'Taux de Commission'}
-                          </Label>
-                          <p className="text-base font-semibold">{ambassador.commission_rate || 0}%</p>
-                        </div>
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground font-mono">{order.ambassador_id}</p>
@@ -906,7 +900,7 @@ export function OrderDetailsDialog({
                         }}
                         disabled={loadingEmailLogs}
                       >
-                        <RefreshCw className={`w-4 h-4 mr-2 ${loadingEmailLogs ? 'animate-spin' : ''}`} />
+                        {loadingEmailLogs ? <Loader size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                         {language === 'en' ? 'Refresh' : 'Actualiser'}
                       </Button>
                     </div>
@@ -1001,7 +995,7 @@ export function OrderDetailsDialog({
                                 disabled={resendingEmail}
                                 className="w-full"
                               >
-                                <Send className={`w-4 h-4 mr-2 ${resendingEmail ? 'animate-spin' : ''}`} />
+                                {resendingEmail ? <Loader size="sm" className="mr-2" /> : <Send className="w-4 h-4 mr-2" />}
                                 {language === 'en' ? 'Resend Email' : 'Renvoyer l\'Email'}
                               </Button>
                             )}
@@ -1060,7 +1054,7 @@ export function OrderDetailsDialog({
                             }}
                             disabled={resendingEmail}
                           >
-                            <Send className={`w-4 h-4 mr-2 ${resendingEmail ? 'animate-spin' : ''}`} />
+                            {resendingEmail ? <Loader size="sm" className="mr-2" /> : <Send className="w-4 h-4 mr-2" />}
                             {language === 'en' ? 'Send Completion Email' : 'Envoyer l\'Email de Confirmation'}
                           </Button>
                         )}
@@ -1213,7 +1207,7 @@ export function OrderDetailsDialog({
                         disabled={resendingTicketEmail}
                         className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:border-blue-600 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-950/40"
                       >
-                        <Send className={`w-4 h-4 mr-2 ${resendingTicketEmail ? 'animate-spin' : ''}`} />
+                        {resendingTicketEmail ? <Loader size="sm" className="mr-2" /> : <Send className="w-4 h-4 mr-2" />}
                         {resendingTicketEmail 
                           ? (language === 'en' ? 'Resending...' : 'Renvoi en cours...')
                           : (language === 'en' ? 'Resend Ticket Email' : 'Renvoyer l\'Email des Billets')
@@ -1282,7 +1276,7 @@ export function OrderDetailsDialog({
               >
                 {isRemoving ? (
                   <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader size="sm" className="mr-2" />
                     {language === "en" ? "Removing..." : "Retrait en cours..."}
                   </>
                 ) : (
@@ -1431,7 +1425,7 @@ export function OrderDetailsDialog({
               >
                 {isSkipping ? (
                   <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader size="sm" className="mr-2" />
                     {language === "en" ? "Processing..." : "Traitement..."}
                   </>
                 ) : (

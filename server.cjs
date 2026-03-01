@@ -1,3 +1,21 @@
+// Load environment variables first so SENTRY_DSN is available
+try {
+  require('dotenv').config();
+} catch (e) {
+  // dotenv might not be available
+}
+
+// Sentry must be initialized first for error tracking
+const Sentry = require('@sentry/node');
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: 0.1,
+    integrations: [Sentry.expressIntegration()],
+  });
+}
+
 const express = require('express');
 const nodemailer = require('nodemailer');
 const bodyParser = require('body-parser');
@@ -19,14 +37,6 @@ const {
   buildAmbassadorNewOrderSMS,
   buildClientAdminApprovalSMS
 } = require('./smsTemplates.cjs');
-
-// Load environment variables
-// On Vercel, environment variables are already available, but dotenv is safe to call
-try {
-  require('dotenv').config();
-} catch (e) {
-  // dotenv might not be available, but that's OK on Vercel
-}
 
 // Debug: Log environment variables
 // Check environment variables
@@ -217,7 +227,11 @@ app.use((req, res, next) => {
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
-  res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
+  // HSTS: only over HTTPS (browsers ignore on HTTP; avoid sending when behind HTTP proxy)
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  if (isSecure) {
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  }
   
   // CSP Report-Only (will be switched to enforcing after monitoring)
   const cspPolicy = [
@@ -228,8 +242,8 @@ app.use((req, res, next) => {
     "img-src 'self' https: data:",
     "font-src 'self' https: data:",
     "style-src 'self' 'unsafe-inline' https:",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
-    "connect-src 'self' https: wss: *.supabase.co *.supabase.in *.google.com *.gstatic.com *.vercel-analytics.com *.vercel-insights.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https: https://www.clarity.ms https://scripts.clarity.ms",
+    "connect-src 'self' https: wss: *.supabase.co *.supabase.in *.google.com *.gstatic.com *.vercel-analytics.com *.vercel-insights.com *.clarity.ms https://c.bing.com",
     "frame-src 'self' https: *.google.com",
     "report-uri /api/csp-report"
   ].join('; ');
@@ -544,7 +558,6 @@ const checkSuspiciousActivity = async (eventType, details, req) => {
           console.error('Failed to send security alert email:', emailError);
         }
       }
-      
     }
   } catch (error) {
     console.error('Error in checkSuspiciousActivity:', error);
@@ -1050,8 +1063,7 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     }
     
     res.cookie('adminToken', token, cookieOptions);
-    // Return admin info for logging purposes
-    res.json({ 
+    res.json({
       success: true,
       admin: {
         id: admin.id,
@@ -9625,7 +9637,7 @@ async function generateTicketsAndSendEmail(orderId) {
         const { data: urlData } = storageClient.storage
           .from('tickets')
           .getPublicUrl(fileName);
-        
+
         // Create ticket entry (no individual access token needed - using order-level token)
         const ticketInsertData = {
           order_id: orderId,
@@ -12558,11 +12570,17 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 process.on('uncaughtException', (error) => {
+  if (process.env.SENTRY_DSN) Sentry.captureException(error);
   console.error('❌ Uncaught Exception:', error);
   console.error('Stack:', error.stack);
   // Exit in production for uncaught exceptions
   process.exit(1);
 });
+
+// Sentry error handler (before other error handlers)
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 // Express error handler middleware (must be last)
 app.use((err, req, res, next) => {

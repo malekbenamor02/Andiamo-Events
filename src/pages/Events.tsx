@@ -479,7 +479,6 @@ const Events = ({ language }: EventsProps) => {
   if (loading) {
     return (
       <LoadingScreen 
-        variant="default" 
         size="fullscreen" 
         text={content[language].title ? `Loading ${content[language].title.toLowerCase()}...` : "Loading events..."}
       />
@@ -515,11 +514,6 @@ const Events = ({ language }: EventsProps) => {
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto animate-in slide-in-from-bottom-4 duration-1000 delay-300">
             {content[language].subtitle}
-          </p>
-          <p className="text-base text-muted-foreground/90 max-w-2xl mx-auto mt-4 animate-in slide-in-from-bottom-4 duration-1000 delay-500">
-            {language === "en"
-              ? "Find concerts, parties and festivals in Tunis, Sousse, Monastir, Hammamet and across Tunisia. Book your tickets online."
-              : "Trouvez concerts, soirées et festivals à Tunis, Sousse, Monastir, Hammamet et en Tunisie. Réservez vos billets en ligne."}
           </p>
         </div>
       </section>

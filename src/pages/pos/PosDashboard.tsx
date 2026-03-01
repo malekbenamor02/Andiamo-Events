@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Store, LogOut, Loader2, ShoppingCart, Minus, Plus, CheckCircle, AlertCircle } from "lucide-react";
+import Loader from "@/components/ui/Loader";
+import { Store, LogOut, ShoppingCart, Minus, Plus, CheckCircle, AlertCircle } from "lucide-react";
 
 interface PosDashboardProps {
   outletSlug: string;
@@ -116,7 +117,7 @@ export default function PosDashboard({ outletSlug, language }: PosDashboardProps
     ? { title: "Point de Vente", event: "Event", pass: "Pass", qty: "Qty", price: "Price", remaining: "Left", customer: "Customer", fullName: "Full name", phone: "Phone", email: "Email", city: "City", ville: "Ville", create: "Create order", logout: "Logout", successTitle: "Success", errorTitle: "Error", ok: "OK" }
     : { title: "Point de Vente", event: "Événement", pass: "Pass", qty: "Qté", price: "Prix", remaining: "Reste", customer: "Client", fullName: "Nom complet", phone: "Téléphone", email: "Email", city: "Ville", ville: "Quartier", create: "Créer la commande", logout: "Déconnexion", successTitle: "Succès", errorTitle: "Erreur", ok: "OK" };
 
-  if (loading) return <div className="min-h-screen bg-[#1A1A1A] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-[#E21836]" /></div>;
+  if (loading) return <div className="min-h-screen bg-[#1A1A1A] flex items-center justify-center"><Loader size="lg" className="[background:#E21836]" /></div>;
 
   return (
     <div className="min-h-screen bg-[#1A1A1A] p-4">
@@ -178,7 +179,7 @@ export default function PosDashboard({ outletSlug, language }: PosDashboardProps
                 <div><Label className="text-[#B0B0B0]">{t.city}</Label><Input className="mt-1 bg-[#252525] border-[#2A2A2A] text-white" value={customer.city} onChange={e => setCustomer(c => ({ ...c, city: e.target.value }))} /></div>
                 <div><Label className="text-[#B0B0B0]">{t.ville}</Label><Input className="mt-1 bg-[#252525] border-[#2A2A2A] text-white" value={customer.ville} onChange={e => setCustomer(c => ({ ...c, ville: e.target.value }))} /></div>
               </div>
-              <Button type="submit" disabled={submitting || !selectedEvent} className="w-full bg-[#E21836] hover:bg-[#c4142e]">{submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : t.create}</Button>
+              <Button type="submit" disabled={submitting || !selectedEvent} className="w-full bg-[#E21836] hover:bg-[#c4142e]">{submitting ? <Loader size="sm" className="[background:white] shrink-0" /> : t.create}</Button>
             </form>
           </CardContent>
         </Card>

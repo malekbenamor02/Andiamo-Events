@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -647,7 +648,7 @@ export function ApplicationsTab({
                           ) : emailStatus[application.id] === "failed" ? (
                             <XCircle className="w-3 h-3 text-red-500" />
                           ) : emailStatus[application.id] === "pending" ? (
-                            <div className="w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+                            <Loader size="sm" className="[background:#facc15] shrink-0" />
                           ) : emailFailedApplications.has(application.id) ? (
                             <XCircle className="w-3 h-3 text-red-500" />
                           ) : (
@@ -721,7 +722,7 @@ export function ApplicationsTab({
                           >
                             {processingId === application.id ? (
                               <>
-                                <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />
+                                <Loader size="sm" className="[background:white] shrink-0 mr-1" />
                                 <span className="text-xs">{t.processing}</span>
                               </>
                             ) : (
@@ -745,7 +746,7 @@ export function ApplicationsTab({
                           >
                             {processingId === application.id ? (
                               <>
-                                <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />
+                                <Loader size="sm" className="[background:white] shrink-0 mr-1" />
                                 <span className="text-xs">{t.processing}</span>
                               </>
                             ) : (
@@ -793,7 +794,7 @@ export function ApplicationsTab({
                           >
                             {processingId === application.id ? (
                               <>
-                                <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />
+                                <Loader size="sm" className="[background:white] shrink-0 mr-1" />
                                 <span className="text-xs">
                                   {language === "en"
                                     ? "Sending..."

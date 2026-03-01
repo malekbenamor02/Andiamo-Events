@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { fetchAllPaymentOptions } from '@/lib/orders/paymentService';
 import { PaymentOption } from '@/types/orders';
 import { PaymentOptionType } from '@/lib/constants/orderStatuses';
+import Loader from '@/components/ui/Loader';
 import { CreditCard, ExternalLink, Wallet, Save, RefreshCw } from 'lucide-react';
 import { API_ROUTES } from '@/lib/api-routes';
 import { apiFetch, handleApiResponse } from '@/lib/api-client';
@@ -337,7 +338,7 @@ export function PaymentOptionsManager({ language = 'en' }: PaymentOptionsManager
                   >
                     {saving[option.option_type] ? (
                       <>
-                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        <Loader size="sm" className="mr-2" />
                         {t.saving}
                       </>
                     ) : (

@@ -15,6 +15,7 @@ import { User, Users, Zap, Mail, Phone, MapPin, Instagram, FileText, Calendar, A
 // @ts-ignore
 import DOMPurify from 'dompurify';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import Loader from '@/components/ui/Loader';
 import { PageMeta } from '@/components/PageMeta';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
@@ -416,7 +417,6 @@ const Application = ({ language }: ApplicationProps) => {
   if (loadingApplicationStatus || applicationEnabled === null) {
     return (
       <LoadingScreen 
-        variant="default" 
         size="fullscreen" 
         text={language === 'en' ? 'Loading...' : 'Chargement...'}
       />
@@ -783,7 +783,7 @@ const Application = ({ language }: ApplicationProps) => {
                   >
                     {isSubmitting ? (
                       <>
-                        <div className="h-5 w-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin mr-2" />
+                        <Loader size="sm" className="mr-2 shrink-0 [background:hsl(var(--primary-foreground))]" />
                         {t.submitting}
                       </>
                     ) : (

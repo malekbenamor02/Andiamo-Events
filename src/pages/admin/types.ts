@@ -219,6 +219,15 @@ export interface OnlineOrderFilters {
   dateTo: Date | null;
 }
 
+/** Order pass item (from order_passes table). */
+export interface OnlineOrderPass {
+  id?: string;
+  pass_type: string;
+  quantity: number;
+  price: number;
+  pass_id?: string;
+}
+
 /** Online order (platform_online) for admin list. */
 export interface OnlineOrder {
   id: string;
@@ -237,6 +246,7 @@ export interface OnlineOrder {
   created_at: string;
   notes?: string | Record<string, unknown>;
   source?: string;
+  order_passes?: OnlineOrderPass[];
   [key: string]: unknown;
 }
 

@@ -2,6 +2,8 @@
 // Merges: admin-logout, admin-update-application, ambassador-login, ambassador-application, ambassadors/active, phone-subscribe, send-email
 // This reduces function count from 7 to 1
 
+import '../lib/sentry-server.js';
+
 // Inlined verifyAdminAuth function (for admin-update-application and send-email)
 async function verifyAdminAuth(req) {
   try {
@@ -1996,17 +1998,17 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                     contentType: 'image/png',
                     upsert: true
                   });
-                
+
                 if (uploadError) {
                   console.error(`❌ Error uploading QR code:`, uploadError);
                   continue;
                 }
-                
+
                 // Get public URL
                 const { data: urlData } = storageClient.storage
                   .from('tickets')
                   .getPublicUrl(fileName);
-                
+
                 // Create ticket entry
                 const { data: ticketData, error: ticketError } = await dbClient
                   .from('tickets')
@@ -5051,26 +5053,26 @@ We Create Memories`;
           });
           
           const fileName = `invitations/${invitation.id}/${secureToken}.png`;
-          const storageClient = process.env.SUPABASE_SERVICE_ROLE_KEY 
+          const storageClient = process.env.SUPABASE_SERVICE_ROLE_KEY
             ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
             : dbClient;
-          
+
           const { error: uploadError } = await storageClient.storage
             .from('tickets')
             .upload(fileName, qrCodeBuffer, {
               contentType: 'image/png',
               upsert: true
             });
-          
+
           if (uploadError) {
             console.error(`Error uploading QR code ${i + 1}:`, uploadError);
             continue;
           }
-          
+
           const { data: urlData } = storageClient.storage
             .from('tickets')
             .getPublicUrl(fileName);
-          
+
           const qrCodeUrl = urlData?.publicUrl;
           if (!qrCodeUrl) {
             console.error(`Failed to get public URL for QR code ${i + 1}`);

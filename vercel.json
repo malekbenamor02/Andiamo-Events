@@ -29,11 +29,11 @@
         },
         {
           "key": "Strict-Transport-Security",
-          "value": "max-age=63072000; includeSubDomains"
+          "value": "max-age=63072000; includeSubDomains; preload"
         },
         {
           "key": "Content-Security-Policy-Report-Only",
-          "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' https: data:; font-src 'self' https: data:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; connect-src 'self' https: wss: *.supabase.co *.supabase.in *.google.com *.gstatic.com *.vercel-analytics.com *.vercel-insights.com *.clictopay.com test.clictopay.com; frame-src 'self' https: *.google.com *.clictopay.com test.clictopay.com; report-uri /api/csp-report;"
+          "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' https: data:; font-src 'self' https: data:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: https://www.clarity.ms https://scripts.clarity.ms; connect-src 'self' https: wss: *.supabase.co *.supabase.in *.google.com *.gstatic.com *.vercel-analytics.com *.vercel-insights.com *.sentry.io *.ingest.sentry.io *.clarity.ms https://c.bing.com *.clictopay.com test.clictopay.com; frame-src 'self' https: *.google.com *.clictopay.com test.clictopay.com; report-uri /api/csp-report;"
         }
       ]
     }

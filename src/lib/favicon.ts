@@ -30,12 +30,12 @@ export const uploadFavicon = async (
         .list('favicon', {
           search: type
         });
-      
+
       if (oldFiles && oldFiles.length > 0) {
         const filesToDelete = oldFiles
           .filter(f => f.name.startsWith(`${type}_`))
           .map(f => `favicon/${f.name}`);
-        
+
         if (filesToDelete.length > 0) {
           await supabase.storage
             .from('images')
@@ -161,7 +161,7 @@ export const deleteFavicon = async (
       const { error: deleteError } = await supabase.storage
         .from('images')
         .remove([filePath]);
-      
+
       if (deleteError) {
         console.warn('Error deleting favicon from storage (continuing with database update):', deleteError);
       }
@@ -187,7 +187,7 @@ export const deleteFavicon = async (
 
     const currentSettings = (existingData?.content as FaviconSettings) || {};
     const timestamp = Date.now().toString();
-    const updatedSettings: FaviconSettings = { 
+    const updatedSettings: FaviconSettings = {
       ...currentSettings,
       updated_at: timestamp // Update timestamp even when deleting
     };
@@ -252,4 +252,3 @@ export const fetchFaviconSettings = async (): Promise<FaviconSettings> => {
     return {};
   }
 };
-

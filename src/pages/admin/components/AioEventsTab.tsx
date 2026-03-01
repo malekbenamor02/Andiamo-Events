@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -59,7 +60,7 @@ export function AioEventsTab({
             variant="outline"
             className="animate-in slide-in-from-right-4 duration-1000"
           >
-            <Download className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            {loading ? <Loader size="sm" className="mr-2" /> : <Download className="w-4 h-4 mr-2" />}
             {language === "en" ? "Export Excel" : "Exporter Excel"}
           </Button>
           <Button
@@ -68,7 +69,7 @@ export function AioEventsTab({
             variant="outline"
             className="animate-in slide-in-from-right-4 duration-1000"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            {loading ? <Loader size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
             {language === "en" ? "Refresh" : "Actualiser"}
           </Button>
         </div>
@@ -86,9 +87,9 @@ export function AioEventsTab({
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <RefreshCw className="w-8 h-8 animate-spin text-primary" />
-              <span className="ml-3 text-muted-foreground">
+            <div className="flex items-center justify-center py-12 gap-3">
+              <Loader size="lg" />
+              <span className="text-muted-foreground">
                 {language === "en" ? "Loading submissions..." : "Chargement des soumissions..."}
               </span>
             </div>

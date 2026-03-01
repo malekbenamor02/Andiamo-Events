@@ -4,6 +4,7 @@ import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
+import Loader from "@/components/ui/Loader";
 import { LogOut, History, Play, RotateCw, PenLine, Square, CheckCircle2, XCircle, Copy, MapPinOff, ScanLine, WifiOff, Cloud, BatteryWarning } from "lucide-react";
 
 const STORAGE_KEY = "scanner_selected_event";
@@ -355,7 +356,7 @@ export default function ScannerScan() {
         {validating && (
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="text-center">
-              <div className="w-16 h-16 mx-auto mb-4 border-4 border-[#E21836] border-t-transparent rounded-full animate-spin" />
+              <Loader size="xl" className="mx-auto mb-4 [background:#E21836]" />
               <p className="text-white text-base font-medium">Validating ticket...</p>
             </div>
           </div>

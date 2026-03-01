@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo } from "react";
+import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -917,7 +918,7 @@ export function AmbassadorsTab({
                 >
                   {processingId === "new-ambassador" ? (
                     <>
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      <Loader size="sm" className="mr-2" />
                       {language === "en" ? "Creating..." : "Création..."}
                     </>
                   ) : (

@@ -747,7 +747,6 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   if (loading || !ambassador) {
     return (
       <LoadingScreen 
-        variant="default" 
         size="fullscreen" 
         text={t.loading}
       />

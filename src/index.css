@@ -832,3 +832,44 @@ All colors MUST be HSL.
 .scan-status-valid-in {
   animation: statusValidIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
+
+/* ============================================
+   Global loader - conic gradient spinner
+   Use: <div class="loader" /> or with size: loader-sm, loader-md, loader-lg, loader-xl
+   ============================================ */
+.loader {
+  width: 50px;
+  padding: 8px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  --_m:
+    conic-gradient(#0000 10%, #000),
+    linear-gradient(#000 0 0) content-box;
+  -webkit-mask: var(--_m);
+  mask: var(--_m);
+  -webkit-mask-composite: source-out;
+  mask-composite: subtract;
+  animation: loader-spin 1s infinite linear;
+}
+.loader-sm {
+  width: 20px;
+  padding: 3px;
+}
+.loader-md {
+  width: 32px;
+  padding: 5px;
+}
+.loader-lg {
+  width: 50px;
+  padding: 8px;
+}
+.loader-xl {
+  width: 64px;
+  padding: 10px;
+}
+@keyframes loader-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}

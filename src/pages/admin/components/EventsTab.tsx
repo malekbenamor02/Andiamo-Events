@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -684,7 +685,7 @@ export function EventsTab(p: EventsTabProps) {
                         )}
                         {p.isPassManagementLoading ? (
                           <div className="text-center py-8">
-                            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+                            <Loader size="lg" className="mx-auto mb-4" />
                             <p className="text-muted-foreground">{p.language === 'en' ? 'Loading passes...' : 'Chargement des passes...'}</p>
                           </div>
                         ) : p.passesForManagement.length === 0 ? (

@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, EyeOff, Lock, User, Mail, ArrowLeft, Sparkles, AlertCircle, Settings } from "lucide-react";
+import Loader from "@/components/ui/Loader";
 import { useToast } from "@/hooks/use-toast";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { logger } from "@/lib/logger";
 import { API_ROUTES } from "@/lib/api-routes";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,14 +19,16 @@ interface AdminLoginProps {
 }
 
 const AdminLogin = ({ language }: AdminLoginProps) => {
-  const isMobile = useIsMobile();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [mobileEmail, setMobileEmail] = useState("");
+  const [mobilePassword, setMobilePassword] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   
   // Get reCAPTCHA site key from environment
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
@@ -152,14 +155,11 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       // Call the Vercel API route for admin login
       const response = await fetch(loginEndpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Important: This allows cookies to be set
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(loginPayload)
       });
 
-      // Check if response is OK before trying to parse JSON
       if (!response.ok) {
         // Try to get error message from response
         let errorMessage = t[language].error;
@@ -245,8 +245,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
             : "Bienvenue dans le tableau de bord admin.",
         });
 
-        // Redirect to admin dashboard
-        navigate('/admin');
+        navigate('/admin', { state: { fromLogin: true }, replace: true });
       } else {
         // Login failed
         setError(data.error || t[language].error);
@@ -282,58 +281,59 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     }
   };
 
-  // Show mobile restriction message if accessed from mobile device
+  // Mobile: simple login (no JWT, no verification) — for step-by-step dashboard build. Desktop-only flow saved for later.
+  const handleMobileLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      sessionStorage.setItem('mobileAdminSession', '1');
+    } catch (_) {}
+    navigate('/admin', { replace: true });
+  };
+
   if (isMobile) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-4">
-        <div className="max-w-md w-full">
-          <div className="bg-card/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-primary/20 p-8 text-center space-y-6 animate-in fade-in-0 zoom-in-95 duration-500">
-            {/* Icon */}
-            <div className="flex justify-center">
-              <div className="relative">
-                <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse" />
-                <div className="relative bg-gradient-to-br from-primary to-secondary p-4 rounded-2xl shadow-lg">
-                  <Settings className="w-12 h-12 text-primary-foreground" />
-                </div>
+      <div className="min-h-screen bg-gradient-dark flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <CardTitle className="text-center text-lg">{language === 'en' ? 'Admin (mobile)' : 'Admin (mobile)'}</CardTitle>
+            <CardDescription className="text-center text-sm">
+              {language === 'en' ? 'Simple sign-in for mobile dashboard.' : 'Connexion simple pour le tableau de bord mobile.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleMobileLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="mobile-email">{t[language].email}</Label>
+                <Input
+                  id="mobile-email"
+                  type="email"
+                  value={mobileEmail}
+                  onChange={(e) => setMobileEmail(e.target.value)}
+                  placeholder="admin@example.com"
+                  autoComplete="email"
+                />
               </div>
-            </div>
-
-            {/* Title */}
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-secondary to-primary bg-clip-text text-transparent mb-2">
-                {language === 'en' ? 'Desktop Only' : 'Ordinateur Seulement'}
-              </h1>
-              <p className="text-muted-foreground text-lg">
-                {language === 'en' 
-                  ? 'Admin Login'
-                  : 'Connexion Admin'}
-              </p>
-            </div>
-
-            {/* Message */}
-            <div className="space-y-3">
-              <p className="text-foreground/90 leading-relaxed">
-                {language === 'en' 
-                  ? 'The admin login and dashboard are only available on desktop computers and laptops. Please access them from a PC for the best experience and full functionality.'
-                  : 'La connexion admin et le tableau de bord sont uniquement disponibles sur les ordinateurs de bureau et les ordinateurs portables. Veuillez y accéder depuis un PC pour une meilleure expérience et toutes les fonctionnalités.'}
-              </p>
-            </div>
-
-            {/* Action Button */}
-            <div className="pt-4">
-              <Button 
-                onClick={() => navigate('/')}
-                className="w-full bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 h-12 text-base font-semibold"
-              >
-                {language === 'en' ? 'Back to Home' : 'Retour à l\'Accueil'}
+              <div className="space-y-2">
+                <Label htmlFor="mobile-password">{t[language].password}</Label>
+                <Input
+                  id="mobile-password"
+                  type="password"
+                  value={mobilePassword}
+                  onChange={(e) => setMobilePassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+              </div>
+              <Button type="submit" className="w-full">
+                {t[language].login}
               </Button>
-            </div>
-
-            {/* Decorative elements */}
-            <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
-            <div className="absolute -top-10 -left-10 w-24 h-24 bg-secondary/5 rounded-full blur-2xl" />
-          </div>
-        </div>
+            </form>
+            <Button variant="ghost" className="w-full mt-2" onClick={() => navigate('/')}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              {language === 'en' ? 'Back to home' : "Retour à l'accueil"}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -448,7 +448,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                 <span className="relative z-10 flex items-center justify-center gap-2">
                   {loading ? (
                     <>
-                      <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                      <Loader size="sm" className="shrink-0 [background:hsl(var(--primary-foreground))]" />
                       {t[language].loading}
                     </>
                   ) : (
