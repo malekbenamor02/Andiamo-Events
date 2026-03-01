@@ -128,21 +128,6 @@ const MaintenanceMode = ({ children, language }: MaintenanceModeProps) => {
         <div className="absolute top-1/2 right-1/3 w-64 h-64 bg-primary/15 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '2s' }}></div>
         
         <div className="max-w-2xl w-full text-center space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 relative z-10">
-          <div className="flex justify-center">
-            <div className="relative">
-              {/* Outer glow effect */}
-              <div className="absolute inset-0 bg-primary rounded-full blur-2xl opacity-40 animate-pulse"></div>
-              <div className="absolute inset-0 bg-primary rounded-full blur-xl opacity-30 animate-pulse" style={{ animationDelay: '0.5s' }}></div>
-              
-              {/* Icon container with gradient */}
-              <div className="relative bg-gradient-to-br from-primary via-primary/80 to-primary/60 p-8 rounded-full shadow-2xl" style={{
-                boxShadow: '0 0 40px hsl(var(--primary) / 0.5), 0 0 80px hsl(var(--primary) / 0.3)'
-              }}>
-                <Loader size="xl" className="[background:white]" />
-              </div>
-            </div>
-          </div>
-          
           <div className="space-y-4">
             <h1 className="text-4xl md:text-5xl font-bold text-foreground">
               {language === 'en' ? 'Under Maintenance' : 'En Maintenance'}
