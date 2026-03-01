@@ -31,9 +31,9 @@ interface IndexProps {
 }
 
 const INDEX_META = {
-  title: "Andiamo Events | Nightlife & Events in Tunisia – We Create Memories",
+  title: "Andiamo Events – We Create Memories",
   description:
-    "Andiamo Events – Tunisia's premier nightlife & events. Discover upcoming parties, concerts and experiences. Buy tickets online. We create memories.",
+    "Creating innovative and inspiring event experiences in Tunisia. We create memories.",
 };
 
 const Index = ({ language }: IndexProps) => {
@@ -153,8 +153,8 @@ const Index = ({ language }: IndexProps) => {
     <main className="relative" id="main-content">
       <PageMeta title={INDEX_META.title} description={INDEX_META.description} path="/" />
       <JsonLdWebPage
-        name="Andiamo Events – Nightlife & Events in Tunisia | Buy Tickets"
-        description="Andiamo Events – Tunisia's premier nightlife and events. Discover upcoming concerts, parties and festivals in Tunis, Sousse and across Tunisia. Buy tickets online. We create memories."
+        name="Andiamo Events – We Create Memories"
+        description="Creating innovative and inspiring event experiences in Tunisia. We create memories."
         path="/"
       />
       {/* Loading Screen - Appears instantly to prevent blank screen */}

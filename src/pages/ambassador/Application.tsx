@@ -156,7 +156,7 @@ const Application = ({ language }: ApplicationProps) => {
   const t = {
     en: {
       heroTitle: "Become an Ambassador",
-      heroSubtitle: "Get exclusive perks, earn commissions, and be part of Tunisia's top nightlife community!",
+      heroSubtitle: "Get exclusive perks, earn commissions. We create memories.",
       benefits: [
         "Exclusive access to events",
         "Earn commission on every ticket sold",
@@ -179,7 +179,7 @@ const Application = ({ language }: ApplicationProps) => {
     },
     fr: {
       heroTitle: "Devenez Ambassadeur",
-      heroSubtitle: "Profitez d'avantages exclusifs, gagnez des commissions et faites partie de la meilleure communauté nightlife de Tunisie !",
+      heroSubtitle: "Profitez d'avantages exclusifs, gagnez des commissions. We create memories.",
       benefits: [
         "Accès exclusif aux événements",
         "Gagnez une commission sur chaque billet vendu",
@@ -475,7 +475,7 @@ const Application = ({ language }: ApplicationProps) => {
     <main className="min-h-screen bg-gradient-dark flex flex-col items-center justify-start p-0 md:p-8 relative overflow-hidden animate-page-intro" id="main-content">
       <PageMeta
         title="Become an Ambassador"
-        description="Join Andiamo Events as an ambassador. Earn commissions, get exclusive perks and be part of Tunisia's nightlife community. Apply now."
+        description="Creating innovative and inspiring event experiences in Tunisia. We create memories."
         path="/ambassador"
       />
       <div className="absolute inset-0 pointer-events-none">

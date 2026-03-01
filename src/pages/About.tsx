@@ -150,15 +150,15 @@ const About = ({ language }: AboutProps) => {
         subtitle: "From coastal parties to urban celebrations",
         locations: [
           { name: "Sousse", description: "Beachfront celebrations and summer festivals" },
-          { name: "Tunis", description: "Urban nightlife and exclusive rooftop events" },
+          { name: "Tunis", description: "Urban and exclusive rooftop events" },
           { name: "Monastir", description: "Seaside parties and luxury venue experiences" },
           { name: "Hammamet", description: "Resort celebrations and tourist hotspots" },
-          { name: "Sfax", description: "Cultural events and modern nightlife" }
+          { name: "Sfax", description: "Cultural events and modern experiences" }
         ]
       },
       cta: {
         title: "Join the Movement",
-        subtitle: "Be part of Tunisia's most exciting nightlife community",
+        subtitle: "Be part of Tunisia's most exciting event community",
         button: "Become an Ambassador"
       }
     },
@@ -255,7 +255,7 @@ const About = ({ language }: AboutProps) => {
     <main className="min-h-screen bg-background pt-16 overflow-x-hidden" id="main-content">
       <PageMeta
         title="About Us"
-        description="Andiamo Events and Born To Lead (BTL) – creating innovative event experiences in Tunisia. Our mission, team and cities. Youth-focused nightlife."
+        description="Creating innovative and inspiring event experiences in Tunisia. We create memories."
         path="/about"
       />
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "About", url: "/about" }]} />

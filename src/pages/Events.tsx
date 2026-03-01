@@ -47,7 +47,7 @@ const Events = ({ language }: EventsProps) => {
   const content = {
     en: {
       title: "Events",
-      subtitle: "Discover amazing nightlife experiences across Tunisia",
+      subtitle: "Creating innovative and inspiring event experiences in Tunisia. We create memories.",
       upcomingTitle: "Upcoming Events",
       upcomingSubtitle: "Don't miss our next incredible events",
       galleryTitle: "Event Gallery",
@@ -489,12 +489,12 @@ const Events = ({ language }: EventsProps) => {
     <main className="pt-16 min-h-screen bg-background animate-page-intro" id="main-content">
       <PageMeta
         title="Upcoming Events"
-        description="Discover upcoming nightlife events and parties in Tunisia. Andiamo Events – concerts, festivals and experiences. Get tickets online."
+        description="Creating innovative and inspiring event experiences in Tunisia. We create memories."
         path="/events"
       />
       <JsonLdWebPage
         name="Upcoming Events | Andiamo Events – Tunisia Concerts & Parties"
-        description="Discover upcoming events in Tunisia. Concerts, parties and festivals in Tunis, Sousse and more. Buy tickets online. Andiamo Events."
+        description="Creating innovative and inspiring event experiences in Tunisia. We create memories."
         path="/events"
       />
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Events", url: "/events" }]} />

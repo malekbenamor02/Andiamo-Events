@@ -46,8 +46,8 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
           </h2>
           <p className="text-lg text-muted-foreground">
             {language === 'en'
-              ? "Don't miss our upcoming nightlife experiences"
-              : "Ne manquez pas nos prochaines expériences nocturnes"}
+              ? "We create memories."
+              : "We create memories."}
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-6 pb-4">

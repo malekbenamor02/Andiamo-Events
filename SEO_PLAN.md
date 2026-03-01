@@ -127,8 +127,8 @@ Keep: `Allow: /` for main site.
 ### 3.1 Title and meta description guidelines
 
 - **Home:**  
-  - Title: e.g. `Andiamo Events | Nightlife & Events in Tunisia – We Create Memories`  
-  - Description: 150–160 chars, include “Tunisia”, “events”, “nightlife”, “tickets”, and a CTA (e.g. “Discover upcoming events and buy tickets.”).
+  - Title: e.g. `Andiamo Events – We Create Memories`  
+  - Description: From about page: “Tunisia”, “events”, “events”, “tickets”, and a CTA (e.g. “Discover upcoming events and buy tickets.”).
 
 - **Events list:**  
   - Title: `Upcoming Events | Andiamo Events – Tunisia`  
@@ -187,7 +187,7 @@ On every page (e.g. in a layout or single component that always renders):
   "name": "Andiamo Events",
   "url": "https://www.andiamoevents.com",
   "logo": "https://www.andiamoevents.com/logo.svg",
-  "description": "Premier nightlife and events in Tunisia. We create memories.",
+  "description": "Creating innovative and inspiring event experiences in Tunisia. We create memories.",
   "sameAs": [
     "https://www.instagram.com/andiamoevents",
     "https://twitter.com/andiamo_events"
@@ -274,7 +274,7 @@ Use **Vercel Speed Insights** and **Google Search Console (Core Web Vitals)** to
 
 ## 6. Content and keywords
 
-- **Primary keywords:** Andiamo Events, events Tunisia, nightlife Tunisia, [city] events, event tickets Tunisia, etc.
+- **Primary keywords:** Andiamo Events, events Tunisia, [city] events, event tickets Tunisia, etc.
 - **Secondary:** concert Tunisia, party [city], event venue [city], buy tickets online Tunisia.
 - **On site:** Use these naturally in:
   - Home hero and intro
@@ -325,7 +325,7 @@ Use **Vercel Speed Insights** and **Google Search Console (Core Web Vitals)** to
 
 ## 10. Quick wins (do first)
 
-1. **Replace the default meta description** in `index.html` with a 150–160 character description that includes “Tunisia”, “events”, “nightlife”, “tickets”, and a CTA.
+1. **Replace the default meta description** in `index.html` with a the about page description: “Tunisia”, “events”, “events”, “tickets”, and a CTA.
 2. **Create `public/sitemap.xml`** with at least: `/`, `/events`, `/about`, `/contact`, `/terms`, `/ambassador`.
 3. **Add to `robots.txt`:**  
    `Sitemap: https://www.andiamoevents.com/sitemap.xml`  

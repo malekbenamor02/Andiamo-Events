@@ -37,7 +37,7 @@ export interface Theme {
 export const themes: Record<ThemeName, Theme> = {
   default: {
     name: 'default',
-    displayName: 'Default (Nightlife Black & Red)',
+    displayName: 'Default (Black & Red)',
     colors: {
       primary: '352 80% 49%', // Red #E21836
       secondary: '270 80% 60%', // Purple #9D6BFF

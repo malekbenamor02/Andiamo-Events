@@ -7413,7 +7413,7 @@ app.post('/api/send-order-completion-email', async (req, res) => {
           </div>
           <div class="footer">
             <p>© 2024 Andiamo Events. All rights reserved.</p>
-            <p>Tunisia's Premier Nightlife Experience</p>
+            <p>We Create Memories</p>
           </div>
         </div>
       </body>

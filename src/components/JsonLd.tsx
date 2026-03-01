@@ -10,7 +10,7 @@ export function JsonLdWebSite() {
     alternateName: "Andiamo Events Tunisia",
     url: SITE_URL,
     description:
-      "Andiamo Events – Tunisia's premier nightlife and events. Buy tickets for concerts, parties and festivals in Tunis, Sousse and across Tunisia.",
+      "Creating innovative and inspiring event experiences in Tunisia. We create memories.",
     inLanguage: ["en", "fr"],
     publisher: {
       "@type": "Organization",
@@ -35,7 +35,7 @@ export function JsonLdOrganization() {
     url: SITE_URL,
     logo: `${SITE_URL}/logo.svg`,
     description:
-      "Andiamo Events – Tunisia's premier nightlife and events. We create memories.",
+      "Creating innovative and inspiring event experiences in Tunisia. We create memories.",
     sameAs: [
       "https://www.instagram.com/andiamoevents",
       "https://twitter.com/andiamo_events",
@@ -237,7 +237,7 @@ export function JsonLdLocalBusiness(props?: {
     url: SITE_URL,
     logo: `${SITE_URL}/logo.svg`,
     description:
-      "Andiamo Events – Tunisia's premier nightlife and events. We create memories.",
+      "Creating innovative and inspiring event experiences in Tunisia. We create memories.",
     sameAs: [
       "https://www.instagram.com/andiamoevents",
       "https://twitter.com/andiamo_events",

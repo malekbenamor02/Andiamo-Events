@@ -174,8 +174,8 @@ const Footer = ({ language }: FooterProps) => {
             </RouterLink>
             <p className="text-muted-foreground mb-6 max-w-md">
               {language === 'en' 
-                ? "Creating unforgettable nightlife experiences across Tunisia. Join the movement and live the night with us."
-                : "Créer des expériences nocturnes inoubliables à travers la Tunisie. Rejoignez le mouvement et vivez la nuit avec nous."
+                ? "Creating innovative and inspiring event experiences in Tunisia. We create memories."
+                : "Creating innovative and inspiring event experiences in Tunisia. We create memories."
               }
             </p>
             

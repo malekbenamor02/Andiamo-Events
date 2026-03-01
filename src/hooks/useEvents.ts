@@ -31,6 +31,7 @@ export interface Event {
   organizer_contact?: string;
   event_category?: string;
   slug?: string;
+  capacity?: number;
 }
 
 /**
