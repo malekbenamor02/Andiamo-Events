@@ -10,9 +10,10 @@ import { OfficialInvitationsList } from "@/components/admin/OfficialInvitationsL
 
 export interface OfficialInvitationsTabProps {
   language: "en" | "fr";
+  selectedEventId?: string;
 }
 
-export function OfficialInvitationsTab({ language }: OfficialInvitationsTabProps) {
+export function OfficialInvitationsTab({ language, selectedEventId }: OfficialInvitationsTabProps) {
   return (
     <TabsContent value="official-invitations" className="space-y-6">
       <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
@@ -33,7 +34,7 @@ export function OfficialInvitationsTab({ language }: OfficialInvitationsTabProps
           />
         </div>
         <div className="lg:col-span-2">
-          <OfficialInvitationsList language={language} />
+          <OfficialInvitationsList language={language} selectedEventId={selectedEventId} />
         </div>
       </div>
     </TabsContent>

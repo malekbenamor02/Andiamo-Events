@@ -66,10 +66,12 @@ interface Invitation {
 
 interface OfficialInvitationsListProps {
   language?: 'en' | 'fr';
+  selectedEventId?: string;
 }
 
 export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = ({ 
-  language = 'en'
+  language = 'en',
+  selectedEventId
 }) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -174,6 +176,15 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
       setLoading(false);
     }
   };
+
+  // Sync event filter when dashboard selectedEventId changes
+  useEffect(() => {
+    if (selectedEventId) {
+      setEventFilter(selectedEventId);
+    } else {
+      setEventFilter('all');
+    }
+  }, [selectedEventId]);
 
   useEffect(() => {
     fetchInvitations();

@@ -22,31 +22,16 @@ interface ReportsAnalyticsProps {
 }
 
 export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId }: ReportsAnalyticsProps) {
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>('ALL_TIME');
   const [animationKey, setAnimationKey] = useState(0);
   const { data: events, isLoading: eventsLoading } = useEvents();
+  const selectedEventId = dashboardSelectedEventId ?? null;
   const { data: analyticsData, isLoading: analyticsLoading, error: analyticsError } = useAnalytics(selectedEventId, dateRange);
-
-  // Keep event in sync with main Dashboard filter so Overview and Reports show the same event (and consistent numbers)
-  useEffect(() => {
-    if (dashboardSelectedEventId !== undefined) {
-      setSelectedEventId(dashboardSelectedEventId || null);
-    }
-  }, [dashboardSelectedEventId]);
 
   // Reset animations when event or date range changes
   useEffect(() => {
     setAnimationKey(prev => prev + 1);
   }, [selectedEventId, dateRange]);
-
-  const handleEventChange = (eventId: string) => {
-    if (eventId === 'all') {
-      setSelectedEventId(null);
-    } else {
-      setSelectedEventId(eventId);
-    }
-  };
 
   const selectedEvent = selectedEventId 
     ? events?.find(e => e.id === selectedEventId)
@@ -77,23 +62,6 @@ export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId }: 
                 <SelectItem value="ALL_TIME">All Time</SelectItem>
                 <SelectItem value="LAST_30_DAYS">Last 30 Days</SelectItem>
                 <SelectItem value="LAST_7_DAYS">Last 7 Days</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedEventId || 'all'}
-              onValueChange={handleEventChange}
-              disabled={eventsLoading}
-            >
-              <SelectTrigger className="w-[250px] font-heading">
-                <SelectValue placeholder="Select Event" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Events</SelectItem>
-                {events?.map((event) => (
-                  <SelectItem key={event.id} value={event.id}>
-                    {event.name}
-                  </SelectItem>
-                ))}
               </SelectContent>
             </Select>
           </div>

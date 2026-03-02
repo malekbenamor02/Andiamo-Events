@@ -830,6 +830,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Compteur (count-up) animation for welcome block metrics
   const [displayStats, setDisplayStats] = useState({ totalRevenue: 0, paidRevenue: 0, pendingRevenue: 0, soldTickets: 0 });
   const [hasCountUpAnimated, setHasCountUpAnimated] = useState(false);
+
+  // Re-run the count-up animation whenever the event filter changes
+  useEffect(() => {
+    setHasCountUpAnimated(false);
+  }, [selectedEventId]);
+
   useEffect(() => {
     if (activeTab !== 'overview') {
       setHasCountUpAnimated(false);
@@ -11121,16 +11127,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
               {/* Official Invitations Tab - Only visible to super_admin */}
               {currentAdminRole === "super_admin" && (
-                <OfficialInvitationsTab language={language} />
+                <OfficialInvitationsTab language={language} selectedEventId={selectedEventId || undefined} />
               )}
               {currentAdminRole === "super_admin" && (
                 <TabsContent value="scanners" className="space-y-6">
-                  <ScannersTab language={language} />
+                  <ScannersTab language={language} selectedEventId={selectedEventId || undefined} />
                 </TabsContent>
               )}
 
               <TabsContent value="pos" className="space-y-6">
-                <PosTab language={language} />
+              <PosTab language={language} selectedEventId={selectedEventId || undefined} />
               </TabsContent>
 
               {/* Ambassadors Tab */}

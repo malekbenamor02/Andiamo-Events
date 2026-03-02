@@ -24,6 +24,7 @@ function fetcher(url: string, options?: RequestInit) {
 
 interface PosTabProps {
   language: "en" | "fr";
+  selectedEventId?: string;
 }
 
 interface Outlet {
@@ -104,7 +105,7 @@ interface EventPass {
 
 type ConfirmTarget = { kind: "delete-outlet"; o: Outlet } | { kind: "delete-user"; u: PosUser } | { kind: "remove-order"; o: PosOrder };
 
-export function PosTab({ language }: PosTabProps) {
+export function PosTab({ language, selectedEventId }: PosTabProps) {
   const { toast } = useToast();
   const [subTab, setSubTab] = useState("orders");
   const [outlets, setOutlets] = useState<Outlet[]>([]);
@@ -224,6 +225,26 @@ export function PosTab({ language }: PosTabProps) {
   useEffect(() => { if (subTab === "orders") loadOrders(); }, [subTab, outletId, orderStatusFilter, orderEventFilter, orderFrom, orderTo]);
   useEffect(() => { if (subTab === "audit") loadAudit(); }, [subTab]);
   useEffect(() => { const e = form.event_id; if (e && String(e).length) loadPasses(String(e)); }, [form.event_id]);
+
+  // Sync POS event filters with the main admin "Filter by Event" selection
+  useEffect(() => {
+    // When no specific event is selected at the top level, show all events in POS
+    if (!selectedEventId) {
+      setEventFilter("__all__");
+      setOrderEventFilter("__all__");
+      return;
+    }
+
+    // Only apply the filter if this event exists in the POS events list
+    if (events.some((ev) => ev.id === selectedEventId)) {
+      setEventFilter(selectedEventId);
+      setOrderEventFilter(selectedEventId);
+    } else {
+      // Fallback: if POS doesn't know this event, don't force a broken filter
+      setEventFilter("__all__");
+      setOrderEventFilter("__all__");
+    }
+  }, [selectedEventId, events]);
 
   const copyLink = (slug: string) => {
     const u = typeof window !== "undefined" ? `${window.location.origin}/pos/${slug}` : `/pos/${slug}`;

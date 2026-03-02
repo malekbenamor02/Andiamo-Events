@@ -14,6 +14,7 @@ import { Plus, RefreshCw, Play, Square, User } from "lucide-react";
 
 interface ScannersTabProps {
   language: "en" | "fr";
+  selectedEventId?: string;
 }
 
 interface Scanner {
@@ -55,7 +56,7 @@ function fetcher(url: string, options?: RequestInit) {
   return fetch(`${getApiBaseUrl()}${url}`, { ...options, credentials: "include" });
 }
 
-export function ScannersTab({ language }: ScannersTabProps) {
+export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
   const [config, setConfig] = useState<ScanConfig | null>(null);
   const [scanners, setScanners] = useState<Scanner[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -113,7 +114,8 @@ export function ScannersTab({ language }: ScannersTabProps) {
   const loadScans = async () => {
     setLoading(true);
     try {
-      const u = selectedId ? `${API_ROUTES.ADMIN_SCANNER_SCANS(selectedId)}` : `${API_ROUTES.ADMIN_SCAN_HISTORY}`;
+      const eventParam = selectedEventId && /^[0-9a-f-]{36}$/i.test(selectedEventId) ? `?event_id=${selectedEventId}` : "";
+      const u = (selectedId ? `${API_ROUTES.ADMIN_SCANNER_SCANS(selectedId)}` : `${API_ROUTES.ADMIN_SCAN_HISTORY}`) + eventParam;
       const r = await fetcher(u);
       if (r.ok) {
         const d = await r.json();
@@ -125,7 +127,7 @@ export function ScannersTab({ language }: ScannersTabProps) {
   };
 
   useEffect(() => { loadConfig(); loadScanners(); }, []);
-  useEffect(() => { loadStats(); loadScans(); }, [selectedId]);
+  useEffect(() => { loadStats(); loadScans(); }, [selectedId, selectedEventId]);
 
   const onStart = async () => {
     const r = await fetcher(API_ROUTES.ADMIN_SCAN_SYSTEM_CONFIG, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scan_enabled: true }) });
