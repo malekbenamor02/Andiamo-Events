@@ -62,9 +62,17 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     return () => {
       // Cleanup script on unmount
       const existingScript = document.querySelector(`script[src*="recaptcha/api.js"]`);
-      if (existingScript) {
-        document.body.removeChild(existingScript);
+      if (existingScript && existingScript.parentNode) {
+        existingScript.parentNode.removeChild(existingScript);
       }
+      // Remove the visible reCAPTCHA badge
+      const badge = document.querySelector('.grecaptcha-badge') as HTMLElement | null;
+      if (badge && badge.parentNode) {
+        badge.parentNode.removeChild(badge);
+      }
+      // Reset global grecaptcha so other pages start clean
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).grecaptcha;
     };
   }, [RECAPTCHA_SITE_KEY]);
 

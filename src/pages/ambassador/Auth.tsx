@@ -67,9 +67,18 @@ const Auth = ({ language }: AuthProps) => {
     document.body.appendChild(script);
 
     return () => {
+      // Remove script tag
       if (script.parentNode) {
         script.parentNode.removeChild(script);
       }
+      // Remove the visible reCAPTCHA badge
+      const badge = document.querySelector('.grecaptcha-badge') as HTMLElement | null;
+      if (badge && badge.parentNode) {
+        badge.parentNode.removeChild(badge);
+      }
+      // Reset global grecaptcha so other pages start clean
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).grecaptcha;
     };
   }, [RECAPTCHA_SITE_KEY]);
 
