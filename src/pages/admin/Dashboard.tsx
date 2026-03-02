@@ -268,10 +268,30 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [ambassadorApplicationMessage, setAmbassadorApplicationMessage] = useState("");
   const [loadingAmbassadorApplicationSettings, setLoadingAmbassadorApplicationSettings] = useState(false);
 
-  // Hero images state
+  // Default hero typewriter texts (mirror frontend defaults so super admin can edit them)
+  const defaultHeroTypewriterTexts = {
+    en: [
+      "EL DAHEEH LIVE SHOW FOR THE FIRST TIME IN TUNIS !!",
+      "01 February 2026",
+      "PALAIS DES CONGRES , TUNIS, AVENUE MOHAMED 5",
+      "الدحيح في تونس",
+    ],
+    fr: [
+      "EL DAHEEH LIVE SHOW FOR THE FIRST TIME IN TUNIS !!",
+      "01 February 2026",
+      "PALAIS DES CONGRES , TUNIS, AVENUE MOHAMED 5",
+      "الدحيح في تونس",
+    ],
+  };
+
+  // Hero section state (images + typewriter texts)
   const [heroImages, setHeroImages] = useState<HeroImage[]>([]);
   const [loadingHeroImages, setLoadingHeroImages] = useState(false);
   const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
+  const [heroTypewriterTexts, setHeroTypewriterTexts] = useState<{ en: string[]; fr: string[] }>({
+    en: defaultHeroTypewriterTexts.en,
+    fr: defaultHeroTypewriterTexts.fr,
+  });
 
   // About images state
   const [aboutImages, setAboutImages] = useState<AboutImage[]>([]);
@@ -2097,13 +2117,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (data && data.content) {
         const content = data.content as any;
+
         if (content.images && Array.isArray(content.images)) {
           setHeroImages(content.images);
         } else {
           setHeroImages([]);
         }
+
+        const typewriter = (content.typewriter_texts || {}) as { en?: string[]; fr?: string[] };
+        setHeroTypewriterTexts({
+          en: Array.isArray(typewriter.en) && typewriter.en.length > 0 ? typewriter.en : defaultHeroTypewriterTexts.en,
+          fr: Array.isArray(typewriter.fr) && typewriter.fr.length > 0 ? typewriter.fr : defaultHeroTypewriterTexts.fr,
+        });
       } else {
         setHeroImages([]);
+        setHeroTypewriterTexts(defaultHeroTypewriterTexts);
       }
     } catch (error) {
       console.error('Error fetching hero images:', error);
@@ -2128,10 +2156,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         existingContent = {};
       }
 
-      // Update images array
+      // Update images array and keep typewriter texts
       const updatedContent = {
         ...existingContent,
-        images: images
+        images: images,
+        typewriter_texts: {
+          en: heroTypewriterTexts.en,
+          fr: heroTypewriterTexts.fr,
+        },
       };
 
       // Upsert hero_section with updated images
@@ -2259,6 +2291,78 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Handle reorder hero images
   const handleReorderHeroImages = async (newOrder: HeroImage[]) => {
     await saveHeroImages(newOrder);
+  };
+
+  // Save hero typewriter texts (hero title typing effect) to site_content
+  const saveHeroTypewriterTexts = async (newTexts: { en: string[]; fr: string[] }) => {
+    try {
+      const { data: existingData } = await supabase
+        .from('site_content')
+        .select('content')
+        .eq('key', 'hero_section')
+        .single();
+
+      let existingContent = existingData?.content || {};
+      if (typeof existingContent !== 'object') {
+        existingContent = {};
+      }
+
+      const updatedContent = {
+        ...existingContent,
+        images: heroImages,
+        typewriter_texts: {
+          en: newTexts.en,
+          fr: newTexts.fr,
+        },
+      };
+
+      const { error } = await supabase
+        .from('site_content')
+        .upsert(
+          {
+            key: 'hero_section',
+            content: updatedContent as any,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'key',
+          }
+        );
+
+      if (error) throw error;
+
+      setHeroTypewriterTexts(newTexts);
+      toast({
+        title: language === 'en' ? 'Hero texts updated' : 'Textes du hero mis à jour',
+        description:
+          language === 'en'
+            ? 'Hero typing texts have been updated successfully'
+            : 'Les textes du hero ont été mis à jour avec succès',
+      });
+    } catch (error) {
+      console.error('Error saving hero typewriter texts:', error);
+      toast({
+        title: t.error,
+        description:
+          language === 'en'
+            ? 'Failed to save hero typing texts'
+            : 'Échec de la sauvegarde des textes du hero',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Update local state while editing (no auto-save)
+  const handleUpdateHeroTypewriterTexts = (lang: 'en' | 'fr', texts: string[]) => {
+    setHeroTypewriterTexts((prev) => ({
+      ...prev,
+      [lang]: texts,
+    }));
+  };
+
+  // Explicit save handler called from Settings tab
+  const handleSaveHeroTypewriterTexts = () => {
+    saveHeroTypewriterTexts(heroTypewriterTexts);
   };
 
   // Fetch Ambassador Sales System data
@@ -11294,6 +11398,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   loadingHeroImages={loadingHeroImages}
                   handleReorderHeroImages={handleReorderHeroImages}
                   handleDeleteHeroImage={handleDeleteHeroImage}
+                  heroTypewriterTexts={heroTypewriterTexts}
+                  handleUpdateHeroTypewriterTexts={handleUpdateHeroTypewriterTexts}
+                  handleSaveHeroTypewriterTexts={handleSaveHeroTypewriterTexts}
                   aboutImages={aboutImages}
                   handleUploadAboutImage={handleUploadAboutImage}
                   uploadingAboutImage={uploadingAboutImage}

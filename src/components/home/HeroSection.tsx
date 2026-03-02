@@ -246,8 +246,8 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
     }
   };
 
-  // Typewriter texts for the hero title (Arabic appears after EN/FR texts)
-  const typewriterTexts = {
+  // Default typewriter texts for the hero title (used when no CMS content is set)
+  const defaultTypewriterTexts = {
     en: [
       "EL DAHEEH LIVE SHOW FOR THE FIRST TIME IN TUNIS !!",
       "01 February 2026",
@@ -266,6 +266,13 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
 
   // Use Supabase content if available, otherwise fall back to default
   const content = heroContent[language] || defaultContent[language];
+  const cmsTypewriterTexts = (heroContent?.typewriter_texts || {}) as { en?: string[]; fr?: string[] };
+  const rawTextsForLang = Array.isArray(cmsTypewriterTexts[language])
+    ? (cmsTypewriterTexts[language] as string[])
+    : [];
+  const cleanedTextsForLang = rawTextsForLang.map((t) => t.trim()).filter((t) => t.length > 0);
+  const activeTypewriterTexts =
+    cleanedTextsForLang.length > 0 ? cleanedTextsForLang : defaultTypewriterTexts[language];
   
   // Get hero images from Supabase content
   // If no images are set in Supabase, use empty array (will show placeholder or nothing)
@@ -410,7 +417,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
           <h1 className="text-3xl sm:text-4xl md:text-7xl font-heading font-black mb-6 min-h-[1.2em] uppercase">
             <span className="block text-white">
               <TypewriterText 
-                texts={typewriterTexts[language]}
+                texts={activeTypewriterTexts}
                 speed={80}
                 deleteSpeed={40}
                 pauseTime={2500}

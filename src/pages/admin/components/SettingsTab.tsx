@@ -60,6 +60,9 @@ export interface SettingsTabProps {
   loadingAboutImages: boolean;
   handleReorderAboutImages: (images: AboutImage[]) => void;
   handleDeleteAboutImage: (index: number) => void;
+  heroTypewriterTexts: { en: string[]; fr: string[] };
+  handleUpdateHeroTypewriterTexts: (lang: "en" | "fr", texts: string[]) => void;
+  handleSaveHeroTypewriterTexts: () => void;
 }
 
 export function SettingsTab(p: SettingsTabProps) {
@@ -594,6 +597,126 @@ export function SettingsTab(p: SettingsTabProps) {
                             )}
                           </>
                         )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Hero Typewriter Texts Card */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
+                    <Card className="shadow-lg h-full flex flex-col">
+                      <CardHeader className="pb-4">
+                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                          <Image className="w-5 h-5 text-primary" />
+                          {p.language === "en" ? "Hero typing texts" : "Textes tapés du hero"}
+                        </CardTitle>
+                        <p className="text-sm text-foreground/70 mt-2">
+                          {p.language === "en"
+                            ? "Control the lines used in the hero typewriter effect. You can add, remove and reorder texts for each language."
+                            : "Contrôlez les lignes utilisées dans l'effet de texte tapé du hero. Vous pouvez ajouter, supprimer et réorganiser les textes pour chaque langue."}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="flex-1 flex flex-col space-y-6">
+                        {(["en", "fr"] as const).map((langKey) => (
+                          <div key={langKey} className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-sm font-semibold flex items-center gap-2">
+                                <span>{langKey === "en" ? "English" : "Français"}</span>
+                              </Label>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const current = p.heroTypewriterTexts[langKey] || [];
+                                  p.handleUpdateHeroTypewriterTexts(langKey, [...current, ""]);
+                                }}
+                              >
+                                {p.language === "en" ? "Add line" : "Ajouter une ligne"}
+                              </Button>
+                            </div>
+                            {p.heroTypewriterTexts[langKey].length === 0 ? (
+                              <p className="text-xs text-muted-foreground">
+                                {p.language === "en"
+                                  ? "No custom texts yet. The default hardcoded texts will be used."
+                                  : "Aucun texte personnalisé pour le moment. Les textes par défaut codés en dur seront utilisés."}
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                {p.heroTypewriterTexts[langKey].map((text, index) => (
+                                  <div key={index} className="flex gap-2 items-start">
+                                    <div className="flex flex-col gap-1 flex-1">
+                                      <Input
+                                        value={text}
+                                        onChange={(e) => {
+                                          const arr = [...p.heroTypewriterTexts[langKey]];
+                                          arr[index] = e.target.value;
+                                          p.handleUpdateHeroTypewriterTexts(langKey, arr);
+                                        }}
+                                        className="text-sm"
+                                        placeholder={
+                                          p.language === "en"
+                                            ? "Type text to display in hero"
+                                            : "Saisir le texte à afficher dans le hero"
+                                        }
+                                      />
+                                      <p className="text-[11px] text-muted-foreground">
+                                        {p.language === "en"
+                                          ? "This line will appear in the typing animation."
+                                          : "Cette ligne apparaîtra dans l’animation de texte tapé."}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        disabled={index === 0}
+                                        onClick={() => {
+                                          if (index === 0) return;
+                                          const arr = [...p.heroTypewriterTexts[langKey]];
+                                          [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
+                                          p.handleUpdateHeroTypewriterTexts(langKey, arr);
+                                        }}
+                                      >
+                                        <ArrowUp className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        disabled={index === p.heroTypewriterTexts[langKey].length - 1}
+                                        onClick={() => {
+                                          const arr = [...p.heroTypewriterTexts[langKey]];
+                                          if (index >= arr.length - 1) return;
+                                          [arr[index + 1], arr[index]] = [arr[index], arr[index + 1]];
+                                          p.handleUpdateHeroTypewriterTexts(langKey, arr);
+                                        }}
+                                      >
+                                        <ArrowDown className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => {
+                                          const arr = p.heroTypewriterTexts[langKey].filter((_, i) => i !== index);
+                                          p.handleUpdateHeroTypewriterTexts(langKey, arr);
+                                        }}
+                                      >
+                                        <Trash2 className="w-4 h-4 text-destructive" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        <div className="flex justify-end">
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={p.handleSaveHeroTypewriterTexts}
+                          >
+                            {p.language === "en" ? "Save texts" : "Enregistrer les textes"}
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   </div>
