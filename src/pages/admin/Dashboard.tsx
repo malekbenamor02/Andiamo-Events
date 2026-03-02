@@ -42,6 +42,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerTrigger } from "@/components/ui/drawer";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { formatDateDMY } from "@/lib/date-utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { apiFetch, handleApiResponse } from "@/lib/api-client";
@@ -147,8 +148,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [isPassManagementDialogOpen, setIsPassManagementDialogOpen] = useState(false);
   const [eventForPassManagement, setEventForPassManagement] = useState<Event | null>(null);
   const [passesForManagement, setPassesForManagement] = useState<EventPass[]>([]);
+  const [selectedPassForSettings, setSelectedPassForSettings] = useState<EventPass | null>(null);
   const [isPassManagementLoading, setIsPassManagementLoading] = useState(false);
-  const [newPassForm, setNewPassForm] = useState<{ name: string; price: number; description: string; is_primary: boolean; allowed_payment_methods: string[] } | null>(null);
+  const [newPassForm, setNewPassForm] = useState<{ name: string; price: number; description: string; is_primary: boolean; max_quantity: number; allowed_payment_methods: string[] } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteTarget | null>(null);
   const [isAmbassadorDialogOpen, setIsAmbassadorDialogOpen] = useState(false);
   const [isAmbassadorInfoDialogOpen, setIsAmbassadorInfoDialogOpen] = useState(false);
@@ -649,23 +651,93 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }, 0);
   }, [filteredCodOrders, orderFilters.passType]);
 
-  // Dashboard overview stats from COD ambassador orders (revenue + sold tickets)
-  // Sold tickets = paid tickets from ambassador orders only (PAID/COMPLETED), no pending, no online, no POS
+  const [onlineOrdersForChart, setOnlineOrdersForChart] = useState<any[]>([]);
+
+  // Activity chart: last 7 days with Applications, Orders (ambassador + online), Revenue, Events created
+  const activityChartData = useMemo(() => {
+    const out: { name: string; applications: number; orders: number; revenue: number; eventsCreated: number }[] = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = format(d, 'yyyy-MM-dd');
+      const dayLabel = format(d, 'EEE');
+      const appCount = applications.filter((a: { created_at?: string }) => format(new Date(a.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
+      const dayAmbassador = codAmbassadorOrders.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
+      const dayOnline = onlineOrdersForChart.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
+      const ambassadorRevenue = dayAmbassador.reduce((s: number, o: { total_price?: number }) => s + (Number(o.total_price) || 0), 0);
+      const onlineRevenue = dayOnline.reduce((s: number, o: { total_price?: number; total?: number }) => s + (Number(o.total_price) ?? Number(o.total) ?? 0), 0);
+      const eventsCount = events.filter((ev: { created_at?: string }) => format(new Date(ev.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
+      out.push({
+        name: dayLabel,
+        applications: appCount,
+        orders: dayAmbassador.length + dayOnline.length,
+        revenue: Math.round(ambassadorRevenue + onlineRevenue),
+        eventsCreated: eventsCount,
+      });
+    }
+    return out;
+  }, [applications, codAmbassadorOrders, onlineOrdersForChart, events]);
+
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  // POS orders for overview stats (by selected event)
+  const [posOrdersForOverview, setPosOrdersForOverview] = useState<any[]>([]);
+
+  // Online Orders state
+  const [onlineOrders, setOnlineOrders] = useState<any[]>([]);
+  const [selectedOnlineOrder, setSelectedOnlineOrder] = useState<any>(null);
+  const [isOnlineOrderDetailsOpen, setIsOnlineOrderDetailsOpen] = useState(false);
+  const [loadingOnlineOrders, setLoadingOnlineOrders] = useState(false);
+  const [onlineOrderFilters, setOnlineOrderFilters] = useState({
+    status: 'all',
+    city: 'all',
+    passType: 'all',
+    orderId: '',
+    dateFrom: null as Date | null,
+    dateTo: null as Date | null
+  });
+
+  // Dashboard overview stats: all payment methods (POS, online, ambassador) for the selected event
   const dashboardOrderStats = useMemo(() => {
-    const PAID = ['PAID', 'COMPLETED'];
-    const PENDING = ['PENDING_CASH', 'PENDING_ADMIN_APPROVAL', 'PENDING_AMBASSADOR_CONFIRMATION', 'APPROVED'];
-    const tickets = (o: any) => (o.passes || []).reduce((s: number, p: any) => s + (p.quantity || 0), 0) || (o.quantity || 1);
-    const paid = codAmbassadorOrders.filter((o: any) => PAID.includes(o.status));
-    const pending = codAmbassadorOrders.filter((o: any) => PENDING.includes(o.status));
-    const paidRevenue = paid.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
-    const pendingRevenue = pending.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
+    const PAID_AMB = ['PAID', 'COMPLETED'];
+    const PENDING_AMB = ['PENDING_CASH', 'PENDING_ADMIN_APPROVAL', 'PENDING_AMBASSADOR_CONFIRMATION', 'APPROVED'];
+    const ambTickets = (o: any) => (o.passes || []).reduce((s: number, p: any) => s + (p.quantity || 0), 0) || (o.quantity || 1);
+
+    // Ambassador orders (already filtered by selected event when fetched)
+    const ambPaid = codAmbassadorOrders.filter((o: any) => PAID_AMB.includes(o.status));
+    const ambPending = codAmbassadorOrders.filter((o: any) => PENDING_AMB.includes(o.status));
+    const ambPaidRevenue = ambPaid.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
+    const ambPendingRevenue = ambPending.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
+    const ambSoldTickets = ambPaid.reduce((s, o) => s + ambTickets(o), 0);
+
+    // Online orders (already filtered by selected event when fetched): PAID vs PENDING_PAYMENT
+    const onlinePaid = onlineOrders.filter((o: any) => o.payment_status === 'PAID');
+    const onlinePending = onlineOrders.filter((o: any) => (o.payment_status === 'PENDING_PAYMENT' || o.payment_status == null) && o.status !== 'REMOVED_BY_ADMIN');
+    const onlineTickets = (o: any) => (o.order_passes || []).reduce((s: number, p: any) => s + (p.quantity || 0), 0);
+    const onlinePaidRevenue = onlinePaid.reduce((s, o) => s + (Number(o.total_price) ?? Number(o.total) ?? 0), 0);
+    const onlinePendingRevenue = onlinePending.reduce((s, o) => s + (Number(o.total_price) ?? Number(o.total) ?? 0), 0);
+    const onlineSoldTickets = onlinePaid.reduce((s, o) => s + onlineTickets(o), 0);
+
+    // POS orders (filtered by selected event when fetched)
+    const posPaid = posOrdersForOverview.filter((o: any) => o.status === 'PAID');
+    const posPending = posOrdersForOverview.filter((o: any) => o.status === 'PENDING_ADMIN_APPROVAL');
+    const posTickets = (o: any) => (o.order_passes || []).reduce((s: number, p: any) => s + (p.quantity || 0), 0) || (o.quantity || 0);
+    const posPaidRevenue = posPaid.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
+    const posPendingRevenue = posPending.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
+    const posSoldTickets = posPaid.reduce((s, o) => s + posTickets(o), 0);
+
+    const paidRevenue = ambPaidRevenue + onlinePaidRevenue + posPaidRevenue;
+    const pendingRevenue = ambPendingRevenue + onlinePendingRevenue + posPendingRevenue;
+    const soldTickets = ambSoldTickets + onlineSoldTickets + posSoldTickets;
+
     return {
       totalRevenue: paidRevenue + pendingRevenue,
       paidRevenue,
       pendingRevenue,
-      soldTickets: paid.reduce((s, o) => s + tickets(o), 0),
+      soldTickets,
     };
-  }, [codAmbassadorOrders]);
+  }, [codAmbassadorOrders, onlineOrders, posOrdersForOverview]);
 
   // Compteur (count-up) animation for welcome block metrics
   const [displayStats, setDisplayStats] = useState({ totalRevenue: 0, paidRevenue: 0, pendingRevenue: 0, soldTickets: 0 });
@@ -706,48 +778,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }, stepDuration);
     return () => clearInterval(interval);
   }, [activeTab, hasCountUpAnimated, dashboardOrderStats.totalRevenue, dashboardOrderStats.paidRevenue, dashboardOrderStats.pendingRevenue, dashboardOrderStats.soldTickets]);
-
-  const [onlineOrdersForChart, setOnlineOrdersForChart] = useState<any[]>([]);
-
-  // Activity chart: last 7 days with Applications, Orders (ambassador + online), Revenue (ambassador + online)
-  const activityChartData = useMemo(() => {
-    const out: { name: string; applications: number; orders: number; revenue: number }[] = [];
-    const now = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const dateStr = format(d, 'yyyy-MM-dd');
-      const dayLabel = format(d, 'EEE');
-      const appCount = applications.filter((a: { created_at?: string }) => format(new Date(a.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
-      const dayAmbassador = codAmbassadorOrders.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
-      const dayOnline = onlineOrdersForChart.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
-      const ambassadorRevenue = dayAmbassador.reduce((s: number, o: { total_price?: number }) => s + (Number(o.total_price) || 0), 0);
-      const onlineRevenue = dayOnline.reduce((s: number, o: { total_price?: number; total?: number }) => s + (Number(o.total_price) ?? Number(o.total) ?? 0), 0);
-      out.push({
-        name: dayLabel,
-        applications: appCount,
-        orders: dayAmbassador.length + dayOnline.length,
-        revenue: Math.round(ambassadorRevenue + onlineRevenue),
-      });
-    }
-    return out;
-  }, [applications, codAmbassadorOrders, onlineOrdersForChart]);
-
-  const [loadingOrders, setLoadingOrders] = useState(false);
-
-  // Online Orders state
-  const [onlineOrders, setOnlineOrders] = useState<any[]>([]);
-  const [selectedOnlineOrder, setSelectedOnlineOrder] = useState<any>(null);
-  const [isOnlineOrderDetailsOpen, setIsOnlineOrderDetailsOpen] = useState(false);
-  const [loadingOnlineOrders, setLoadingOnlineOrders] = useState(false);
-  const [onlineOrderFilters, setOnlineOrderFilters] = useState({
-    status: 'all',
-    city: 'all',
-    passType: 'all',
-    orderId: '',
-    dateFrom: null as Date | null,
-    dateTo: null as Date | null
-  });
 
   // COD Orders filters
   const [codOrderFilters, setCodOrderFilters] = useState({
@@ -1399,6 +1429,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [events, selectedEventId]);
 
+  // Fetch POS orders for overview stats (by selected event)
+  const fetchPosOrdersForOverview = async () => {
+    if (!selectedEventId) {
+      setPosOrdersForOverview([]);
+      return;
+    }
+    try {
+      const apiBase = getApiBaseUrl();
+      const url = `${buildFullApiUrl(API_ROUTES.ADMIN_POS_ORDERS, apiBase)}?limit=1000&event_id=${encodeURIComponent(selectedEventId)}`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) {
+        setPosOrdersForOverview([]);
+        return;
+      }
+      const data = await res.json();
+      setPosOrdersForOverview(Array.isArray(data) ? data : []);
+    } catch {
+      setPosOrdersForOverview([]);
+    }
+  };
+
   // Reload data when selected event changes
   useEffect(() => {
     // Skip reload on initial mount (when selectedEventId is being set for the first time)
@@ -1406,6 +1457,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (events.length > 0) {
       fetchAmbassadorSalesData();
       fetchOnlineOrders();
+      fetchPosOrdersForOverview();
+    } else if (!selectedEventId) {
+      setPosOrdersForOverview([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEventId]);
@@ -9625,11 +9679,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Ticket Management handlers (placeholder for now)
+  // Reports tab handlers (placeholder for now)
   const openTicketDialog = (ticket = null) => {
     toast({
       title: 'Coming Soon',
-      description: 'Ticket management will be available once the database table is created.',
+      description: 'Reports will be available once the database table is created.',
     });
   };
 
@@ -9744,13 +9798,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Desktop: sidebar nav hidden when cursor not on it; slides in from left on hover
   const [sidebarNavVisible, setSidebarNavVisible] = useState(false);
 
-  // Allowed tabs on mobile: Overview, Events, Ambassadors, Applications, Online orders, Ambassador sales, Ticket management, POS, Official invitations (super_admin only)
+  // Allowed tabs on mobile: Overview, Events, Ambassadors, Applications, Online orders, Ambassador sales, POS, Official invitations (super_admin), Reports
   const mobileAllowedTabs = useMemo(() => {
-    const base = ["overview", "events", "ambassadors", "applications", "online-orders", "ambassador-sales", "tickets", "pos"];
+    const base = ["overview", "events", "ambassadors", "applications", "online-orders", "ambassador-sales", "pos"];
     if (currentAdminRole === "super_admin") {
-      return [...base, "official-invitations"];
+      return [...base, "official-invitations", "tickets"];
     }
-    return base;
+    return [...base, "tickets"];
   }, [currentAdminRole]);
 
   // On mobile, if current tab is not allowed, switch to first allowed tab
@@ -9849,12 +9903,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {activeTab === "events" && t.events}
               {activeTab === "ambassadors" && t.ambassadors}
               {activeTab === "applications" && t.applications}
+              {activeTab === "online-orders" && (language === 'en' ? 'Online Orders' : 'Commandes en Ligne')}
+              {activeTab === "ambassador-sales" && (language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs')}
               {activeTab === "pos" && (language === 'en' ? 'Point de Vente' : 'Point de Vente')}
               {activeTab === "official-invitations" && (language === 'en' ? 'Official Invitations' : 'Invitations Officielles')}
-              {activeTab === "online-orders" && (language === 'en' ? 'Online Orders' : 'Commandes en Ligne')}
-              {activeTab === "tickets" && (language === 'en' ? 'Ticket Management' : 'Ticket Management')}
-              {activeTab === "ambassador-sales" && (language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs')}
-              {!["overview","events","ambassadors","applications","pos","official-invitations","online-orders","tickets","ambassador-sales"].includes(activeTab) && t.title}
+              {activeTab === "tickets" && (language === 'en' ? 'Reports' : 'Rapports')}
+              {activeTab === "marketing" && (language === 'en' ? 'SMS - E-mail' : 'SMS - E-mail')}
+              {activeTab === "contact" && (language === 'en' ? 'Contact Messages' : 'Messages de Contact')}
+              {!["overview","events","ambassadors","applications","online-orders","ambassador-sales","pos","official-invitations","tickets","marketing","contact"].includes(activeTab) && t.title}
             </span>
           </button>
           <div className="flex items-center gap-1.5 shrink-0 text-xs font-medium" style={{ color: '#B8B8B8' }}>
@@ -9921,6 +9977,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   <span>{t.applications}</span>
                 </button>
               )}
+              {isTabAllowedOnMobile("online-orders") && (
+                <button
+                  onClick={() => {
+                    handleMobileNavSelect("online-orders");
+                    if (onlineOrders.length === 0) fetchOnlineOrders();
+                  }}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "online-orders" && "shadow-lg")}
+                  style={{ color: activeTab === "online-orders" ? '#E21836' : '#B0B0B0', background: activeTab === "online-orders" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <CreditCard className="w-4 h-4 shrink-0" />
+                  <span>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("ambassador-sales") && (
+                <button
+                  onClick={() => {
+                    handleMobileNavSelect("ambassador-sales");
+                    if (codAmbassadorOrders.length === 0) fetchAmbassadorSalesData();
+                  }}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "ambassador-sales" && "shadow-lg")}
+                  style={{ color: activeTab === "ambassador-sales" ? '#E21836' : '#B0B0B0', background: activeTab === "ambassador-sales" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <Package className="w-4 h-4 shrink-0" />
+                  <span>{language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs'}</span>
+                </button>
+              )}
               {isTabAllowedOnMobile("pos") && (
                 <button
                   onClick={() => handleMobileNavSelect("pos")}
@@ -9941,19 +10023,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   <span>{language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}</span>
                 </button>
               )}
-              {isTabAllowedOnMobile("online-orders") && (
-                <button
-                  onClick={() => {
-                    handleMobileNavSelect("online-orders");
-                    if (onlineOrders.length === 0) fetchOnlineOrders();
-                  }}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "online-orders" && "shadow-lg")}
-                  style={{ color: activeTab === "online-orders" ? '#E21836' : '#B0B0B0', background: activeTab === "online-orders" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <CreditCard className="w-4 h-4 shrink-0" />
-                  <span>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</span>
-                </button>
-              )}
               {isTabAllowedOnMobile("tickets") && (
                 <button
                   onClick={() => handleMobileNavSelect("tickets")}
@@ -9961,20 +10030,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   style={{ color: activeTab === "tickets" ? '#E21836' : '#B0B0B0', background: activeTab === "tickets" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <DollarSign className="w-4 h-4 shrink-0" />
-                  <span>Ticket Management</span>
-                </button>
-              )}
-              {isTabAllowedOnMobile("ambassador-sales") && (
-                <button
-                  onClick={() => {
-                    handleMobileNavSelect("ambassador-sales");
-                    if (codAmbassadorOrders.length === 0) fetchAmbassadorSalesData();
-                  }}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "ambassador-sales" && "shadow-lg")}
-                  style={{ color: activeTab === "ambassador-sales" ? '#E21836' : '#B0B0B0', background: activeTab === "ambassador-sales" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <Package className="w-4 h-4 shrink-0" />
-                  <span>{language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs'}</span>
+                  <span>{language === 'en' ? 'Reports' : 'Rapports'}</span>
                 </button>
               )}
             </div>
@@ -10096,6 +10152,123 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <span>{t.applications}</span>
               </button>
               <button
+                onClick={() => {
+                  setActiveTab("online-orders");
+                  if (onlineOrders.length === 0) {
+                    fetchOnlineOrders();
+                  }
+                }}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-450 ${
+                  activeTab === "online-orders" 
+                    ? "shadow-lg" 
+                    : ""
+                }`}
+                style={{
+                  color: activeTab === "online-orders" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "online-orders" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
+              >
+                <CreditCard className={`w-4 h-4 transition-transform duration-300 ${activeTab === "online-orders" ? "animate-pulse" : ""}`} />
+                <span>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab("ambassador-sales");
+                  if (codAmbassadorOrders.length === 0) {
+                    fetchAmbassadorSalesData();
+                  }
+                }}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-500 ${
+                  activeTab === "ambassador-sales" 
+                    ? "shadow-lg" 
+                    : ""
+                }`}
+                style={{
+                  color: activeTab === "ambassador-sales" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "ambassador-sales" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
+              >
+                <Package className={`w-4 h-4 transition-transform duration-300 ${activeTab === "ambassador-sales" ? "animate-pulse" : ""}`} />
+                <span>{language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs'}</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("pos")}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-550 ${
+                  activeTab === "pos" ? "shadow-lg" : ""
+                }`}
+                style={{
+                  color: activeTab === "pos" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "pos" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
+              >
+                <Store className={`w-4 h-4 transition-transform duration-300 ${activeTab === "pos" ? "animate-pulse" : ""}`} />
+                <span>{language === 'en' ? 'Point de Vente' : 'Point de Vente'}</span>
+              </button>
+              {currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => setActiveTab("official-invitations")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-600 ${
+                    activeTab === "official-invitations" 
+                      ? "shadow-lg" 
+                      : ""
+                  }`}
+                  style={{
+                    color: activeTab === "official-invitations" ? '#E21836' : '#B8B8B8',
+                    background: activeTab === "official-invitations" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                  }}
+                >
+                  <Mail className={`w-4 h-4 transition-transform duration-300 ${activeTab === "official-invitations" ? "animate-pulse" : ""}`} />
+                  <span>{language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}</span>
+                </button>
+              )}
+              <button
+                onClick={() => setActiveTab("tickets")}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-650 ${
+                  activeTab === "tickets" 
+                    ? "shadow-lg" 
+                    : ""
+                }`}
+                style={{
+                  color: activeTab === "tickets" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "tickets" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
+              >
+                <DollarSign className={`w-4 h-4 transition-transform duration-300 ${activeTab === "tickets" ? "animate-pulse" : ""}`} />
+                <span>{language === 'en' ? 'Reports' : 'Rapports'}</span>
+              </button>
+              {currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => setActiveTab("scanners")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-700 ${
+                    activeTab === "scanners" ? "shadow-lg" : ""
+                  }`}
+                  style={{
+                    color: activeTab === "scanners" ? '#E21836' : '#B8B8B8',
+                    background: activeTab === "scanners" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                  }}
+                >
+                  <QrCode className={`w-4 h-4 transition-transform duration-300 ${activeTab === "scanners" ? "animate-pulse" : ""}`} />
+                  <span>{language === 'en' ? 'Scanners' : 'Scanners'}</span>
+                </button>
+              )}
+              {currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => setActiveTab("admins")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-750 ${
+                    activeTab === "admins" 
+                      ? "shadow-lg" 
+                      : ""
+                  }`}
+                  style={{
+                    color: activeTab === "admins" ? '#E21836' : '#B8B8B8',
+                    background: activeTab === "admins" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                  }}
+                >
+                  <User className={`w-4 h-4 transition-transform duration-300 ${activeTab === "admins" ? "animate-pulse" : ""}`} />
+                  <span>{language === 'en' ? 'Admins' : 'Administrateurs'}</span>
+                </button>
+              )}
+              <button
                 onClick={() => setActiveTab("sponsors")}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-500 ${
                   activeTab === "sponsors" 
@@ -10131,138 +10304,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   Role: {currentAdminRole || 'loading...'}
                 </div>
               )}
-              {currentAdminRole === 'super_admin' && (
-                <button
-                  onClick={() => setActiveTab("admins")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-700 ${
-                    activeTab === "admins" 
-                      ? "shadow-lg" 
-                      : ""
-                  }`}
-                  style={{
-                    color: activeTab === "admins" ? '#E21836' : '#B8B8B8',
-                    background: activeTab === "admins" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                  }}
-                >
-                  <User className={`w-4 h-4 transition-transform duration-300 ${activeTab === "admins" ? "animate-pulse" : ""}`} />
-                  <span>{language === 'en' ? 'Admins' : 'Administrateurs'}</span>
-                </button>
-              )}
-              {currentAdminRole === 'super_admin' && (
-                <button
-                  onClick={() => setActiveTab("official-invitations")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-750 ${
-                    activeTab === "official-invitations" 
-                      ? "shadow-lg" 
-                      : ""
-                  }`}
-                  style={{
-                    color: activeTab === "official-invitations" ? '#E21836' : '#B8B8B8',
-                    background: activeTab === "official-invitations" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                  }}
-                >
-                  <Mail className={`w-4 h-4 transition-transform duration-300 ${activeTab === "official-invitations" ? "animate-pulse" : ""}`} />
-                  <span>{language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}</span>
-                </button>
-              )}
-              {currentAdminRole === 'super_admin' && (
-                <button
-                  onClick={() => setActiveTab("scanners")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-755 ${
-                    activeTab === "scanners" ? "shadow-lg" : ""
-                  }`}
-                  style={{
-                    color: activeTab === "scanners" ? '#E21836' : '#B8B8B8',
-                    background: activeTab === "scanners" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                  }}
-                >
-                  <QrCode className={`w-4 h-4 transition-transform duration-300 ${activeTab === "scanners" ? "animate-pulse" : ""}`} />
-                  <span>{language === 'en' ? 'Scanners' : 'Scanners'}</span>
-                </button>
-              )}
-              <button
-                onClick={() => setActiveTab("pos")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-760 ${
-                  activeTab === "pos" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  color: activeTab === "pos" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "pos" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Store className={`w-4 h-4 transition-transform duration-300 ${activeTab === "pos" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'Point de Vente' : 'Point de Vente'}</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("contact")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-${currentAdminRole === 'super_admin' ? '800' : '700'} ${
-                  activeTab === "contact" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "contact" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "contact" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <MessageCircle className={`w-4 h-4 transition-transform duration-300 ${activeTab === "contact" ? "animate-pulse" : ""}`} />
-                <span>Contact Messages</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("tickets")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-800 ${
-                  activeTab === "tickets" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "tickets" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "tickets" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <DollarSign className={`w-4 h-4 transition-transform duration-300 ${activeTab === "tickets" ? "animate-pulse" : ""}`} />
-                <span>Ticket Management</span>
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab("ambassador-sales");
-                  if (codAmbassadorOrders.length === 0) {
-                    fetchAmbassadorSalesData();
-                  }
-                }}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-825 ${
-                  activeTab === "ambassador-sales" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "ambassador-sales" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "ambassador-sales" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Package className={`w-4 h-4 transition-transform duration-300 ${activeTab === "ambassador-sales" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs'}</span>
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab("online-orders");
-                  if (onlineOrders.length === 0) {
-                    fetchOnlineOrders();
-                  }
-                }}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
-                  activeTab === "online-orders" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "online-orders" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "online-orders" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <CreditCard className={`w-4 h-4 transition-transform duration-300 ${activeTab === "online-orders" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</span>
-              </button>
               <button
                 onClick={() => {
                   setActiveTab("marketing");
@@ -10274,7 +10315,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     fetchSmsLogs();
                   }
                 }}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-800 ${
                   activeTab === "marketing" 
                     ? "shadow-lg" 
                     : ""
@@ -10285,7 +10326,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 }}
               >
                 <Megaphone className={`w-4 h-4 transition-transform duration-300 ${activeTab === "marketing" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'Marketing' : 'Marketing'}</span>
+                <span>{language === 'en' ? 'SMS - E-mail' : 'SMS - E-mail'}</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("contact")}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
+                  activeTab === "contact" 
+                    ? "shadow-lg" 
+                    : ""
+                }`}
+                style={{
+                  color: activeTab === "contact" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "contact" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
+              >
+                <MessageCircle className={`w-4 h-4 transition-transform duration-300 ${activeTab === "contact" ? "animate-pulse" : ""}`} />
+                <span>Contact Messages</span>
               </button>
               <button
                 onClick={() => {
@@ -10429,7 +10485,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                       .map((event) => (
                         <SelectItem key={event.id} value={event.id}>
-                          {event.name} - {new Date(event.date).toLocaleDateString()}
+                          {event.name} - {formatDateDMY(event.date, language)}
                         </SelectItem>
                       ))}
                   </SelectContent>
@@ -10442,6 +10498,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       fetchAllData();
                       fetchAmbassadorSalesData();
                       fetchOnlineOrders();
+                      fetchPosOrdersForOverview();
                     }}
                     className="flex items-center gap-2"
                   >
@@ -10510,6 +10567,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 setEventForPassManagement={setEventForPassManagement}
                 passesForManagement={passesForManagement}
                 setPassesForManagement={setPassesForManagement}
+                selectedPassForSettings={selectedPassForSettings}
+                setSelectedPassForSettings={setSelectedPassForSettings}
                 newPassForm={newPassForm}
                 setNewPassForm={setNewPassForm}
                 setConfirmDelete={setConfirmDelete}
@@ -10673,7 +10732,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
               {/* Reports & Analytics Tab */}
               <TabsContent value="tickets" className="space-y-6">
-                <ReportsAnalytics language={language} />
+                <ReportsAnalytics language={language} dashboardSelectedEventId={selectedEventId || null} />
               </TabsContent>
 
               {/* Online Orders Tab */}

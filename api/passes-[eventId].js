@@ -99,9 +99,9 @@ export default async (req, res) => {
 
     // Calculate stock information for each pass
     const passesWithStock = (passes || []).map(pass => {
-      const isUnlimited = pass.max_quantity === null;
-      const remainingQuantity = isUnlimited ? null : (pass.max_quantity - pass.sold_quantity);
-      const isSoldOut = !isUnlimited && remainingQuantity <= 0;
+      const maxQty = pass.max_quantity != null ? pass.max_quantity : 0;
+      const remainingQuantity = Math.max(0, maxQty - (pass.sold_quantity || 0));
+      const isSoldOut = remainingQuantity <= 0;
 
       return {
         id: pass.id,
@@ -111,11 +111,11 @@ export default async (req, res) => {
         is_primary: pass.is_primary || false,
         is_active: pass.is_active,
         release_version: pass.release_version || 1,
-        // Stock information
-        max_quantity: pass.max_quantity,
+        // Stock information (max_quantity always required)
+        max_quantity: maxQty,
         sold_quantity: pass.sold_quantity || 0,
         remaining_quantity: remainingQuantity,
-        is_unlimited: isUnlimited,
+        is_unlimited: false,
         is_sold_out: isSoldOut,
         // Payment method restrictions
         allowed_payment_methods: pass.allowed_payment_methods || null

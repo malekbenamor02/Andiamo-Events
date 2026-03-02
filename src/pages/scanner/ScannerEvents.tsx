@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
-import { format } from "date-fns";
+import { formatDateDMY } from "@/lib/date-utils";
 import { QrCode, LogOut, History } from "lucide-react";
 
 const STORAGE_KEY = "scanner_selected_event";
@@ -82,7 +82,7 @@ export default function ScannerEvents() {
                   <QrCode className="w-8 h-8 text-[#E21836] shrink-0" />
                   <div className="min-w-0">
                     <p className="font-medium text-white truncate">{e.name}</p>
-                    <p className="text-sm text-[#B0B0B0]">{e.date ? format(new Date(e.date), "PPp") : ""} · {e.venue || ""}</p>
+                    <p className="text-sm text-[#B0B0B0]">{e.date ? formatDateDMY(e.date) : ""} · {e.venue || ""}</p>
                   </div>
                   <Button size="sm" className="bg-[#E21836] hover:bg-[#c4142e] shrink-0">Select</Button>
                 </CardContent>

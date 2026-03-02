@@ -12,20 +12,24 @@ interface SalesChannelBreakdownProps {
   data: {
     online: number;
     ambassadorCash: number;
+    pos?: number;
     manual: number;
     other: number;
     total: number;
   } | null;
   loading: boolean;
+  language?: 'en' | 'fr';
 }
 
 const COLORS = {
   online: '#10b981',
   ambassadorCash: 'hsl(var(--primary))',
-  manual: '#f59e0b'
+  pos: '#8b5cf6', // Point de vente (POS) – distinct purple
+  manual: '#f59e0b',
+  other: '#6b7280'
 };
 
-export function SalesChannelBreakdown({ data, loading }: SalesChannelBreakdownProps) {
+export function SalesChannelBreakdown({ data, loading, language = 'en' }: SalesChannelBreakdownProps) {
   if (loading) {
     return (
       <Card className="bg-card rounded-2xl border-border/50 shadow-lg">
@@ -55,27 +59,28 @@ export function SalesChannelBreakdown({ data, loading }: SalesChannelBreakdownPr
     );
   }
 
+  const posValue = data.pos ?? 0;
   const chartData = [
-    { name: 'Online Payments', value: data.online, color: COLORS.online },
-    { name: 'Ambassador Sales', value: data.ambassadorCash, color: COLORS.ambassadorCash },
-    { name: 'Manual/Admin', value: data.manual, color: COLORS.manual },
-    ...(data.other > 0 ? [{ name: 'Other', value: data.other, color: '#6b7280' }] : [])
+    { name: language === 'fr' ? 'Paiement en ligne' : 'Online Payments', value: data.online, color: COLORS.online },
+    { name: language === 'fr' ? 'Ventes Ambassadeurs' : 'Ambassador Sales', value: data.ambassadorCash, color: COLORS.ambassadorCash },
+    { name: language === 'fr' ? 'Point de Vente' : 'Point de Vente (POS)', value: posValue, color: COLORS.pos },
+    { name: language === 'fr' ? 'Manuel/Admin' : 'Manual/Admin', value: data.manual, color: COLORS.manual },
+    ...(data.other > 0 ? [{ name: language === 'fr' ? 'Autre' : 'Other', value: data.other, color: COLORS.other }] : [])
   ].filter(item => item.value > 0);
 
+  const totalForTooltip = chartData.reduce((sum, item) => sum + item.value, 0);
   const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0];
-      const percentage = ((data.value / chartData.reduce((sum, item) => sum + item.value, 0)) * 100).toFixed(1);
-      return (
-        <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
-          <p className="text-sm font-semibold mb-1">{data.name}</p>
-          <p className="text-sm text-muted-foreground">
-            {data.value.toLocaleString()} TND ({percentage}%)
-          </p>
-        </div>
-      );
-    }
-    return null;
+    if (!active || !payload?.length) return null;
+    const segment = payload[0];
+    const value = segment.value as number;
+    const pct = totalForTooltip > 0 ? ((value / totalForTooltip) * 100).toFixed(1) : '0';
+    return (
+      <div className="bg-card border border-border rounded-lg p-3 shadow-xl min-w-[140px] z-50">
+        <p className="text-sm font-semibold text-foreground mb-1.5">{segment.name}</p>
+        <p className="text-sm font-medium text-foreground">{value.toLocaleString()} TND</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{pct}% of total</p>
+      </div>
+    );
   };
 
   const CustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
@@ -127,7 +132,13 @@ export function SalesChannelBreakdown({ data, loading }: SalesChannelBreakdownPr
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip
+                  content={<CustomTooltip />}
+                  offset={50}
+                  allowEscapeViewBox={{ x: true, y: true }}
+                  wrapperStyle={{ zIndex: 50, outline: 'none' }}
+                  contentStyle={{ outline: 'none' }}
+                />
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

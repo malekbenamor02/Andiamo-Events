@@ -50,6 +50,7 @@ export interface AnalyticsData {
   channelBreakdown: {
     online: number;
     ambassadorCash: number;
+    pos: number; // Point de vente (POS)
     manual: number;
     other: number; // Unclassified payment methods
     total: number;
@@ -169,6 +170,8 @@ async function fetchAnalyticsData(
   const dateFilter = customDateRange || getDateRangeFilter(dateRange);
   const { startDate, endDate } = dateFilter;
   // Build query - filter by event_id and date range if provided
+  // Include both PAID and COMPLETED so totals match Overview (which counts ambassador as PAID or COMPLETED)
+  // Use a high limit so insights (best day, peak hour, etc.) are computed from real data, not a truncated set (Supabase default is 1000)
   let query = supabase
     .from('orders')
     .select(`
@@ -178,8 +181,10 @@ async function fetchAnalyticsData(
         id,
         full_name
       )
-    `)
-    .eq('status', OrderStatus.PAID); // Only count paid orders
+    `, { count: 'exact' })
+    .in('status', [OrderStatus.PAID, 'COMPLETED'])
+    .order('created_at', { ascending: false })
+    .limit(10000);
   
   if (eventId) {
     query = query.eq('event_id', eventId);
@@ -264,6 +269,7 @@ async function fetchAnalyticsData(
   const channelBreakdown = {
     online: 0,
     ambassadorCash: 0,
+    pos: 0, // Point de vente (POS)
     manual: 0,
     other: 0, // Unclassified payment methods
     total: 0
@@ -309,11 +315,13 @@ async function fetchAnalyticsData(
     totalTicketsSold += orderTickets;
     totalRevenue += orderRevenue;
     
-    // Track sales channels
+    // Track sales channels (POS: payment_method 'pos' or source 'point_de_vente')
     if (order.payment_method === PaymentMethod.ONLINE) {
       channelBreakdown.online += orderRevenue;
     } else if (order.payment_method === PaymentMethod.AMBASSADOR_CASH) {
       channelBreakdown.ambassadorCash += orderRevenue;
+    } else if (order.payment_method === 'pos' || order.source === 'point_de_vente') {
+      channelBreakdown.pos += orderRevenue;
     } else if (order.payment_method === PaymentMethod.EXTERNAL_APP) {
       // External app payments count as manual/admin sales
       channelBreakdown.manual += orderRevenue;
@@ -510,24 +518,19 @@ async function fetchAnalyticsData(
   // Ensure channelBreakdown.total matches totalRevenue (account for rounding)
   channelBreakdown.total = totalRevenue;
   
-  // Calculate insights
-  const bestSellingDay = salesByDayOfWeek.size > 0
-    ? Array.from(salesByDayOfWeek.entries())
-        .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A'
-    : 'N/A';
+  // Calculate insights from real order data only (no placeholders)
+  const dayEntries = Array.from(salesByDayOfWeek.entries()).filter(([, tickets]) => tickets > 0);
+  const bestSellingDayEntry = dayEntries.sort((a, b) => b[1] - a[1])[0];
+  const bestSellingDay = bestSellingDayEntry && bestSellingDayEntry[1] > 0 ? bestSellingDayEntry[0] : 'N/A';
   
-  const peakSalesHourEntry = salesByHour.size > 0
-    ? Array.from(salesByHour.entries())
-        .sort((a, b) => b[1] - a[1])[0]
-    : null;
+  const hourEntries = Array.from(salesByHour.entries()).filter(([, tickets]) => tickets > 0);
+  const peakSalesHourEntry = hourEntries.sort((a, b) => b[1] - a[1])[0];
   const peakHourFormatted = peakSalesHourEntry && peakSalesHourEntry[1] > 0
-    ? `${peakSalesHourEntry[0]}:00`
+    ? `${String(peakSalesHourEntry[0]).padStart(2, '0')}:00`
     : 'N/A';
   
-  const lowestSalesPeriod = salesByDayOfWeek.size > 0
-    ? Array.from(salesByDayOfWeek.entries())
-        .sort((a, b) => a[1] - b[1])[0]?.[0] || 'N/A'
-    : 'N/A';
+  const lowestSalesPeriodEntry = dayEntries.sort((a, b) => a[1] - b[1])[0];
+  const lowestSalesPeriod = lowestSalesPeriodEntry && lowestSalesPeriodEntry[1] >= 0 ? lowestSalesPeriodEntry[0] : 'N/A';
   
   const highestPerformingPass = passPerformance.length > 0 && passPerformance[0].revenue > 0
     ? passPerformance[0].passName

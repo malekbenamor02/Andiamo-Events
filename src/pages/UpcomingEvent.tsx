@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { generateSlug } from "@/lib/utils";
+import { formatDateTimeLong, formatDateShortDMY } from "@/lib/date-utils";
 import { Card } from "@/components/ui/card";
 import { ExpandableText } from "@/components/ui/expandable-text";
 import { Helmet } from "react-helmet-async";
@@ -139,17 +140,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
     }
   }, [event, loading, eventSlug]);
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat(language, {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
-  };
+  const formatDate = (dateString: string) => formatDateTimeLong(dateString, language);
 
   if (loading) {
     return (
@@ -191,7 +182,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
   return (
     <main className="pt-16 min-h-screen bg-background animate-page-intro" id="main-content">
       <PageMeta
-        title={`${event.name} | ${event.date ? new Date(event.date).toLocaleDateString(language, { month: "short", day: "numeric", year: "numeric" }) : ""} | ${event.venue}`}
+        title={`${event.name} | ${event.date ? formatDateShortDMY(event.date, language) : ""} | ${event.venue}`}
         description={event.description?.slice(0, 155) || `${event.name} – ${event.venue}, ${event.city}. Get tickets.`}
         path={eventPath}
         image={eventImage}

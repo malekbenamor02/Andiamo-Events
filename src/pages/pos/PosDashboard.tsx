@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getApiBaseUrl } from "@/lib/api-routes";
+import { formatDateDMY } from "@/lib/date-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -140,7 +141,7 @@ export default function PosDashboard({ outletSlug, language }: PosDashboardProps
                       .filter((e) => e?.id != null && String(e.id).trim() !== "")
                       .map((e) => (
                         <SelectItem key={e.id} value={e.id}>
-                          {e.name} {e.date ? new Date(e.date).toLocaleDateString() : ""}
+                          {e.name} {e.date ? formatDateDMY(e.date, language) : ""}
                         </SelectItem>
                       ))}
                   </SelectContent>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Calendar, MapPin, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { generateSlug } from '@/lib/utils';
+import { formatDateTimeLong } from '@/lib/date-utils';
 import { useFeaturedEvents, type Event } from '@/hooks/useEvents';
 
 interface Event {
@@ -75,9 +76,7 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                 <div className="flex items-center text-sm text-muted-foreground space-x-4 mb-2">
                   <div className="flex items-center">
                     <Calendar className="w-4 h-4 mr-1" />
-                    {new Intl.DateTimeFormat(language, {
-                      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                    }).format(new Date(event.date))}
+                    {formatDateTimeLong(event.date, language)}
                   </div>
                 </div>
                 <div className="flex items-center text-sm text-muted-foreground mb-2">

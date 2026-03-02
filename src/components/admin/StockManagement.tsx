@@ -15,11 +15,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from '@/lib/api-routes';
-import { Package, Plus, Edit, Power, Infinity } from 'lucide-react';
+import { Package, Plus, Edit, Power } from 'lucide-react';
 
 interface PassWithStock {
   id: string;
@@ -49,14 +48,12 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
   const [loading, setLoading] = useState(true);
   const [editingStock, setEditingStock] = useState<string | null>(null);
   const [newStockValue, setNewStockValue] = useState<string>('');
-  const [isUnlimited, setIsUnlimited] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newPassData, setNewPassData] = useState({
     name: '',
     price: '',
     description: '',
-    max_quantity: '',
-    is_unlimited: false,
+    max_quantity: '100',
     allowed_payment_methods: [] as string[] // Empty = all methods allowed (NULL in DB)
   });
 
@@ -99,22 +96,16 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
 
   const handleUpdateStock = async (passId: string) => {
     try {
-      let maxQuantity: number | null = null;
-      
-      if (isUnlimited) {
-        maxQuantity = null;
-      } else {
-        const parsed = parseInt(newStockValue);
-        if (isNaN(parsed) || parsed < 0) {
-          toast({
-            title: language === 'en' ? 'Invalid Value' : 'Valeur Invalide',
-            description: language === 'en' ? 'Please enter a valid number' : 'Veuillez entrer un nombre valide',
-            variant: 'destructive'
-          });
-          return;
-        }
-        maxQuantity = parsed;
+      const parsed = parseInt(newStockValue, 10);
+      if (isNaN(parsed) || parsed < 0) {
+        toast({
+          title: language === 'en' ? 'Invalid Value' : 'Valeur Invalide',
+          description: language === 'en' ? 'Please enter a valid number (required)' : 'Veuillez entrer un nombre valide (obligatoire)',
+          variant: 'destructive'
+        });
+        return;
       }
+      const maxQuantity = parsed;
 
       const apiBase = getApiBaseUrl();
       const url = buildFullApiUrl(API_ROUTES.ADMIN_PASS_STOCK, apiBase, passId);
@@ -146,7 +137,6 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
 
       setEditingStock(null);
       setNewStockValue('');
-      setIsUnlimited(false);
       await fetchPasses();
     } catch (error: any) {
       console.error('Error updating stock:', error);
@@ -222,19 +212,16 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
         return;
       }
 
-      let maxQuantity: number | null = null;
-      if (!newPassData.is_unlimited && newPassData.max_quantity.trim()) {
-        const parsed = parseInt(newPassData.max_quantity);
-        if (isNaN(parsed) || parsed < 0) {
-          toast({
-            title: language === 'en' ? 'Invalid Stock' : 'Stock Invalide',
-            description: language === 'en' ? 'Please enter a valid stock quantity' : 'Veuillez entrer une quantité valide',
-            variant: 'destructive'
-          });
-          return;
-        }
-        maxQuantity = parsed;
+      const parsed = parseInt(newPassData.max_quantity, 10);
+      if (isNaN(parsed) || parsed < 1) {
+        toast({
+          title: language === 'en' ? 'Invalid Stock' : 'Stock Invalide',
+          description: language === 'en' ? 'Stock quantity is required and must be at least 1' : 'La quantité en stock est requise et doit être au moins 1',
+          variant: 'destructive'
+        });
+        return;
       }
+      const maxQuantity = parsed;
 
       const apiBase = getApiBaseUrl();
       const url = buildFullApiUrl(API_ROUTES.ADMIN_CREATE_PASS, apiBase);
@@ -274,8 +261,7 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
         name: '',
         price: '',
         description: '',
-        max_quantity: '',
-        is_unlimited: false,
+        max_quantity: '100',
         allowed_payment_methods: []
       });
       await fetchPasses();
@@ -344,24 +330,19 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
                   placeholder={language === 'en' ? 'Optional description' : 'Description optionnelle'}
                 />
               </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  checked={newPassData.is_unlimited}
-                  onCheckedChange={(checked) => setNewPassData({ ...newPassData, is_unlimited: checked })}
+              <div>
+                <Label>{language === 'en' ? 'Stock quantity' : 'Quantité en stock'} *</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={newPassData.max_quantity}
+                  onChange={(e) => setNewPassData({ ...newPassData, max_quantity: e.target.value })}
+                  placeholder={language === 'en' ? 'e.g. 100' : 'ex. 100'}
                 />
-                <Label>{language === 'en' ? 'Unlimited Stock' : 'Stock Illimité'}</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {language === 'en' ? 'Total number of passes available for sale.' : 'Nombre total de passes disponibles à la vente.'}
+                </p>
               </div>
-              {!newPassData.is_unlimited && (
-                <div>
-                  <Label>{language === 'en' ? 'Max Quantity' : 'Quantité Maximum'} *</Label>
-                  <Input
-                    type="number"
-                    value={newPassData.max_quantity}
-                    onChange={(e) => setNewPassData({ ...newPassData, max_quantity: e.target.value })}
-                    placeholder={language === 'en' ? '100' : '100'}
-                  />
-                </div>
-              )}
               <div className="space-y-2">
                 <Label>{language === 'en' ? 'Allowed Payment Methods' : 'Méthodes de Paiement Autorisées'}</Label>
                 <p className="text-xs text-muted-foreground">
@@ -450,7 +431,7 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
                           {language === 'en' ? 'Inactive' : 'Inactif'}
                         </span>
                       )}
-                      {pass.is_sold_out && !pass.is_unlimited && (
+                      {pass.is_sold_out && (
                         <span className="px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded">
                           {language === 'en' ? 'Sold Out' : 'Épuisé'}
                         </span>
@@ -476,11 +457,9 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
                           )}
                         </strong>
                       </span>
-                      {!pass.is_unlimited && pass.remaining_quantity !== null && (
-                        <span>
-                          {language === 'en' ? 'Remaining' : 'Restant'}: <strong>{pass.remaining_quantity}</strong>
-                        </span>
-                      )}
+                      <span>
+                        {language === 'en' ? 'Remaining' : 'Restant'}: <strong>{pass.remaining_quantity ?? 0}</strong>
+                      </span>
                     </div>
                   </div>
                   
@@ -669,32 +648,18 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
                   <div className="flex items-center gap-2">
                     {editingStock === pass.id ? (
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center space-x-2">
-                          <Switch
-                            checked={isUnlimited}
-                            onCheckedChange={(checked) => {
-                              setIsUnlimited(checked);
-                              if (!checked) {
-                                setNewStockValue(pass.max_quantity?.toString() || '');
-                              }
-                            }}
-                          />
-                          <Label className="text-xs">{language === 'en' ? 'Unlimited' : 'Illimité'}</Label>
-                        </div>
-                        {!isUnlimited && (
-                          <Input
-                            type="number"
-                            value={newStockValue}
-                            onChange={(e) => setNewStockValue(e.target.value)}
-                            placeholder={language === 'en' ? 'Max quantity' : 'Quantité max'}
-                            className="w-24"
-                            min={pass.sold_quantity}
-                          />
-                        )}
+                        <Input
+                          type="number"
+                          value={newStockValue}
+                          onChange={(e) => setNewStockValue(e.target.value)}
+                          placeholder={language === 'en' ? 'Max quantity' : 'Quantité max'}
+                          className="w-24"
+                          min={pass.sold_quantity}
+                        />
                         <Button
                           size="sm"
                           onClick={() => handleUpdateStock(pass.id)}
-                          disabled={!isUnlimited && (!newStockValue || parseInt(newStockValue) < pass.sold_quantity)}
+                          disabled={!newStockValue || parseInt(newStockValue, 10) < (pass.sold_quantity || 0)}
                         >
                           {language === 'en' ? 'Save' : 'Enregistrer'}
                         </Button>
@@ -704,7 +669,6 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
                           onClick={() => {
                             setEditingStock(null);
                             setNewStockValue('');
-                            setIsUnlimited(false);
                           }}
                         >
                           {language === 'en' ? 'Cancel' : 'Annuler'}
@@ -718,7 +682,6 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
                           onClick={() => {
                             setEditingStock(pass.id);
                             setNewStockValue(pass.max_quantity?.toString() || '');
-                            setIsUnlimited(pass.is_unlimited);
                           }}
                         >
                           <Edit className="w-4 h-4 mr-1" />

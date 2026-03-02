@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
+import { formatDateDMY } from '@/lib/date-utils';
 import Loader from '@/components/ui/Loader';
 import { Mail, User, Phone, Calendar, Ticket, Hash } from 'lucide-react';
 
@@ -374,7 +375,7 @@ export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({
                 ) : (
                   events.map((event) => (
                     <SelectItem key={event.id} value={event.id}>
-                      {event.name} - {new Date(event.date).toLocaleDateString()}
+                      {event.name} - {formatDateDMY(event.date, language)}
                     </SelectItem>
                   ))
                 )}

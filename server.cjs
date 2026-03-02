@@ -5645,10 +5645,11 @@ app.post('/api/admin/passes/:id/stock', requireAdminAuth, async (req, res) => {
     const adminId = req.admin?.id;
     const adminEmail = req.admin?.email;
 
-    if (max_quantity !== null && max_quantity !== undefined && (typeof max_quantity !== 'number' || max_quantity < 0)) {
+    const newMaxQuantity = max_quantity != null ? parseInt(max_quantity, 10) : null;
+    if (newMaxQuantity == null || isNaN(newMaxQuantity) || newMaxQuantity < 0) {
       return res.status(400).json({
         error: 'Invalid max_quantity',
-        details: 'max_quantity must be null (unlimited) or a non-negative integer'
+        details: 'max_quantity is required and must be a non-negative integer'
       });
     }
 
@@ -5666,8 +5667,7 @@ app.post('/api/admin/passes/:id/stock', requireAdminAuth, async (req, res) => {
     }
 
     // Validation: Cannot decrease max_quantity below sold_quantity
-    const newMaxQuantity = max_quantity === null || max_quantity === undefined ? null : parseInt(max_quantity);
-    if (newMaxQuantity !== null && newMaxQuantity < currentPass.sold_quantity) {
+    if (newMaxQuantity < currentPass.sold_quantity) {
       return res.status(400).json({
         error: 'Invalid stock reduction',
         details: `Cannot set max_quantity (${newMaxQuantity}) below sold_quantity (${currentPass.sold_quantity})`
@@ -6149,7 +6149,7 @@ app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res)
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    const { status, ambassador_id, city, ville, date_from, date_to, limit = 50, offset = 0, include_removed } = req.query;
+    const { status, ambassador_id, event_id, city, ville, date_from, date_to, limit = 50, offset = 0, include_removed } = req.query;
 
     let query = supabase
       .from('orders')
@@ -6172,6 +6172,7 @@ app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res)
         query = query.eq('status', status);
       }
     }
+    if (event_id) query = query.eq('event_id', event_id);
     if (ambassador_id) query = query.eq('ambassador_id', ambassador_id);
     if (city) query = query.eq('city', city);
     if (ville) query = query.eq('ville', ville);

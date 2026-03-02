@@ -11,20 +11,29 @@ import { KPICards } from './KPICards';
 import { SalesOverTime } from './SalesOverTime';
 import { PassPerformance } from './PassPerformance';
 import { SalesChannelBreakdown } from './SalesChannelBreakdown';
-import { AmbassadorPerformance } from './AmbassadorPerformance';
 import { Insights } from './Insights';
 import { BarChart3 } from 'lucide-react';
+import { formatDateDMY } from '@/lib/date-utils';
 
 interface ReportsAnalyticsProps {
   language?: 'en' | 'fr';
+  /** When provided, syncs the event selector with the main Dashboard filter so both show the same event and consistent numbers. */
+  dashboardSelectedEventId?: string | null;
 }
 
-export function ReportsAnalytics({ language = 'en' }: ReportsAnalyticsProps) {
+export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId }: ReportsAnalyticsProps) {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>('ALL_TIME');
   const [animationKey, setAnimationKey] = useState(0);
   const { data: events, isLoading: eventsLoading } = useEvents();
   const { data: analyticsData, isLoading: analyticsLoading, error: analyticsError } = useAnalytics(selectedEventId, dateRange);
+
+  // Keep event in sync with main Dashboard filter so Overview and Reports show the same event (and consistent numbers)
+  useEffect(() => {
+    if (dashboardSelectedEventId !== undefined) {
+      setSelectedEventId(dashboardSelectedEventId || null);
+    }
+  }, [dashboardSelectedEventId]);
 
   // Reset animations when event or date range changes
   useEffect(() => {
@@ -97,7 +106,7 @@ export function ReportsAnalytics({ language = 'en' }: ReportsAnalyticsProps) {
               <div>
                 <h3 className="text-lg font-heading font-semibold">{selectedEvent.name}</h3>
                 <p className="text-sm text-muted-foreground">
-                  {new Date(selectedEvent.date).toLocaleDateString()} • {selectedEvent.venue}, {selectedEvent.city}
+                  {formatDateDMY(selectedEvent.date, language)} • {selectedEvent.venue}, {selectedEvent.city}
                 </p>
               </div>
             </div>
@@ -170,18 +179,9 @@ export function ReportsAnalytics({ language = 'en' }: ReportsAnalyticsProps) {
         <SalesChannelBreakdown
           data={analyticsData?.channelBreakdown || null}
           loading={analyticsLoading}
+          language={language}
         />
       </div>
-
-      {/* Ambassador Performance */}
-      {analyticsData?.ambassadorPerformance && analyticsData.ambassadorPerformance.length > 0 && (
-        <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-800">
-          <AmbassadorPerformance
-            data={analyticsData.ambassadorPerformance}
-            loading={analyticsLoading}
-          />
-        </div>
-      )}
     </div>
   );
 }

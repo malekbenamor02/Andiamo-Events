@@ -3,6 +3,7 @@ import { API_ROUTES } from './api-routes';
 import { handleApiResponse } from './api-client';
 import { buildUrlWithParams, sanitizeUrl } from './url-validator';
 import { EMAIL_LOGOS } from './email-assets';
+import { formatDateLong } from './date-utils';
 
 interface EmailConfig {
   from: string;
@@ -2276,16 +2277,10 @@ interface OfficialInvitationEmailData {
 export const createOfficialInvitationEmail = (data: OfficialInvitationEmailData): EmailConfig => {
   const subject = "Official Invitation – Andiamo Events";
   
-  // Format event date
+  // Format event date (day/month/year)
   const formatDate = (dateString: string): string => {
     try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
-      });
+      return formatDateLong(dateString, 'en');
     } catch {
       return dateString;
     }

@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { getApiBaseUrl, API_ROUTES } from '@/lib/api-routes';
+import { formatDateDMY } from '@/lib/date-utils';
 
 // New unified order system components
 import { CustomerInfoForm } from '@/components/orders/CustomerInfoForm';
@@ -465,11 +466,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       return;
     }
 
-    // Determine max quantity based on stock
-    let maxAllowed = 10; // Default max
-    if (!pass.is_unlimited && pass.remaining_quantity !== null) {
-      maxAllowed = Math.min(10, pass.remaining_quantity);
-    }
+    // Determine max quantity based on stock (remaining_quantity is always a number)
+    const remaining = pass.remaining_quantity ?? 0;
+    const maxAllowed = Math.min(10, remaining);
 
     const clampedQuantity = Math.max(0, Math.min(maxAllowed, quantity));
     const newPasses = { ...selectedPasses };
@@ -759,7 +758,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                   <p className="text-sm text-muted-foreground">{t[language].orderDetails}</p>
                   <p className="font-semibold">{event.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(event.date).toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                    {formatDateDMY(event.date, language)}
                   </p>
                 </div>
                 <div>
@@ -835,7 +834,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center">
                       <Calendar className="w-4 h-4 mr-2 text-primary" />
-                      <span>{new Date(event.date).toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                      <span>{formatDateDMY(event.date, language)}</span>
                     </div>
                     <div className="flex items-center">
                       <MapPin className="w-4 h-4 mr-2 text-primary" />
@@ -876,10 +875,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       {event.passes.map((pass: any) => {
                         const quantity = selectedPasses[pass.id] || 0;
                         const isSoldOut = pass.is_sold_out || false;
-                        const isUnlimited = pass.is_unlimited || false;
-                        const remainingQuantity = pass.remaining_quantity;
-                        const maxAllowed = isUnlimited ? 10 : Math.min(10, remainingQuantity || 0);
-                        const isLowStock = !isSoldOut && !isUnlimited && remainingQuantity !== null && remainingQuantity <= 5;
+                        const remainingQuantity = pass.remaining_quantity ?? 0;
+                        const maxAllowed = Math.min(10, remainingQuantity);
+                        const isLowStock = !isSoldOut && remainingQuantity <= 5;
                         
                         // Check if pass is compatible with selected payment method (UX only - backend is authoritative)
                         const isCompatible = isPassCompatibleWithPaymentMethod(pass, paymentMethod);
@@ -907,11 +905,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                                   <span className="px-3 py-1.5 text-sm font-bold uppercase bg-red-600 text-white rounded-md shadow-lg border-2 border-red-700 flex items-center gap-1.5">
                                     <Lock className="w-3.5 h-3.5" />
                                     {language === 'en' ? 'SOLD OUT' : 'ÉPUISÉ'}
-                                  </span>
-                                )}
-                                {!isSoldOut && isUnlimited && (
-                                  <span className="px-2 py-1 text-xs font-semibold bg-green-500 text-white rounded">
-                                    {language === 'en' ? 'UNLIMITED' : 'ILLIMITÉ'}
                                   </span>
                                 )}
                               </div>

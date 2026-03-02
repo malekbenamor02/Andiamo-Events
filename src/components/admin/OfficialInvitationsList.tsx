@@ -39,6 +39,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatDateDMY, formatDateTimeDMY } from '@/lib/date-utils';
 
 interface Invitation {
   id: string;
@@ -553,7 +554,7 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
                             <div className="max-w-[140px]">
                               <div className="font-medium truncate text-sm">{invitation.events.name}</div>
                               <div className="text-xs text-muted-foreground">
-                                {format(new Date(invitation.events.date), 'MMM dd, yyyy')}
+                                {formatDateDMY(invitation.events.date, language)}
                               </div>
                             </div>
                           ) : (
@@ -720,7 +721,7 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
                       <Label className="text-sm font-medium text-muted-foreground">
                         {language === 'en' ? 'Date' : 'Date'}
                       </Label>
-                      <p>{format(new Date(selectedInvitation.events.date), 'PPpp')}</p>
+                      <p>{formatDateTimeDMY(selectedInvitation.events.date, language)}</p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">

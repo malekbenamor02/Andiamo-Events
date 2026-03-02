@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { generateSlug } from "@/lib/utils";
+import { formatDateTimeLong } from "@/lib/date-utils";
 import { Card } from "@/components/ui/card";
 import { ExpandableText } from "@/components/ui/expandable-text";
 import { Helmet } from "react-helmet-async";
@@ -269,17 +270,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
 
   const allMedia = getAllMedia();
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat(language, {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
-  };
+  const formatDate = (dateString: string) => formatDateTimeLong(dateString, language);
 
   const openLightbox = (index: number) => {
     setLightboxIndex(index);

@@ -8,6 +8,7 @@ import LoadingScreen from "@/components/ui/LoadingScreen";
 import { PageMeta } from "@/components/PageMeta";
 import { JsonLdWebPage, JsonLdBreadcrumb, JsonLdItemList } from "@/components/JsonLd";
 import { generateSlug } from "@/lib/utils";
+import { formatDateTimeLong } from "@/lib/date-utils";
 import { useEvents, type Event } from "@/hooks/useEvents";
 
 // Event types are now imported from useEvents hook
@@ -177,15 +178,7 @@ const Events = ({ language }: EventsProps) => {
   });
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat(language, {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
+    return formatDateTimeLong(dateString, language);
   };
 
   const formatPrice = (price?: number) => {

@@ -35,10 +35,10 @@ export interface EventPass {
   price: number;
   description: string;
   is_primary: boolean;
-  // Stock management fields
-  max_quantity?: number | null;
+  // Stock management fields (max_quantity required)
+  max_quantity?: number;
   sold_quantity?: number;
-  remaining_quantity?: number | null;
+  remaining_quantity?: number;
   is_unlimited?: boolean;
   is_active?: boolean;
   is_sold_out?: boolean;

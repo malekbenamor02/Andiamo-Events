@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { getApiBaseUrl } from "@/lib/api-routes";
+import { formatDateDMY } from "@/lib/date-utils";
 import { API_ROUTES } from "@/lib/api-routes";
 import Loader from "@/components/ui/Loader";
 import { LogOut, History, Play, RotateCw, PenLine, Square, CheckCircle2, XCircle, Copy, MapPinOff, ScanLine, WifiOff, Cloud, BatteryWarning } from "lucide-react";
@@ -416,7 +417,7 @@ export default function ScannerScan() {
               {result.correct_event && (
                 <div className="mb-4 p-3 rounded-lg bg-[#1A1A1A] border border-[#2A2A2A]">
                   <p className="text-xs text-[#737373] mb-1">Correct Event</p>
-                  <p className="text-sm text-[#A3A3A3]">{result.correct_event.event_name} — {result.correct_event.event_date ? new Date(result.correct_event.event_date).toLocaleDateString() : ""}</p>
+                  <p className="text-sm text-[#A3A3A3]">{result.correct_event.event_name} — {result.correct_event.event_date ? formatDateDMY(result.correct_event.event_date) : ""}</p>
                 </div>
               )}
               

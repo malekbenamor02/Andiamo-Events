@@ -288,7 +288,7 @@ async function handleEvents(req, res, supabase, outletSlug) {
   return res.status(200).json(events || []);
 }
 
-/** GET /api/pos/:outletSlug/passes/:eventId – pos_pass_stock + event_passes: remaining, sold_quantity. */
+/** GET /api/pos/:outletSlug/passes/:eventId – principal stock (event_passes): same as online/ambassador. */
 async function handlePasses(req, res, supabase, outletSlug, eventId) {
   if (!eventId) return res.status(400).json({ error: 'Event ID required' });
   const outlet = await getOutletBySlug(supabase, outletSlug);
@@ -298,7 +298,7 @@ async function handlePasses(req, res, supabase, outletSlug, eventId) {
 
   const { data: stocks, error: stockErr } = await supabase
     .from('pos_pass_stock')
-    .select('id, pass_id, max_quantity, sold_quantity')
+    .select('id, pass_id, sold_quantity')
     .eq('pos_outlet_id', outlet.id)
     .eq('event_id', eventId)
     .eq('is_active', true);
@@ -311,26 +311,28 @@ async function handlePasses(req, res, supabase, outletSlug, eventId) {
 
   const { data: eventPasses, error: epErr } = await supabase
     .from('event_passes')
-    .select('id, name, price, description, is_primary, is_active')
+    .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity')
     .in('id', passIds)
+    .eq('event_id', eventId)
     .eq('is_active', true);
   if (epErr) return res.status(500).json({ error: 'Failed to fetch passes' });
   const epMap = new Map((eventPasses || []).map((p) => [p.id, p]));
+  const stockMap = new Map((stocks || []).map((s) => [s.pass_id, s]));
 
-  const passes = (stocks || [])
-    .map((r) => {
-      const ep = epMap.get(r.pass_id);
-      if (!ep) return null;
-      const remaining = r.max_quantity == null ? null : Math.max(0, r.max_quantity - (r.sold_quantity || 0));
+  const passes = (eventPasses || [])
+    .map((ep) => {
+      const posSold = (stockMap.get(ep.id) || {}).sold_quantity || 0;
+      const remaining = ep.max_quantity == null ? null : Math.max(0, (ep.max_quantity || 0) - (ep.sold_quantity || 0));
       return {
         id: ep.id,
         name: ep.name,
         price: parseFloat(ep.price),
         description: ep.description || '',
         is_primary: !!ep.is_primary,
-        sold_quantity: r.sold_quantity || 0,
-        max_quantity: r.max_quantity,
-        remaining
+        sold_quantity: ep.sold_quantity || 0,
+        max_quantity: ep.max_quantity,
+        remaining,
+        pos_sold_quantity: posSold
       };
     })
     .filter(Boolean);
@@ -339,7 +341,7 @@ async function handlePasses(req, res, supabase, outletSlug, eventId) {
   return res.status(200).json(passes);
 }
 
-/** POST /api/pos/:outletSlug/orders/create – create POS order, increment pos_pass_stock, SMS, email, audit. */
+/** POST /api/pos/:outletSlug/orders/create – create POS order; reserve from principal stock (event_passes), same as online/ambassador. Release on reject/remove via trigger. */
 async function handleOrdersCreate(req, res, supabase, outletSlug) {
   const outlet = await getOutletBySlug(supabase, outletSlug);
   if (!outlet) return res.status(404).json({ error: 'Outlet not found or inactive' });
@@ -355,15 +357,13 @@ async function handleOrdersCreate(req, res, supabase, outletSlug) {
   const { full_name, phone, email } = customerInfo;
   if (!full_name || !phone || !email) return res.status(400).json({ error: 'full_name, phone, email required' });
 
-  // Validate event
   const { data: ev, error: evErr } = await supabase.from('events').select('id').eq('id', eventId).single();
   if (evErr || !ev) return res.status(400).json({ error: 'Event not found' });
 
-  // Validate passes: exist, belong to event, and POS stock allows
   const passIds = passes.map((p) => p.passId).filter(Boolean);
   const { data: eventPasses, error: epErr } = await supabase
     .from('event_passes')
-    .select('id, name, price, event_id')
+    .select('id, name, price, event_id, max_quantity, sold_quantity, is_active')
     .in('id', passIds)
     .eq('event_id', eventId);
   if (epErr || !eventPasses || eventPasses.length !== passIds.length) {
@@ -373,11 +373,11 @@ async function handleOrdersCreate(req, res, supabase, outletSlug) {
 
   const { data: posStocks } = await supabase
     .from('pos_pass_stock')
-    .select('pass_id, max_quantity, sold_quantity')
+    .select('pass_id')
     .eq('pos_outlet_id', outlet.id)
     .eq('event_id', eventId)
     .eq('is_active', true);
-  const stockMap = new Map((posStocks || []).map((s) => [s.pass_id, s]));
+  const posPassIds = new Set((posStocks || []).map((s) => s.pass_id).filter(Boolean));
 
   const validatedPasses = [];
   let totalPrice = 0;
@@ -385,16 +385,60 @@ async function handleOrdersCreate(req, res, supabase, outletSlug) {
   for (const p of passes) {
     const ep = epMap.get(p.passId);
     if (!ep) return res.status(400).json({ error: `Pass ${p.passId} not found` });
-    const st = stockMap.get(p.passId);
-    if (!st) return res.status(400).json({ error: `No POS stock for pass ${ep.name}` });
+    if (!ep.is_active) return res.status(400).json({ error: `Pass ${ep.name} is not available` });
+    if (!posPassIds.has(p.passId)) return res.status(400).json({ error: `No POS availability for pass ${ep.name}` });
     const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
     const price = parseFloat(ep.price);
-    if (st.max_quantity != null && (st.sold_quantity || 0) + qty > st.max_quantity) {
-      return res.status(400).json({ error: `Insufficient POS stock for ${ep.name}` });
+    if (ep.max_quantity != null && (ep.sold_quantity || 0) + qty > ep.max_quantity) {
+      const remaining = ep.max_quantity - (ep.sold_quantity || 0);
+      return res.status(400).json({ error: `Insufficient stock for ${ep.name}`, details: `Only ${remaining} available, requested ${qty}` });
     }
-    validatedPasses.push({ passId: ep.id, passName: ep.name, quantity: qty, price });
+    validatedPasses.push({ passId: ep.id, passName: ep.name, quantity: qty, price, eventPass: ep });
     totalPrice += price * qty;
     totalQty += qty;
+  }
+
+  const reservedPasses = [];
+  async function rollbackPrincipalStock(toRollback) {
+    const list = toRollback || reservedPasses;
+    for (const p of list) {
+      const { error: rpcErr } = await supabase.rpc('decrement_event_pass_sold', { pass_id_param: p.passId, amount_param: p.quantity });
+      if (rpcErr) {
+        const { data } = await supabase.from('event_passes').select('sold_quantity').eq('id', p.passId).single();
+        if (data) {
+          await supabase.from('event_passes')
+            .update({ sold_quantity: Math.max(0, (data.sold_quantity || 0) - p.quantity), updated_at: new Date().toISOString() })
+            .eq('id', p.passId);
+        }
+      }
+    }
+  }
+
+  for (const p of validatedPasses) {
+    const { id, max_quantity } = p.eventPass;
+    if (max_quantity === null) continue;
+    const { data: current, error: fetchErr } = await supabase.from('event_passes').select('sold_quantity, is_active').eq('id', id).single();
+    if (fetchErr || !current) {
+      await rollbackPrincipalStock(reservedPasses);
+      return res.status(400).json({ error: 'Pass not found or inactive' });
+    }
+    if (current.sold_quantity + p.quantity > max_quantity) {
+      await rollbackPrincipalStock(reservedPasses);
+      return res.status(400).json({ error: 'Insufficient stock', details: `Only ${max_quantity - current.sold_quantity} ${p.passName} available` });
+    }
+    const { data: updated, error: upErr } = await supabase
+      .from('event_passes')
+      .update({ sold_quantity: current.sold_quantity + p.quantity, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('is_active', true)
+      .eq('sold_quantity', current.sold_quantity)
+      .select('id, sold_quantity')
+      .single();
+    if (upErr || !updated) {
+      await rollbackPrincipalStock(reservedPasses);
+      return res.status(400).json({ error: 'Stock reservation failed', details: `Insufficient stock for ${p.passName}` });
+    }
+    reservedPasses.push(p);
   }
 
   const orderData = {
@@ -417,7 +461,10 @@ async function handleOrdersCreate(req, res, supabase, outletSlug) {
   };
 
   const { data: order, error: orderErr } = await supabase.from('orders').insert(orderData).select().single();
-  if (orderErr) return res.status(500).json({ error: 'Failed to create order', details: orderErr.message });
+  if (orderErr) {
+    await rollbackPrincipalStock();
+    return res.status(500).json({ error: 'Failed to create order', details: orderErr.message });
+  }
 
   const orderPassesData = validatedPasses.map((p) => ({
     order_id: order.id,
@@ -429,10 +476,10 @@ async function handleOrdersCreate(req, res, supabase, outletSlug) {
   const { error: opErr } = await supabase.from('order_passes').insert(orderPassesData);
   if (opErr) {
     await supabase.from('orders').delete().eq('id', order.id);
+    await rollbackPrincipalStock();
     return res.status(500).json({ error: 'Failed to create order passes' });
   }
 
-  // Increment pos_pass_stock.sold_quantity (fetch then update; no RPC)
   for (const p of validatedPasses) {
     const { data: row } = await supabase.from('pos_pass_stock')
       .select('sold_quantity')

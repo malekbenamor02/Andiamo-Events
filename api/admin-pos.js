@@ -451,7 +451,7 @@ async function ordersResendTickets(sb, id, auth, req, res) {
   } catch (er) { return res.status(500).json({ error: String(er && er.message) }); }
 }
 
-// --- Orders: reject (decrement pos_pass_stock) ---
+// --- Orders: reject. Principal stock (event_passes) is released by DB trigger on status change. pos_pass_stock decremented for per-outlet reporting. ---
 async function ordersReject(sb, id, body, auth, req, res) {
   const { data: order, error: e0 } = await sb.from('orders').select('id, status, pos_outlet_id, event_id').eq('id', id).single();
   if (e0 || !order) return res.status(404).json({ error: 'Order not found' });
@@ -473,7 +473,7 @@ async function ordersReject(sb, id, body, auth, req, res) {
   return res.status(200).json({ success: true });
 }
 
-// --- Orders: remove (decrement pos_pass_stock, return stock, delete qr_tickets for PAID) ---
+// --- Orders: remove. Principal stock (event_passes) is released by DB trigger on status change. pos_pass_stock decremented for per-outlet reporting. ---
 async function ordersRemove(sb, id, auth, req, res) {
   const { data: order, error: e0 } = await sb.from('orders').select('id, status, pos_outlet_id, event_id').eq('id', id).single();
   if (e0 || !order) return res.status(404).json({ error: 'Order not found' });

@@ -216,16 +216,20 @@ async function manualReleaseStockWithFallback(orderId, adminId, adminEmail, supa
         continue;
       }
 
-      // Fetch current sold_quantity
+      // Fetch sold_quantity and max_quantity (skip decrement for unlimited passes)
       const { data: currentPass, error: fetchError } = await supabase
         .from('event_passes')
-        .select('sold_quantity')
+        .select('sold_quantity, max_quantity')
         .eq('id', passIdToUse)
         .single();
 
       if (fetchError || !currentPass) {
         console.error(`❌ Error fetching pass ${passIdToUse}:`, fetchError);
         continue;
+      }
+
+      if (currentPass.max_quantity == null) {
+        continue; // unlimited pass: never reserved, do not decrement
       }
 
       // Decrement stock atomically
@@ -1266,8 +1270,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         
         // Calculate stock information for each pass
         const passesWithStock = (passes || []).map(pass => {
-          const isUnlimited = pass.max_quantity === null;
-          const remainingQuantity = isUnlimited ? null : (pass.max_quantity - pass.sold_quantity);
+          const maxQty = pass.max_quantity != null ? pass.max_quantity : 0;
+          const remainingQuantity = Math.max(0, maxQty - (pass.sold_quantity || 0));
           
           return {
             id: pass.id,
@@ -1277,10 +1281,10 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             is_primary: pass.is_primary || false,
             is_active: pass.is_active,
             release_version: pass.release_version || 1,
-            max_quantity: pass.max_quantity,
+            max_quantity: maxQty,
             sold_quantity: pass.sold_quantity || 0,
             remaining_quantity: remainingQuantity,
-            is_unlimited: isUnlimited,
+            is_unlimited: false,
             // Payment method restrictions
             allowed_payment_methods: pass.allowed_payment_methods || null,
             created_at: pass.created_at,
@@ -1333,10 +1337,11 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         const adminId = authResult.admin?.id;
         const adminEmail = authResult.admin?.email;
         
-        if (max_quantity !== null && max_quantity !== undefined && (typeof max_quantity !== 'number' || max_quantity < 0)) {
+        const newMaxQuantity = max_quantity != null ? parseInt(max_quantity, 10) : null;
+        if (newMaxQuantity == null || isNaN(newMaxQuantity) || newMaxQuantity < 0) {
           return res.status(400).json({
             error: 'Invalid max_quantity',
-            details: 'max_quantity must be null (unlimited) or a non-negative integer'
+            details: 'max_quantity is required and must be a non-negative integer'
           });
         }
         
@@ -1366,15 +1371,14 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         }
         
         // Validation: Cannot decrease max_quantity below sold_quantity
-        const newMaxQuantity = max_quantity === null || max_quantity === undefined ? null : parseInt(max_quantity);
-        if (newMaxQuantity !== null && newMaxQuantity < currentPass.sold_quantity) {
+        if (newMaxQuantity < currentPass.sold_quantity) {
           return res.status(400).json({
             error: 'Invalid stock reduction',
             details: `Cannot set max_quantity (${newMaxQuantity}) below sold_quantity (${currentPass.sold_quantity})`
           });
         }
         
-        // Update max_quantity
+        // Update max_quantity (required; no longer support unlimited)
         const { data: updatedPass, error: updateError } = await dbClient
           .from('event_passes')
           .update({
@@ -1433,8 +1437,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           success: true,
           pass: {
             ...updatedPass,
-            remaining_quantity: updatedPass.max_quantity === null ? null : (updatedPass.max_quantity - updatedPass.sold_quantity),
-            is_unlimited: updatedPass.max_quantity === null
+            remaining_quantity: Math.max(0, (updatedPass.max_quantity || 0) - (updatedPass.sold_quantity || 0)),
+            is_unlimited: false
           }
         });
       } catch (error) {
@@ -3581,6 +3585,7 @@ We Create Memories`;
         const searchParams = new URLSearchParams(queryString);
         const status = searchParams.get('status');
         const ambassador_id = searchParams.get('ambassador_id');
+        const event_id = searchParams.get('event_id');
         const city = searchParams.get('city');
         const ville = searchParams.get('ville');
         const date_from = searchParams.get('date_from');
@@ -3607,6 +3612,7 @@ We Create Memories`;
           }
         }
         
+        if (event_id) query = query.eq('event_id', event_id);
         if (ambassador_id) query = query.eq('ambassador_id', ambassador_id);
         if (city) query = query.eq('city', city);
         if (ville) query = query.eq('ville', ville);

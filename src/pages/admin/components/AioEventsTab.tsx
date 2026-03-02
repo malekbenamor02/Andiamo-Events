@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { TabsContent } from "@/components/ui/tabs";
 import { Download, RefreshCw, Database } from "lucide-react";
 import { format } from "date-fns";
+import { formatDateDMY } from "@/lib/date-utils";
 import type { AioEventsSubmission, AioEventsPagination } from "../types";
 
 export interface AioEventsTabProps {
@@ -131,7 +132,7 @@ export function AioEventsTab({
                           <span className="font-medium truncate">{submission.event_name || "-"}</span>
                           {submission.event_date && (
                             <span className="text-xs text-muted-foreground">
-                              {format(new Date(submission.event_date), "MMM dd, yyyy")}
+                              {formatDateDMY(submission.event_date, language)}
                             </span>
                           )}
                         </div>

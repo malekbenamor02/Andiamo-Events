@@ -36,6 +36,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import type { AmbassadorApplication, Event } from "../types";
+import { formatDateDMY } from "@/lib/date-utils";
 
 export interface OverviewTabProps {
   language: "en" | "fr";
@@ -52,7 +53,7 @@ export interface OverviewTabProps {
   };
   pendingAmbassadorOrdersCount: number;
   previousPendingAmbassadorOrdersCount: number | null;
-  activityChartData: { name: string; applications: number; orders: number; revenue: number }[];
+  activityChartData: { name: string; applications: number; orders: number; revenue: number; eventsCreated: number }[];
   animatedCards: Set<number>;
   setActiveTab: (tab: string) => void;
   getStatusBadge: (status: string) => React.ReactNode;
@@ -159,10 +160,6 @@ export function OverviewTab({
               <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(107, 107, 107, 0.2)" }}>
                 <Clock className="w-6 h-6" style={{ color: "#6B6B6B" }} />
               </div>
-              <div className="flex items-center gap-1 text-xs font-heading">
-                <TrendingUp className="w-3 h-3" style={{ color: "#E21836" }} />
-                <span style={{ color: "#E21836" }}>+12%</span>
-              </div>
             </div>
             <div className="space-y-1">
               <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
@@ -175,18 +172,31 @@ export function OverviewTab({
                 {language === "en" ? "Awaiting review" : "En attente de révision"}
               </p>
             </div>
-            <div className="mt-4 h-8 flex items-end gap-1">
-              {(() => {
-                const barValues = [3, 5, 4, 7, 6, 8, pendingApplications.length];
-                const maxValue = Math.max(...barValues, 1);
-                return barValues.map((h, i) => (
-                  <div
-                    key={i}
-                    className="flex-1 bg-yellow-500/30 rounded-t transition-all duration-300 hover:bg-yellow-500/50"
-                    style={{ height: `${(h / maxValue) * 100}%` }}
-                  />
-                ));
-              })()}
+            <div className="mt-4">
+              <div className="h-8 flex items-end gap-1">
+                {activityChartData.map((day, i) => {
+                  const maxApps = Math.max(...activityChartData.map((x) => x.applications), 1);
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 flex flex-col justify-end items-center gap-0.5 h-8"
+                      title={`${day.name}: ${day.applications}`}
+                    >
+                      <div
+                        className="w-full bg-yellow-500/30 rounded-t transition-all duration-300 hover:bg-yellow-500/50 min-h-[2px]"
+                        style={{ height: `${(day.applications / maxApps) * 100}%` }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex gap-1 mt-1">
+                {activityChartData.map((day, i) => (
+                  <div key={i} className="flex-1 text-[10px] text-center text-muted-foreground font-heading truncate" title={day.name}>
+                    {day.name}
+                  </div>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -210,10 +220,6 @@ export function OverviewTab({
               <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(226, 24, 54, 0.2)" }}>
                 <CheckCircle className="w-6 h-6" style={{ color: "#E21836" }} />
               </div>
-              <div className="flex items-center gap-1 text-xs font-heading">
-                <TrendingUp className="w-3 h-3" style={{ color: "#E21836" }} />
-                <span style={{ color: "#E21836" }}>+8%</span>
-              </div>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground font-heading">{t.approvedApplications}</p>
@@ -222,16 +228,33 @@ export function OverviewTab({
                 {language === "en" ? "Active ambassadors" : "Ambassadeurs actifs"}
               </p>
             </div>
-            <div className="mt-4 h-8 flex items-end gap-1">
-              {[5, 7, 6, 8, 9, 10, approvedCount].map((h, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t transition-all duration-300"
-                  style={{ backgroundColor: "rgba(226, 24, 54, 0.3)", height: `${(h / 15) * 100}%` }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(226, 24, 54, 0.5)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(226, 24, 54, 0.3)")}
-                />
-              ))}
+            <div className="mt-4">
+              <div className="h-8 flex items-end gap-1">
+                {activityChartData.map((day, i) => {
+                  const maxApps = Math.max(...activityChartData.map((x) => x.applications), 1);
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 flex flex-col justify-end items-center gap-0.5 h-8"
+                      title={`${day.name}: ${day.applications}`}
+                    >
+                      <div
+                        className="w-full rounded-t transition-all duration-300 min-h-[2px]"
+                        style={{ backgroundColor: "rgba(226, 24, 54, 0.3)", height: `${(day.applications / maxApps) * 100}%` }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(226, 24, 54, 0.5)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(226, 24, 54, 0.3)")}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex gap-1 mt-1">
+                {activityChartData.map((day, i) => (
+                  <div key={i} className="flex-1 text-[10px] text-center text-muted-foreground font-heading truncate" title={day.name}>
+                    {day.name}
+                  </div>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -255,10 +278,6 @@ export function OverviewTab({
               <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(107, 107, 107, 0.2)" }}>
                 <CalendarIcon className="w-6 h-6" style={{ color: "#6B6B6B" }} />
               </div>
-              <div className="flex items-center gap-1 text-xs font-heading">
-                <TrendingUp className="w-3 h-3" style={{ color: "#E21836" }} />
-                <span style={{ color: "#E21836" }}>+15%</span>
-              </div>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground font-heading">{t.totalEvents}</p>
@@ -267,16 +286,33 @@ export function OverviewTab({
                 {language === "en" ? "All time events" : "Événements de tous les temps"}
               </p>
             </div>
-            <div className="mt-4 h-8 flex items-end gap-1">
-              {[2, 3, 4, 5, 6, 7, events.length].map((h, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-t transition-all duration-300"
-                  style={{ backgroundColor: "rgba(0, 207, 255, 0.3)", height: `${(h / 10) * 100}%` }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(0, 207, 255, 0.5)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(0, 207, 255, 0.3)")}
-                />
-              ))}
+            <div className="mt-4">
+              <div className="h-8 flex items-end gap-1">
+                {activityChartData.map((day, i) => {
+                  const maxEvents = Math.max(...activityChartData.map((x) => x.eventsCreated), 1);
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 flex flex-col justify-end items-center gap-0.5 h-8"
+                      title={`${day.name}: ${day.eventsCreated}`}
+                    >
+                      <div
+                        className="w-full rounded-t transition-all duration-300 min-h-[2px]"
+                        style={{ backgroundColor: "rgba(0, 207, 255, 0.3)", height: `${(day.eventsCreated / maxEvents) * 100}%` }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(0, 207, 255, 0.5)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(0, 207, 255, 0.3)")}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex gap-1 mt-1">
+                {activityChartData.map((day, i) => (
+                  <div key={i} className="flex-1 text-[10px] text-center text-muted-foreground font-heading truncate" title={day.name}>
+                    {day.name}
+                  </div>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -300,56 +336,36 @@ export function OverviewTab({
               <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(107, 107, 107, 0.2)" }}>
                 <Users className="w-6 h-6" style={{ color: "#6B6B6B" }} />
               </div>
-              {previousPendingAmbassadorOrdersCount !== null && previousPendingAmbassadorOrdersCount > 0 ? (
-                <div className="flex items-center gap-1 text-xs font-heading">
-                  {(() => {
-                    const trend =
-                      ((pendingAmbassadorOrdersCount - previousPendingAmbassadorOrdersCount) /
-                        previousPendingAmbassadorOrdersCount) *
-                      100;
-                    const isPositive = trend >= 0;
-                    return (
-                      <>
-                        {isPositive ? (
-                          <TrendingUp className="w-3 h-3" style={{ color: "#E21836" }} />
-                        ) : (
-                          <TrendingDown className="w-3 h-3" style={{ color: "#E21836" }} />
-                        )}
-                        <span style={{ color: "#E21836" }}>{isPositive ? "+" : ""}{trend.toFixed(1)}%</span>
-                      </>
-                    );
-                  })()}
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 text-xs font-heading" style={{ color: "#6B6B6B" }}>
-                  <span>—</span>
-                </div>
-              )}
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground font-heading">{t.ambassadorOrdersPending}</p>
               <p className="text-3xl font-bold font-heading text-foreground">{pendingAmbassadorOrdersCount}</p>
             </div>
-            <div className="mt-4 h-8 flex items-end gap-1">
-              {(() => {
-                const barValues = [
-                  Math.max(0, pendingAmbassadorOrdersCount - 6),
-                  Math.max(0, pendingAmbassadorOrdersCount - 5),
-                  Math.max(0, pendingAmbassadorOrdersCount - 4),
-                  Math.max(0, pendingAmbassadorOrdersCount - 3),
-                  Math.max(0, pendingAmbassadorOrdersCount - 2),
-                  Math.max(0, pendingAmbassadorOrdersCount - 1),
-                  pendingAmbassadorOrdersCount,
-                ];
-                const maxValue = Math.max(...barValues, 1);
-                return barValues.map((h, i) => (
-                  <div
-                    key={i}
-                    className="flex-1 bg-primary/30 rounded-t transition-all duration-300 hover:bg-primary/50"
-                    style={{ height: `${(h / maxValue) * 100}%` }}
-                  />
-                ));
-              })()}
+            <div className="mt-4">
+              <div className="h-8 flex items-end gap-1">
+                {activityChartData.map((day, i) => {
+                  const maxOrders = Math.max(...activityChartData.map((x) => x.orders), 1);
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 flex flex-col justify-end items-center gap-0.5 h-8"
+                      title={`${day.name}: ${day.orders}`}
+                    >
+                      <div
+                        className="w-full bg-primary/30 rounded-t transition-all duration-300 hover:bg-primary/50 min-h-[2px]"
+                        style={{ height: `${(day.orders / maxOrders) * 100}%` }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex gap-1 mt-1">
+                {activityChartData.map((day, i) => (
+                  <div key={i} className="flex-1 text-[10px] text-center text-muted-foreground font-heading truncate" title={day.name}>
+                    {day.name}
+                  </div>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -631,7 +647,7 @@ export function OverviewTab({
                         <div className="flex items-center gap-4 text-sm text-muted-foreground font-heading">
                           <div className="flex items-center gap-1">
                             <CalendarIcon className="w-3 h-3" />
-                            {new Date(event.date).toLocaleDateString()}
+                            {formatDateDMY(event.date, language)}
                           </div>
                           <div className="flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
