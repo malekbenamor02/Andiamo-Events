@@ -33,7 +33,6 @@ import ScannerApp from "./pages/scanner/ScannerApp";
 import PosApp from "./pages/pos/PosApp";
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { FaviconLoader } from "./components/FaviconLoader";
 import PhoneCapturePopup from "./components/PhoneCapturePopup";
 import { usePhoneCapture } from "./hooks/usePhoneCapture";
 import { trackPageView } from "./lib/ga";
@@ -80,7 +79,6 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
         <meta property="og:locale" content={language === "fr" ? "fr_FR" : "en_US"} />
         <meta property="og:locale:alternate" content={language === "fr" ? "en_US" : "fr_FR"} />
       </Helmet>
-      <FaviconLoader />
       <DisableInspect />
       <ScrollToTop />
       {!isScanner && !isPos && (

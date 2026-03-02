@@ -15,7 +15,6 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
-import { uploadFavicon, deleteFavicon, fetchFaviconSettings, FaviconSettings } from "@/lib/favicon";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, sendEmailWithDetails, createAdminCredentialsEmail } from "@/lib/email";
@@ -346,9 +345,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [aioEventsSubmissions, setAioEventsSubmissions] = useState<any[]>([]);
   const [loadingAioEventsSubmissions, setLoadingAioEventsSubmissions] = useState(false);
   const [aioEventsPagination, setAioEventsPagination] = useState({ total: 0, limit: 50, offset: 0, hasMore: false });
-  const [faviconSettings, setFaviconSettings] = useState<FaviconSettings>({});
-  const [loadingFaviconSettings, setLoadingFaviconSettings] = useState(false);
-  const [uploadingFavicon, setUploadingFavicon] = useState<{type: string; loading: boolean}>({type: '', loading: false});
   // --- Team Members State ---
   const [teamMembers, setTeamMembers] = useState([]);
   const [editingTeamMember, setEditingTeamMember] = useState(null);
@@ -5201,101 +5197,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch favicon settings
-  const loadFaviconSettings = async () => {
-    try {
-      setLoadingFaviconSettings(true);
-      const settings = await fetchFaviconSettings();
-      setFaviconSettings(settings);
-    } catch (error) {
-      console.error('Error fetching favicon settings:', error);
-      setFaviconSettings({});
-    } finally {
-      setLoadingFaviconSettings(false);
-    }
-  };
-
-  // Handle favicon upload
-  const handleUploadFavicon = async (file: File, type: 'favicon_ico' | 'favicon_32x32' | 'favicon_16x16' | 'apple_touch_icon') => {
-    try {
-      setUploadingFavicon({ type, loading: true });
-      const result = await uploadFavicon(file, type);
-      
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      // Reload favicon settings
-      await loadFaviconSettings();
-
-      // Force favicon reload by triggering a custom event
-      window.dispatchEvent(new Event('favicon-updated'));
-
-      toast({
-        title: language === 'en' ? 'Favicon Uploaded' : 'Favicon TÃ©lÃ©chargÃ©',
-        description: language === 'en' 
-          ? 'Favicon uploaded successfully. The favicon should update automatically. If not, try refreshing the page (Ctrl+Shift+R or Cmd+Shift+R).' 
-          : 'Favicon tÃ©lÃ©chargÃ© avec succÃ¨s. Le favicon devrait se mettre Ã  jour automatiquement. Sinon, essayez d\'actualiser la page (Ctrl+Shift+R ou Cmd+Shift+R).',
-      });
-    } catch (error) {
-      console.error('Error uploading favicon:', error);
-      toast({
-        title: language === 'en' ? 'Upload Failed' : 'Ã‰chec du TÃ©lÃ©chargement',
-        description: language === 'en' 
-          ? `Failed to upload favicon: ${error instanceof Error ? error.message : 'Unknown error'}` 
-          : `Ã‰chec du tÃ©lÃ©chargement: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
-        variant: 'destructive',
-      });
-    } finally {
-      setUploadingFavicon({ type: '', loading: false });
-    }
-  };
-
-  // Handle favicon delete
-  const handleDeleteFavicon = async (type: 'favicon_ico' | 'favicon_32x32' | 'favicon_16x16' | 'apple_touch_icon') => {
-    try {
-      const currentUrl = faviconSettings[type];
-      if (!currentUrl) {
-        toast({
-          title: language === 'en' ? 'Error' : 'Erreur',
-          description: language === 'en' 
-            ? 'No favicon to delete' 
-            : 'Aucun favicon Ã  supprimer',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      const result = await deleteFavicon(type, currentUrl);
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to delete favicon');
-      }
-
-      // Reload favicon settings
-      await loadFaviconSettings();
-
-      // Force favicon reload by triggering a custom event
-      window.dispatchEvent(new Event('favicon-updated'));
-
-      toast({
-        title: language === 'en' ? 'Favicon Deleted' : 'Favicon SupprimÃ©',
-        description: language === 'en' 
-          ? 'Favicon deleted successfully. The change should be visible immediately. If not, try refreshing the page (Ctrl+Shift+R or Cmd+Shift+R).' 
-          : 'Favicon supprimÃ© avec succÃ¨s. Le changement devrait Ãªtre visible immÃ©diatement. Sinon, essayez d\'actualiser la page (Ctrl+Shift+R ou Cmd+Shift+R).',
-      });
-    } catch (error) {
-      console.error('Error deleting favicon:', error);
-      toast({
-        title: language === 'en' ? 'Delete Failed' : 'Ã‰chec de la Suppression',
-        description: language === 'en' 
-          ? `Failed to delete favicon: ${error instanceof Error ? error.message : 'Unknown error'}` 
-          : `Ã‰chec de la suppression: ${error instanceof Error ? error.message : 'Erreur inconnue'}`,
-        variant: 'destructive',
-      });
-    }
-  };
-
   // Fetch SMS balance
   const fetchSmsBalance = async () => {
     try {
@@ -6657,7 +6558,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await fetchAboutImages();
       // Marketing/SMS data will be loaded only when Marketing tab is opened
       // SMS Balance check removed - user must click button to check
-      await loadFaviconSettings();
 
       // Online orders (last 7 days) for Activity chart
       try {
@@ -11400,11 +11300,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   loadingAboutImages={loadingAboutImages}
                   handleReorderAboutImages={handleReorderAboutImages}
                   handleDeleteAboutImage={handleDeleteAboutImage}
-                  faviconSettings={faviconSettings}
-                  handleUploadFavicon={handleUploadFavicon}
-                  handleDeleteFavicon={handleDeleteFavicon}
-                  loadingFaviconSettings={loadingFaviconSettings}
-                  uploadingFavicon={uploadingFavicon}
                 />
               )}
             </Tabs>

@@ -23,6 +23,7 @@ import { PaymentMethod } from '@/lib/constants/orderStatuses';
 import { CustomerInfo, SelectedPass, Ambassador } from '@/types/orders';
 import { createOrder } from '@/lib/orders/orderService';
 import { PageMeta } from '@/components/PageMeta';
+import { trackEvent } from '@/lib/ga';
 
 interface EventPass {
   id: string;
@@ -153,6 +154,17 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       setSelectedAmbassadorDetails(null);
     }
   }, [selectedAmbassadorId, activeAmbassadors]);
+
+  // Track visit to the pass purchase flow (once event is loaded and purchase is allowed)
+  useEffect(() => {
+    if (event && !purchaseBlockedReason) {
+      trackEvent('pass_purchase_visit', {
+        event_id: event.id,
+        event_name: event.name,
+        language,
+      });
+    }
+  }, [event?.id, purchaseBlockedReason, language, event?.name]);
 
   const t = {
     en: {
@@ -470,6 +482,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     const remaining = pass.remaining_quantity ?? 0;
     const maxAllowed = Math.min(10, remaining);
 
+    const previousQuantity = selectedPasses[passId] || 0;
     const clampedQuantity = Math.max(0, Math.min(maxAllowed, quantity));
     const newPasses = { ...selectedPasses };
     
@@ -479,6 +492,19 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       newPasses[passId] = clampedQuantity;
     }
     
+    // Track first-time pass selection
+    if (previousQuantity === 0 && clampedQuantity > 0 && event) {
+      trackEvent('pass_select', {
+        event_id: event.id,
+        event_name: event.name,
+        pass_id: pass.id,
+        pass_name: pass.name,
+        quantity: clampedQuantity,
+        price: pass.price,
+        language,
+      });
+    }
+
     setSelectedPasses(newPasses);
     // Note: useEffect will handle clearing payment method if it becomes incompatible
   };
@@ -602,6 +628,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     }
 
     const totalPrice = calculateTotal();
+    const totalQuantity = selectedPassesArray.reduce((sum, p) => sum + p.quantity, 0);
     if (totalPrice <= 0) {
       toast({
         title: t[language].error,
@@ -623,6 +650,24 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
       // Handle redirect based on payment method
       if (paymentMethod === PaymentMethod.ONLINE) {
+        // Track online payment order
+        trackEvent('order_submit_online', {
+          event_id: event?.id || eventId || undefined,
+          event_name: event?.name,
+          order_id: order.id,
+          value: totalPrice,
+          currency: 'TND',
+          payment_method: 'online',
+          total_quantity: totalQuantity,
+          language,
+          items: selectedPassesArray.map((p) => ({
+            item_id: p.passId,
+            item_name: p.passName,
+            quantity: p.quantity,
+            price: p.price,
+          })),
+        });
+
         // Redirect to payment processing (ClicToPay flow)
         navigate(`/payment-processing?orderId=${order.id}&init=1`, { replace: true });
       } else if (paymentMethod === PaymentMethod.EXTERNAL_APP) {
@@ -638,6 +683,25 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           setProcessing(false);
         }
       } else if (paymentMethod === PaymentMethod.AMBASSADOR_CASH) {
+        // Track ambassador payment order
+        trackEvent('order_submit_ambassador', {
+          event_id: event?.id || eventId || undefined,
+          event_name: event?.name,
+          order_id: order.id,
+          value: totalPrice,
+          currency: 'TND',
+          payment_method: 'ambassador_cash',
+          total_quantity: totalQuantity,
+          language,
+          ambassador_id: selectedAmbassadorId || undefined,
+          items: selectedPassesArray.map((p) => ({
+            item_id: p.passId,
+            item_name: p.passName,
+            quantity: p.quantity,
+            price: p.price,
+          })),
+        });
+
         toast({
           title: t[language].success,
           description: t[language].successMessageAmbassador,
