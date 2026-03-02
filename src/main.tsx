@@ -3,6 +3,7 @@ import App from './App.tsx'
 import './index.css'
 import { initSentry, Sentry } from './lib/sentry'
 import { initClarity } from './lib/clarity'
+import { initGA } from './lib/ga'
 import { logger } from './lib/logger'
 import { sanitizeConsoleArgs, sanitizeObject, sanitizeString } from './lib/sanitize'
 
@@ -10,6 +11,8 @@ import { sanitizeConsoleArgs, sanitizeObject, sanitizeString } from './lib/sanit
 initSentry()
 // Microsoft Clarity for session recordings and heatmaps (when VITE_CLARITY_PROJECT_ID is set)
 initClarity()
+// Google Analytics 4 (when VITE_GA_MEASUREMENT_ID is set)
+initGA()
 
 // Early error handler to catch errors before main setup
 const suppressBrowserExtensionError = (error: any) => {

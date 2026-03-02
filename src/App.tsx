@@ -36,6 +36,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { FaviconLoader } from "./components/FaviconLoader";
 import PhoneCapturePopup from "./components/PhoneCapturePopup";
 import { usePhoneCapture } from "./hooks/usePhoneCapture";
+import { trackPageView } from "./lib/ga";
 
 // Configure React Query with smart caching
 const queryClient = new QueryClient({
@@ -66,6 +67,11 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
       setIsPhonePopupOpen(false);
     }
   }, [shouldShowPhonePopup]);
+
+  // Track SPA page views in Google Analytics when the route changes
+  useEffect(() => {
+    trackPageView(location.pathname + location.search);
+  }, [location.pathname, location.search]);
 
   return (
     <>

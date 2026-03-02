@@ -132,6 +132,49 @@ async function verifyAdminAuth(req) {
   }
 }
 
+// Basic client IP helper
+function getClientIp(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+    || req.headers['x-real-ip']
+    || req.socket?.remoteAddress
+    || 'unknown';
+}
+
+// In-memory rate limits (serverless best-effort; resets on cold start)
+// Ambassador login: 5 attempts per 15 minutes per IP
+const ambassadorLoginAttempts = new Map();
+const AMB_LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const AMB_LOGIN_MAX = 5;
+
+function checkAmbassadorLoginRateLimit(ip) {
+  const now = Date.now();
+  let rec = ambassadorLoginAttempts.get(ip);
+  if (!rec || now > rec.resetAt) {
+    ambassadorLoginAttempts.set(ip, { count: 1, resetAt: now + AMB_LOGIN_WINDOW_MS });
+    return true;
+  }
+  rec.count += 1;
+  if (rec.count > AMB_LOGIN_MAX) return false;
+  return true;
+}
+
+// Ambassador application: 5 applications per hour per IP (mirrors server.cjs applicationLimiter)
+const ambassadorApplicationAttempts = new Map();
+const AMB_APP_WINDOW_MS = 60 * 60 * 1000;
+const AMB_APP_MAX = 5;
+
+function checkAmbassadorApplicationRateLimit(ip) {
+  const now = Date.now();
+  let rec = ambassadorApplicationAttempts.get(ip);
+  if (!rec || now > rec.resetAt) {
+    ambassadorApplicationAttempts.set(ip, { count: 1, resetAt: now + AMB_APP_WINDOW_MS });
+    return true;
+  }
+  rec.count += 1;
+  if (rec.count > AMB_APP_MAX) return false;
+  return true;
+}
+
 // Helper to parse request body
 async function parseBody(req) {
   if (req.body) {
@@ -654,6 +697,13 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // ============================================
     if (path === '/api/ambassador-login' && method === 'POST') {
       try {
+        const ip = getClientIp(req);
+        if (!checkAmbassadorLoginRateLimit(ip)) {
+          return res.status(429).json({
+            error: 'Too many login attempts, please try again later.'
+          });
+        }
+
         const bodyData = await parseBody(req);
         const { phone, password, recaptchaToken } = bodyData;
 
@@ -742,6 +792,13 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     // ============================================
     if (path === '/api/ambassador-application' && method === 'POST') {
       try {
+        const ip = getClientIp(req);
+        if (!checkAmbassadorApplicationRateLimit(ip)) {
+          return res.status(429).json({
+            error: 'Too many applications submitted, please try again later.'
+          });
+        }
+
         const bodyData = await parseBody(req);
         const { fullName, age, phoneNumber, email, city, ville, socialLink, motivation, recaptchaToken } = bodyData;
 

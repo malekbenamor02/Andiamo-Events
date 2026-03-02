@@ -8,6 +8,57 @@ import nodemailer from 'nodemailer';
 import querystring from 'querystring';
 import https from 'https';
 
+// --- Basic helpers (shared within this module) ---
+
+function getClientIp(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+    || req.headers['x-real-ip']
+    || req.socket?.remoteAddress
+    || 'unknown';
+}
+
+// Per-IP rate limit: 10 orders per hour per IP
+const orderRateByIp = new Map();
+const ORDER_IP_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const ORDER_IP_MAX = 10;
+
+function checkOrderIpRateLimit(ip) {
+  const now = Date.now();
+  let rec = orderRateByIp.get(ip);
+  if (!rec || now > rec.resetAt) {
+    orderRateByIp.set(ip, { count: 1, resetAt: now + ORDER_IP_WINDOW_MS });
+    return true;
+  }
+  rec.count += 1;
+  if (rec.count > ORDER_IP_MAX) return false;
+  return true;
+}
+
+// Per-device/browser soft limit via X-Device-Id header: 3 orders per 10 minutes
+const orderRateByDevice = new Map();
+const ORDER_DEVICE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const ORDER_DEVICE_MAX = 3;
+
+function getDeviceId(req) {
+  const raw = req.headers['x-device-id'];
+  if (!raw) return null;
+  // Normalize and cap length to avoid abuse
+  return String(Array.isArray(raw) ? raw[0] : raw).slice(0, 128) || null;
+}
+
+function checkOrderDeviceRateLimit(deviceId) {
+  if (!deviceId) return true; // cannot enforce device limit without identifier
+  const now = Date.now();
+  let rec = orderRateByDevice.get(deviceId);
+  if (!rec || now > rec.resetAt) {
+    orderRateByDevice.set(deviceId, { count: 1, resetAt: now + ORDER_DEVICE_WINDOW_MS });
+    return true;
+  }
+  rec.count += 1;
+  if (rec.count > ORDER_DEVICE_MAX) return false;
+  return true;
+}
+
 // Import shared CORS utility (using dynamic import for ES modules)
 let corsUtils = null;
 async function getCorsUtils() {
@@ -38,6 +89,21 @@ export default async (req, res) => {
   }
 
   try {
+    // --- Rate limiting: IP + device/browser (soft limit) ---
+    const ip = getClientIp(req);
+    if (!checkOrderIpRateLimit(ip)) {
+      return res.status(429).json({
+        error: 'Too many orders. Please try again later.'
+      });
+    }
+
+    const deviceId = getDeviceId(req);
+    if (!checkOrderDeviceRateLimit(deviceId)) {
+      return res.status(429).json({
+        error: 'Too many orders. Please try again later.'
+      });
+    }
+
     // Check environment variables
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
       console.error('❌ Missing Supabase environment variables:', {
