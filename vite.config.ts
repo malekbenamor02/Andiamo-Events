@@ -75,7 +75,9 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: "dist",
       assetsDir: "assets",
-      sourcemap: true,
+      // Hidden source maps in production: .map files are generated for Sentry but not
+      // linked in JS, so DevTools won't show original sources (like big platforms).
+      sourcemap: mode === "production" ? "hidden" : true,
       emptyOutDir: true,
       rollupOptions: {
         output: {
