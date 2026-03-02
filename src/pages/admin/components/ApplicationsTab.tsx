@@ -662,9 +662,7 @@ export function ApplicationsTab({
                     <div className="flex items-center space-x-1">
                       <CalendarIcon className="w-3 h-3 text-muted-foreground" />
                       <span className="text-xs">
-                        {new Date(
-                          application.created_at
-                        ).toLocaleDateString()}
+                        {format(new Date(application.created_at), "dd/MM/yyyy")}
                       </span>
                     </div>
                   </TableCell>

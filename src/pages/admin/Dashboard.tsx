@@ -22,14 +22,71 @@ import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail,
 import { fetchSalesSettings, updateSalesSettings } from "@/lib/salesSettings";
 import ExcelJS from "exceljs";
 import {
-  CheckCircle, XCircle, Clock, Users, TrendingUp, DollarSign, LogOut,
-  Plus, Edit, Trash2, Calendar as CalendarIcon, MapPin, Phone, Mail, User, Settings,
-  Eye, EyeOff, Save, X, Image, Video, Upload, Info,
-  Instagram, BarChart3, FileText, Building2, Users2, MessageCircle,
-  PieChart, Download, RefreshCw, Copy, Wrench, ArrowUp, ArrowDown, 
-  Send, Megaphone, PhoneCall, CreditCard, AlertCircle, CheckCircle2, Activity, Database,
-  Search, Filter, MoreVertical, ExternalLink, Ticket, TrendingDown, Percent, Target, Package, Pause,
-  Zap, MailCheck, ArrowRight, Shield, QrCode, Store, History, Menu, PanelLeft
+  CheckCircle,
+  XCircle,
+  Clock,
+  Users,
+  TrendingUp,
+  DollarSign,
+  LogOut,
+  Plus,
+  Edit,
+  Trash2,
+  Calendar as CalendarIcon,
+  MapPin,
+  Phone,
+  Mail,
+  User,
+  Settings,
+  Eye,
+  EyeOff,
+  Save,
+  X,
+  Image,
+  Video,
+  Upload,
+  Info,
+  Instagram,
+  BarChart3,
+  FileText,
+  Building2,
+  Users2,
+  MessageCircle,
+  PieChart,
+  Download,
+  RefreshCw,
+  Copy,
+  Wrench,
+  ArrowUp,
+  ArrowDown,
+  Send,
+  Megaphone,
+  PhoneCall,
+  CreditCard,
+  AlertCircle,
+  CheckCircle2,
+  Activity,
+  Database,
+  Search,
+  Filter,
+  MoreVertical,
+  ExternalLink,
+  Ticket,
+  TrendingDown,
+  Percent,
+  Target,
+  Package,
+  Pause,
+  Zap,
+  MailCheck,
+  ArrowRight,
+  Shield,
+  QrCode,
+  Store,
+  History,
+  Menu,
+  PanelLeft,
+  Bell,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useNavigate } from "react-router-dom";
@@ -88,6 +145,20 @@ import { EventsTab } from "./components/EventsTab";
 import { AmbassadorInfoDialog } from "./components/AmbassadorInfoDialog";
 import { OnlineOrderDetailsDialog } from "./components/OnlineOrderDetailsDialog";
 import { OrderDetailsDialog } from "./components/OrderDetailsDialog";
+
+type AdminNotificationKind =
+  | "ambassador_application"
+  | "ambassador_order"
+  | "online_order"
+  | "pos_order";
+
+interface AdminNotification {
+  id: string;
+  kind: AdminNotificationKind;
+  title: string;
+  message: string;
+  createdAt: string;
+}
 
 const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // All hooks must be called before any conditional returns (Rules of Hooks)
@@ -373,6 +444,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [salesSystemTab, setSalesSystemTab] = useState('cod-ambassador-orders');
   
   const [resendingTicketEmail, setResendingTicketEmail] = useState(false);
+  const [bulkAmbassadorProcessing, setBulkAmbassadorProcessing] = useState(false);
 
   // Export COD Ambassador Orders to Excel
   const exportOrdersToExcel = async () => {
@@ -831,6 +903,153 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // STRICT: No default value - must come from server token
   const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(0);
 
+  // Realtime notification center state
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const stored = window.localStorage.getItem(
+        "adminNotificationSoundEnabled",
+      );
+      if (stored === null) return true;
+      return stored === "true";
+    } catch {
+      return true;
+    }
+  });
+
+  const playNotificationSound = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const audio = new Audio("/sounds/notification.mp3");
+      audio.volume = 0.6;
+      audio.play().catch(() => {
+        // Only MP3 is used; ignore playback errors (e.g. autoplay blocked)
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  const showBrowserNotification = (title: string, body: string) => {
+    if (typeof window === "undefined") return;
+    if (!("Notification" in window)) return;
+    try {
+      if (Notification.permission === "granted") {
+        new Notification(title, {
+          body,
+          icon: "/assets/faviconn.png",
+          badge: "/assets/faviconn.png",
+        });
+      } else if (Notification.permission === "default") {
+        Notification.requestPermission()
+          .then((perm) => {
+            if (perm === "granted") {
+              new Notification(title, {
+                body,
+                icon: "/assets/faviconn.png",
+                badge: "/assets/faviconn.png",
+              });
+            }
+          })
+          .catch(() => {
+            // ignore
+          });
+      }
+    } catch {
+      // Ignore notification errors
+    }
+  };
+
+  const getOrderBuyerName = (order: any, lang: "en" | "fr") => {
+    return (
+      order.user_name ||
+      order.customer_name ||
+      order.user_full_name ||
+      (lang === "en" ? "Unknown buyer" : "Client inconnu")
+    );
+  };
+
+  const buildOrderNotificationSummary = (order: any, lang: "en" | "fr") => {
+    const buyerName = getOrderBuyerName(order, lang);
+    let passesText = "";
+    let total: number | null =
+      typeof order.total_price === "number" ? order.total_price : null;
+
+    let passes: any[] = [];
+
+    if (order.notes) {
+      try {
+        const notesData =
+          typeof order.notes === "string"
+            ? JSON.parse(order.notes)
+            : order.notes;
+        if (Array.isArray(notesData?.all_passes)) {
+          passes = notesData.all_passes;
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    if (Array.isArray(order.order_passes) && order.order_passes.length > 0) {
+      passes = order.order_passes;
+    }
+
+    if (passes.length > 0) {
+      passesText = passes
+        .map((p: any) => {
+          const label =
+            p.name ||
+            p.passName ||
+            p.pass_type ||
+            order.pass_type ||
+            (lang === "en" ? "Pass" : "Pass");
+          const qty = p.quantity || 0;
+          return `${String(label)} x${qty}`;
+        })
+        .join(", ");
+      if (total == null) {
+        total = passes.reduce(
+          (sum: number, p: any) =>
+            sum + (Number(p.price) || 0) * (p.quantity || 0),
+          0,
+        );
+      }
+    } else {
+      const label =
+        order.pass_type || (lang === "en" ? "Pass" : "Pass");
+      const qty = order.quantity || 0;
+      passesText = `${String(label)} x${qty}`;
+    }
+
+    const totalText =
+      typeof total === "number" ? `${total.toFixed(2)} TND` : "";
+
+    return totalText
+      ? `${buyerName} — ${passesText} • Total ${totalText}`
+      : `${buyerName} — ${passesText}`;
+  };
+
+  const pushNotification = (payload: {
+    kind: AdminNotificationKind;
+    title: string;
+    message: string;
+  }) => {
+    const notification: AdminNotification = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: new Date().toISOString(),
+      ...payload,
+    };
+    setNotifications((prev) => [notification, ...prev].slice(0, 50));
+    setUnreadNotifications((prev) => prev + 1);
+    if (soundEnabled) {
+      playNotificationSound();
+    }
+    showBrowserNotification(notification.title, notification.message);
+  };
+
 
   const content = {
     en: {
@@ -1059,14 +1278,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           const oldRecord = payload.old as Record<string, unknown> | null;
 
           if (eventType === 'INSERT' && newRecord?.id) {
+            const asApp = newRecord as unknown as AmbassadorApplication;
             setApplications((prev) => {
-              const asApp = newRecord as unknown as AmbassadorApplication;
               if (prev.some((a) => a.id === asApp.id)) return prev;
               return [asApp, ...prev].sort(
                 (a, b) =>
                   new Date(b.created_at || 0).getTime() -
                   new Date(a.created_at || 0).getTime()
               );
+            });
+            // New ambassador application notification
+            const cityVille = [asApp.city, asApp.ville].filter(Boolean).join(" / ");
+            pushNotification({
+              kind: "ambassador_application",
+              title:
+                language === "en"
+                  ? "Ambassador application"
+                  : "Candidature ambassadeur",
+              message: cityVille
+                ? `${asApp.full_name} — ${cityVille}`
+                : asApp.full_name,
             });
           } else if (eventType === 'UPDATE' && newRecord?.id) {
             setApplications((prev) =>
@@ -1102,9 +1333,130 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           table: 'orders',
           filter: 'source=eq.platform_online',
         },
-        () => {
+        (payload) => {
+          const eventType = payload.eventType;
+          const newOrder = (payload.new || null) as any;
+
+          if (eventType === 'INSERT' && newOrder?.id) {
+            const summary = buildOrderNotificationSummary(newOrder, language);
+            pushNotification({
+              kind: "online_order",
+              title:
+                language === "en"
+                  ? "New online order"
+                  : "Nouvelle commande en ligne",
+              message: summary,
+            });
+          }
+
           fetchOnlineOrders();
         }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Realtime: notify on ambassador cash orders that need admin approval
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-ambassador-orders-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: "payment_method=eq.ambassador_cash",
+        },
+        (payload) => {
+          const eventType = payload.eventType;
+          const newOrder = (payload.new || null) as any;
+          const oldOrder = (payload.old || null) as any;
+
+          const justBecamePendingAdmin =
+            newOrder &&
+            newOrder.status === "PENDING_ADMIN_APPROVAL" &&
+            (!oldOrder || oldOrder.status !== "PENDING_ADMIN_APPROVAL");
+
+          if (
+            (eventType === "INSERT" || eventType === "UPDATE") &&
+            justBecamePendingAdmin
+          ) {
+            const summary = buildOrderNotificationSummary(newOrder, language);
+            pushNotification({
+              kind: "ambassador_order",
+              title:
+                language === "en"
+                  ? "New ambassador order (needs approval)"
+                  : "Nouvelle commande ambassadeur (à approuver)",
+              message: summary,
+            });
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Realtime: notify on new POS orders that need approval
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-pos-orders-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: "source=eq.point_de_vente",
+        },
+        async (payload) => {
+          const eventType = payload.eventType;
+          const newOrder = (payload.new || null) as any;
+
+          if (
+            eventType !== "INSERT" ||
+            !newOrder?.id ||
+            newOrder.status !== "PENDING_ADMIN_APPROVAL"
+          ) {
+            return;
+          }
+
+          let outletName: string | null = null;
+          try {
+            if (newOrder.pos_outlet_id) {
+              const { data } = await (supabase as any)
+                .from("pos_outlets")
+                .select("name")
+                .eq("id", newOrder.pos_outlet_id)
+                .single();
+              outletName = data?.name || null;
+            }
+          } catch {
+            // Best-effort; ignore lookup errors
+          }
+
+          const summary = buildOrderNotificationSummary(newOrder, language);
+          const baseTitle =
+            language === "en"
+              ? "New POS order"
+              : "Nouvelle commande point de vente";
+          const title = outletName ? `${baseTitle} – ${outletName}` : baseTitle;
+
+          pushNotification({
+            kind: "pos_order",
+            title,
+            message: summary,
+          });
+        },
       )
       .subscribe();
 
@@ -2299,18 +2651,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (updateError) throw updateError;
 
-      // Log the action
+      // Log the ticket/email action (status change itself is logged by DB trigger)
       await (supabase as any)
         .from('order_logs')
         .insert({
           order_id: orderId,
-          action: 'status_changed',
+          action: 'email_sms_delivery_approved',
           performed_by: null,
           performed_by_type: 'admin',
           details: { 
             old_status: 'PAID',
             new_status: 'APPROVED',
-            action: 'email_sms_delivery_approved',
             email_sent: true
           }
         });
@@ -3156,10 +3507,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (error) throw error;
 
-      // Log the action
+      // Log the payment status change (separate from order.status)
       await (supabase as any).from('order_logs').insert({
         order_id: orderId,
-        action: 'status_changed',
+        action: 'payment_status_changed',
         performed_by_type: 'admin',
         details: {
           old_payment_status: selectedOnlineOrder?.payment_status,
@@ -8776,6 +9127,33 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setAmbassadorToDelete(null);
   };
 
+  const handleBulkPauseAmbassadors = async (ambassadorsToPause: Ambassador[]) => {
+    if (ambassadorsToPause.length === 0) return;
+    setBulkAmbassadorProcessing(true);
+    try {
+      for (const ambassador of ambassadorsToPause) {
+        // Only pause currently approved ambassadors
+        if (ambassador.status === "approved") {
+          await handleToggleAmbassadorStatus(ambassador);
+        }
+      }
+    } finally {
+      setBulkAmbassadorProcessing(false);
+    }
+  };
+
+  const handleBulkDeleteAmbassadors = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setBulkAmbassadorProcessing(true);
+    try {
+      for (const id of ids) {
+        await handleDeleteAmbassador(id);
+      }
+    } finally {
+      setBulkAmbassadorProcessing(false);
+    }
+  };
+
   // Find ambassadors without corresponding applications
   const getAmbassadorsWithoutApplications = () => {
     return ambassadors.filter(amb => {
@@ -10454,58 +10832,192 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </div>
               </div>
               
-              {/* Event Selector - full width on mobile */}
+              {/* Event Selector + Notification Center */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
-                <Label htmlFor="event-selector" className="text-sm font-medium shrink-0" style={{ color: '#B0B0B0' }}>
-                  {language === 'en' ? 'Filter by Event:' : 'Filtrer par Événement:'}
-                </Label>
-                <Select
-                  value={selectedEventId || 'all'}
-                  onValueChange={(value) => {
-                    setSelectedEventId(value === 'all' ? '' : value);
-                  }}
-                >
-                  <SelectTrigger 
-                    id="event-selector"
-                    className="w-full sm:w-[300px] min-w-0"
-                    style={{
-                      background: '#1F1F1F',
-                      borderColor: '#2A2A2A',
-                      color: '#FFFFFF'
+                <div className="flex flex-1 items-center gap-2 sm:gap-4 min-w-0">
+                  <Label
+                    htmlFor="event-selector"
+                    className="text-sm font-medium shrink-0"
+                    style={{ color: "#B0B0B0" }}
+                  >
+                    {language === "en"
+                      ? "Filter by Event:"
+                      : "Filtrer par Événement:"}
+                  </Label>
+                  <Select
+                    value={selectedEventId || "all"}
+                    onValueChange={(value) => {
+                      setSelectedEventId(value === "all" ? "" : value);
                     }}
                   >
-                    <SelectValue placeholder={language === 'en' ? 'All Events' : 'Tous les Événements'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">
-                      {language === 'en' ? 'All Events' : 'Tous les Événements'}
-                    </SelectItem>
-                    {events
-                      .filter(e => e.event_type === 'upcoming')
-                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                      .map((event) => (
-                        <SelectItem key={event.id} value={event.id}>
-                          {event.name} - {formatDateDMY(event.date, language)}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-                {selectedEventId && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      fetchAllData();
-                      fetchAmbassadorSalesData();
-                      fetchOnlineOrders();
-                      fetchPosOrdersForOverview();
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    {language === 'en' ? 'Reload Data' : 'Recharger les Données'}
-                  </Button>
-                )}
+                    <SelectTrigger
+                      id="event-selector"
+                      className="w-full sm:w-[300px] min-w-0"
+                      style={{
+                        background: "#1F1F1F",
+                        borderColor: "#2A2A2A",
+                        color: "#FFFFFF",
+                      }}
+                    >
+                      <SelectValue
+                        placeholder={
+                          language === "en"
+                            ? "All Events"
+                            : "Tous les Événements"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        {language === "en"
+                          ? "All Events"
+                          : "Tous les Événements"}
+                      </SelectItem>
+                      {events
+                        .filter((e) => e.event_type === "upcoming")
+                        .sort(
+                          (a, b) =>
+                            new Date(a.date).getTime() -
+                            new Date(b.date).getTime(),
+                        )
+                        .map((event) => (
+                          <SelectItem key={event.id} value={event.id}>
+                            {event.name} - {formatDateDMY(event.date, language)}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedEventId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        fetchAllData();
+                        fetchAmbassadorSalesData();
+                        fetchOnlineOrders();
+                        fetchPosOrdersForOverview();
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      {language === "en"
+                        ? "Reload Data"
+                        : "Recharger les Données"}
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <Label
+                      htmlFor="sound-toggle"
+                      className="text-xs font-medium"
+                      style={{ color: "#B0B0B0" }}
+                    >
+                      {language === "en" ? "Sound" : "Son"}
+                    </Label>
+                    <Switch
+                      id="sound-toggle"
+                      checked={soundEnabled}
+                      onCheckedChange={(checked) => {
+                        const next = Boolean(checked);
+                        setSoundEnabled(next);
+                        if (typeof window !== "undefined") {
+                          try {
+                            window.localStorage.setItem(
+                              "adminNotificationSoundEnabled",
+                              String(next),
+                            );
+                          } catch {
+                            // ignore storage errors
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="relative"
+                        aria-label={
+                          language === "en"
+                            ? "Notifications"
+                            : "Notifications"
+                        }
+                      >
+                        <Bell className="w-5 h-5" />
+                        {unreadNotifications > 0 && (
+                          <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+                            {unreadNotifications > 9
+                              ? "9+"
+                              : unreadNotifications}
+                          </span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="end"
+                      className="w-80 max-h-96 overflow-y-auto"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold">
+                          {language === "en"
+                            ? "Notifications"
+                            : "Notifications"}
+                        </span>
+                        {notifications.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => setUnreadNotifications(0)}
+                          >
+                            {language === "en"
+                              ? "Mark all read"
+                              : "Tout marquer comme lu"}
+                          </Button>
+                        )}
+                      </div>
+                      {notifications.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          {language === "en"
+                            ? "No notifications yet"
+                            : "Aucune notification pour le moment"}
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          {notifications.map((n) => (
+                            <div
+                              key={n.id}
+                              className="rounded-lg border border-border bg-muted/60 px-3 py-2.5 text-xs flex flex-col gap-1"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-semibold truncate">
+                                  {n.title}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                  {new Date(n.createdAt).toLocaleTimeString(
+                                    language === "en" ? "en-US" : "fr-FR",
+                                    {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    },
+                                  )}
+                                </span>
+                              </div>
+                              <p className="text-muted-foreground text-[11px] leading-snug">
+                                {n.message}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </div>
             </div>
 
@@ -10638,6 +11150,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onSaveAmbassador={handleSaveAmbassador}
                 onToggleStatus={handleToggleAmbassadorStatus}
                 onRequestDelete={setAmbassadorToDelete}
+                onBulkPause={handleBulkPauseAmbassadors}
+                onBulkDelete={handleBulkDeleteAmbassadors}
               />
 
               {/* Applications Tab */}

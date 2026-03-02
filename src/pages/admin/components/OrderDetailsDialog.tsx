@@ -22,7 +22,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Package, FileText, Activity, Database, Calendar as CalendarIcon, Clock, DollarSign,
   User, Phone, Mail, MapPin, Ticket, Users, Save, X, Edit, RefreshCw, Send,
-  Trash2, Wrench, CheckCircle, XCircle, CheckCircle2, Zap, MailCheck, Shield, AlertCircle
+  Trash2, Wrench, CheckCircle, XCircle, CheckCircle2, Zap, MailCheck, Shield, AlertCircle, Plus
 } from "lucide-react";
 
 export interface OrderDetailsDialogProps {
@@ -105,9 +105,11 @@ export function OrderDetailsDialog({
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
                         <FileText className="w-3 h-3" />
-                        {language === 'en' ? 'Order ID' : 'ID Commande'}
+                        {language === 'en' ? 'Order Number' : 'NumÃ©ro de Commande'}
                       </Label>
-                      <p className="font-mono text-sm break-all">{order.id}</p>
+                      <p className="font-mono text-sm break-all">
+                        {order.order_number != null ? order.order_number : order.id}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
@@ -175,15 +177,107 @@ export function OrderDetailsDialog({
                       </Label>
                       <p className="text-sm">{new Date(order.created_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}</p>
                     </div>
-                    {order.total_price && (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                          <DollarSign className="w-3 h-3" />
-                          {language === 'en' ? 'Total Amount' : 'Montant Total'}
-                        </Label>
-                        <p className="text-lg font-bold text-primary">{order.total_price.toFixed(2)} TND</p>
-                      </div>
-                    )}
+                    <div className="space-y-1 md:col-span-2">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Ticket className="w-3 h-3" />
+                        {language === 'en' ? 'Pass Details' : 'DÃ©tails du Pass'}
+                      </Label>
+                      {(() => {
+                        let allPasses: any[] = [];
+                        try {
+                          if (order.notes) {
+                            const notesData = typeof order.notes === 'string' 
+                              ? JSON.parse(order.notes) 
+                              : order.notes;
+                            if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
+                              allPasses = notesData.all_passes;
+                            }
+                          }
+                        } catch (e) {
+                          console.error('Error parsing notes:', e);
+                        }
+
+                        if (allPasses.length > 0) {
+                          const calculatedTotal = allPasses.reduce((sum: number, pass: any) => {
+                            return sum + ((pass.price || 0) * (pass.quantity || 0));
+                          }, 0);
+
+                          return (
+                            <div className="space-y-2">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
+                                    <TableHead>{language === 'en' ? 'Quantity' : 'QuantitÃ©'}</TableHead>
+                                    <TableHead>{language === 'en' ? 'Unit Price' : 'Prix Unitaire'}</TableHead>
+                                    <TableHead>{language === 'en' ? 'Subtotal' : 'Sous-total'}</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {allPasses.map((pass: any, index: number) => {
+                                    const passLabel =
+                                      pass.name ||
+                                      pass.passName ||
+                                      pass.label ||
+                                      pass.pass_type ||
+                                      pass.passType ||
+                                      pass.type ||
+                                      'N/A';
+                                    return (
+                                      <TableRow key={index}>
+                                        <TableCell>
+                                          <Badge variant={pass.passType === 'vip' ? 'default' : 'secondary'}>
+                                            {String(passLabel).toUpperCase()}
+                                          </Badge>
+                                        </TableCell>
+                                        <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
+                                        <TableCell>{pass.price?.toFixed(2) || '0.00'} TND</TableCell>
+                                        <TableCell className="font-semibold">
+                                          {((pass.price || 0) * (pass.quantity || 0)).toFixed(2)} TND
+                                        </TableCell>
+                                      </TableRow>
+                                    );
+                                  })}
+                                  <TableRow className="font-bold border-t-2">
+                                    <TableCell colSpan={3} className="text-right">
+                                      {language === 'en' ? 'Total' : 'Total'}
+                                    </TableCell>
+                                    <TableCell className="text-lg">
+                                      {calculatedTotal.toFixed(2)} TND
+                                    </TableCell>
+                                  </TableRow>
+                                </TableBody>
+                              </Table>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <Label className="text-muted-foreground">
+                                {language === 'en' ? 'Pass Type' : 'Type Pass'}
+                              </Label>
+                              <p className="font-semibold uppercase">{order.pass_type}</p>
+                            </div>
+                            <div>
+                              <Label className="text-muted-foreground">
+                                {language === 'en' ? 'Quantity' : 'QuantitÃ©'}
+                              </Label>
+                              <p className="font-semibold">{order.quantity}</p>
+                            </div>
+                            <div>
+                              <Label className="text-muted-foreground">
+                                {language === 'en' ? 'Total Price' : 'Prix Total'}
+                              </Label>
+                              <p className="font-semibold text-lg">
+                                {order.total_price?.toFixed(2) || '0.00'} TND
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -377,99 +471,6 @@ export function OrderDetailsDialog({
                   </CardContent>
                 </Card>
               )}
-
-              {/* Order Items */}
-              <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Ticket className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Order Items' : 'Articles de Commande'}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                {(() => {
-                  // Try to parse notes to get detailed pass breakdown
-                  let allPasses: any[] = [];
-                  try {
-                    if (order.notes) {
-                      const notesData = typeof order.notes === 'string' 
-                        ? JSON.parse(order.notes) 
-                        : order.notes;
-                      if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                        allPasses = notesData.all_passes;
-                      }
-                    }
-                  } catch (e) {
-                    console.error('Error parsing notes:', e);
-                  }
-
-                  // If we have detailed pass breakdown, show it
-                  if (allPasses.length > 0) {
-                    // Calculate total from passes array to ensure accuracy
-                    const calculatedTotal = allPasses.reduce((sum: number, pass: any) => {
-                      return sum + ((pass.price || 0) * (pass.quantity || 0));
-                    }, 0);
-                    
-                    return (
-                      <div className="space-y-4">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Quantity' : 'QuantitÃ©'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Unit Price' : 'Prix Unitaire'}</TableHead>
-                              <TableHead>{language === 'en' ? 'Subtotal' : 'Sous-total'}</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {allPasses.map((pass: any, index: number) => (
-                              <TableRow key={index}>
-                                <TableCell>
-                                  <Badge variant={pass.passType === 'vip' ? 'default' : 'secondary'}>
-                                    {pass.passType?.toUpperCase() || 'STANDARD'}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
-                                <TableCell>{pass.price?.toFixed(2) || '0.00'} TND</TableCell>
-                                <TableCell className="font-semibold">
-                                  {((pass.price || 0) * (pass.quantity || 0)).toFixed(2)} TND
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                            <TableRow className="font-bold border-t-2">
-                              <TableCell colSpan={3} className="text-right">
-                                {language === 'en' ? 'Total' : 'Total'}
-                              </TableCell>
-                              <TableCell className="text-lg">
-                                {calculatedTotal.toFixed(2)} TND
-                              </TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-                      </div>
-                    );
-                  }
-
-                  // Fallback to simple display for old orders
-                  return (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <Label className="text-muted-foreground">{language === 'en' ? 'Pass Type' : 'Type Pass'}</Label>
-                        <p className="font-semibold uppercase">{order.pass_type}</p>
-                      </div>
-                      <div>
-                        <Label className="text-muted-foreground">{language === 'en' ? 'Quantity' : 'QuantitÃ©'}</Label>
-                        <p className="font-semibold">{order.quantity}</p>
-                      </div>
-                      <div>
-                        <Label className="text-muted-foreground">{language === 'en' ? 'Total Price' : 'Prix Total'}</Label>
-                        <p className="font-semibold text-lg">{order.total_price?.toFixed(2) || '0.00'} TND</p>
-                      </div>
-                    </div>
-                  );
-                })()}
-                </CardContent>
-              </Card>
 
               {/* Ambassador Information */}
               {order.ambassador_id && (
@@ -722,10 +723,29 @@ export function OrderDetailsDialog({
                   <div className="max-h-96 overflow-y-auto">
                     {orderLogs.filter((log: any) => log.order_id === order.id).length > 0 ? (
                       <div className="space-y-3">
-                        {orderLogs
-                          .filter((log: any) => log.order_id === order.id)
-                          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                          .map((log: any, index: number) => {
+                        {(() => {
+                          const seen = new Set<string>();
+                          const uniqueLogs = orderLogs
+                            .filter((log: any) => log.order_id === order.id)
+                            .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                            .filter((log: any) => {
+                              const signature = JSON.stringify({
+                                action: log.action,
+                                performed_by_type: log.performed_by_type,
+                                created_at: log.created_at,
+                                old_status: log.details?.old_status,
+                                new_status: log.details?.new_status,
+                                old_payment_status: log.details?.old_payment_status,
+                                new_payment_status: log.details?.new_payment_status,
+                              });
+                              if (seen.has(signature)) {
+                                return false;
+                              }
+                              seen.add(signature);
+                              return true;
+                            });
+
+                          return uniqueLogs.map((log: any, index: number) => {
                             const getActionIcon = () => {
                               switch (log.action) {
                                 case 'approved':
@@ -860,7 +880,8 @@ export function OrderDetailsDialog({
                                 </div>
                               </div>
                             );
-                          })}
+                          });
+                        })()}
                       </div>
                     ) : (
                       <div className="text-center py-8">

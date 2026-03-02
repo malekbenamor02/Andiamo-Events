@@ -591,7 +591,7 @@ const authLimiter = createRateLimiter({
 
 const applicationLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 3, // 3 applications per hour
+  max: 5, // 5 applications per hour
   message: { error: 'Too many applications submitted, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -6908,7 +6908,7 @@ app.post('/api/ambassador-application', applicationLimiter, async (req, res) => 
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    const { fullName, age, phoneNumber, email, city, ville, socialLink, motivation } = req.body;
+    const { fullName, age, phoneNumber, email, city, ville, socialLink, motivation, recaptchaToken } = req.body;
 
     // Validate required fields
     if (!fullName || !age || !phoneNumber || !city) {
@@ -6924,6 +6924,43 @@ app.post('/api/ambassador-application', applicationLimiter, async (req, res) => 
     // Validate Instagram link if provided
     if (socialLink && !socialLink.trim().startsWith('https://www.instagram.com/') && !socialLink.trim().startsWith('https://instagram.com/')) {
       return res.status(400).json({ error: 'Instagram link must start with https://www.instagram.com/ or https://instagram.com/' });
+    }
+
+    // Security: Require CAPTCHA for public ambassador applications
+    if (!recaptchaToken) {
+      return res.status(400).json({ 
+        error: 'reCAPTCHA verification required',
+        details: 'Please complete the reCAPTCHA verification'
+      });
+    }
+
+    // Bypass reCAPTCHA verification for localhost development
+    if (recaptchaToken !== 'localhost-bypass-token') {
+      const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+
+      if (!RECAPTCHA_SECRET_KEY) {
+        console.error('RECAPTCHA_SECRET_KEY is not set');
+        return res.status(500).json({
+          error: 'Server configuration error',
+          details: 'reCAPTCHA secret key is not configured'
+        });
+      }
+
+      const verifyResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
+      });
+
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyData.success) {
+        console.error('reCAPTCHA verification failed for ambassador application:', verifyData);
+        return res.status(400).json({
+          error: 'reCAPTCHA verification failed',
+          details: verifyData['error-codes'] || []
+        });
+      }
     }
 
     // Sanitize inputs (basic sanitization - DOMPurify would need to be server-side)

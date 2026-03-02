@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -68,7 +69,6 @@ export interface AmbassadorsTabTranslation {
   ambassadorPhone: string;
   ambassadorEmail: string;
   ambassadorCity: string;
-  ambassadorCommission: string;
   ambassadorPassword: string;
   noAmbassadors: string;
   error?: string;
@@ -94,6 +94,8 @@ export interface AmbassadorsTabProps {
   onSaveAmbassador: (ambassador: Ambassador) => Promise<void>;
   onToggleStatus: (ambassador: Ambassador) => void;
   onRequestDelete: (ambassador: Ambassador) => void;
+  onBulkPause: (ambassadors: Ambassador[]) => Promise<void>;
+  onBulkDelete: (ids: string[]) => Promise<void>;
 }
 
 /** Mask email for display: show first 2 chars of local part + ***@ + domain */
@@ -137,6 +139,8 @@ export function AmbassadorsTab({
   onSaveAmbassador,
   onToggleStatus,
   onRequestDelete,
+  onBulkPause,
+  onBulkDelete,
 }: AmbassadorsTabProps) {
   const { toast } = useToast();
   const [filterName, setFilterName] = useState("");
@@ -144,6 +148,9 @@ export function AmbassadorsTab({
   const [filterEmail, setFilterEmail] = useState("");
   const [filterCity, setFilterCity] = useState("");
   const [filterVille, setFilterVille] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<null | "pause" | "delete">(null);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
 
   const displayList = useMemo(
     () =>
@@ -173,6 +180,51 @@ export function AmbassadorsTab({
       return true;
     });
   }, [displayList, filterName, filterPhone, filterEmail, filterCity, filterVille]);
+
+  const selectedAmbassadors = useMemo(
+    () => ambassadors.filter((amb) => selectedIds.has(amb.id)),
+    [ambassadors, selectedIds]
+  );
+
+  const visibleIds = useMemo(
+    () => filteredList.map((amb) => amb.id),
+    [filteredList]
+  );
+
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id)) && !allVisibleSelected;
+
+  const handleToggleSelectAllVisible = (checked: boolean | "indeterminate") => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        visibleIds.forEach((id) => next.add(id));
+      } else {
+        visibleIds.forEach((id) => next.delete(id));
+      }
+      return next;
+    });
+  };
+
+  const handleBulkConfirm = async () => {
+    if (!bulkAction || selectedIds.size === 0) return;
+
+    setBulkProcessing(true);
+    try {
+      if (bulkAction === "pause") {
+        const toPause = selectedAmbassadors.filter((amb) => amb.status === "approved");
+        if (toPause.length > 0) {
+          await onBulkPause(toPause);
+        }
+      } else if (bulkAction === "delete") {
+        await onBulkDelete(Array.from(selectedIds));
+      }
+      setSelectedIds(new Set());
+      setBulkAction(null);
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
 
   return (
     <TabsContent value="ambassadors" className="space-y-6">
@@ -491,26 +543,6 @@ export function AmbassadorsTab({
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="ambassadorCommission">
-                        {t.ambassadorCommission}
-                      </Label>
-                      <Input
-                        id="ambassadorCommission"
-                        type="number"
-                        step={0.01}
-                        min={0}
-                        max={100}
-                        value={editingAmbassador?.commission_rate ?? ""}
-                        onChange={(e) =>
-                          setEditingAmbassador((prev) => ({
-                            ...prev,
-                            commission_rate:
-                              parseFloat(e.target.value) || 0,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
                       <Label htmlFor="ambassadorPassword">
                         {t.ambassadorPassword}
                       </Label>
@@ -555,11 +587,6 @@ export function AmbassadorsTab({
                           {ambassadorErrors.password}
                         </p>
                       )}
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {language === "en"
-                          ? "Leave empty to keep current password"
-                          : "Laisser vide pour garder le mot de passe actuel"}
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -1024,11 +1051,38 @@ export function AmbassadorsTab({
           >
             {language === "en" ? "Clear filters" : "Effacer les filtres"}
           </Button>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBulkAction("pause")}
+                disabled={bulkProcessing}
+              >
+                {language === "en" ? "Pause selected" : "Mettre en pause"}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setBulkAction("delete")}
+                disabled={bulkProcessing}
+              >
+                {language === "en" ? "Delete selected" : "Supprimer la sélection"}
+              </Button>
+            </div>
+          )}
         </div>
       <div className="rounded-lg border border-border/50 bg-card overflow-hidden animate-in fade-in duration-500">
         <Table>
           <TableHeader>
             <TableRow className="border-border/50 hover:bg-transparent">
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
+                  onCheckedChange={handleToggleSelectAllVisible}
+                  aria-label={language === "en" ? "Select all ambassadors" : "Tout sélectionner"}
+                />
+              </TableHead>
               <TableHead className="font-semibold">{t.ambassadorName}</TableHead>
               <TableHead className="font-semibold">
                 {language === "en" ? "Status" : "Statut"}
@@ -1049,6 +1103,23 @@ export function AmbassadorsTab({
           <TableBody>
             {filteredList.map((ambassador) => (
               <TableRow key={ambassador.id} className="border-border/50">
+                <TableCell>
+                  <Checkbox
+                    checked={selectedIds.has(ambassador.id)}
+                    onCheckedChange={(checked) =>
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (checked) {
+                          next.add(ambassador.id);
+                        } else {
+                          next.delete(ambassador.id);
+                        }
+                        return next;
+                      })
+                    }
+                    aria-label={language === "en" ? "Select ambassador" : "Sélectionner l'ambassadeur"}
+                  />
+                </TableCell>
                 <TableCell>
                   <span className="font-medium">{ambassador.full_name}</span>
                 </TableCell>
@@ -1160,6 +1231,7 @@ export function AmbassadorsTab({
                           age: ambassadorAge,
                           social_link:
                             ambassadorSocialLink || ambassador.social_link,
+                        password: "",
                         });
                         setAmbassadorErrors({});
                         setIsAmbassadorDialogOpen(true);
@@ -1193,6 +1265,72 @@ export function AmbassadorsTab({
           </p>
         </div>
       )}
+
+      <Dialog
+        open={!!bulkAction}
+        onOpenChange={(open) => {
+          if (!open && !bulkProcessing) {
+            setBulkAction(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {bulkAction === "pause"
+                ? language === "en"
+                  ? "Pause selected ambassadors"
+                  : "Mettre en pause les ambassadeurs sélectionnés"
+                : language === "en"
+                  ? "Delete selected ambassadors"
+                  : "Supprimer les ambassadeurs sélectionnés"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p>
+              {bulkAction === "pause"
+                ? language === "en"
+                  ? "Are you sure you want to pause the selected ambassadors?"
+                  : "Êtes-vous sûr de vouloir mettre en pause les ambassadeurs sélectionnés ?"
+                : language === "en"
+                  ? "Are you sure you want to delete the selected ambassadors? This action cannot be undone."
+                  : "Êtes-vous sûr de vouloir supprimer les ambassadeurs sélectionnés ? Cette action est irréversible."}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {language === "en"
+                ? `Selected: ${selectedIds.size} ambassador(s)`
+                : `Sélectionné(s) : ${selectedIds.size} ambassadeur(s)`}
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setBulkAction(null)}
+              disabled={bulkProcessing}
+            >
+              {language === "en" ? "Cancel" : "Annuler"}
+            </Button>
+            <Button
+              variant={bulkAction === "delete" ? "destructive" : "default"}
+              onClick={handleBulkConfirm}
+              disabled={bulkProcessing}
+            >
+              {bulkProcessing ? (
+                <>
+                  <Loader size="sm" className="mr-2" />
+                  {language === "en" ? "Processing..." : "Traitement..."}
+                </>
+              ) : bulkAction === "pause" ? (
+                language === "en" ? "Pause" : "Mettre en pause"
+              ) : language === "en" ? (
+                "Delete"
+              ) : (
+                "Supprimer"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </TabsContent>
   );
 }

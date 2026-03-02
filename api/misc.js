@@ -743,7 +743,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     if (path === '/api/ambassador-application' && method === 'POST') {
       try {
         const bodyData = await parseBody(req);
-        const { fullName, age, phoneNumber, email, city, ville, socialLink, motivation } = bodyData;
+        const { fullName, age, phoneNumber, email, city, ville, socialLink, motivation, recaptchaToken } = bodyData;
 
         if (!fullName || !age || !phoneNumber || !city) {
           return res.status(400).json({ error: 'Full name, age, phone number, and city are required' });
@@ -760,6 +760,43 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
 
         if (socialLink && !socialLink.trim().startsWith('https://www.instagram.com/') && !socialLink.trim().startsWith('https://instagram.com/')) {
           return res.status(400).json({ error: 'Instagram link must start with https://www.instagram.com/ or https://instagram.com/' });
+        }
+
+        // Security: Require CAPTCHA for public ambassador applications
+        if (!recaptchaToken) {
+          return res.status(400).json({ 
+            error: 'reCAPTCHA verification required',
+            details: 'Please complete the reCAPTCHA verification'
+          });
+        }
+
+        if (recaptchaToken && recaptchaToken !== 'localhost-bypass-token') {
+          const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+          if (!RECAPTCHA_SECRET_KEY) {
+            console.error('RECAPTCHA_SECRET_KEY is not set');
+            return res.status(500).json({
+              error: 'Server configuration error',
+              details: 'reCAPTCHA secret key is not configured'
+            });
+          }
+
+          try {
+            const verifyResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
+            });
+            const verifyData = await verifyResponse.json();
+            if (!verifyData.success) {
+              return res.status(400).json({ 
+                error: 'reCAPTCHA verification failed',
+                details: verifyData['error-codes'] || []
+              });
+            }
+          } catch (recaptchaError) {
+            console.error('reCAPTCHA verification error:', recaptchaError);
+            return res.status(500).json({ error: 'reCAPTCHA verification service unavailable' });
+          }
         }
 
         if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {

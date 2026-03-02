@@ -430,10 +430,10 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
 
       if (error) throw error;
 
-      // Log the action
+      // Log cash confirmation (status change itself is logged by DB trigger)
       await supabase.from('order_logs').insert({
         order_id: orderId,
-        action: 'status_changed',
+        action: 'cash_confirmed',
         performed_by: ambassador?.id,
         performed_by_type: 'ambassador',
         details: { from_status: 'PENDING_CASH', to_status: 'PENDING_ADMIN_APPROVAL' }

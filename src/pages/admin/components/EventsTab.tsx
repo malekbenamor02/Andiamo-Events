@@ -1182,7 +1182,8 @@ export function EventsTab(p: EventsTabProps) {
                             </Button>
                           )}
                           </div>
-                          {/* Row 2: Pass Stock (stock management - separate task) */}
+                          {/* Row 2: Pass Stock (only for upcoming events; gallery events have no pass stock) */}
+                          {event.event_type !== 'gallery' && (
                           <div className="rounded-md border border-border/50 bg-muted/30 p-2 shadow-sm">
                             <Button 
                               size="sm" 
@@ -1239,6 +1240,7 @@ export function EventsTab(p: EventsTabProps) {
                             {p.language === 'en' ? 'Pass Stock' : 'Stock Passes'}
                           </Button>
                           </div>
+                          )}
                           {/* Row 3: Delete (critical action - isolated) */}
                           <div className="rounded-md border border-border/50 border-destructive/30 bg-muted/30 p-2 shadow-sm">
                             <Button 

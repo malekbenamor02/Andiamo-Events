@@ -158,14 +158,14 @@ export function OverviewTab({
           <CardContent className="p-6 relative z-10">
             <div className="flex items-start justify-between mb-4">
               <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(107, 107, 107, 0.2)" }}>
-                <Clock className="w-6 h-6" style={{ color: "#6B6B6B" }} />
+                <Clock className="w-6 h-6" style={{ color: "#F59E0B" }} />
               </div>
             </div>
             <div className="space-y-1">
               <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
                 {t.pendingApplications}
               </p>
-              <p className="text-3xl font-bold font-heading" style={{ color: "#FFFFFF" }}>
+              <p className="text-3xl font-bold font-heading" style={{ color: "#F59E0B" }}>
                 {pendingApplications.length}
               </p>
               <p className="text-xs font-heading" style={{ color: "#B0B0B0" }}>
@@ -214,16 +214,21 @@ export function OverviewTab({
             e.currentTarget.style.borderColor = "#2A2A2A";
           }}
         >
-          <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl" style={{ backgroundColor: "rgba(226, 24, 54, 0.05)" }} />
+          <div
+            className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl"
+            style={{ backgroundColor: "rgba(34, 197, 94, 0.05)" }}
+          />
           <CardContent className="p-6 relative z-10">
             <div className="flex items-start justify-between mb-4">
-              <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(226, 24, 54, 0.2)" }}>
-                <CheckCircle className="w-6 h-6" style={{ color: "#E21836" }} />
+              <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(34, 197, 94, 0.2)" }}>
+                <CheckCircle className="w-6 h-6" style={{ color: "#22C55E" }} />
               </div>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground font-heading">{t.approvedApplications}</p>
-              <p className="text-3xl font-bold font-heading text-foreground">{approvedCount}</p>
+              <p className="text-3xl font-bold font-heading font-heading" style={{ color: "#22C55E" }}>
+                {approvedCount}
+              </p>
               <p className="text-xs text-muted-foreground font-heading">
                 {language === "en" ? "Active ambassadors" : "Ambassadeurs actifs"}
               </p>
@@ -240,9 +245,9 @@ export function OverviewTab({
                     >
                       <div
                         className="w-full rounded-t transition-all duration-300 min-h-[2px]"
-                        style={{ backgroundColor: "rgba(226, 24, 54, 0.3)", height: `${(day.applications / maxApps) * 100}%` }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(226, 24, 54, 0.5)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(226, 24, 54, 0.3)")}
+                        style={{ backgroundColor: "rgba(34, 197, 94, 0.3)", height: `${(day.applications / maxApps) * 100}%` }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(34, 197, 94, 0.5)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(34, 197, 94, 0.3)")}
                       />
                     </div>
                   );
@@ -272,16 +277,21 @@ export function OverviewTab({
             e.currentTarget.style.borderColor = "#2A2A2A";
           }}
         >
-          <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl" style={{ backgroundColor: "rgba(0, 207, 255, 0.05)" }} />
+          <div
+            className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl"
+            style={{ backgroundColor: "rgba(226, 24, 54, 0.05)" }}
+          />
           <CardContent className="p-6 relative z-10">
             <div className="flex items-start justify-between mb-4">
-              <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(107, 107, 107, 0.2)" }}>
-                <CalendarIcon className="w-6 h-6" style={{ color: "#6B6B6B" }} />
+              <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(226, 24, 54, 0.2)" }}>
+                <CalendarIcon className="w-6 h-6" style={{ color: "#E21836" }} />
               </div>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground font-heading">{t.totalEvents}</p>
-              <p className="text-3xl font-bold font-heading text-foreground">{events.length}</p>
+              <p className="text-3xl font-bold font-heading" style={{ color: "#E21836" }}>
+                {events.length}
+              </p>
               <p className="text-xs text-muted-foreground font-heading">
                 {language === "en" ? "All time events" : "Événements de tous les temps"}
               </p>
@@ -298,9 +308,9 @@ export function OverviewTab({
                     >
                       <div
                         className="w-full rounded-t transition-all duration-300 min-h-[2px]"
-                        style={{ backgroundColor: "rgba(0, 207, 255, 0.3)", height: `${(day.eventsCreated / maxEvents) * 100}%` }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(0, 207, 255, 0.5)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(0, 207, 255, 0.3)")}
+                        style={{ backgroundColor: "rgba(226, 24, 54, 0.3)", height: `${(day.eventsCreated / maxEvents) * 100}%` }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(226, 24, 54, 0.5)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(226, 24, 54, 0.3)")}
                       />
                     </div>
                   );
@@ -330,7 +340,10 @@ export function OverviewTab({
             e.currentTarget.style.borderColor = "#2A2A2A";
           }}
         >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
+          <div
+            className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl"
+            style={{ backgroundColor: "rgba(107, 114, 128, 0.1)" }}
+          />
           <CardContent className="p-6 relative z-10">
             <div className="flex items-start justify-between mb-4">
               <div className="p-3 rounded-xl" style={{ backgroundColor: "rgba(107, 107, 107, 0.2)" }}>
@@ -352,7 +365,7 @@ export function OverviewTab({
                       title={`${day.name}: ${day.orders}`}
                     >
                       <div
-                        className="w-full bg-primary/30 rounded-t transition-all duration-300 hover:bg-primary/50 min-h-[2px]"
+                        className="w-full bg-zinc-500/40 rounded-t transition-all duration-300 hover:bg-zinc-400/60 min-h-[2px]"
                         style={{ height: `${(day.orders / maxOrders) * 100}%` }}
                       />
                     </div>

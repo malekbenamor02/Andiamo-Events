@@ -45,6 +45,7 @@ const Application = ({ language }: ApplicationProps) => {
   const [applicationEnabled, setApplicationEnabled] = useState<boolean | null>(null);
   const [applicationMessage, setApplicationMessage] = useState<string>("");
   const [loadingApplicationStatus, setLoadingApplicationStatus] = useState(true);
+  const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   
   const heroRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -152,6 +153,69 @@ const Application = ({ language }: ApplicationProps) => {
       supabase.removeChannel(channel);
     };
   }, [language]);
+
+  useEffect(() => {
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '0.0.0.0' ||
+      window.location.hostname.includes('localhost');
+    
+    if (isLocalhost) {
+      return;
+    }
+
+    if (!RECAPTCHA_SITE_KEY) {
+      console.error('VITE_RECAPTCHA_SITE_KEY is not set in environment variables');
+      return;
+    }
+
+    if (window.grecaptcha) {
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+
+    return () => {
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+  }, [RECAPTCHA_SITE_KEY]);
+
+  const executeRecaptcha = async (): Promise<string | null> => {
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '0.0.0.0' ||
+      window.location.hostname.includes('localhost');
+    
+    if (isLocalhost) {
+      return 'localhost-bypass-token';
+    }
+
+    if (!RECAPTCHA_SITE_KEY || !window.grecaptcha) {
+      return null;
+    }
+
+    try {
+      if (window.grecaptcha.ready) {
+        await new Promise<void>((resolve) => {
+          window.grecaptcha.ready(() => resolve());
+        });
+      }
+
+      const token = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'ambassador_application' });
+      return token;
+    } catch (error) {
+      console.error('reCAPTCHA execution error:', error);
+      return null;
+    }
+  };
 
   const t = {
     en: {
@@ -329,6 +393,21 @@ const Application = ({ language }: ApplicationProps) => {
         return;
       }
 
+      // Execute reCAPTCHA v3 (bypassed on localhost)
+      const recaptchaToken = await executeRecaptcha();
+
+      if (!recaptchaToken) {
+        toast({
+          title: language === 'en' ? 'Verification Failed' : 'Échec de la vérification',
+          description: language === 'en' 
+            ? 'reCAPTCHA verification failed. Please try again.' 
+            : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
       // Sanitize all inputs
       const sanitizedFullName = DOMPurify.sanitize(formData.fullName);
       const sanitizedEmail = DOMPurify.sanitize(formData.email);
@@ -354,6 +433,7 @@ const Application = ({ language }: ApplicationProps) => {
         ville: villeValue,
         socialLink: sanitizedSocialLink,
         motivation: sanitizedMotivation,
+        recaptchaToken,
       };
 
       // Submit application via API endpoint (includes all validation and checks)
