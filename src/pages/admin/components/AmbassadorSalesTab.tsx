@@ -571,7 +571,12 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                 )}
                               </TableCell>
                               <TableCell className="py-2 text-center whitespace-nowrap text-xs">
-                                {new Date(order.created_at).toLocaleDateString(p.language)}
+                                {(() => {
+                                  const d = new Date(order.created_at);
+                                  const day = String(d.getDate()).padStart(2, "0");
+                                  const month = String(d.getMonth() + 1).padStart(2, "0");
+                                  return `${day}/${month}/${d.getFullYear()}`;
+                                })()}
                               </TableCell>
                               <TableCell className="py-2 text-center">
                                 <Button

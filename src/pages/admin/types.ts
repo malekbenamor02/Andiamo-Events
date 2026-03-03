@@ -209,14 +209,15 @@ export interface ContactMessage {
   created_at: string;
 }
 
-/** Filters for online orders tab. */
+/** Filters for online orders tab (same names/order as COD, without ambassador). */
 export interface OnlineOrderFilters {
-  status: string;
-  city: string;
-  passType: string;
   orderId: string;
+  status: string;
+  phone: string;
+  passType: string;
   dateFrom: Date | null;
   dateTo: Date | null;
+  city: string;
 }
 
 /** Order pass item (from order_passes table). */

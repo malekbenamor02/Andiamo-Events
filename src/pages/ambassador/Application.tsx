@@ -11,7 +11,7 @@ import { logFormSubmission, logger } from "@/lib/logger";
 import { Link } from "react-router-dom";
 import { API_ROUTES } from '@/lib/api-routes';
 import { safeApiCall } from '@/lib/api-client';
-import { User, Users, Zap, Mail, Phone, MapPin, Instagram, FileText, Calendar, Award, Target, Gift, Crown, TrendingUp, XCircle } from "lucide-react";
+import { User, Users, Zap, Mail, Phone, MapPin, Instagram, FileText, Calendar, Award, Target, Gift, Crown, TrendingUp, XCircle, CheckCircle } from "lucide-react";
 // @ts-ignore
 import DOMPurify from 'dompurify';
 import LoadingScreen from '@/components/ui/LoadingScreen';
@@ -619,7 +619,10 @@ const Application = ({ language }: ApplicationProps) => {
               <CardContent className="p-8">
               {submitted ? (
                 <div className="text-center space-y-4">
-                  <p className="font-semibold" style={{ color: '#E21836' }}>{t.success}</p>
+                  <div className="flex flex-col items-center gap-3">
+                    <CheckCircle className="w-12 h-12 text-green-500 shrink-0" aria-hidden />
+                    <p className="font-semibold text-green-600 dark:text-green-400">{t.success}</p>
+                  </div>
                   <Button 
                     asChild 
                     variant="outline" 

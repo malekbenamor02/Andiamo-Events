@@ -108,7 +108,7 @@ export function OrderDetailsDialog({
                         {language === 'en' ? 'Order Number' : 'NumÃ©ro de Commande'}
                       </Label>
                       <p className="font-mono text-sm break-all">
-                        {order.order_number != null ? order.order_number : order.id}
+                        #{order.order_number != null ? String(order.order_number) : String(order.id)}
                       </p>
                     </div>
                     <div className="space-y-1">
@@ -175,7 +175,12 @@ export function OrderDetailsDialog({
                         <CalendarIcon className="w-3 h-3" />
                         {language === 'en' ? 'Created At' : 'CrÃ©Ã© Le'}
                       </Label>
-                      <p className="text-sm">{new Date(order.created_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}</p>
+                      <p className="text-sm">{(() => {
+                        const d = new Date(order.created_at);
+                        const day = String(d.getDate()).padStart(2, '0');
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        return `${day}/${month}/${d.getFullYear()}, ${d.toLocaleTimeString(language === 'en' ? 'en-GB' : 'fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+                      })()}</p>
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">

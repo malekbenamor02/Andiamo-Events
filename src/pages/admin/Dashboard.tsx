@@ -778,12 +778,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [isOnlineOrderDetailsOpen, setIsOnlineOrderDetailsOpen] = useState(false);
   const [loadingOnlineOrders, setLoadingOnlineOrders] = useState(false);
   const [onlineOrderFilters, setOnlineOrderFilters] = useState({
-    status: 'all',
-    city: 'all',
-    passType: 'all',
     orderId: '',
+    status: 'all',
+    phone: '',
+    passType: 'all',
     dateFrom: null as Date | null,
-    dateTo: null as Date | null
+    dateTo: null as Date | null,
+    city: 'all',
   });
 
   // Dashboard overview stats: all payment methods (POS, online, ambassador) for the selected event
@@ -2567,13 +2568,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (error) throw error;
       
-      // Apply client-side filtering for order ID and pass type (order_passes)
+      // Apply client-side filtering for order number (or order ID), phone, and pass type
       let filteredData = data || [];
       if (onlineOrderFilters.orderId && onlineOrderFilters.orderId.trim() !== '') {
-        const orderIdSearch = onlineOrderFilters.orderId.trim().toUpperCase();
-        filteredData = filteredData.filter((order: any) =>
-          order.id && order.id.toUpperCase().includes(orderIdSearch)
-        );
+        const search = onlineOrderFilters.orderId.trim().replace(/^#/, '').toUpperCase();
+        filteredData = filteredData.filter((order: any) => {
+          if (order.order_number != null) {
+            return String(order.order_number).toUpperCase().includes(search);
+          }
+          return order.id && order.id.toUpperCase().includes(search);
+        });
+      }
+      if (onlineOrderFilters.phone && onlineOrderFilters.phone.trim() !== '') {
+        const phoneSearch = onlineOrderFilters.phone.trim().replace(/\s/g, '');
+        filteredData = filteredData.filter((order: any) => {
+          const phone = (order.user_phone || order.phone || '').toString().replace(/\s/g, '');
+          return phone && phone.includes(phoneSearch);
+        });
       }
       if (onlineOrderFilters.passType !== 'all') {
         const pt = onlineOrderFilters.passType;
@@ -2636,13 +2647,23 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
       if (error) throw error;
       
-      // Apply client-side filtering for order ID and pass type (order_passes)
+      // Apply client-side filtering for order number (or order ID), phone, and pass type
       let filteredData = data || [];
       if (filters.orderId && filters.orderId.trim() !== '') {
-        const orderIdSearch = filters.orderId.trim().toUpperCase();
-        filteredData = filteredData.filter((order: any) =>
-          order.id && order.id.toUpperCase().includes(orderIdSearch)
-        );
+        const search = filters.orderId.trim().replace(/^#/, '').toUpperCase();
+        filteredData = filteredData.filter((order: any) => {
+          if (order.order_number != null) {
+            return String(order.order_number).toUpperCase().includes(search);
+          }
+          return order.id && order.id.toUpperCase().includes(search);
+        });
+      }
+      if (filters.phone && filters.phone.trim() !== '') {
+        const phoneSearch = filters.phone.trim().replace(/\s/g, '');
+        filteredData = filteredData.filter((order: any) => {
+          const phone = (order.user_phone || order.phone || '').toString().replace(/\s/g, '');
+          return phone && phone.includes(phoneSearch);
+        });
       }
       if (filters.passType !== 'all') {
         const pt = filters.passType;
@@ -11503,6 +11524,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         order={selectedOnlineOrder}
         language={language}
         onUpdateStatus={updateOnlineOrderStatus}
+        onResendTicket={handleResendTicketEmail}
       />
 
       <AmbassadorInfoDialog

@@ -26,8 +26,6 @@ import {
   Ticket,
   CreditCard,
   Settings,
-  CheckCircle,
-  XCircle,
   ArrowDown,
   Send,
   Copy,
@@ -40,6 +38,7 @@ export interface OnlineOrderDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
   order: {
     id: string;
+    order_number?: number | string | null;
     payment_status?: string;
     source?: string;
     created_at: string;
@@ -64,6 +63,8 @@ export interface OnlineOrderDetailsDialogProps {
   } | null;
   language: "en" | "fr";
   onUpdateStatus: (orderId: string, newStatus: "PENDING_PAYMENT" | "PAID" | "FAILED" | "REFUNDED") => void | Promise<void>;
+  /** Optional: resend ticket email (only shown for paid orders when provided) */
+  onResendTicket?: (orderId: string) => void | Promise<void>;
 }
 
 export function OnlineOrderDetailsDialog({
@@ -72,6 +73,7 @@ export function OnlineOrderDetailsDialog({
   order,
   language,
   onUpdateStatus,
+  onResendTicket,
 }: OnlineOrderDetailsDialogProps) {
   const { toast } = useToast();
 
@@ -117,9 +119,11 @@ export function OnlineOrderDetailsDialog({
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground flex items-center gap-1">
                       <FileText className="w-3 h-3" />
-                      {language === "en" ? "Order ID" : "ID Commande"}
+                      {language === "en" ? "Order Number" : "Numéro de Commande"}
                     </Label>
-                    <p className="font-mono text-sm break-all">{order.id}</p>
+                    <p className="font-mono text-sm break-all">
+                      #{order.order_number != null ? String(order.order_number) : order.id.length > 8 ? order.id.slice(0, 8).toUpperCase() : order.id}
+                    </p>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground flex items-center gap-1">
@@ -174,7 +178,12 @@ export function OnlineOrderDetailsDialog({
                       <CalendarIcon className="w-3 h-3" />
                       {language === "en" ? "Created At" : "Créé Le"}
                     </Label>
-                    <p className="text-sm">{new Date(order.created_at).toLocaleString(language === "en" ? "en-US" : "fr-FR")}</p>
+                    <p className="text-sm">{(() => {
+                      const d = new Date(order.created_at);
+                      const day = String(d.getDate()).padStart(2, "0");
+                      const month = String(d.getMonth() + 1).padStart(2, "0");
+                      return `${day}/${month}/${d.getFullYear()}, ${d.toLocaleTimeString(language === "en" ? "en-GB" : "fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+                    })()}</p>
                   </div>
                   {order.updated_at && order.updated_at !== order.created_at && (
                     <div className="space-y-1">
@@ -182,7 +191,12 @@ export function OnlineOrderDetailsDialog({
                         <Clock className="w-3 h-3" />
                         {language === "en" ? "Updated At" : "Mis à Jour Le"}
                       </Label>
-                      <p className="text-sm">{new Date(order.updated_at).toLocaleString(language === "en" ? "en-US" : "fr-FR")}</p>
+                      <p className="text-sm">{(() => {
+                        const d = new Date(order.updated_at);
+                        const day = String(d.getDate()).padStart(2, "0");
+                        const month = String(d.getMonth() + 1).padStart(2, "0");
+                        return `${day}/${month}/${d.getFullYear()}, ${d.toLocaleTimeString(language === "en" ? "en-GB" : "fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+                      })()}</p>
                     </div>
                   )}
                   {order.total_price && (
@@ -444,42 +458,27 @@ export function OnlineOrderDetailsDialog({
               <CardContent>
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    variant="default"
-                    onClick={() => onUpdateStatus(order.id, "PAID")}
-                    disabled={order.payment_status === "PAID"}
-                  >
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    {language === "en" ? "Mark as Paid" : "Marquer comme Payé"}
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => onUpdateStatus(order.id, "FAILED")}
-                    disabled={order.payment_status === "FAILED"}
-                  >
-                    <XCircle className="w-4 h-4 mr-2" />
-                    {language === "en" ? "Mark as Failed" : "Marquer comme Échoué"}
-                  </Button>
-                  <Button
                     variant="secondary"
-                    onClick={() => onUpdateStatus(order.id, "REFUNDED")}
-                    disabled={order.payment_status === "REFUNDED"}
-                  >
-                    <ArrowDown className="w-4 h-4 mr-2" />
-                    {language === "en" ? "Mark as Refunded" : "Marquer comme Remboursé"}
-                  </Button>
-                  <Button
-                    variant="outline"
                     onClick={() => {
                       toast({
                         title: language === "en" ? "Coming Soon" : "Bientôt Disponible",
-                        description: language === "en" ? "Email/SMS templates will be available soon" : "Les modèles d'email/SMS seront bientôt disponibles",
+                        description: language === "en" ? "Refund will be available soon." : "Le remboursement sera bientôt disponible.",
                         variant: "default",
                       });
                     }}
                   >
-                    <Send className="w-4 h-4 mr-2" />
-                    {language === "en" ? "Resend Email/SMS" : "Renvoyer Email/SMS"}
+                    <ArrowDown className="w-4 h-4 mr-2" />
+                    {language === "en" ? "Mark as Refunded" : "Marquer comme Remboursé"}
                   </Button>
+                  {order.payment_status === "PAID" && onResendTicket && (
+                    <Button
+                      variant="outline"
+                      onClick={() => onResendTicket(order.id)}
+                    >
+                      <Send className="w-4 h-4 mr-2" />
+                      {language === "en" ? "Resend Email" : "Renvoyer l'Email"}
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
