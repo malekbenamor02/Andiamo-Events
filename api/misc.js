@@ -2678,8 +2678,32 @@ We Create Memories`;
           } catch (e) { /* ignore */ }
           const failUpdate = { status: 'FAILED', payment_status: 'FAILED', updated_at: new Date().toISOString() };
           if (paymentConfirmResponse != null) failUpdate.payment_confirm_response = paymentConfirmResponse;
-          await dbClient.from('orders').update(failUpdate).eq('id', orderId);
-          return res.status(200).json({ success: false, status: 'failed', orderId, message: 'Payment failed or could not be verified with the gateway' });
+
+          const { error: failUpdateError } = await dbClient
+            .from('orders')
+            .update(failUpdate)
+            .eq('id', orderId);
+
+          if (failUpdateError) {
+            console.error('ClicToPay confirm: failed to mark order as FAILED:', {
+              orderId,
+              error: failUpdateError.message || failUpdateError,
+            });
+            return res.status(500).json({
+              success: false,
+              status: 'failed',
+              orderId,
+              message: 'Payment failed and order status could not be updated. Please contact support.',
+              dbError: failUpdateError.message || String(failUpdateError),
+            });
+          }
+
+          return res.status(200).json({
+            success: false,
+            status: 'failed',
+            orderId,
+            message: 'Payment failed or could not be verified with the gateway',
+          });
         }
 
         const oldStatus = order.status;
