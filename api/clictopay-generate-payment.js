@@ -143,11 +143,13 @@ export default async function handler(req, res) {
     const ctpOrderId = data.orderId || data.order_id;
     if (formUrl) {
       if (ctpOrderId) {
+        // Store only minimal reference (no full gateway response with potential PII)
+        const safePaymentResponseData = { gatewayOrderId: String(ctpOrderId) };
         await dbClient
           .from('orders')
           .update({
             payment_gateway_reference: String(ctpOrderId),
-            payment_response_data: data,
+            payment_response_data: safePaymentResponseData,
             updated_at: new Date().toISOString()
           })
           .eq('id', orderId);

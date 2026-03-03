@@ -2573,6 +2573,34 @@ We Create Memories`;
     // ClicToPay callback: marks PENDING_ONLINE order as PAID and generates tickets
     // ============================================
     if ((path === '/api/clictopay-confirm-payment' || path?.startsWith('/api/clictopay-confirm-payment')) && (method === 'POST' || method === 'GET')) {
+      // Keep only safe audit fields from gateway response (no card/PII).
+      function sanitizeClicToPayConfirmResponse(raw) {
+        if (raw == null || typeof raw !== 'object') return raw;
+        const safe = {};
+        const allow = ['orderNumber', 'orderStatus', 'errorCode', 'errorMessage', 'amount', 'currency', 'actionCode', 'actionCodeDescription', 'paymentWay', 'date', 'authDateTime', 'feeAmount', 'chargeback', 'fraudLevel', 'terminalId', 'orderDescription'];
+        for (const k of allow) {
+          if (Object.prototype.hasOwnProperty.call(raw, k)) safe[k] = raw[k];
+        }
+        if (raw.paymentAmountInfo && typeof raw.paymentAmountInfo === 'object') {
+          safe.paymentAmountInfo = {
+            paymentState: raw.paymentAmountInfo.paymentState,
+            approvedAmount: raw.paymentAmountInfo.approvedAmount,
+            refundedAmount: raw.paymentAmountInfo.refundedAmount,
+            depositedAmount: raw.paymentAmountInfo.depositedAmount
+          };
+        }
+        if (raw.bankInfo && typeof raw.bankInfo === 'object' && raw.bankInfo.bankCountryCode != null) {
+          safe.bankInfo = { bankCountryCode: raw.bankInfo.bankCountryCode };
+        }
+        if (Array.isArray(raw.attributes)) {
+          const mdOrder = raw.attributes.find((a) => a && a.name === 'mdOrder');
+          if (mdOrder && mdOrder.value != null) {
+            safe.attributes = [{ name: 'mdOrder', value: mdOrder.value }];
+          }
+        }
+        return safe;
+      }
+
       try {
         if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
           return res.status(500).json({ error: 'Supabase not configured' });
@@ -2677,7 +2705,7 @@ We Create Memories`;
             await dbClient.rpc('release_order_stock_internal', { order_id_param: orderId });
           } catch (e) { /* ignore */ }
           const failUpdate = { status: 'FAILED', payment_status: 'FAILED', updated_at: new Date().toISOString() };
-          if (paymentConfirmResponse != null) failUpdate.payment_confirm_response = paymentConfirmResponse;
+          if (paymentConfirmResponse != null) failUpdate.payment_confirm_response = sanitizeClicToPayConfirmResponse(paymentConfirmResponse);
 
           const { error: failUpdateError } = await dbClient
             .from('orders')
@@ -2708,7 +2736,7 @@ We Create Memories`;
 
         const oldStatus = order.status;
         const paidUpdate = { status: 'PAID', payment_status: 'PAID', approved_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-        if (paymentConfirmResponse != null) paidUpdate.payment_confirm_response = paymentConfirmResponse;
+        if (paymentConfirmResponse != null) paidUpdate.payment_confirm_response = sanitizeClicToPayConfirmResponse(paymentConfirmResponse);
         const { data: updatedOrder, error: updateError } = await dbClient
           .from('orders')
           .update(paidUpdate)
