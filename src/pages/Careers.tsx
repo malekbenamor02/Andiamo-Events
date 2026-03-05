@@ -443,7 +443,7 @@ export default function Careers({ language }: CareersProps) {
         <PageMeta title={t.title} description={t.subtitle} />
         <div className="min-h-screen bg-background">
           {/* Hero */}
-          <section className="container pt-16 pb-6 px-4">
+          <section className="container pt-10 pb-4 md:pt-16 md:pb-8 px-4">
             <div className="max-w-3xl mx-auto text-center">
               <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4 bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent animate-in fade-in slide-in-from-bottom-4 duration-700">
                 {t.title}
@@ -456,7 +456,7 @@ export default function Careers({ language }: CareersProps) {
 
           {/* Why join us */}
           {benefits && Array.isArray(benefits.items) && benefits.items.length > 0 && (
-            <section className="container py-6 px-4">
+            <section className="container py-4 md:py-8 px-4">
               <div className="max-w-4xl mx-auto">
                 <h2 className="text-2xl md:text-3xl font-semibold mb-8 text-center flex items-center justify-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
                   <Sparkles className="h-8 w-8 text-primary" />
@@ -483,7 +483,7 @@ export default function Careers({ language }: CareersProps) {
           )}
 
           {/* Openings - square cards */}
-          <section className="container pt-4 pb-16 px-4">
+          <section className="container pt-2 pb-10 md:pt-6 md:pb-16 px-4">
             <div className="max-w-4xl mx-auto">
               {domains.length === 0 ? (
                 <p className="text-center text-muted-foreground text-lg animate-in fade-in duration-500">{t.closed}</p>
