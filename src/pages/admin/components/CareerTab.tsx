@@ -453,6 +453,17 @@ export function CareerTab({ language }: CareerTabProps) {
   };
 
   const saveDomain = async () => {
+    if (domainForm.description && domainForm.description.length > 250) {
+      toast({
+        title: language === "fr" ? "Validation" : "Validation",
+        description:
+          language === "fr"
+            ? "La description ne doit pas dépasser 250 caractères."
+            : "Description must not exceed 250 characters.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       if (editingDomain) {
         await updateCareerDomain(editingDomain.id, domainForm);
@@ -1322,6 +1333,7 @@ export function CareerTab({ language }: CareerTabProps) {
               <Input
                 value={domainForm.description}
                 onChange={(e) => setDomainForm((p) => ({ ...p, description: e.target.value }))}
+                maxLength={250}
                 placeholder="Optional"
               />
             </div>

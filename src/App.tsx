@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense, lazy } from "react";
 import { HelmetProvider, Helmet } from "react-helmet-async";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -9,29 +9,32 @@ import { JsonLdOrganization, JsonLdLocalBusiness, JsonLdWebSite } from "@/compon
 import Navigation from "./components/layout/Navigation";
 import Footer from "./components/layout/Footer";
 import MaintenanceMode from "./components/layout/MaintenanceMode";
-import Index from "./pages/Index";
-import Events from "./pages/Events";
+import LoadingScreen from "./components/ui/LoadingScreen";
 
-import About from "./pages/About";
-import Contact from "./pages/Contact";
-import NotFound from "./pages/NotFound";
-import Terms from "./pages/Terms";
+// Route-level code splitting for main pages
+const Index = lazy(() => import("./pages/Index"));
+const Events = lazy(() => import("./pages/Events"));
+const About = lazy(() => import("./pages/About"));
+const Contact = lazy(() => import("./pages/Contact"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Terms = lazy(() => import("./pages/Terms"));
 import ScrollToTop from "./components/layout/ScrollToTop";
-import Auth from "./pages/ambassador/Auth";
-import AdminLogin from "./pages/admin/Login";
-import AdminDashboard from "./pages/admin/Dashboard";
+// Auth / dashboard sections (loaded on demand)
+const Auth = lazy(() => import("./pages/ambassador/Auth"));
+const AdminLogin = lazy(() => import("./pages/admin/Login"));
+const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
 import ProtectedAdminRoute from "./components/auth/ProtectedAdminRoute";
-import AmbassadorDashboard from "./pages/ambassador/Dashboard";
+const AmbassadorDashboard = lazy(() => import("./pages/ambassador/Dashboard"));
 import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute";
 
-import AmbassadorApplication from "./pages/ambassador/Application";
-import Careers from "./pages/Careers";
-import PassPurchase from "./pages/PassPurchase";
-import PaymentProcessing from "./pages/PaymentProcessing";
-import GalleryEvent from "./pages/GalleryEvent";
-import UpcomingEvent from "./pages/UpcomingEvent";
-import ScannerApp from "./pages/scanner/ScannerApp";
-import PosApp from "./pages/pos/PosApp";
+const AmbassadorApplication = lazy(() => import("./pages/ambassador/Application"));
+const Careers = lazy(() => import("./pages/Careers"));
+const PassPurchase = lazy(() => import("./pages/PassPurchase"));
+const PaymentProcessing = lazy(() => import("./pages/PaymentProcessing"));
+const GalleryEvent = lazy(() => import("./pages/GalleryEvent"));
+const UpcomingEvent = lazy(() => import("./pages/UpcomingEvent"));
+const ScannerApp = lazy(() => import("./pages/scanner/ScannerApp"));
+const PosApp = lazy(() => import("./pages/pos/PosApp"));
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
 import PhoneCapturePopup from "./components/PhoneCapturePopup";
@@ -92,40 +95,48 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
       <MaintenanceMode language={language}>
         <div className="min-h-screen bg-background">
           {!isScanner && !isPos && <Navigation language={language} toggleLanguage={toggleLanguage} />}
-          <Routes>
-            <Route path="/scanner/*" element={<ScannerApp language={language} />} />
-            <Route path="/pos/:outletSlug/*" element={<PosApp language={language} />} />
-            <Route path="/" element={<Index language={language} />} />
-            <Route path="/events" element={<Events language={language} />} />
-            <Route path="/gallery/:eventSlug" element={<GalleryEvent language={language} />} />
-            <Route path="/event/:eventSlug" element={<UpcomingEvent language={language} />} />
-            <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
-            <Route path="/payment-processing" element={<PaymentProcessing language={language} />} />
-    
-            <Route path="/about" element={<About language={language} />} />
-            <Route path="/careers" element={<Careers language={language} />} />
-            <Route path="/careers/:slug/apply" element={<Careers language={language} />} />
-            <Route path="/careers/:slug" element={<Careers language={language} />} />
-            <Route path="/ambassador" element={<AmbassadorApplication language={language} />} />
-            <Route path="/ambassador/auth" element={<Auth language={language} />} />
+          <Suspense fallback={<LoadingScreen />}>
+            <Routes>
+              <Route path="/scanner/*" element={<ScannerApp language={language} />} />
+              <Route path="/pos/:outletSlug/*" element={<PosApp language={language} />} />
+              <Route path="/" element={<Index language={language} />} />
+              <Route path="/events" element={<Events language={language} />} />
+              <Route path="/gallery/:eventSlug" element={<GalleryEvent language={language} />} />
+              <Route path="/event/:eventSlug" element={<UpcomingEvent language={language} />} />
+              <Route path="/pass-purchase" element={<PassPurchase language={language} />} />
+              <Route path="/payment-processing" element={<PaymentProcessing language={language} />} />
 
-            <Route path="/ambassador/dashboard" element={
-              <ProtectedAmbassadorRoute language={language}>
-                <AmbassadorDashboard language={language} />
-              </ProtectedAmbassadorRoute>
-            } />
-            <Route path="/admin/login" element={<AdminLogin language={language} />} />
-            <Route path="/admin" element={
-              <ProtectedAdminRoute language={language}>
-                <AdminDashboard language={language} />
-              </ProtectedAdminRoute>
-            } />
-            <Route path="/contact" element={<Contact language={language} />} />
-            <Route path="/terms" element={<Terms language={language} />} />
-            {/* Friendly URL route for event pass purchase: /event-slug */}
-            <Route path="/:eventSlug" element={<PassPurchase language={language} />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+              <Route path="/about" element={<About language={language} />} />
+              <Route path="/careers" element={<Careers language={language} />} />
+              <Route path="/careers/:slug/apply" element={<Careers language={language} />} />
+              <Route path="/careers/:slug" element={<Careers language={language} />} />
+              <Route path="/ambassador" element={<AmbassadorApplication language={language} />} />
+              <Route path="/ambassador/auth" element={<Auth language={language} />} />
+
+              <Route
+                path="/ambassador/dashboard"
+                element={
+                  <ProtectedAmbassadorRoute language={language}>
+                    <AmbassadorDashboard language={language} />
+                  </ProtectedAmbassadorRoute>
+                }
+              />
+              <Route path="/admin/login" element={<AdminLogin language={language} />} />
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedAdminRoute language={language}>
+                    <AdminDashboard language={language} />
+                  </ProtectedAdminRoute>
+                }
+              />
+              <Route path="/contact" element={<Contact language={language} />} />
+              <Route path="/terms" element={<Terms language={language} />} />
+              {/* Friendly URL route for event pass purchase: /event-slug */}
+              <Route path="/:eventSlug" element={<PassPurchase language={language} />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
           {!isScanner && !isPos && <Footer language={language} />}
         </div>
       </MaintenanceMode>

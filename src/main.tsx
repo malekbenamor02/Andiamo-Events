@@ -9,10 +9,30 @@ import { sanitizeConsoleArgs, sanitizeObject, sanitizeString } from './lib/sanit
 
 // Initialize Sentry as early as possible for error tracking
 initSentry()
-// Microsoft Clarity for session recordings and heatmaps (when VITE_CLARITY_PROJECT_ID is set)
-initClarity()
-// Google Analytics 4 (when VITE_GA_MEASUREMENT_ID is set)
-initGA()
+
+// Defer non-essential analytics so they don't block initial paint
+const deferAnalytics = () => {
+  try {
+    initClarity()
+  } catch {
+    // ignore analytics init errors
+  }
+  try {
+    initGA()
+  } catch {
+    // ignore analytics init errors
+  }
+}
+
+if (typeof window !== 'undefined') {
+  if ('requestIdleCallback' in window) {
+    (window as any).requestIdleCallback(deferAnalytics)
+  } else {
+    window.addEventListener('load', () => {
+      setTimeout(deferAnalytics, 0)
+    })
+  }
+}
 
 // Early error handler to catch errors before main setup
 const suppressBrowserExtensionError = (error: any) => {
