@@ -503,7 +503,6 @@ function registerCareerRoutes(app, deps) {
       if (insertErr) throw insertErr;
 
       // Send personalized confirmation email (plan §6.1: same design as ambassador emails)
-      const emailField = fieldList.find((f) => f.field_type === 'email');
       const toEmail = emailVal || formData.email_address || (emailField && formData[emailField.field_key]) || null;
       if (toEmail && getEmailTransporter) {
         const transporter = getEmailTransporter();
