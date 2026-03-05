@@ -22,7 +22,7 @@ import {
 } from "@/lib/career/api";
 import type { CareerDomain, CareerApplicationField } from "@/lib/career/types";
 import { uploadCareerDocument } from "@/lib/upload";
-import { Briefcase, ArrowLeft, ArrowRight, CheckCircle, Sparkles, Upload, X, Search, Loader2 } from "lucide-react";
+import { Briefcase, ArrowLeft, ArrowRight, CheckCircle, Sparkles, Upload, X, Search, Loader2, Share2 } from "lucide-react";
 
 interface CareersProps {
   language: "en" | "fr";
@@ -262,6 +262,38 @@ export default function Careers({ language }: CareersProps) {
     setFileFiles((p) => ({ ...p, [key]: file }));
     setFormData((p) => ({ ...p, [key]: file.name }));
   }, []);
+
+  const handleShareJob = useCallback(
+    async (slugToShare: string, jobName: string) => {
+      try {
+        const origin =
+          typeof window !== "undefined" && window.location.origin
+            ? window.location.origin
+            : "";
+        const url = origin ? `${origin}/careers/${slugToShare}` : `/careers/${slugToShare}`;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(url);
+        }
+        toast({
+          title: language === "fr" ? "Lien copié" : "Link copied",
+          description:
+            language === "fr"
+              ? `Le lien pour « ${jobName} » a été copié.`
+              : `The link for “${jobName}” has been copied.`,
+        });
+      } catch {
+        toast({
+          title: language === "fr" ? "Erreur" : "Error",
+          description:
+            language === "fr"
+              ? "Impossible de copier le lien. Essayez de copier depuis la barre d'adresse."
+              : "Could not copy the link. Please copy it from the address bar instead.",
+          variant: "destructive",
+        });
+      }
+    },
+    [toast, language]
+  );
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -544,11 +576,27 @@ export default function Careers({ language }: CareersProps) {
                         ) : (
                           <div className="flex-1 min-h-0" />
                         )}
-                        <Button asChild className="btn-neon btn-apply-smooth rounded-lg w-full sm:w-auto shrink-0 inline-flex items-center mt-2" size="sm">
-                          <Link to={`/careers/${d.slug}`} className="inline-flex items-center">
-                            {t.apply} <ArrowRight className="ml-2 h-4 w-4 btn-apply-arrow" />
-                          </Link>
-                        </Button>
+                        <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                          <Button
+                            asChild
+                            className="btn-neon btn-apply-smooth rounded-lg w-full sm:w-auto shrink-0 inline-flex items-center"
+                            size="sm"
+                          >
+                            <Link to={`/careers/${d.slug}`} className="inline-flex items-center">
+                              {t.apply} <ArrowRight className="ml-2 h-4 w-4 btn-apply-arrow" />
+                            </Link>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-lg w-full sm:w-auto inline-flex items-center border-primary/40 text-primary hover:bg-primary/10"
+                            onClick={() => handleShareJob(d.slug, d.name)}
+                          >
+                            <Share2 className="mr-2 h-4 w-4" />
+                            {language === "fr" ? "Partager" : "Share"}
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                         ))}
