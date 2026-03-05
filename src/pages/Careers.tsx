@@ -475,7 +475,7 @@ export default function Careers({ language }: CareersProps) {
         <PageMeta title={t.title} description={t.subtitle} />
         <div className="min-h-screen bg-background">
           {/* Hero */}
-          <section className="container pt-10 pb-4 md:pt-16 md:pb-8 px-4">
+          <section className="container pt-16 pb-4 md:pt-16 md:pb-8 px-4">
             <div className="max-w-3xl mx-auto text-center">
               <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4 bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent animate-in fade-in slide-in-from-bottom-4 duration-700">
                 {t.title}
