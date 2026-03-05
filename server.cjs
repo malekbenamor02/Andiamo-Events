@@ -30,6 +30,8 @@ const bcrypt = require('bcryptjs');
 const https = require('https');
 const querystring = require('querystring');
 const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs');
 
 // Import centralized SMS template helpers
 const {
@@ -75,6 +77,34 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
 } else {
   // Supabase client not initialized - admin login disabled
 }
+
+// Optional: Firebase Admin for FCM push (POST /api/notifications/send)
+global.firebaseMessaging = null;
+(function initFirebaseAdmin() {
+  const credsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const keyJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (!credsPath && !keyJson) return;
+  try {
+    const admin = require('firebase-admin');
+    if (admin.apps.length) {
+      global.firebaseMessaging = admin.messaging();
+      return;
+    }
+    if (credsPath) {
+      const absPath = path.isAbsolute(credsPath)
+        ? credsPath
+        : path.resolve(process.cwd(), credsPath);
+      const key = JSON.parse(fs.readFileSync(absPath, 'utf8'));
+      admin.initializeApp({ credential: admin.credential.cert(key) });
+    } else if (keyJson) {
+      const key = typeof keyJson === 'string' ? JSON.parse(keyJson) : keyJson;
+      admin.initializeApp({ credential: admin.credential.cert(key) });
+    }
+    global.firebaseMessaging = admin.messaging();
+  } catch (e) {
+    console.warn('Firebase Admin not initialized (FCM send will be disabled):', e.message);
+  }
+})();
 
 const app = express();
 
@@ -593,6 +623,14 @@ const applicationLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 5, // 5 applications per hour
   message: { error: 'Too many applications submitted, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const careerApplicationLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  message: { error: 'Too many career applications. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -1286,6 +1324,152 @@ app.get('/api/verify-admin', verifyAdminLimiter, requireAdminAuth, async (req, r
       error: 'Server error',
       details: error.message || 'An unexpected error occurred'
     });
+  }
+});
+
+// ============================================
+// FCM notifications (admin push)
+// ============================================
+
+// GET /api/firebase-sw-config — public, returns client-safe Firebase config for service worker (no secrets)
+app.get('/api/firebase-sw-config', (req, res) => {
+  const apiKey = process.env.VITE_FIREBASE_API_KEY;
+  const authDomain = process.env.VITE_FIREBASE_AUTH_DOMAIN;
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID;
+  const storageBucket = process.env.VITE_FIREBASE_STORAGE_BUCKET;
+  const messagingSenderId = process.env.VITE_FIREBASE_MESSAGING_SENDER_ID;
+  const appId = process.env.VITE_FIREBASE_APP_ID;
+  if (!apiKey || !projectId || !appId) return res.status(404).json({ error: 'Not configured' });
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.json({
+    apiKey: apiKey || '',
+    authDomain: authDomain || '',
+    projectId: projectId || '',
+    storageBucket: storageBucket || '',
+    messagingSenderId: messagingSenderId || '',
+    appId: appId || ''
+  });
+});
+
+// Rate limit: device registration (per IP when not admin)
+const notificationsRegisterLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req, res) => (req.admin && req.admin.id) ? String(req.admin.id) : ipKeyGenerator(req, res),
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// POST /api/notifications/register — register FCM token (admin only in practice)
+app.post('/api/notifications/register', optionalAdminAuth, notificationsRegisterLimiter, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).json({ error: 'Not configured' });
+    const db = supabaseService || supabase;
+    const { fcmToken, deviceLabel } = req.body || {};
+    const token = typeof fcmToken === 'string' ? fcmToken.trim() : '';
+    if (!token) return res.status(400).json({ error: 'fcmToken required' });
+    const label = typeof deviceLabel === 'string' ? deviceLabel.trim() : null;
+    const adminId = req.admin && req.admin.id ? req.admin.id : null;
+    const { error } = await db.from('fcm_tokens').upsert(
+      { admin_id: adminId, token, device_label: label || null, updated_at: new Date().toISOString() },
+      { onConflict: 'token', ignoreDuplicates: false }
+    );
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ success: true });
+  } catch (e) {
+    return res.status(500).json({ error: (e && e.message) || 'Server error' });
+  }
+});
+
+// GET /api/notifications/device-count — super_admin only, for App tab to show how many devices will receive
+app.get('/api/notifications/device-count', requireAdminAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).json({ error: 'Not configured' });
+    const db = supabaseService || supabase;
+    const [allRes, adminsRes] = await Promise.all([
+      db.from('fcm_tokens').select('token'),
+      db.from('fcm_tokens').select('token').not('admin_id', 'is', null)
+    ]);
+    const all = (allRes.data && allRes.data.length) || 0;
+    const admins = (adminsRes.data && adminsRes.data.length) || 0;
+    return res.json({ all, admins });
+  } catch (e) {
+    return res.status(500).json({ error: (e && e.message) || 'Server error' });
+  }
+});
+
+// Rate limit: send notifications (10 per hour per admin)
+const notificationsSendLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req, res) =>
+    (req.admin && req.admin.id)
+      ? String(req.admin.id)
+      : ipKeyGenerator(req, res),
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// POST /api/notifications/send — super_admin only, send push via FCM (requires firebase-admin in backend)
+app.post('/api/notifications/send', requireAdminAuth, requireSuperAdmin, notificationsSendLimiter, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).json({ error: 'Not configured' });
+    const { title, body, target, topic, tokens: bodyTokens, path } = req.body || {};
+    const t = typeof title === 'string' ? title.trim() : '';
+    const b = typeof body === 'string' ? body.trim() : '';
+    if (!t || !b) return res.status(400).json({ error: 'title and body required' });
+    const trg = target === 'topic' || target === 'admins' || target === 'all' ? target : 'admins';
+    const db = supabaseService || supabase;
+
+    let tokensToSend = [];
+    if (trg === 'admins') {
+      const { data: rows, error } = await db.from('fcm_tokens').select('token').not('admin_id', 'is', null);
+      if (error) return res.status(500).json({ error: error.message });
+      tokensToSend = (rows || []).map((r) => r.token).filter(Boolean);
+    } else if (trg === 'all') {
+      const { data: rows, error } = await db.from('fcm_tokens').select('token');
+      if (error) return res.status(500).json({ error: error.message });
+      tokensToSend = (rows || []).map((r) => r.token).filter(Boolean);
+    } else if (trg === 'topic') {
+      const topicName = typeof topic === 'string' && topic.trim() ? topic.trim() : 'admin-notifications';
+      // If Firebase Admin is not set up, return a clear error
+      if (!global.firebaseMessaging) {
+        return res.status(503).json({ error: 'Push notifications not configured. Add Firebase Admin SDK and FIREBASE_SERVICE_ACCOUNT_KEY.' });
+      }
+      try {
+        await global.firebaseMessaging.send({
+          topic: topicName,
+          notification: { title: t, body: b },
+          data: { path: typeof path === 'string' ? path : '/admin', title: t, body: b },
+          webpush: { fcmOptions: { link: typeof path === 'string' ? path : '/admin' } }
+        });
+        return res.json({ success: true, sentCount: 1 });
+      } catch (fcmErr) {
+        return res.status(500).json({ error: fcmErr.message || 'FCM send failed' });
+      }
+    }
+
+    if ((trg === 'admins' || trg === 'all') && tokensToSend.length === 0) {
+      return res.json({ success: true, sentCount: 0, failureCount: 0 });
+    }
+    if ((trg === 'admins' || trg === 'all') && global.firebaseMessaging) {
+      const pathStr = typeof path === 'string' ? path : (trg === 'admins' ? '/admin' : '/');
+      // data must be string key-value pairs; include title/body so SW can show if notification is missing
+      const message = {
+        notification: { title: t, body: b },
+        data: { path: pathStr, title: t, body: b },
+        webpush: { fcmOptions: { link: pathStr } },
+        tokens: tokensToSend
+      };
+      const result = await global.firebaseMessaging.sendEachForMulticast(message);
+      return res.json({ success: true, sentCount: result.successCount, failureCount: result.failureCount });
+    }
+    if (trg === 'admins' || trg === 'all') {
+      return res.status(503).json({ error: 'Push notifications not configured. Add Firebase Admin SDK and FIREBASE_SERVICE_ACCOUNT_KEY.' });
+    }
+    return res.json({ success: true, sentCount: 0 });
+  } catch (e) {
+    return res.status(500).json({ error: (e && e.message) || 'Server error' });
   }
 });
 
@@ -3205,6 +3389,38 @@ function requireAdminAuth(req, res, next) {
       valid: false
     });
   }
+}
+
+// Optional admin auth: sets req.admin if valid cookie, otherwise req.admin = null (does not 401).
+function optionalAdminAuth(req, res, next) {
+  req.admin = null;
+  try {
+    const token = req.cookies?.adminToken;
+    if (!token) return next();
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) return next();
+    const decoded = jwt.verify(token, jwtSecret);
+    if (decoded && decoded.id && decoded.email && decoded.role) req.admin = decoded;
+  } catch {
+    // ignore
+  }
+  next();
+}
+
+// Career / recruitment routes (must run Node server for /api/admin/careers/* and /api/careers/*)
+try {
+  const { registerCareerRoutes } = require('./careerRoutes.cjs');
+  registerCareerRoutes(app, {
+    supabase,
+    supabaseService,
+    requireAdminAuth,
+    careerApplicationLimiter,
+    getEmailTransporter: () => getEmailTransporter ? getEmailTransporter() : transporter,
+  });
+  console.log('Career routes registered at /api/careers/* and /api/admin/careers/*');
+} catch (e) {
+  console.error('Career routes not loaded:', e.message);
+  console.error(e.stack);
 }
 
 // Ticket validation endpoint
@@ -9372,7 +9588,7 @@ function buildTicketEmailHtml(order, tickets, passes, orderId) {
         <div class="footer">
           <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
           <div class="footer-links">
-            <a href="https://www.instagram.com/malek.bamor/" target="_blank" class="footer-link">Instagram</a>
+            <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
             <span style="color: #999999;">•</span>
             <a href="https://malekbenamor.dev" target="_blank" class="footer-link">Website</a>
           </div>

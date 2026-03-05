@@ -50,6 +50,7 @@ import {
   FileText,
   Building2,
   Users2,
+  Briefcase,
   MessageCircle,
   PieChart,
   Download,
@@ -108,6 +109,8 @@ import { useInvalidateEvents } from "@/hooks/useEvents";
 import { useInvalidateSiteContent } from "@/hooks/useSiteContent";
 import { logger } from "@/lib/logger";
 import { logAdminAction } from "@/lib/adminLogs";
+import { getFirebaseMessaging } from "@/lib/firebase";
+import { onMessage } from "firebase/messaging";
 import { ReportsAnalytics } from "@/components/admin/analytics/ReportsAnalytics";
 import { OfficialInvitationForm } from "@/components/admin/OfficialInvitationForm";
 import { OfficialInvitationsList } from "@/components/admin/OfficialInvitationsList";
@@ -130,6 +133,7 @@ import { OverviewTab } from "./components/OverviewTab";
 import { AdminsTab } from "./components/AdminsTab";
 import { AmbassadorsTab } from "./components/AmbassadorsTab";
 import { ApplicationsTab } from "./components/ApplicationsTab";
+import { CareerTab } from "./components/CareerTab";
 import { SponsorsTab } from "./components/SponsorsTab";
 import { TeamTab } from "./components/TeamTab";
 import { ContactTab } from "./components/ContactTab";
@@ -141,6 +145,7 @@ import { MarketingTab } from "./components/MarketingTab";
 import { AmbassadorSalesTab } from "./components/AmbassadorSalesTab";
 import { SettingsTab } from "./components/SettingsTab";
 import { EventsTab } from "./components/EventsTab";
+import { AppTab } from "./components/AppTab";
 import { AmbassadorInfoDialog } from "./components/AmbassadorInfoDialog";
 import { OnlineOrderDetailsDialog } from "./components/OnlineOrderDetailsDialog";
 import { OrderDetailsDialog } from "./components/OrderDetailsDialog";
@@ -149,7 +154,8 @@ type AdminNotificationKind =
   | "ambassador_application"
   | "ambassador_order"
   | "online_order"
-  | "pos_order";
+  | "pos_order"
+  | "push";
 
 interface AdminNotification {
   id: string;
@@ -1487,6 +1493,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // FCM foreground: when a push message is received while dashboard is open, show in notification center
+  useEffect(() => {
+    const messaging = getFirebaseMessaging();
+    if (!messaging) return;
+    const unsub = onMessage(messaging, (payload) => {
+      const title = payload.notification?.title || (payload.data && payload.data.title) || "Notification";
+      const message = payload.notification?.body || (payload.data && payload.data.body) || "";
+      pushNotification({ kind: "push", title, message });
+    });
+    return () => {
+      try {
+        unsub();
+      } catch {
+        // ignore
+      }
+    };
   }, []);
 
   // Animation effect for overview cards
@@ -6454,7 +6478,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   useEffect(() => {
     if (currentAdminRole && currentAdminRole !== 'super_admin') {
       // If regular admin tries to access super_admin-only tabs, redirect to overview
-      if (activeTab === 'logs' || activeTab === 'settings' || activeTab === 'admins' || activeTab === 'official-invitations' || activeTab === 'scanners') {
+        if (activeTab === 'logs' || activeTab === 'settings' || activeTab === 'admins' || activeTab === 'official-invitations' || activeTab === 'scanners' || activeTab === 'app') {
         setActiveTab('overview');
       }
     }
@@ -10209,9 +10233,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Allowed tabs on mobile: Overview, Events, Ambassadors, Applications, Online orders, Ambassador sales, POS, Official invitations (super_admin), Reports
   const mobileAllowedTabs = useMemo(() => {
-    const base = ["overview", "events", "ambassadors", "applications", "online-orders", "ambassador-sales", "pos"];
+    const base = ["overview", "events", "ambassadors", "applications", "careers", "online-orders", "ambassador-sales", "pos"];
     if (currentAdminRole === "super_admin") {
-      return [...base, "official-invitations", "tickets"];
+      return [...base, "official-invitations", "tickets", "app"];
     }
     return [...base, "tickets"];
   }, [currentAdminRole]);
@@ -10312,6 +10336,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {activeTab === "events" && t.events}
               {activeTab === "ambassadors" && t.ambassadors}
               {activeTab === "applications" && t.applications}
+              {activeTab === "careers" && (language === 'en' ? 'Careers' : 'Carrières')}
               {activeTab === "online-orders" && (language === 'en' ? 'Online Orders' : 'Commandes en Ligne')}
               {activeTab === "ambassador-sales" && (language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs')}
               {activeTab === "pos" && (language === 'en' ? 'Point de Vente' : 'Point de Vente')}
@@ -10319,7 +10344,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {activeTab === "tickets" && (language === 'en' ? 'Reports' : 'Rapports')}
               {activeTab === "marketing" && (language === 'en' ? 'SMS - E-mail' : 'SMS - E-mail')}
               {activeTab === "contact" && (language === 'en' ? 'Contact Messages' : 'Messages de Contact')}
-              {!["overview","events","ambassadors","applications","online-orders","ambassador-sales","pos","official-invitations","tickets","marketing","contact"].includes(activeTab) && t.title}
+              {activeTab === "app" && "App"}
+              {activeTab === "settings" && t.settings}
+              {!["overview","events","ambassadors","applications","careers","online-orders","ambassador-sales","pos","official-invitations","tickets","marketing","contact","app","settings"].includes(activeTab) && t.title}
             </span>
           </button>
           <div className="flex items-center gap-1.5 shrink-0 text-xs font-medium" style={{ color: '#B8B8B8' }}>
@@ -10386,6 +10413,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   <span>{t.applications}</span>
                 </button>
               )}
+              {isTabAllowedOnMobile("careers") && (
+                <button
+                  onClick={() => handleMobileNavSelect("careers")}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "careers" && "shadow-lg")}
+                  style={{ color: activeTab === "careers" ? '#E21836' : '#B0B0B0', background: activeTab === "careers" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <Briefcase className="w-4 h-4 shrink-0" />
+                  <span>{language === 'en' ? 'Careers' : 'Carrières'}</span>
+                </button>
+              )}
               {isTabAllowedOnMobile("online-orders") && (
                 <button
                   onClick={() => {
@@ -10440,6 +10477,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 >
                   <DollarSign className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Reports' : 'Rapports'}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("app") && currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => handleMobileNavSelect("app")}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "app" && "shadow-lg")}
+                  style={{ color: activeTab === "app" ? '#E21836' : '#B0B0B0', background: activeTab === "app" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <img src="/assets/faviconn.png" alt="App" className="w-4 h-4 shrink-0 object-contain" />
+                  <span>App</span>
                 </button>
               )}
             </div>
@@ -10559,6 +10606,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               >
                 <FileText className={`w-4 h-4 transition-transform duration-300 ${activeTab === "applications" ? "animate-pulse" : ""}`} />
                 <span>{t.applications}</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("careers")}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-420 ${
+                  activeTab === "careers" ? "shadow-lg" : ""
+                }`}
+                style={{
+                  color: activeTab === "careers" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "careers" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
+              >
+                <Briefcase className={`w-4 h-4 transition-transform duration-300 ${activeTab === "careers" ? "animate-pulse" : ""}`} />
+                <span>{language === 'en' ? 'Careers' : 'Carrières'}</span>
               </button>
               <button
                 onClick={() => {
@@ -10792,6 +10852,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 <Activity className={`w-4 h-4 transition-transform duration-300 ${activeTab === "logs" ? "animate-pulse" : ""}`} />
                 <span>{language === 'en' ? 'Logs & Analytics' : 'Journaux et Analytiques'}</span>
               </button>
+              {currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => setActiveTab("app")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-900 ${
+                    activeTab === "app" ? "shadow-lg" : ""
+                  }`}
+                  style={{
+                    color: activeTab === "app" ? '#E21836' : '#B8B8B8',
+                    background: activeTab === "app" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                  }}
+                >
+                  <img src="/assets/faviconn.png" alt="App" className="w-4 h-4 shrink-0 object-contain" />
+                  <span>App</span>
+                </button>
+              )}
               {currentAdminRole === 'super_admin' && (
                 <button
                   onClick={() => setActiveTab("settings")}
@@ -11059,7 +11134,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 // On mobile, only allow mobile-allowed tabs
                 if (isMobile && !mobileAllowedTabs.includes(value)) return;
                 // Prevent regular admins from accessing super_admin-only tabs
-                if (currentAdminRole !== 'super_admin' && (value === 'logs' || value === 'settings' || value === 'admins' || value === 'official-invitations' || value === 'scanners')) {
+                if (currentAdminRole !== 'super_admin' && (value === 'logs' || value === 'settings' || value === 'admins' || value === 'official-invitations' || value === 'scanners' || value === 'app')) {
                   return; // Don't allow tab change
                 }
                 setActiveTab(value);
@@ -11156,6 +11231,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 </TabsContent>
               )}
 
+              {currentAdminRole === "super_admin" && (
+                <TabsContent value="app" className="space-y-6">
+                  <AppTab language={language} />
+                </TabsContent>
+              )}
+
               <TabsContent value="pos" className="space-y-6">
               <PosTab language={language} selectedEventId={selectedEventId || undefined} />
               </TabsContent>
@@ -11221,6 +11302,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 processingId={processingId}
                 orphanedCount={applications.filter(app => app.status === 'approved' && !ambassadors.some(amb => amb.phone === app.phone_number || (app.email && amb.email && amb.email === app.email))).length}
               />
+
+              <TabsContent value="careers" className="space-y-6">
+                <CareerTab language={language} />
+              </TabsContent>
 
               {/* Sponsors Tab */}
               <SponsorsTab

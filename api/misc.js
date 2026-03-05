@@ -469,6 +469,90 @@ export default async (req, res) => {
   // Route based on path and method
   try {
     // ============================================
+    // POST /api/aio-events/save-submission (moved from api/aio-events-save-submission.js)
+    // ============================================
+    if (path === '/api/aio-events/save-submission' && method === 'POST') {
+      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+        return res.status(500).json({ error: 'Supabase not configured' });
+      }
+      try {
+        const bodyData = await parseBody(req);
+        const {
+          customerInfo,
+          eventInfo,
+          selectedPasses,
+          totalPrice,
+          totalQuantity,
+          language
+        } = bodyData;
+
+        if (!customerInfo) {
+          return res.status(400).json({ error: 'Missing required fields', details: 'customerInfo is required' });
+        }
+        if (!customerInfo.full_name || !customerInfo.phone || !customerInfo.email || !customerInfo.city) {
+          return res.status(400).json({ error: 'Missing customer information', details: 'full_name, phone, email, and city are required' });
+        }
+        if (!Array.isArray(selectedPasses)) {
+          return res.status(400).json({ error: 'Invalid passes', details: 'selectedPasses must be an array' });
+        }
+        if (typeof totalPrice !== 'number' || totalPrice < 0) {
+          return res.status(400).json({ error: 'Invalid total price', details: 'totalPrice must be a non-negative number' });
+        }
+        if (typeof totalQuantity !== 'number' || totalQuantity < 0) {
+          return res.status(400).json({ error: 'Invalid total quantity', details: 'totalQuantity must be a non-negative number' });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        let dbClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          dbClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+        }
+
+        const ipAddress = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.ip || null;
+        const userAgent = req.headers['user-agent'] || null;
+
+        const submissionData = {
+          full_name: customerInfo.full_name.trim(),
+          email: customerInfo.email.trim().toLowerCase(),
+          phone: customerInfo.phone.trim(),
+          city: customerInfo.city.trim(),
+          ville: customerInfo.ville ? customerInfo.ville.trim() : null,
+          event_id: eventInfo?.id || null,
+          event_name: eventInfo?.name || null,
+          event_date: eventInfo?.date || null,
+          event_venue: eventInfo?.venue || null,
+          event_city: eventInfo?.city || null,
+          selected_passes: selectedPasses,
+          total_price: totalPrice,
+          total_quantity: totalQuantity,
+          language: language || 'en',
+          user_agent: userAgent,
+          ip_address: ipAddress,
+          status: 'submitted'
+        };
+
+        const { data: submission, error: insertError } = await dbClient
+          .from('aio_events_submissions')
+          .insert(submissionData)
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Error inserting AIO events submission:', insertError);
+          return res.status(500).json({ error: 'Failed to save submission', details: insertError.message });
+        }
+
+        return res.status(201).json({
+          success: true,
+          submission: { id: submission.id, submitted_at: submission.submitted_at }
+        });
+      } catch (err) {
+        console.error('Error in /api/aio-events/save-submission:', err);
+        return res.status(500).json({ error: 'Internal server error', details: err.message });
+      }
+    }
+
+    // ============================================
     // GET /sitemap.xml (via rewrite to /api/misc?route=sitemap) - Dynamic sitemap for SEO
     // ============================================
     if ((path === '/api/misc' && queryParams.route === 'sitemap') || path === '/sitemap.xml') {

@@ -144,6 +144,37 @@ export const API_ROUTES = {
   ADMIN_SCAN_HISTORY: '/api/admin/scan-history',
   ADMIN_SCAN_STATISTICS: '/api/admin/scan-statistics',
   
+  // Notifications (super_admin: send push; admin: register FCM token)
+  NOTIFICATIONS_REGISTER: '/api/notifications/register',
+  NOTIFICATIONS_SEND: '/api/notifications/send',
+  NOTIFICATIONS_DEVICE_COUNT: '/api/notifications/device-count',
+
+  // Career / Recruitment
+  CAREERS_DOMAINS: '/api/careers/domains',
+  CAREERS_PAGE_CONTENT: '/api/careers/page-content',
+  CAREERS_DOMAIN_BY_SLUG: (slug: string) => `/api/careers/domains/${slug}`,
+  CAREERS_CITY_OPTIONS: '/api/careers/city-options',
+  CAREERS_GENDER_OPTIONS: '/api/careers/gender-options',
+  CAREER_APPLICATION_SUBMIT: '/api/career-application',
+  CAREER_APPLICATION_CHECK_DUPLICATE: '/api/career-application/check-duplicate',
+  CAREERS_ADMIN_SETTINGS: '/api/admin/careers/settings',
+  CAREERS_ADMIN_CITY_OPTIONS: '/api/admin/careers/city-options',
+  CAREERS_ADMIN_GENDER_OPTIONS: '/api/admin/careers/gender-options',
+  CAREERS_ADMIN_DOMAINS: '/api/admin/careers/domains',
+  CAREERS_ADMIN_DOMAIN: (id: string) => `/api/admin/careers/domains/${id}`,
+  CAREERS_ADMIN_DOMAIN_FIELDS: (id: string) => `/api/admin/careers/domains/${id}/fields`,
+  CAREERS_ADMIN_DOMAIN_FIELDS_BULK: (id: string) => `/api/admin/careers/domains/${id}/fields/bulk`,
+  CAREERS_ADMIN_DOMAIN_FIELDS_REORDER: (id: string) => `/api/admin/careers/domains/${id}/fields/reorder`,
+  CAREERS_ADMIN_DOMAIN_FIELD: (domainId: string, fieldId: string) => `/api/admin/careers/domains/${domainId}/fields/${fieldId}`,
+  CAREERS_ADMIN_TEMPLATES: '/api/admin/careers/templates',
+  CAREERS_ADMIN_TEMPLATES_FROM_DOMAIN: '/api/admin/careers/templates/from-domain',
+  CAREERS_ADMIN_DOMAIN_APPLY_TEMPLATE: (domainId: string) => `/api/admin/careers/domains/${domainId}/apply-template`,
+  CAREERS_ADMIN_APPLICATIONS: '/api/admin/careers/applications',
+  CAREERS_ADMIN_APPLICATION: (id: string) => `/api/admin/careers/applications/${id}`,
+  CAREERS_ADMIN_APPLICATION_LOGS: (id: string) => `/api/admin/careers/applications/${id}/logs`,
+  CAREERS_ADMIN_APPLICATIONS_COMPARE: '/api/admin/careers/applications/compare',
+  CAREERS_ADMIN_APPLICATIONS_EXPORT: '/api/admin/careers/applications/export',
+
   // Testing & Diagnostics
   TEST: '/api/test',
   TEST_SUPABASE: '/api/test-supabase',

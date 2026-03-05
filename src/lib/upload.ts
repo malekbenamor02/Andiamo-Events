@@ -136,3 +136,31 @@ export const deleteHeroImage = async (path: string): Promise<boolean> => {
     return false;
   }
 };
+
+/** Upload CV/document for career application. Returns public URL to store in form_data. */
+export const uploadCareerDocument = async (file: File): Promise<UploadResult> => {
+  try {
+    const timestamp = Date.now();
+    const ext = file.name.split('.').pop() || 'bin';
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_').slice(0, 80);
+    const fileName = `${timestamp}-${safeName}`;
+    const filePath = fileName;
+
+    const { error } = await supabase.storage
+      .from('career-documents')
+      .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+    if (error) {
+      return { url: '', path: '', error: error.message };
+    }
+
+    const { data: urlData } = supabase.storage.from('career-documents').getPublicUrl(filePath);
+    return { url: urlData.publicUrl, path: filePath };
+  } catch (err) {
+    return {
+      url: '',
+      path: '',
+      error: err instanceof Error ? err.message : 'Upload failed',
+    };
+  }
+};

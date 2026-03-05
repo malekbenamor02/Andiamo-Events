@@ -25,6 +25,7 @@ import AmbassadorDashboard from "./pages/ambassador/Dashboard";
 import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute";
 
 import AmbassadorApplication from "./pages/ambassador/Application";
+import Careers from "./pages/Careers";
 import PassPurchase from "./pages/PassPurchase";
 import PaymentProcessing from "./pages/PaymentProcessing";
 import GalleryEvent from "./pages/GalleryEvent";
@@ -102,6 +103,9 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
             <Route path="/payment-processing" element={<PaymentProcessing language={language} />} />
     
             <Route path="/about" element={<About language={language} />} />
+            <Route path="/careers" element={<Careers language={language} />} />
+            <Route path="/careers/:slug/apply" element={<Careers language={language} />} />
+            <Route path="/careers/:slug" element={<Careers language={language} />} />
             <Route path="/ambassador" element={<AmbassadorApplication language={language} />} />
             <Route path="/ambassador/auth" element={<Auth language={language} />} />
 

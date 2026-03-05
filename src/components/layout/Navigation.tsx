@@ -49,6 +49,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
       { name: "Home", href: "/" },
       { name: "Events", href: "/events" },
       { name: "Ambassador", href: "/ambassador" },
+      { name: "Careers", href: "/careers" },
       { name: "Contact", href: "/contact" },
       { name: "About", href: "/about" },
     ],
@@ -56,6 +57,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
       { name: "Accueil", href: "/" },
       { name: "Événements", href: "/events" },
       { name: "Ambassadeur", href: "/ambassador" },
+      { name: "Carrières", href: "/careers" },
       { name: "Contact", href: "/contact" },
       { name: "À Propos", href: "/about" },
     ]
