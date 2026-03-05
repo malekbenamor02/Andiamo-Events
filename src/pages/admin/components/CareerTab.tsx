@@ -190,6 +190,7 @@ export function CareerTab({ language }: CareerTabProps) {
   const [selectedApplication, setSelectedApplication] = useState<CareerApplication | null>(null);
   const [detailData, setDetailData] = useState<{ application: CareerApplication; domain: CareerDomain; fields: CareerApplicationField[]; logs: CareerApplicationLog[] } | null>(null);
   const fieldsDialogContentRef = useRef<HTMLDivElement | null>(null);
+  const [fieldToDelete, setFieldToDelete] = useState<CareerApplicationField | null>(null);
 
   const t = language === "fr"
     ? { careers: "Carrières", enabled: "Candidatures ouvertes", domains: "Domaines", applications: "Candidatures", addDomain: "Ajouter un domaine", name: "Nom", slug: "Slug", description: "Description", open: "Ouvert", upload: "CV/Documents", save: "Enregistrer", cancel: "Annuler", fields: "Champs", addField: "Ajouter un champ", fieldKey: "Clé", fieldLabel: "Libellé", fieldType: "Type", required: "Requis", options: "Options (liste)", addOption: "Ajouter", status: "Statut", date: "Date", view: "Voir", approve: "Approuver", reject: "Rejeter", export: "Exporter", new: "Nouveau", approved: "Approuvé", rejected: "Refusé", audit: "Historique", noApps: "Aucune candidature.", typeOfWork: "Type de travail", gender: "Genre", age: "Âge", ageMin: "Âge min", ageMax: "Âge max", city: "Ville", dateFrom: "Du", dateTo: "Au", all: "Tous", allStatus: "Tous les statuts", allCity: "Toutes les villes", allGender: "Tous les genres" }
@@ -918,19 +919,24 @@ export function CareerTab({ language }: CareerTabProps) {
     }
   };
 
-  const removeField = async (f: CareerApplicationField) => {
-    if (!selectedDomainForFields) return;
-    if (!confirm(language === "fr" ? "Supprimer ce champ ?" : "Remove this field?")) return;
+  const confirmRemoveField = (f: CareerApplicationField) => {
+    setFieldToDelete(f);
+  };
+
+  const removeField = async () => {
+    if (!selectedDomainForFields || !fieldToDelete) return;
     try {
-      await deleteCareerField(selectedDomainForFields.id, f.id);
+      await deleteCareerField(selectedDomainForFields.id, fieldToDelete.id);
       toast({ title: language === "fr" ? "Champ supprimé" : "Field removed" });
       const result = await fetchAdminCareerDomain(selectedDomainForFields.id);
       setFields(result?.fields ?? []);
-      setSelectedFieldIds((prev) => prev.filter((id) => id !== f.id));
+      setSelectedFieldIds((prev) => prev.filter((id) => id !== fieldToDelete.id));
+      setFieldToDelete(null);
     } catch (e) {
       toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
     }
   };
+
 
   const openDetail = async (app: CareerApplication) => {
     setSelectedApplication(app);
@@ -1341,7 +1347,7 @@ export function CareerTab({ language }: CareerTabProps) {
               <Input
                 value={domainForm.salary}
                 onChange={(e) => setDomainForm((p) => ({ ...p, salary: e.target.value }))}
-                placeholder={language === "fr" ? "Optionnel (ex: 50k-70k, Compétitif)" : "Optional (e.g. 50k-70k, Competitive)"}
+                placeholder={language === "fr" ? "300 - 900 Dinars/mois" : "300 - 900 Dinars/month"}
               />
             </div>
             <div>
@@ -1357,11 +1363,6 @@ export function CareerTab({ language }: CareerTabProps) {
                 {language === "fr" ? "Faites défiler pour voir tout le contenu." : "Scroll to see all content."}
               </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {language === "fr"
-                ? "Les champs de formulaire (Type de travail, Salaire attendu, etc.) se gèrent dans le panneau Champs de ce domaine."
-                : "Form fields (Type of work, Expected salary, etc.) are managed in the Fields panel for this domain."}
-            </p>
             <div className="flex items-center space-x-2">
               <Switch
                 checked={domainForm.applications_open}
@@ -1885,7 +1886,7 @@ export function CareerTab({ language }: CareerTabProps) {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => removeField(f)}
+                              onClick={() => confirmRemoveField(f)}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
@@ -1964,6 +1965,33 @@ export function CareerTab({ language }: CareerTabProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Single field delete confirmation */}
+      <AlertDialog open={!!fieldToDelete} onOpenChange={(open) => { if (!open) setFieldToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-left text-destructive">
+              {language === "fr" ? "Supprimer ce champ ?" : "Delete this field?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-left">
+              {language === "fr"
+                ? "Cette action ne peut pas être annulée. Le champ sera retiré du formulaire de candidature."
+                : "This action cannot be undone. The field will be removed from the application form."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setFieldToDelete(null)}>
+              {language === "fr" ? "Annuler" : "Cancel"}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={removeField}
+            >
+              {language === "fr" ? "Supprimer" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Save template dialog */}
       <Dialog open={saveTemplateOpen} onOpenChange={setSaveTemplateOpen}>
