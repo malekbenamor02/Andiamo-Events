@@ -166,7 +166,15 @@ export function CareerTab({ language }: CareerTabProps) {
   });
   const [customFieldName, setCustomFieldName] = useState("");
   const [fieldOptionInput, setFieldOptionInput] = useState("");
-  const [bulkSelected, setBulkSelected] = useState<{ label: string; field_type: CareerFieldType; required: boolean }[]>([]);
+  const [bulkSelected, setBulkSelected] = useState<
+    {
+      label: string;
+      field_type: CareerFieldType;
+      required: boolean;
+      options?: string[];
+      validation?: { min?: number; max?: number; linkType?: string; disabledOptions?: string[] };
+    }[]
+  >([]);
   const [predefinedNames, setPredefinedNames] = useState<string[]>(() => [...CAREER_PREDEFINED_FIELD_NAMES]);
   const [templates, setTemplates] = useState<{ id: string; name: string; description: string | null; fields_count?: number }[]>([]);
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
@@ -288,6 +296,14 @@ export function CareerTab({ language }: CareerTabProps) {
 
   useEffect(() => {
     loadApplications();
+  }, [loadApplications]);
+
+  // Fallback polling so the applications list stays fresh even if Realtime is unavailable.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadApplications();
+    }, 15000);
+    return () => clearInterval(interval);
   }, [loadApplications]);
 
   // Realtime: keep career applications in sync; on new application show browser notification and play sound
@@ -588,6 +604,8 @@ export function CareerTab({ language }: CareerTabProps) {
           label,
           field_type: preset?.field_type ?? "text",
           required: preset?.required ?? false,
+          options: preset?.options,
+          validation: preset?.validation as { min?: number; max?: number; linkType?: string; disabledOptions?: string[] } | undefined,
         },
       ];
     });
@@ -606,7 +624,29 @@ export function CareerTab({ language }: CareerTabProps) {
     try {
       await createCareerFieldsBulk(
         selectedDomainForFields.id,
-        bulkSelected.map((b) => ({ label: b.label, field_type: b.field_type, required: b.required }))
+        bulkSelected.map((b) => {
+          const preset = CAREER_PREDEFINED_FIELD_CONFIG[b.label];
+          const baseValidation =
+            (b.validation ||
+              (preset?.validation as { min?: number; max?: number; linkType?: string; disabledOptions?: string[] } | undefined)) ?? {};
+          const validation =
+            b.field_type === "link"
+              ? {
+                  ...baseValidation,
+                  linkType:
+                    baseValidation.linkType ||
+                    (preset?.validation as { linkType?: string } | undefined)?.linkType ||
+                    undefined,
+                }
+              : baseValidation;
+          return {
+            label: b.label,
+            field_type: b.field_type,
+            required: b.required,
+            options: b.options ?? preset?.options,
+            validation,
+          };
+        })
       );
       toast({ title: language === "fr" ? "Champs ajoutés" : "Fields added" });
       closeFieldForm();

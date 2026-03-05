@@ -22,7 +22,7 @@ import {
 } from "@/lib/career/api";
 import type { CareerDomain, CareerApplicationField } from "@/lib/career/types";
 import { uploadCareerDocument } from "@/lib/upload";
-import { Briefcase, ArrowLeft, ArrowRight, CheckCircle, Sparkles, Upload, X, Search } from "lucide-react";
+import { Briefcase, ArrowLeft, ArrowRight, CheckCircle, Sparkles, Upload, X, Search, Loader2 } from "lucide-react";
 
 interface CareersProps {
   language: "en" | "fr";
@@ -226,6 +226,12 @@ export default function Careers({ language }: CareersProps) {
     if (domain) window.scrollTo({ top: 0, behavior: "smooth" });
   }, [domain]);
 
+  useEffect(() => {
+    if (submitted) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [submitted]);
+
   // Load reCAPTCHA v3 when on a job/apply page so submit verification can run (skip in local/dev)
   useEffect(() => {
     if (!slug || !RECAPTCHA_SITE_KEY || typeof window === "undefined" || isLocalOrDevHost()) return;
@@ -366,20 +372,21 @@ export default function Careers({ language }: CareersProps) {
       }
 
       // reCAPTCHA v3 (invisible): required on submit to prove the user is not a bot. Runs after link/phone validation.
-      const token = await getRecaptchaToken();
-      if (!token) {
-        toast({
-          title: language === "fr" ? "Erreur" : "Error",
-          description:
-            language === "fr"
-              ? "La vérification de sécurité (anti-robot) n’a pas abouti. Rechargez la page et réessayez, ou vérifiez que JavaScript est activé."
-              : "The security check (anti-bot) could not be completed. Please refresh the page and try again, or ensure JavaScript is enabled.",
-          variant: "destructive",
-        });
-        return;
-      }
       setSubmitting(true);
       try {
+        const token = await getRecaptchaToken();
+        if (!token) {
+          toast({
+            title: language === "fr" ? "Erreur" : "Error",
+            description:
+              language === "fr"
+                ? "La vérification de sécurité (anti-robot) n’a pas abouti. Rechargez la page et réessayez, ou vérifiez que JavaScript est activé."
+                : "The security check (anti-bot) could not be completed. Please refresh the page and try again, or ensure JavaScript is enabled.",
+            variant: "destructive",
+          });
+          setSubmitting(false);
+          return;
+        }
         const payload: Record<string, string> = { ...formData };
         for (const [key, file] of Object.entries(fileFiles)) {
           if (file) {
@@ -392,14 +399,17 @@ export default function Careers({ language }: CareersProps) {
             payload[key] = result.url;
           }
         }
-        await submitCareerApplication({
+        const res = await submitCareerApplication({
           domainSlug: domain.slug,
           recaptchaToken: token,
           ...payload,
         });
         setSubmitted(true);
-        window.scrollTo({ top: 0, behavior: "smooth" });
-        toast({ title: t.success, variant: "default" });
+        toast({
+          title: t.success,
+          description: res?.reference ? `Reference: ${res.reference}` : undefined,
+          variant: "default",
+        });
       } catch (err: any) {
         const details = err?.data?.details;
         let description = err?.message || "Submission failed.";
@@ -696,8 +706,22 @@ export default function Careers({ language }: CareersProps) {
                     )}
                   </div>
                 ))}
-                <Button type="submit" disabled={submitting} className="btn-neon btn-apply-smooth rounded-lg inline-flex items-center">
-                  {submitting ? t.submitting : t.submit} <ArrowRight className="ml-2 h-4 w-4 btn-apply-arrow" />
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="btn-neon btn-apply-smooth rounded-lg inline-flex items-center"
+                  aria-busy={submitting}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t.submitting}
+                    </>
+                  ) : (
+                    <>
+                      {t.submit} <ArrowRight className="ml-2 h-4 w-4 btn-apply-arrow" />
+                    </>
+                  )}
                 </Button>
               </form>
             </section>
