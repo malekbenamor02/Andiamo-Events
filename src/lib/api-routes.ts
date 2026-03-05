@@ -144,11 +144,6 @@ export const API_ROUTES = {
   ADMIN_SCAN_HISTORY: '/api/admin/scan-history',
   ADMIN_SCAN_STATISTICS: '/api/admin/scan-statistics',
   
-  // Notifications (super_admin: send push; admin: register FCM token)
-  NOTIFICATIONS_REGISTER: '/api/notifications/register',
-  NOTIFICATIONS_SEND: '/api/notifications/send',
-  NOTIFICATIONS_DEVICE_COUNT: '/api/notifications/device-count',
-
   // Career / Recruitment
   CAREERS_DOMAINS: '/api/careers/domains',
   CAREERS_PAGE_CONTENT: '/api/careers/page-content',

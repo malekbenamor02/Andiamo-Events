@@ -1,8 +1,11 @@
 // Unified non-critical API endpoints for Vercel
-// Merges: admin-logout, admin-update-application, ambassador-login, ambassador-application, ambassadors/active, phone-subscribe, send-email
+// Merges: admin-logout, admin-update-application, ambassador-login, ambassador-application, ambassadors/active, phone-subscribe, send-email, career routes
 // This reduces function count from 7 to 1
 
 import '../lib/sentry-server.js';
+import { createRequire } from 'module';
+
+const requireFromRoot = createRequire(import.meta.url);
 
 // Inlined verifyAdminAuth function (for admin-update-application and send-email)
 async function verifyAdminAuth(req) {
@@ -186,6 +189,69 @@ async function parseBody(req) {
     }
     return JSON.parse(body);
   }
+}
+
+// Lazy career Express app for Vercel (career routes run via misc.js to avoid extra serverless function)
+let careerAppPromise = null;
+async function getCareerApp() {
+  if (careerAppPromise) return careerAppPromise;
+  careerAppPromise = (async () => {
+    const express = requireFromRoot('express');
+    const cookieParser = requireFromRoot('cookie-parser');
+    const { createClient } = await import('@supabase/supabase-js');
+    const jwtModule = await import('jsonwebtoken');
+    const jwt = jwtModule.default;
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const supabaseService = process.env.SUPABASE_SERVICE_ROLE_KEY
+      ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+      : supabase;
+    function requireAdminAuth(req, res, next) {
+      const token = req.cookies?.adminToken;
+      if (!token) return res.status(401).json({ error: 'Not authenticated', reason: 'No token provided', valid: false });
+      const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
+      try {
+        const decoded = jwt.verify(token, jwtSecret);
+        if (!decoded.id || !decoded.email || !decoded.role) return res.status(401).json({ error: 'Invalid token', valid: false });
+        if (decoded.role !== 'admin' && decoded.role !== 'super_admin') return res.status(403).json({ error: 'Invalid role', valid: false });
+        req.admin = decoded;
+        next();
+      } catch (e) {
+        return res.status(401).json({ error: 'Invalid or expired token', reason: e.message, valid: false });
+      }
+    }
+    const careerLimitMap = new Map();
+    const CAREER_LIMIT_WINDOW = 60 * 60 * 1000;
+    const CAREER_LIMIT_MAX = 5;
+    function careerApplicationLimiter(req, res, next) {
+      const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.headers['x-real-ip'] || 'unknown';
+      const now = Date.now();
+      let rec = careerLimitMap.get(ip);
+      if (!rec || now > rec.resetAt) {
+        careerLimitMap.set(ip, { count: 1, resetAt: now + CAREER_LIMIT_WINDOW });
+        return next();
+      }
+      rec.count += 1;
+      if (rec.count > CAREER_LIMIT_MAX) return res.status(429).json({ error: 'Too many career applications. Please try again later.' });
+      next();
+    }
+    function getEmailTransporter() {
+      try {
+        const nodemailer = requireFromRoot('nodemailer');
+        const host = process.env.EMAIL_HOST;
+        const user = process.env.EMAIL_USER;
+        const pass = process.env.EMAIL_PASS;
+        if (!host || !user || !pass) return null;
+        return nodemailer.createTransport({ host, port: parseInt(process.env.EMAIL_PORT || '587', 10), secure: false, auth: { user, pass } });
+      } catch (e) { return null; }
+    }
+    const app = express();
+    app.use(express.json());
+    app.use(cookieParser());
+    const { registerCareerRoutes } = requireFromRoot('../careerRoutes.cjs');
+    registerCareerRoutes(app, { supabase, supabaseService, requireAdminAuth, careerApplicationLimiter, getEmailTransporter });
+    return app;
+  })();
+  return careerAppPromise;
 }
 
 // Import shared CORS utility
@@ -464,6 +530,29 @@ export default async (req, res) => {
   }
   if (/^\/wp-includes\//.test(path)) {
     return res.status(410).end();
+  }
+
+  // Career routes (public + admin) — handled by Express app from careerRoutes.cjs
+  if (path.startsWith('/api/careers') || path.startsWith('/api/admin/careers') || path === '/api/career-application' || path.startsWith('/api/career-application/')) {
+    try {
+      const app = await getCareerApp();
+      await new Promise((resolve, reject) => {
+        const onFinish = () => resolve();
+        res.on('finish', onFinish);
+        res.on('close', onFinish);
+        app(req, res, (err) => {
+          if (err) {
+            console.error('Career route error:', err);
+            if (!res.headersSent) res.status(500).json({ error: err.message || 'Server error' });
+          }
+          resolve();
+        });
+      });
+      return;
+    } catch (err) {
+      console.error('Career app error:', err);
+      return res.status(500).json({ error: err.message || 'Career service unavailable' });
+    }
   }
 
   // Route based on path and method

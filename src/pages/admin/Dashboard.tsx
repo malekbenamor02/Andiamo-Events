@@ -109,8 +109,6 @@ import { useInvalidateEvents } from "@/hooks/useEvents";
 import { useInvalidateSiteContent } from "@/hooks/useSiteContent";
 import { logger } from "@/lib/logger";
 import { logAdminAction } from "@/lib/adminLogs";
-import { getFirebaseMessaging } from "@/lib/firebase";
-import { onMessage } from "firebase/messaging";
 import { ReportsAnalytics } from "@/components/admin/analytics/ReportsAnalytics";
 import { OfficialInvitationForm } from "@/components/admin/OfficialInvitationForm";
 import { OfficialInvitationsList } from "@/components/admin/OfficialInvitationsList";
@@ -145,7 +143,6 @@ import { MarketingTab } from "./components/MarketingTab";
 import { AmbassadorSalesTab } from "./components/AmbassadorSalesTab";
 import { SettingsTab } from "./components/SettingsTab";
 import { EventsTab } from "./components/EventsTab";
-import { AppTab } from "./components/AppTab";
 import { AmbassadorInfoDialog } from "./components/AmbassadorInfoDialog";
 import { OnlineOrderDetailsDialog } from "./components/OnlineOrderDetailsDialog";
 import { OrderDetailsDialog } from "./components/OrderDetailsDialog";
@@ -1493,24 +1490,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // FCM foreground: when a push message is received while dashboard is open, show in notification center
-  useEffect(() => {
-    const messaging = getFirebaseMessaging();
-    if (!messaging) return;
-    const unsub = onMessage(messaging, (payload) => {
-      const title = payload.notification?.title || (payload.data && payload.data.title) || "Notification";
-      const message = payload.notification?.body || (payload.data && payload.data.body) || "";
-      pushNotification({ kind: "push", title, message });
-    });
-    return () => {
-      try {
-        unsub();
-      } catch {
-        // ignore
-      }
-    };
   }, []);
 
   // Animation effect for overview cards
@@ -6478,7 +6457,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   useEffect(() => {
     if (currentAdminRole && currentAdminRole !== 'super_admin') {
       // If regular admin tries to access super_admin-only tabs, redirect to overview
-        if (activeTab === 'logs' || activeTab === 'settings' || activeTab === 'admins' || activeTab === 'official-invitations' || activeTab === 'scanners' || activeTab === 'app') {
+        if (activeTab === 'logs' || activeTab === 'settings' || activeTab === 'admins' || activeTab === 'official-invitations' || activeTab === 'scanners') {
         setActiveTab('overview');
       }
     }
@@ -10235,7 +10214,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const mobileAllowedTabs = useMemo(() => {
     const base = ["overview", "events", "ambassadors", "applications", "careers", "online-orders", "ambassador-sales", "pos"];
     if (currentAdminRole === "super_admin") {
-      return [...base, "official-invitations", "tickets", "app"];
+      return [...base, "official-invitations", "tickets"];
     }
     return [...base, "tickets"];
   }, [currentAdminRole]);
@@ -10344,9 +10323,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {activeTab === "tickets" && (language === 'en' ? 'Reports' : 'Rapports')}
               {activeTab === "marketing" && (language === 'en' ? 'SMS - E-mail' : 'SMS - E-mail')}
               {activeTab === "contact" && (language === 'en' ? 'Contact Messages' : 'Messages de Contact')}
-              {activeTab === "app" && "App"}
               {activeTab === "settings" && t.settings}
-              {!["overview","events","ambassadors","applications","careers","online-orders","ambassador-sales","pos","official-invitations","tickets","marketing","contact","app","settings"].includes(activeTab) && t.title}
+              {!["overview","events","ambassadors","applications","careers","online-orders","ambassador-sales","pos","official-invitations","tickets","marketing","contact","settings"].includes(activeTab) && t.title}
             </span>
           </button>
           <div className="flex items-center gap-1.5 shrink-0 text-xs font-medium" style={{ color: '#B8B8B8' }}>
@@ -10477,16 +10455,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 >
                   <DollarSign className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Reports' : 'Rapports'}</span>
-                </button>
-              )}
-              {isTabAllowedOnMobile("app") && currentAdminRole === 'super_admin' && (
-                <button
-                  onClick={() => handleMobileNavSelect("app")}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "app" && "shadow-lg")}
-                  style={{ color: activeTab === "app" ? '#E21836' : '#B0B0B0', background: activeTab === "app" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
-                >
-                  <img src="/assets/faviconn.png" alt="App" className="w-4 h-4 shrink-0 object-contain" />
-                  <span>App</span>
                 </button>
               )}
             </div>
@@ -10854,21 +10822,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </button>
               {currentAdminRole === 'super_admin' && (
                 <button
-                  onClick={() => setActiveTab("app")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-900 ${
-                    activeTab === "app" ? "shadow-lg" : ""
-                  }`}
-                  style={{
-                    color: activeTab === "app" ? '#E21836' : '#B8B8B8',
-                    background: activeTab === "app" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                  }}
-                >
-                  <img src="/assets/faviconn.png" alt="App" className="w-4 h-4 shrink-0 object-contain" />
-                  <span>App</span>
-                </button>
-              )}
-              {currentAdminRole === 'super_admin' && (
-                <button
                   onClick={() => setActiveTab("settings")}
                   className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-925 ${
                     activeTab === "settings" 
@@ -11134,7 +11087,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 // On mobile, only allow mobile-allowed tabs
                 if (isMobile && !mobileAllowedTabs.includes(value)) return;
                 // Prevent regular admins from accessing super_admin-only tabs
-                if (currentAdminRole !== 'super_admin' && (value === 'logs' || value === 'settings' || value === 'admins' || value === 'official-invitations' || value === 'scanners' || value === 'app')) {
+                if (currentAdminRole !== 'super_admin' && (value === 'logs' || value === 'settings' || value === 'admins' || value === 'official-invitations' || value === 'scanners')) {
                   return; // Don't allow tab change
                 }
                 setActiveTab(value);
@@ -11228,12 +11181,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {currentAdminRole === "super_admin" && (
                 <TabsContent value="scanners" className="space-y-6">
                   <ScannersTab language={language} selectedEventId={selectedEventId || undefined} />
-                </TabsContent>
-              )}
-
-              {currentAdminRole === "super_admin" && (
-                <TabsContent value="app" className="space-y-6">
-                  <AppTab language={language} />
                 </TabsContent>
               )}
 

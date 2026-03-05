@@ -84,6 +84,22 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/career-application",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/career-application/check-duplicate",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/careers/:path*",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/careers/:path*",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/passes/:eventId",
       "destination": "/api/misc.js"
     },
