@@ -196,8 +196,11 @@ let careerAppPromise = null;
 async function getCareerApp() {
   if (careerAppPromise) return careerAppPromise;
   careerAppPromise = (async () => {
-    const express = requireFromRoot('express');
-    const cookieParser = requireFromRoot('cookie-parser');
+    const expressModule = await import('express');
+    const express = expressModule.default || expressModule;
+    const cookieParserModule = await import('cookie-parser');
+    const cookieParser = cookieParserModule.default || cookieParserModule;
+    const nodemailer = (await import('nodemailer')).default;
     const { createClient } = await import('@supabase/supabase-js');
     const jwtModule = await import('jsonwebtoken');
     const jwt = jwtModule.default;
@@ -235,19 +238,22 @@ async function getCareerApp() {
       next();
     }
     function getEmailTransporter() {
-      try {
-        const nodemailer = requireFromRoot('nodemailer');
-        const host = process.env.EMAIL_HOST;
-        const user = process.env.EMAIL_USER;
-        const pass = process.env.EMAIL_PASS;
-        if (!host || !user || !pass) return null;
-        return nodemailer.createTransport({ host, port: parseInt(process.env.EMAIL_PORT || '587', 10), secure: false, auth: { user, pass } });
-      } catch (e) { return null; }
+      const host = process.env.EMAIL_HOST;
+      const user = process.env.EMAIL_USER;
+      const pass = process.env.EMAIL_PASS;
+      if (!host || !user || !pass) return null;
+      return nodemailer.createTransport({
+        host,
+        port: parseInt(process.env.EMAIL_PORT || '587', 10),
+        secure: false,
+        auth: { user, pass },
+      });
     }
     const app = express();
     app.use(express.json());
     app.use(cookieParser());
-    const { registerCareerRoutes } = requireFromRoot('../careerRoutes.cjs');
+    const careerRoutesModule = await import('../careerRoutes.cjs');
+    const { registerCareerRoutes } = careerRoutesModule.default || careerRoutesModule;
     registerCareerRoutes(app, { supabase, supabaseService, requireAdminAuth, careerApplicationLimiter, getEmailTransporter });
     return app;
   })();
