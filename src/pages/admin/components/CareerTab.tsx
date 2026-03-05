@@ -453,9 +453,10 @@ export function CareerTab({ language }: CareerTabProps) {
   };
 
   const saveDomain = async () => {
-    if (domainForm.description && domainForm.description.length > 250) {
+    const description = (domainForm.description || "").trim();
+    if (description.length > 250) {
       toast({
-        title: language === "fr" ? "Validation" : "Validation",
+        title: language === "fr" ? "Validation" : "Validation error",
         description:
           language === "fr"
             ? "La description ne doit pas dépasser 250 caractères."
@@ -1336,6 +1337,9 @@ export function CareerTab({ language }: CareerTabProps) {
                 maxLength={250}
                 placeholder="Optional"
               />
+              <p className="mt-1 text-xs text-muted-foreground text-right">
+                {(domainForm.description || "").length} / 250
+              </p>
             </div>
             <div>
               <Label>{language === "fr" ? "Type de poste" : "Job type"}</Label>
