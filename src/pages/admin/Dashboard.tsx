@@ -80,6 +80,7 @@ import {
   Zap,
   MailCheck,
   ArrowRight,
+  ArrowLeft,
   Shield,
   QrCode,
   Store,
@@ -10235,40 +10236,33 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     );
   }
 
-  // Mobile: Overview tab only (step-by-step build). Desktop-only message saved for later.
+  // Mobile: dashboard disabled – only desktop is allowed
   if (isMobile) {
-    const handleMobileLogout = () => {
-      try {
-        sessionStorage.removeItem('mobileAdminSession');
-      } catch (_) {}
-      window.location.href = '/admin/login';
-    };
     return (
-      <div className="min-h-screen min-w-0 flex flex-col" style={{ backgroundColor: '#1A1A1A' }}>
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-2 px-4 py-3 border-b shrink-0" style={{ borderColor: '#2A2A2A', background: '#1A1A1A' }}>
-          <h1 className="text-lg font-semibold truncate" style={{ color: '#FFF' }}>{t.overview}</h1>
-          <Button variant="ghost" size="sm" onClick={handleMobileLogout} className="shrink-0" style={{ color: '#E21836' }}>
-            <LogOut className="w-4 h-4 mr-1" />
-            {language === 'en' ? 'Log out' : 'Déconnexion'}
-          </Button>
-        </header>
-        <main className="flex-1 min-w-0 overflow-x-hidden p-4">
-          <OverviewTab
-            language={language}
-            t={t}
-            applications={applications}
-            pendingApplications={pendingApplications}
-            approvedCount={approvedCount}
-            events={events}
-            displayStats={displayStats}
-            pendingAmbassadorOrdersCount={pendingAmbassadorOrdersCount}
-            previousPendingAmbassadorOrdersCount={previousPendingAmbassadorOrdersCount}
-            activityChartData={activityChartData}
-            animatedCards={animatedCards}
-            setActiveTab={setActiveTab}
-            getStatusBadge={getStatusBadge}
-          />
-        </main>
+      <div className="min-h-screen min-w-0 flex items-center justify-center px-4" style={{ backgroundColor: '#1A1A1A' }}>
+        <div className="max-w-md w-full">
+          <div className="rounded-xl border px-6 py-8 space-y-4 text-center" style={{ borderColor: '#2A2A2A', background: '#121212' }}>
+            <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center bg-primary/10 mb-2">
+              <Settings className="w-6 h-6 text-primary" />
+            </div>
+            <h1 className="text-xl font-semibold" style={{ color: '#FFFFFF' }}>
+              {language === 'en' ? 'Admin dashboard is desktop only' : 'Le tableau de bord admin est réservé au desktop'}
+            </h1>
+            <p className="text-sm" style={{ color: '#B8B8B8' }}>
+              {language === 'en'
+                ? 'For security reasons and to provide the best experience, the admin interface is only accessible on desktop devices.'
+                : "Pour des raisons de sécurité et de confort, l’interface admin est accessible uniquement depuis un ordinateur."}
+            </p>
+            <Button
+              variant="outline"
+              className="mt-2"
+              onClick={() => { window.location.href = '/'; }}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              {language === 'en' ? 'Back to website' : 'Retour au site'}
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }

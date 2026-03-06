@@ -24,8 +24,6 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [mobileEmail, setMobileEmail] = useState("");
-  const [mobilePassword, setMobilePassword] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -289,54 +287,33 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     }
   };
 
-  // Mobile: simple login (no JWT, no verification) — for step-by-step dashboard build. Desktop-only flow saved for later.
-  const handleMobileLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      sessionStorage.setItem('mobileAdminSession', '1');
-    } catch (_) {}
-    navigate('/admin', { replace: true });
-  };
-
   if (isMobile) {
     return (
       <div className="min-h-screen bg-gradient-dark flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
-          <CardHeader>
-            <CardTitle className="text-center text-lg">{language === 'en' ? 'Admin (mobile)' : 'Admin (mobile)'}</CardTitle>
-            <CardDescription className="text-center text-sm">
-              {language === 'en' ? 'Simple sign-in for mobile dashboard.' : 'Connexion simple pour le tableau de bord mobile.'}
+          <CardHeader className="text-center space-y-2">
+            <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center bg-primary/10">
+              <Settings className="w-6 h-6 text-primary" />
+            </div>
+            <CardTitle className="text-lg font-semibold">
+              {language === 'en' ? 'Admin dashboard not available on mobile' : "Tableau de bord admin indisponible sur mobile"}
+            </CardTitle>
+            <CardDescription className="text-sm">
+              {language === 'en'
+                ? 'For security and best experience, the admin dashboard can only be accessed from a desktop browser.'
+                : "Pour des raisons de sécurité et de confort, le tableau de bord admin est accessible uniquement depuis un ordinateur."}
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleMobileLogin} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="mobile-email">{t[language].email}</Label>
-                <Input
-                  id="mobile-email"
-                  type="email"
-                  value={mobileEmail}
-                  onChange={(e) => setMobileEmail(e.target.value)}
-                  placeholder="admin@example.com"
-                  autoComplete="email"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mobile-password">{t[language].password}</Label>
-                <Input
-                  id="mobile-password"
-                  type="password"
-                  value={mobilePassword}
-                  onChange={(e) => setMobilePassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                />
-              </div>
-              <Button type="submit" className="w-full">
-                {t[language].login}
-              </Button>
-            </form>
-            <Button variant="ghost" className="w-full mt-2" onClick={() => navigate('/')}>
+          <CardContent className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {language === 'en'
+                  ? 'Please open this page on a desktop device to log in as admin.'
+                  : "Merci d’ouvrir cette page sur un ordinateur pour vous connecter en tant qu’admin."}
+              </AlertDescription>
+            </Alert>
+            <Button variant="ghost" className="w-full" onClick={() => navigate('/')}>
               <ArrowLeft className="w-4 h-4 mr-2" />
               {language === 'en' ? 'Back to home' : "Retour à l'accueil"}
             </Button>

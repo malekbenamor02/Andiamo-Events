@@ -3,7 +3,6 @@ import { Navigate, useLocation } from "react-router-dom";
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import { API_ROUTES } from '@/lib/api-routes';
 import { getApiBaseUrl } from '@/lib/api-routes';
-const MOBILE_SESSION_KEY = 'mobileAdminSession';
 
 interface ProtectedAdminRouteProps {
   children: React.ReactNode;
@@ -18,12 +17,6 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
 
   useEffect(() => {
     cancelled.current = false;
-
-    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(MOBILE_SESSION_KEY)) {
-      setIsAuthenticated(true);
-      setLoading(false);
-      return;
-    }
 
     const fromLogin = (location.state as { fromLogin?: boolean })?.fromLogin === true;
 
