@@ -1,5 +1,5 @@
 import { Helmet } from "react-helmet-async";
-import { SITE_URL } from "@/lib/seo";
+import { SITE_URL, BRAND_ALTERNATE_NAMES } from "@/lib/seo";
 
 /** WebSite schema – helps Google understand the site and can enable sitelinks */
 export function JsonLdWebSite() {
@@ -7,10 +7,10 @@ export function JsonLdWebSite() {
     "@context": "https://schema.org",
     "@type": "WebSite",
     name: "Andiamo Events",
-    alternateName: "Andiamo Events Tunisia",
+    alternateName: [...BRAND_ALTERNATE_NAMES],
     url: SITE_URL,
     description:
-      "Creating innovative and inspiring event experiences in Tunisia. We create memories.",
+      "Andiamo Events – find local events this weekend in Tunis, Sousse and across Tunisia. Concerts, parties, festivals. We create memories.",
     inLanguage: ["en", "fr"],
     publisher: {
       "@type": "Organization",
@@ -32,10 +32,11 @@ export function JsonLdOrganization() {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: "Andiamo Events",
+    alternateName: BRAND_ALTERNATE_NAMES.filter((n) => n !== "Andiamo Events Tunisia"),
     url: SITE_URL,
     logo: `${SITE_URL}/logo.svg`,
     description:
-      "Creating innovative and inspiring event experiences in Tunisia. We create memories.",
+      "Andiamo Events – find local events this weekend in Tunis, Sousse and across Tunisia. Concerts, parties, festivals. We create memories.",
     sameAs: [
       "https://www.instagram.com/andiamoevents",
       "https://twitter.com/andiamo_events",

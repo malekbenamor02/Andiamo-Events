@@ -35,15 +35,16 @@ This document is a full SEO plan for **andiamoevents.com** (React SPA, Vite, Ver
 
 **Routes to configure:**
 
-- `/` – Home
-- `/events` – Events list
-- `/event/:eventSlug` – Single event (dynamic title/description from event name + date + venue)
-- `/gallery/:eventSlug` – Event gallery
-- `/about` – About
-- `/contact` – Contact
-- `/terms` – Terms
-- `/ambassador` – Ambassador program
-- `/pass-purchase`, `/:eventSlug` – Pass purchase (can reuse event or generic title)
+- `/` – Home  
+- `/events` – Events list  
+- `/event/:eventSlug` – Single event (dynamic title/description from event name + date + venue)  
+- `/gallery/:eventSlug` – Event gallery  
+- `/about` – About  
+- `/careers`, `/careers/:slug` – Careers listing and individual career domain pages  
+- `/contact` – Contact  
+- `/terms` – Terms  
+- `/ambassador` – Ambassador program  
+- `/pass-purchase`, `/:eventSlug` – Pass purchase (can reuse event or generic title)  
 - 404 – “Page not found” style title
 
 **Implementation steps:**
@@ -66,7 +67,7 @@ Set `<link rel="canonical" href="https://www.andiamoevents.com/current-path" />`
 
 - **A) Static sitemap (good first step)**  
   - Add `public/sitemap.xml` with:
-    - Static URLs: `/`, `/events`, `/about`, `/contact`, `/terms`, `/ambassador`.
+  - Static URLs: `/`, `/events`, `/about`, `/contact`, `/terms`, `/ambassador`, `/careers`.
   - Update this file manually when you add new fixed pages.
 
 - **B) Dynamic sitemap (recommended long-term)**  
@@ -276,6 +277,7 @@ Use **Vercel Speed Insights** and **Google Search Console (Core Web Vitals)** to
 
 - **Primary keywords:** Andiamo Events, events Tunisia, [city] events, event tickets Tunisia, etc.
 - **Secondary:** concert Tunisia, party [city], event venue [city], buy tickets online Tunisia.
+- **Search Console–driven:** Reinforce queries that already show in Search Console (impressions/clicks): brand variants (andiamo events, andiamo, andiamo event, andiamo experience, andiamoevent, indiamo) and intent queries (local events this weekend, local weekend events, events in Sousse). These are in `index.html` keywords, default meta description, Events page meta, and JsonLd `alternateName` / descriptions so Google can match and improve rankings for them.
 - **On site:** Use these naturally in:
   - Home hero and intro
   - Events list headings and short intros
@@ -326,7 +328,7 @@ Use **Vercel Speed Insights** and **Google Search Console (Core Web Vitals)** to
 ## 10. Quick wins (do first)
 
 1. **Replace the default meta description** in `index.html` with a the about page description: “Tunisia”, “events”, “events”, “tickets”, and a CTA.
-2. **Create `public/sitemap.xml`** with at least: `/`, `/events`, `/about`, `/contact`, `/terms`, `/ambassador`.
+2. **Create `public/sitemap.xml`** with at least: `/`, `/events`, `/about`, `/contact`, `/terms`, `/ambassador`, `/careers`.
 3. **Add to `robots.txt`:**  
    `Sitemap: https://www.andiamoevents.com/sitemap.xml`  
    and the `Disallow` lines for `/admin`, `/scanner`, `/pos`, and dashboard/auth paths.

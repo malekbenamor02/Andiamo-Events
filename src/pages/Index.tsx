@@ -33,7 +33,7 @@ interface IndexProps {
 const INDEX_META = {
   title: "Andiamo Events – We Create Memories",
   description:
-    "Creating innovative and inspiring event experiences in Tunisia. We create memories.",
+    "Andiamo Events – find local events this weekend in Tunis, Sousse and across Tunisia. Concerts, parties, festivals. We create memories.",
 };
 
 const Index = ({ language }: IndexProps) => {

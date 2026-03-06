@@ -482,12 +482,12 @@ const Events = ({ language }: EventsProps) => {
     <main className="pt-16 min-h-screen bg-background animate-page-intro" id="main-content">
       <PageMeta
         title="Upcoming Events"
-        description="Creating innovative and inspiring event experiences in Tunisia. We create memories."
+        description="Local events this weekend in Tunis, Sousse and Tunisia. Find weekend events, concerts, parties and festivals. Andiamo Events."
         path="/events"
       />
       <JsonLdWebPage
-        name="Upcoming Events | Andiamo Events – Tunisia Concerts & Parties"
-        description="Creating innovative and inspiring event experiences in Tunisia. We create memories."
+        name="Upcoming Events | Andiamo Events – Local Weekend Events in Tunis & Sousse"
+        description="Local events this weekend in Tunis, Sousse and Tunisia. Find weekend events, concerts, parties and festivals. Andiamo Events."
         path="/events"
       />
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Events", url: "/events" }]} />
