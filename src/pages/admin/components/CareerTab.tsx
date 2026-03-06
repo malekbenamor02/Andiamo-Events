@@ -76,7 +76,7 @@ import {
   fetchCareerApplication,
   updateCareerApplicationStatus,
   fetchCareerApplicationLogs,
-  getCareerApplicationsExportUrl,
+  exportCareerApplicationsToExcel,
   fetchCareerTemplates,
   saveCareerTemplateFromDomain,
   applyCareerTemplateToDomain,
@@ -1165,33 +1165,45 @@ export function CareerTab({ language }: CareerTabProps) {
                     onChange={(e) => setPhoneFilter(e.target.value)}
                   />
                 )}
-                <Button variant="outline" asChild>
-                  <a
-                    href={getCareerApplicationsExportUrl({
-                      domainId: domainFilter !== ALL_DOMAINS_VALUE ? domainFilter : undefined,
-                      status: statusFilter !== ALL_STATUS_VALUE ? statusFilter : undefined,
-                      from: dateFromFilter || undefined,
-                      to: dateToFilter || undefined,
-                      genderKey: genderFilter ? effectiveGenderKey : undefined,
-                      gender: genderFilter || undefined,
-                      ageKey: effectiveAgeKey || undefined,
-                      ageMin: ageMinFilter || undefined,
-                      ageMax: ageMaxFilter || undefined,
-                      cityKey: cityFilter ? effectiveCityKey : undefined,
-                      city: cityFilter || undefined,
-                      nameKey: nameFieldKey || undefined,
-                      name: nameFilter || undefined,
-                      phoneKey: phoneFieldKey || undefined,
-                      phone: phoneFilter || undefined,
-                      format: "xlsx",
-                    })}
-                    download
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    {t.export} Excel
-                  </a>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await exportCareerApplicationsToExcel({
+                        domainId: domainFilter !== ALL_DOMAINS_VALUE ? domainFilter : undefined,
+                        status: statusFilter !== ALL_STATUS_VALUE ? statusFilter : undefined,
+                        from: dateFromFilter || undefined,
+                        to: dateToFilter || undefined,
+                        genderKey: genderFilter ? effectiveGenderKey : undefined,
+                        gender: genderFilter || undefined,
+                        ageKey: effectiveAgeKey || undefined,
+                        ageMin: ageMinFilter || undefined,
+                        ageMax: ageMaxFilter || undefined,
+                        cityKey: cityFilter ? effectiveCityKey : undefined,
+                        city: cityFilter || undefined,
+                        nameKey: nameFieldKey || undefined,
+                        name: nameFilter || undefined,
+                        phoneKey: phoneFieldKey || undefined,
+                        phone: phoneFilter || undefined,
+                      });
+                      toast({
+                        title: language === "en" ? "Export successful" : "Export réussi",
+                        description:
+                          language === "en"
+                            ? "Career applications exported to Excel"
+                            : "Candidatures exportées vers Excel",
+                      });
+                    } catch (err) {
+                      toast({
+                        variant: "destructive",
+                        title: language === "en" ? "Export failed" : "Échec de l'export",
+                        description: err instanceof Error ? err.message : String(err),
+                      });
+                    }
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {t.export} Excel
                 </Button>
               </div>
             </CardHeader>

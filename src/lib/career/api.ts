@@ -571,3 +571,44 @@ export function getCareerApplicationsExportUrl(params: {
   if (params.format) q.set('format', params.format);
   return `${base()}${API_ROUTES.CAREERS_ADMIN_APPLICATIONS_EXPORT}?${q}`;
 }
+
+/** Export career applications as Excel (xlsx). Fetches with credentials and triggers download. */
+export async function exportCareerApplicationsToExcel(params: {
+  domainId?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  genderKey?: string;
+  gender?: string;
+  ageKey?: string;
+  ageMin?: number | string;
+  ageMax?: number | string;
+  cityKey?: string;
+  city?: string;
+  nameKey?: string;
+  name?: string;
+  phoneKey?: string;
+  phone?: string;
+}): Promise<void> {
+  const url = getCareerApplicationsExportUrl({ ...params, format: 'xlsx' });
+  const res = await fetch(url, { credentials: 'include' });
+  const contentType = res.headers.get('content-type') || '';
+  if (!res.ok) {
+    if (contentType.includes('application/json')) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || data.message || `Export failed: ${res.status}`);
+    }
+    throw new Error(`Export failed: ${res.status}`);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('content-disposition') || '';
+  const filenameMatch = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+  const filename = filenameMatch
+    ? filenameMatch[1].replace(/['"]/g, '').trim()
+    : 'career-applications.xlsx';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
