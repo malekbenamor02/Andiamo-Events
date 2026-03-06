@@ -4186,6 +4186,9 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
     }
 
+    // Use service role to bypass RLS (phone_subscribers can block anon key in some setups)
+    const db = supabaseService || supabase;
+
     const { sources, includeMetadata } = req.query;
     
     if (!sources) {
@@ -4202,11 +4205,13 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
     const allPhoneNumbers = [];
     const sourceCounts = {};
 
-    // Helper function to normalize phone number (8 digits, no prefix)
+    // Helper function to normalize phone number (8 digits, Tunisian format: starts with 2,4,5,9)
     const normalizePhone = (phone) => {
       if (!phone) return null;
-      let cleaned = phone.replace(/\D/g, '');
-      if (cleaned.startsWith('216')) cleaned = cleaned.substring(3);
+      let cleaned = String(phone).trim().replace(/\D/g, '');
+      // Strip country code: 216, 00216, or 00 216
+      if (cleaned.startsWith('00216')) cleaned = cleaned.substring(5);
+      else if (cleaned.startsWith('216')) cleaned = cleaned.substring(3);
       cleaned = cleaned.replace(/^0+/, '');
       if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
         return cleaned;
@@ -4242,7 +4247,7 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
 
     // 1. Ambassador Applications
     if (sourcesConfig.ambassador_applications?.enabled) {
-      let query = supabase
+      let query = db
         .from('ambassador_applications')
         .select('id, phone_number, city, ville, status, full_name');
       
@@ -4283,7 +4288,7 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
 
     // 2. Orders (Clients)
     if (sourcesConfig.orders?.enabled) {
-      let query = supabase
+      let query = db
         .from('orders')
         .select('id, user_phone, city, ville, status, payment_method, source, user_name, order_number');
       
@@ -4334,7 +4339,7 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
 
     // 3. AIO Events Submissions
     if (sourcesConfig.aio_events_submissions?.enabled) {
-      let query = supabase
+      let query = db
         .from('aio_events_submissions')
         .select('id, phone, city, ville, status, full_name, event_id');
       
@@ -4379,7 +4384,7 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
 
     // 4. Approved Ambassadors
     if (sourcesConfig.approved_ambassadors?.enabled) {
-      let query = supabase
+      let query = db
         .from('ambassadors')
         .select('id, phone, city, ville, full_name, status')
         .eq('status', 'approved');
@@ -4416,17 +4421,15 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
       }
     }
 
-    // 5. Phone Subscribers
+    // 5. Phone Subscribers (select only base columns so it works without city migration)
     if (sourcesConfig.phone_subscribers?.enabled) {
-      let query = supabase
+      let query = db
         .from('phone_subscribers')
-        .select('id, phone_number, city, subscribed_at');
+        .select('id, phone_number, subscribed_at')
+        .not('phone_number', 'is', null);
       
       const filters = sourcesConfig.phone_subscribers.filters || {};
       
-      if (filters.city) {
-        query = query.eq('city', filters.city);
-      }
       if (filters.dateFrom) {
         query = query.gte('subscribed_at', filters.dateFrom);
       }
@@ -4443,7 +4446,7 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
             phone: normalizePhone(sub.phone_number),
             source: 'phone_subscribers',
             sourceId: sub.id,
-            city: sub.city || null,
+            city: sub.city ?? null,
             ville: null,
             metadata: includeMetadata ? {
               subscribed_at: sub.subscribed_at
@@ -4491,6 +4494,9 @@ app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) =>
       return res.status(500).json({ success: false, error: 'Supabase not configured' });
     }
 
+    // Use service role so RLS does not block counts (e.g. aio_events_submissions requires admin)
+    const db = supabaseService || supabase;
+
     const { sources } = req.query;
     const requestedSources = sources ? (typeof sources === 'string' ? sources.split(',') : sources) : 
       ['ambassador_applications', 'orders', 'aio_events_submissions', 'approved_ambassadors', 'phone_subscribers'];
@@ -4499,16 +4505,16 @@ app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) =>
 
     // Ambassador Applications
     if (requestedSources.includes('ambassador_applications')) {
-      const { count: total } = await supabase
+      const { count: total } = await db
         .from('ambassador_applications')
         .select('*', { count: 'exact', head: true });
       
-      const { count: withPhone } = await supabase
+      const { count: withPhone } = await db
         .from('ambassador_applications')
         .select('*', { count: 'exact', head: true })
         .not('phone_number', 'is', null);
 
-      const { data: statusData } = await supabase
+      const { data: statusData } = await db
         .from('ambassador_applications')
         .select('status')
         .not('phone_number', 'is', null);
@@ -4529,16 +4535,16 @@ app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) =>
 
     // Orders
     if (requestedSources.includes('orders')) {
-      const { count: total } = await supabase
+      const { count: total } = await db
         .from('orders')
         .select('*', { count: 'exact', head: true });
       
-      const { count: withPhone } = await supabase
+      const { count: withPhone } = await db
         .from('orders')
         .select('*', { count: 'exact', head: true })
         .not('user_phone', 'is', null);
 
-      const { data: cityData } = await supabase
+      const { data: cityData } = await db
         .from('orders')
         .select('city')
         .not('user_phone', 'is', null);
@@ -4561,11 +4567,11 @@ app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) =>
 
     // AIO Events Submissions
     if (requestedSources.includes('aio_events_submissions')) {
-      const { count: total } = await supabase
+      const { count: total } = await db
         .from('aio_events_submissions')
         .select('*', { count: 'exact', head: true });
       
-      const { count: withPhone } = await supabase
+      const { count: withPhone } = await db
         .from('aio_events_submissions')
         .select('*', { count: 'exact', head: true })
         .not('phone', 'is', null);
@@ -4578,12 +4584,12 @@ app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) =>
 
     // Approved Ambassadors
     if (requestedSources.includes('approved_ambassadors')) {
-      const { count: total } = await supabase
+      const { count: total } = await db
         .from('ambassadors')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'approved');
       
-      const { count: withPhone } = await supabase
+      const { count: withPhone } = await db
         .from('ambassadors')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'approved')
@@ -4597,11 +4603,11 @@ app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) =>
 
     // Phone Subscribers
     if (requestedSources.includes('phone_subscribers')) {
-      const { count: total } = await supabase
+      const { count: total } = await db
         .from('phone_subscribers')
         .select('*', { count: 'exact', head: true });
       
-      const { count: withPhone } = await supabase
+      const { count: withPhone } = await db
         .from('phone_subscribers')
         .select('*', { count: 'exact', head: true })
         .not('phone_number', 'is', null);

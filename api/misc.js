@@ -6256,11 +6256,13 @@ We Create Memories`;
         const allPhoneNumbers = [];
         const sourceCounts = {};
 
-        // Helper function to normalize phone number (8 digits, no prefix)
+        // Helper function to normalize phone number (8 digits, Tunisian format: starts with 2,4,5,9)
         const normalizePhone = (phone) => {
           if (!phone) return null;
-          let cleaned = phone.replace(/\D/g, '');
-          if (cleaned.startsWith('216')) cleaned = cleaned.substring(3);
+          let cleaned = String(phone).trim().replace(/\D/g, '');
+          // Strip country code: 216, 00216, or 00 216
+          if (cleaned.startsWith('00216')) cleaned = cleaned.substring(5);
+          else if (cleaned.startsWith('216')) cleaned = cleaned.substring(3);
           cleaned = cleaned.replace(/^0+/, '');
           if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
             return cleaned;
@@ -6469,17 +6471,15 @@ We Create Memories`;
           }
         }
 
-        // 5. Phone Subscribers
+        // 5. Phone Subscribers (select only base columns so it works without city migration)
         if (sourcesConfig.phone_subscribers?.enabled) {
           let query = dbClient
             .from('phone_subscribers')
-            .select('id, phone_number, city, subscribed_at');
+            .select('id, phone_number, subscribed_at')
+            .not('phone_number', 'is', null);
           
           const filters = sourcesConfig.phone_subscribers.filters || {};
           
-          if (filters.city) {
-            query = query.eq('city', filters.city);
-          }
           if (filters.dateFrom) {
             query = query.gte('subscribed_at', filters.dateFrom);
           }
@@ -6496,7 +6496,7 @@ We Create Memories`;
                 phone: normalizePhone(sub.phone_number),
                 source: 'phone_subscribers',
                 sourceId: sub.id,
-                city: sub.city || null,
+                city: sub.city ?? null,
                 ville: null,
                 metadata: includeMetadata === 'true' ? {
                   subscribed_at: sub.subscribed_at

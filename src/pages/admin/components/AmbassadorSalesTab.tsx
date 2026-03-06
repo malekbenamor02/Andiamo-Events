@@ -210,14 +210,14 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
     if (!ambassadorStatus || ambassadorStatus === "approved") return null;
     if (ambassadorStatus === "suspended") {
       return (
-        <Badge variant="secondary" className="ml-1.5 text-xs shrink-0">
+        <Badge variant="secondary" className="text-xs shrink-0 w-fit">
           {p.language === "en" ? "Paused" : "En pause"}
         </Badge>
       );
     }
     if (ambassadorStatus === "removed") {
       return (
-        <Badge variant="destructive" className="ml-1.5 text-xs shrink-0">
+        <Badge variant="destructive" className="text-xs shrink-0 w-fit">
           {p.language === "en" ? "Removed" : "Retiré"}
         </Badge>
       );
@@ -497,7 +497,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                               </TableCell>
                               <TableCell className="py-2 text-center whitespace-nowrap">
                                 {order.ambassador_id ? (
-                                  <div className="flex items-center justify-center gap-1 flex-wrap">
+                                  <div className="flex flex-col items-center gap-1">
                                     <button
                                       type="button"
                                       onClick={() => p.onViewAmbassador(order.ambassador_id!)}
@@ -702,7 +702,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1 flex-wrap">
+                          <div className="flex flex-col items-start gap-1">
                             <button
                               type="button"
                               onClick={() => p.onViewAmbassador(row.ambassador_id)}

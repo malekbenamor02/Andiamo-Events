@@ -143,7 +143,7 @@ export function AmbassadorsTab({
   onBulkDelete,
 }: AmbassadorsTabProps) {
   const { toast } = useToast();
-  const [filterName, setFilterName] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"active" | "paused">("active");
   const [filterPhone, setFilterPhone] = useState("");
   const [filterEmail, setFilterEmail] = useState("");
   const [filterCity, setFilterCity] = useState("");
@@ -161,14 +161,13 @@ export function AmbassadorsTab({
   );
 
   const filteredList = useMemo(() => {
-    const name = filterName.trim().toLowerCase();
     const phone = filterPhone.trim().replace(/\D/g, "");
     const email = filterEmail.trim().toLowerCase();
     const city = filterCity.trim().toLowerCase();
     const ville = filterVille.trim().toLowerCase();
     return displayList.filter((amb) => {
-      if (name && !(amb.full_name || "").toLowerCase().includes(name))
-        return false;
+      if (filterStatus === "active" && amb.status !== "approved") return false;
+      if (filterStatus === "paused" && amb.status !== "suspended") return false;
       if (phone && !(amb.phone || "").replace(/\D/g, "").includes(phone))
         return false;
       if (email && !(amb.email || "").toLowerCase().includes(email))
@@ -179,7 +178,7 @@ export function AmbassadorsTab({
         return false;
       return true;
     });
-  }, [displayList, filterName, filterPhone, filterEmail, filterCity, filterVille]);
+  }, [displayList, filterStatus, filterPhone, filterEmail, filterCity, filterVille]);
 
   const selectedAmbassadors = useMemo(
     () => ambassadors.filter((amb) => selectedIds.has(amb.id)),
@@ -964,12 +963,6 @@ export function AmbassadorsTab({
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/50 bg-muted/20 p-3">
           <Search className="w-4 h-4 text-muted-foreground shrink-0" />
           <Input
-            placeholder={language === "en" ? "Filter by name..." : "Filtrer par nom..."}
-            value={filterName}
-            onChange={(e) => setFilterName(e.target.value)}
-            className="max-w-[200px] h-9"
-          />
-          <Input
             placeholder={language === "en" ? "Filter by phone..." : "Filtrer par téléphone..."}
             value={filterPhone}
             onChange={(e) => setFilterPhone(e.target.value)}
@@ -981,6 +974,22 @@ export function AmbassadorsTab({
             onChange={(e) => setFilterEmail(e.target.value)}
             className="max-w-[220px] h-9"
           />
+          <Select
+            value={filterStatus}
+            onValueChange={(v) => setFilterStatus(v as "active" | "paused")}
+          >
+            <SelectTrigger className="max-w-[140px] h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">
+                {language === "en" ? "Active" : "Actif"}
+              </SelectItem>
+              <SelectItem value="paused">
+                {language === "en" ? "Paused" : "En pause"}
+              </SelectItem>
+            </SelectContent>
+          </Select>
           <Select
             value={filterCity || "_all"}
             onValueChange={(v) => setFilterCity(v === "_all" ? "" : v)}
@@ -1041,7 +1050,7 @@ export function AmbassadorsTab({
             variant="outline"
             size="sm"
             onClick={() => {
-              setFilterName("");
+              setFilterStatus("active");
               setFilterPhone("");
               setFilterEmail("");
               setFilterCity("");
