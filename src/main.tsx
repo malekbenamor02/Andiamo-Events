@@ -10,15 +10,19 @@ import { sanitizeConsoleArgs, sanitizeObject, sanitizeString } from './lib/sanit
 // Initialize Sentry as early as possible for error tracking
 initSentry()
 
-// Defer non-essential analytics so they don't block initial paint
-const deferAnalytics = () => {
+// Initialize GA early so the first page view is captured (trackPageView runs as soon as App mounts)
+if (typeof window !== 'undefined') {
   try {
-    initClarity()
+    initGA()
   } catch {
     // ignore analytics init errors
   }
+}
+
+// Defer other non-essential analytics so they don't block initial paint
+const deferAnalytics = () => {
   try {
-    initGA()
+    initClarity()
   } catch {
     // ignore analytics init errors
   }

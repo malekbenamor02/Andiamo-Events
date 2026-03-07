@@ -153,6 +153,7 @@ type AdminNotificationKind =
   | "ambassador_order"
   | "online_order"
   | "pos_order"
+  | "career_application"
   | "push";
 
 interface AdminNotification {
@@ -952,7 +953,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const audio = new Audio("/sounds/notification.mp3");
       audio.volume = 0.6;
       audio.play().catch(() => {
-        // Only MP3 is used; ignore playback errors (e.g. autoplay blocked)
+        // Autoplay may be blocked when tab is in background; notification still shows
       });
     } catch {
       // ignore
@@ -964,25 +965,25 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (!("Notification" in window)) return;
     try {
       if (Notification.permission === "granted") {
-        new Notification(title, {
+        const n = new Notification(title, {
           body,
           icon: "/assets/faviconn.png",
           badge: "/assets/faviconn.png",
         });
+        n.onerror = () => {};
       } else if (Notification.permission === "default") {
         Notification.requestPermission()
           .then((perm) => {
             if (perm === "granted") {
-              new Notification(title, {
+              const n = new Notification(title, {
                 body,
                 icon: "/assets/faviconn.png",
                 badge: "/assets/faviconn.png",
               });
+              n.onerror = () => {};
             }
           })
-          .catch(() => {
-            // ignore
-          });
+          .catch(() => {});
       }
     } catch {
       // Ignore notification errors
@@ -1288,6 +1289,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     fetchAmbassadorSalesData();
   }, []);
 
+  // Request browser notification permission as soon as dashboard loads so notifications
+  // work when the tab is in background or minimized (realtime still runs, we show Notification + sound).
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
   // Realtime: keep applications in sync without refresh
   useEffect(() => {
     const channel = supabase
@@ -1341,12 +1351,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          logger.error("Admin ambassador applications realtime channel error", new Error("CHANNEL_ERROR"), { details: { source: "realtime" } });
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [language]);
 
   // Realtime: keep online orders in sync without refresh
   useEffect(() => {
@@ -1379,13 +1393,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           fetchOnlineOrders();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          logger.error("Admin online orders realtime channel error", new Error("CHANNEL_ERROR"), { details: { source: "realtime" } });
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [language]);
 
   // Realtime: notify on ambassador cash orders that need admin approval
   useEffect(() => {
@@ -1425,13 +1443,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           }
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          logger.error("Admin ambassador orders realtime channel error", new Error("CHANNEL_ERROR"), { details: { source: "realtime" } });
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [language]);
 
   // Realtime: notify on new POS orders that need approval
   useEffect(() => {
@@ -1485,13 +1506,52 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           });
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          logger.error("Admin POS orders realtime channel error", new Error("CHANNEL_ERROR"), { details: { source: "realtime" } });
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [language]);
+
+  // Realtime: career applications — notify so admin gets alerts even when not on Career tab
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-career-applications-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "career_applications",
+        },
+        () => {
+          pushNotification({
+            kind: "career_application",
+            title:
+              language === "en"
+                ? "New career application"
+                : "Nouvelle candidature",
+            message:
+              language === "en"
+                ? "A new career application has been submitted."
+                : "Une nouvelle candidature a été envoyée.",
+          });
+        }
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          logger.error("Admin career applications realtime channel error", new Error("CHANNEL_ERROR"), { details: { source: "realtime" } });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [language]);
 
   // Animation effect for overview cards
   useEffect(() => {

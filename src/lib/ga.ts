@@ -1,12 +1,13 @@
 /**
  * Google Analytics 4 (GA4) integration using gtag.js
  *
- * - Controlled via Vite env var: VITE_GA_MEASUREMENT_ID
- * - Safe no-op in development or when the ID is missing
+ * - Script + config are also in index.html so GA is always connected
+ * - Vite env: VITE_GA_MEASUREMENT_ID (fallback: G-ST4MWP7HDE)
  * - Exposes helpers for page views and custom events
  */
 
-const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined;
+const GA_MEASUREMENT_ID =
+  (import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined)?.trim() || 'G-ST4MWP7HDE';
 const isProduction = import.meta.env.PROD;
 
 declare global {
@@ -44,15 +45,7 @@ function initGtag(measurementId: string): void {
 
 export function initGA(): void {
   if (isInitialized) return;
-
-  const id = GA_MEASUREMENT_ID?.trim();
-  if (!id) {
-    if (isProduction) {
-      console.warn('[GA] VITE_GA_MEASUREMENT_ID not set – Google Analytics disabled');
-    }
-    return;
-  }
-
+  const id = GA_MEASUREMENT_ID;
   try {
     loadGtagScript(id);
     initGtag(id);

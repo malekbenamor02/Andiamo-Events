@@ -307,43 +307,12 @@ export function CareerTab({ language }: CareerTabProps) {
     return () => clearInterval(interval);
   }, [loadApplications]);
 
-  // Realtime: keep career applications in sync; on new application show browser notification and play sound
+  // Realtime: keep career applications list in sync when this tab is active.
+  // Browser notification + sound for new career applications are handled by the main Dashboard
+  // so the admin gets alerts even when not on the Career tab.
   useEffect(() => {
-    const playNotificationSound = () => {
-      if (typeof window === "undefined") return;
-      try {
-        const audio = new Audio("/sounds/notification.mp3");
-        audio.volume = 0.6;
-        audio.play().catch(() => {});
-      } catch {
-        // ignore
-      }
-    };
-
-    const showNewApplicationNotification = (lang: "en" | "fr") => {
-      if (typeof window === "undefined" || !("Notification" in window)) return;
-      const title = lang === "fr" ? "Nouvelle candidature" : "New career application";
-      const body = lang === "fr" ? "Une nouvelle candidature a été envoyée." : "A new application has been submitted.";
-      try {
-        if (Notification.permission === "granted") {
-          new Notification(title, {
-            body,
-            icon: "/logo.svg",
-          });
-        } else if (Notification.permission === "default") {
-          Notification.requestPermission().then((perm) => {
-            if (perm === "granted") {
-              new Notification(title, { body, icon: "/logo.svg" });
-            }
-          });
-        }
-      } catch {
-        // ignore
-      }
-    };
-
     const channel = supabase
-      .channel("admin-career-applications-realtime")
+      .channel("admin-career-applications-list-realtime")
       .on(
         "postgres_changes",
         {
@@ -351,11 +320,7 @@ export function CareerTab({ language }: CareerTabProps) {
           schema: "public",
           table: "career_applications",
         },
-        (payload: { eventType?: string }) => {
-          if (payload.eventType === "INSERT") {
-            playNotificationSound();
-            showNewApplicationNotification(language);
-          }
+        () => {
           loadApplications();
         }
       )
@@ -363,7 +328,7 @@ export function CareerTab({ language }: CareerTabProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [loadApplications, language]);
+  }, [loadApplications]);
 
   // When a specific domain is selected, load its fields so we know which filters (gender, age, city) exist.
   useEffect(() => {
