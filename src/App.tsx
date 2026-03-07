@@ -40,6 +40,8 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import PhoneCapturePopup from "./components/PhoneCapturePopup";
 import { usePhoneCapture } from "./hooks/usePhoneCapture";
 import { trackPageView } from "./lib/ga";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 // Configure React Query with smart caching
 const queryClient = new QueryClient({
@@ -163,6 +165,8 @@ const App = () => {
           <TooltipProvider>
             <Toaster />
             <Sonner />
+            <Analytics />
+            <SpeedInsights />
             <BrowserRouter>
               <AppContent language={language} toggleLanguage={toggleLanguage} />
             </BrowserRouter>

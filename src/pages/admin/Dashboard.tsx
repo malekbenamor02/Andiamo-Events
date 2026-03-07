@@ -1351,10 +1351,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           }
         }
       )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR") {
-          logger.error("Admin ambassador applications realtime channel error", new Error("CHANNEL_ERROR"), { details: { source: "realtime" } });
-        }
+      .subscribe((_status) => {
+        // CHANNEL_ERROR is common (tab background, network blip); Supabase reconnects. Don't log as error.
       });
 
     return () => {
@@ -1393,10 +1391,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           fetchOnlineOrders();
         }
       )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR") {
-          logger.error("Admin online orders realtime channel error", new Error("CHANNEL_ERROR"), { details: { source: "realtime" } });
-        }
+      .subscribe((_status) => {
+        // CHANNEL_ERROR is common (tab background, network blip); Supabase reconnects. Don't log as error.
       });
 
     return () => {
@@ -1443,10 +1439,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           }
         },
       )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR") {
-          logger.error("Admin ambassador orders realtime channel error", new Error("CHANNEL_ERROR"), { details: { source: "realtime" } });
-        }
+      .subscribe((_status) => {
+        // CHANNEL_ERROR is common (tab background, network blip); Supabase reconnects. Don't log as error.
       });
 
     return () => {
@@ -1506,10 +1500,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           });
         },
       )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR") {
-          logger.error("Admin POS orders realtime channel error", new Error("CHANNEL_ERROR"), { details: { source: "realtime" } });
-        }
+      .subscribe((_status) => {
+        // CHANNEL_ERROR is common (tab background, network blip); Supabase reconnects. Don't log as error.
       });
 
     return () => {
@@ -1542,10 +1534,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           });
         }
       )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR") {
-          logger.error("Admin career applications realtime channel error", new Error("CHANNEL_ERROR"), { details: { source: "realtime" } });
-        }
+      .subscribe((_status) => {
+        // CHANNEL_ERROR is common (tab background, network blip); Supabase reconnects. Don't log as error.
       });
 
     return () => {
