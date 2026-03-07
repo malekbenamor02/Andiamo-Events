@@ -9,13 +9,8 @@ const environment = import.meta.env.MODE;
 const isProduction = import.meta.env.PROD;
 
 export function initSentry() {
-  // Only initialize if DSN is configured
-  if (!dsn) {
-    if (isProduction) {
-      console.warn('[Sentry] VITE_SENTRY_DSN not set - error tracking disabled');
-    }
-    return;
-  }
+  // Only initialize if DSN is configured (optional; no console noise when unset)
+  if (!dsn) return;
 
   Sentry.init({
     dsn,
