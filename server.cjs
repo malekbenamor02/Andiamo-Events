@@ -273,6 +273,7 @@ app.use((req, res, next) => {
     "font-src 'self' https: data:",
     "style-src 'self' 'unsafe-inline' https:",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https: https://www.clarity.ms https://scripts.clarity.ms",
+    "worker-src 'self' blob:",
     "connect-src 'self' https: wss: *.supabase.co *.supabase.in *.google.com *.gstatic.com *.vercel-analytics.com *.vercel-insights.com *.clarity.ms https://c.bing.com",
     "frame-src 'self' https: *.google.com",
     "report-uri /api/csp-report"

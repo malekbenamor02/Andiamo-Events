@@ -38,12 +38,18 @@ export function initSentry() {
       'ERR_BLOCKED_BY_CLIENT',
       'ERR_CONNECTION_CLOSED',
       'Non-Error promise rejection captured',
+      // Third-party script load failures (e.g. GA blocked in Instagram in-app browser)
+      /^Load failed\b/i,
+      /Load failed \(.*analytics\.google\.com\)/i,
     ],
     denyUrls: [
       /chrome-extension:\/\//i,
       /moz-extension:\/\//i,
       /safari-extension:\/\//i,
       /edge-extension:\/\//i,
+      // Ignore errors originating from Google Analytics / gtag (we can't fix third-party script)
+      /googletagmanager\.com\/gtag\/js/i,
+      /analytics\.google\.com/i,
     ],
   });
 }
