@@ -52,6 +52,25 @@
       gtag('js', new Date());
       gtag('config', 'G-ST4MWP7HDE', { send_page_view: false });
     </script>
+    <!-- Stub webkit.messageHandlers in in-app browsers (e.g. Instagram) where it is missing or incomplete -->
+    <script>
+      (function() {
+        if (typeof window === 'undefined') return;
+        try {
+          var noop = function() {};
+          var stub = { postMessage: noop };
+          if (!window.webkit) window.webkit = {};
+          var existing = window.webkit.messageHandlers;
+          if (!existing || typeof existing !== 'object') {
+            window.webkit.messageHandlers = new Proxy({}, { get: function() { return stub; } });
+          } else {
+            window.webkit.messageHandlers = new Proxy(existing, {
+              get: function(target, name) { return target[name] || stub; }
+            });
+          }
+        } catch (e) {}
+      })();
+    </script>
 
   </head>
 

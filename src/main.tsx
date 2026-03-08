@@ -47,7 +47,8 @@ const suppressBrowserExtensionError = (error: any) => {
          errorString.includes("Extension context invalidated") ||
          errorString.includes("message channel closed before a response was received") ||
          errorString.includes("Could not establish connection") ||
-         errorString.includes("Receiving end does not exist");
+         errorString.includes("Receiving end does not exist") ||
+         (errorString.includes("webkit") && errorString.includes("messageHandlers"));
 };
 
 // Set up early promise rejection handler
@@ -94,12 +95,13 @@ const setupErrorHandlers = async () => {
     const errorMessage = event.message || 'Unknown error';
     const filename = event.filename || '';
     
-    // Suppress harmless browser extension errors
+    // Suppress harmless browser extension and in-app browser errors
     if (errorMessage.includes("message channel closed") ||
         errorMessage.includes("asynchronous response") ||
         errorMessage.includes("A listener indicated an asynchronous response") ||
         errorMessage.includes("Extension context invalidated") ||
         errorMessage.includes("message channel closed before a response was received") ||
+        (errorMessage.includes("webkit") && errorMessage.includes("messageHandlers")) ||
         filename.includes("chrome-extension://") ||
         filename.includes("moz-extension://") ||
         filename.includes("safari-extension://") ||

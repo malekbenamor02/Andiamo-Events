@@ -41,6 +41,9 @@ export function initSentry() {
       // Third-party script load failures (e.g. GA blocked in Instagram in-app browser)
       /^Load failed\b/i,
       /Load failed \(.*analytics\.google\.com\)/i,
+      // In-app browsers (e.g. Instagram) where webkit.messageHandlers isn't available
+      /webkit\.messageHandlers/i,
+      /undefined is not an object \(evaluating 'window\.webkit\.messageHandlers[^']*'\)/i,
     ],
     denyUrls: [
       /chrome-extension:\/\//i,
