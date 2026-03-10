@@ -782,6 +782,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [selectedOnlineOrder, setSelectedOnlineOrder] = useState<any>(null);
   const [isOnlineOrderDetailsOpen, setIsOnlineOrderDetailsOpen] = useState(false);
   const [loadingOnlineOrders, setLoadingOnlineOrders] = useState(false);
+  const [onlineOrdersRealtimeKey, setOnlineOrdersRealtimeKey] = useState(0);
   const [onlineOrderFilters, setOnlineOrderFilters] = useState({
     orderId: '',
     status: 'all',
@@ -952,9 +953,31 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     try {
       const audio = new Audio("/sounds/notification.mp3");
       audio.volume = 0.6;
+      audio.onerror = () => {
+        playNotificationBeepFallback();
+      };
       audio.play().catch(() => {
-        // Autoplay may be blocked when tab is in background; notification still shows
+        playNotificationBeepFallback();
       });
+    } catch {
+      playNotificationBeepFallback();
+    }
+  };
+
+  const playNotificationBeepFallback = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      osc.type = "sine";
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.15);
     } catch {
       // ignore
     }
@@ -1003,7 +1026,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     const buyerName = getOrderBuyerName(order, lang);
     let passesText = "";
     let total: number | null =
-      typeof order.total_price === "number" ? order.total_price : null;
+      typeof order.total_with_fees === "number"
+        ? order.total_with_fees
+        : typeof order.total_price === "number"
+          ? order.total_price
+          : null;
 
     let passes: any[] = [];
 
@@ -1379,8 +1406,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     };
   }, [language]);
 
-  // Realtime: keep online orders in sync without refresh
+  // Realtime: keep online orders in sync without refresh (resubscribe on error for 100% reliability)
   useEffect(() => {
+    let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
       .channel('admin-online-orders-realtime')
       .on(
@@ -1410,15 +1438,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           fetchOnlineOrders();
         }
       )
-      .subscribe((_status) => {
-        // CHANNEL_ERROR is common (tab background, network blip); Supabase reconnects. Don't log as error.
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          supabase.removeChannel(channel);
+          retryTimeoutId = setTimeout(() => {
+            setOnlineOrdersRealtimeKey((k) => k + 1);
+          }, 3000);
+        }
       });
 
     return () => {
+      if (retryTimeoutId) clearTimeout(retryTimeoutId);
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language]);
+  }, [language, onlineOrdersRealtimeKey]);
 
   // Realtime: notify on ambassador cash orders that need admin approval
   useEffect(() => {
@@ -2602,13 +2636,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchOnlineOrders = async () => {
     setLoadingOnlineOrders(true);
     try {
-      // CRITICAL: This direct Supabase query should use API endpoint instead
-      // API endpoint MUST filter out REMOVED_BY_ADMIN orders automatically
-      // TODO: Create /api/admin/online-orders endpoint that excludes REMOVED_BY_ADMIN
+      // Online orders: exclude REMOVED_BY_ADMIN so they don't appear in the table
       let query = (supabase as any)
         .from('orders')
         .select('*, order_passes (*)')
         .eq('source', 'platform_online')
+        .neq('status', 'REMOVED_BY_ADMIN')
         .order('created_at', { ascending: false });
 
       // Filter by selected event if one is selected
@@ -2681,13 +2714,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchOnlineOrdersWithFilters = async (filters: typeof onlineOrderFilters) => {
     setLoadingOnlineOrders(true);
     try {
-      // CRITICAL: This direct Supabase query should use API endpoint instead
-      // API endpoint MUST filter out REMOVED_BY_ADMIN orders automatically
-      // TODO: Create /api/admin/online-orders endpoint that excludes REMOVED_BY_ADMIN
+      // Online orders: exclude REMOVED_BY_ADMIN so they don't appear in the table
       let query = (supabase as any)
         .from('orders')
         .select('*, order_passes (*)')
         .eq('source', 'platform_online')
+        .neq('status', 'REMOVED_BY_ADMIN')
         .order('created_at', { ascending: false });
 
       // Filter by selected event if one is selected

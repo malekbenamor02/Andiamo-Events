@@ -11,6 +11,16 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// Never cache POST (or other non-GET) requests — Cache API only supports GET
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  // GET: pass through (no caching in this SW to avoid PUT errors)
+  event.respondWith(fetch(event.request));
+});
+
 async function fetchConfig(retries = 3) {
   for (let i = 0; i < retries; i++) {
     const res = await fetch(CONFIG_URL);

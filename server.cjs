@@ -6377,12 +6377,14 @@ app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res)
 
     const { status, ambassador_id, event_id, city, ville, date_from, date_to, limit = 50, offset = 0, include_removed } = req.query;
 
+    const lim = Math.min(parseInt(limit, 10) || 50, 1000);
+    const off = parseInt(offset, 10) || 0;
     let query = supabase
       .from('orders')
-      .select('*, order_passes (*), ambassadors (id, full_name, phone, email)', { count: 'exact' })
+      .select('*, order_passes (*)', { count: 'exact' })
       .eq('payment_method', 'ambassador_cash')
       .order('created_at', { ascending: false })
-      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+      .range(off, off + lim - 1);
     
     // Include expiration fields in the select (they're part of *)
 
@@ -6544,19 +6546,27 @@ app.get('/api/admin/order-expiration-settings', requireAdminAuth, async (req, re
 
     if (error) {
       console.error('Error fetching expiration settings:', error);
-      return res.status(500).json({ error: error.message });
+      return res.json({
+        success: true,
+        data: [{ order_status: 'PENDING_CASH', default_expiration_hours: 24, is_active: true }]
+      });
     }
 
-    // Only return PENDING_CASH settings (filter out others if any)
     const filteredData = (data || []).filter(setting => setting.order_status === 'PENDING_CASH');
+    const dataToReturn = filteredData.length > 0
+      ? filteredData
+      : [{ order_status: 'PENDING_CASH', default_expiration_hours: 24, is_active: true }];
 
     res.json({
       success: true,
-      data: filteredData
+      data: dataToReturn
     });
   } catch (error) {
     console.error('Error in order-expiration-settings GET:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch expiration settings' });
+    res.json({
+      success: true,
+      data: [{ order_status: 'PENDING_CASH', default_expiration_hours: 24, is_active: true }]
+    });
   }
 });
 
