@@ -14,7 +14,7 @@ const requireFromRoot = createRequire(import.meta.url);
 let _buildOnlineTicketEmailHtml = null;
 function getBuildOnlineTicketEmailHtml() {
   if (_buildOnlineTicketEmailHtml) return _buildOnlineTicketEmailHtml;
-  const mod = requireFromRoot(path.join(__dirname, 'lib', 'online-ticket-email-html.js'));
+  const mod = requireFromRoot(path.join(__dirname, 'lib', 'online-ticket-email-html.cjs'));
   _buildOnlineTicketEmailHtml = mod.buildOnlineTicketEmailHtml;
   return _buildOnlineTicketEmailHtml;
 }

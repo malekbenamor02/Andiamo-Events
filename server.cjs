@@ -34,7 +34,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Official online ticket email template (matches email-templates/online-ticket-email-preview.html)
-const { buildOnlineTicketEmailHtml } = require('./api/lib/online-ticket-email-html.js');
+const { buildOnlineTicketEmailHtml } = require('./api/lib/online-ticket-email-html.cjs');
 
 // Import centralized SMS template helpers
 const {

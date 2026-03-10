@@ -1,6 +1,7 @@
 /**
  * Official online ticket email HTML – matches email-templates/online-ticket-email-preview.html
  * Used by ClicToPay success email, first-time ticket email, and admin resend ticket email.
+ * (.cjs so require() works when package.json has "type": "module")
  */
 
 function formatEventTime(dateString) {
