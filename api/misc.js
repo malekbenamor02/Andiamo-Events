@@ -4,9 +4,20 @@
 
 import '../lib/sentry-server.js';
 import { createRequire } from 'module';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireFromRoot = createRequire(import.meta.url);
-const { buildOnlineTicketEmailHtml } = requireFromRoot('./lib/online-ticket-email-html.js');
+
+// Lazy-load ticket email builder so ambassador-sales/orders and other routes don't crash if this file is missing
+let _buildOnlineTicketEmailHtml = null;
+function getBuildOnlineTicketEmailHtml() {
+  if (_buildOnlineTicketEmailHtml) return _buildOnlineTicketEmailHtml;
+  const mod = requireFromRoot(path.join(__dirname, 'lib', 'online-ticket-email-html.js'));
+  _buildOnlineTicketEmailHtml = mod.buildOnlineTicketEmailHtml;
+  return _buildOnlineTicketEmailHtml;
+}
 
 // Inlined verifyAdminAuth function (for admin-update-application and send-email)
 async function verifyAdminAuth(req) {
@@ -2411,7 +2422,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                     pass: process.env.EMAIL_PASS,
                   },
                 });
-                const emailHtml = buildOnlineTicketEmailHtml({
+                const emailHtml = getBuildOnlineTicketEmailHtml()({
                   customerName: fullOrder.user_name,
                   orderNumber: fullOrder.order_number,
                   orderId,
@@ -2871,7 +2882,7 @@ We Create Memories`;
               try {
                 const nodemailer = await import('nodemailer');
                 const transporter = nodemailer.default.createTransport({ host: process.env.EMAIL_HOST, port: parseInt(process.env.EMAIL_PORT || '587'), secure: false, auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-                const emailHtml = buildOnlineTicketEmailHtml({
+                const emailHtml = getBuildOnlineTicketEmailHtml()({
                   customerName: fullOrder.user_name,
                   orderNumber: fullOrder.order_number,
                   orderId,
@@ -3467,7 +3478,7 @@ Billets envoyés par email. We Create Memories`;
         const totalAmountResend = order.total_with_fees ?? order.total_price ?? 0;
         const feeAmountResend = typeof order.fee_amount === 'number' ? order.fee_amount : undefined;
         const subtotalAmountResend = feeAmountResend != null ? totalAmountResend - feeAmountResend : undefined;
-        const emailHtml = buildOnlineTicketEmailHtml({
+        const emailHtml = getBuildOnlineTicketEmailHtml()({
           customerName: order.user_name,
           orderNumber: order.order_number,
           orderId,
@@ -3926,19 +3937,22 @@ Billets envoyés par email. We Create Memories`;
         
         if (error) {
           console.error('Error fetching ambassador orders:', error);
-          return res.status(500).json({ error: error.message });
+          return res.status(500).json({
+            error: error.message || 'Failed to fetch ambassador orders',
+            details: error.details || error.hint || error.code || null
+          });
         }
-        
+
         return res.status(200).json({
           success: true,
           data: data || [],
           count: count || 0
         });
-        
       } catch (error) {
         console.error('Error in ambassador-sales/orders endpoint:', error);
-        return res.status(500).json({ 
-          error: error.message || 'Failed to fetch ambassador orders' 
+        return res.status(500).json({
+          error: error.message || 'Failed to fetch ambassador orders',
+          details: error.message || null
         });
       }
     }
