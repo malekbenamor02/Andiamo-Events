@@ -44,6 +44,9 @@ interface OrderData {
   user_name: string;
   user_email: string;
   total_price: number;
+  // Optional fields for online payment fee breakdown
+  fee_amount?: number | null;
+  total_with_fees?: number | null;
   status: string;
   payment_method: string;
   source: string;
@@ -290,7 +293,15 @@ const composeConfirmationEmail = (
 ): string => {
   const customerName = orderData.user_name || 'Valued Customer';
   const eventName = orderData.events?.name || 'Event';
-  const totalAmount = orderData.total_price;
+  // For online payments, total_price already includes fees.
+  // Use fee_amount / total_with_fees when available to show a clear breakdown.
+  const feeAmount = typeof orderData.fee_amount === 'number' ? orderData.fee_amount : null;
+  const totalWithFees =
+    typeof orderData.total_with_fees === 'number' && !isNaN(orderData.total_with_fees)
+      ? orderData.total_with_fees
+      : orderData.total_price;
+  const subtotalAmount =
+    feeAmount && !isNaN(feeAmount) ? totalWithFees - feeAmount : totalWithFees;
   const ambassadorName = orderData.ambassadors?.full_name;
 
   // Group tickets by pass type for the email template
@@ -322,7 +333,10 @@ const composeConfirmationEmail = (
     eventName,
     eventTime: formatEventTime(orderData.events?.date),
     venueName: orderData.events?.venue,
-    totalAmount,
+    totalAmount: totalWithFees,
+    subtotalAmount,
+    feeAmount: feeAmount ?? undefined,
+    totalWithFees,
     ambassadorName,
     passes: passesSummary,
     tickets: ticketsForEmail,

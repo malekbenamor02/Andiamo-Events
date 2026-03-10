@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { SelectedPass } from '@/types/orders';
 import { Receipt, Ticket, Info } from 'lucide-react';
 import { PaymentMethod } from '@/lib/constants/orderStatuses';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface OrderSummaryProps {
   selectedPasses: SelectedPass[];
@@ -146,26 +146,24 @@ export function OrderSummary({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1">
                   <span className="text-sm text-muted-foreground">{t.fees}</span>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-muted-foreground/40 text-muted-foreground hover:text-primary hover:border-primary transition-colors text-[10px]"
-                          aria-label={t.feesTitle}
-                        >
-                          <Info className="w-3 h-3" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs text-xs space-y-1">
-                        <p className="font-semibold">{t.feesTitle}</p>
-                        <p>{t.feesLine1}</p>
-                        <p>{t.feesLine2}</p>
-                        <p>{t.feesLine3}</p>
-                        <p>{t.feesLine4}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-grid w-4 h-4 place-items-center rounded-full border border-muted-foreground/40 text-muted-foreground hover:text-primary hover:border-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        aria-label={t.feesTitle}
+                      >
+                        <Info className="w-3 h-3 block shrink-0 leading-none" strokeWidth={2.25} />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="max-w-xs text-xs space-y-1 p-3" align="start" side="top">
+                      <p className="font-semibold">{t.feesTitle}</p>
+                      <p>{t.feesLine1}</p>
+                      <p>{t.feesLine2}</p>
+                      <p>{t.feesLine3}</p>
+                      <p>{t.feesLine4}</p>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <span className="font-semibold">
                   {effectiveFee.toFixed(2)} TND

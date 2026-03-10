@@ -1652,6 +1652,10 @@ interface QRCodeEmailData {
   eventTime?: string; // Formatted event time (e.g., "Saturday · 22 March 2026 · 22:00")
   venueName?: string; // Event venue name
   totalAmount: number;
+  // Optional fee breakdown for online payments
+  subtotalAmount?: number;
+  feeAmount?: number;
+  totalWithFees?: number;
   ambassadorName?: string;
   passes: Array<{
     passType: string;
@@ -1672,6 +1676,21 @@ interface QRCodeEmailData {
  */
 export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
   const subject = "Your Digital Tickets Are Ready - Andiamo Events";
+  const hasFees =
+    typeof orderData.feeAmount === 'number' &&
+    !isNaN(orderData.feeAmount) &&
+    orderData.feeAmount > 0;
+
+  const subtotalAmount = hasFees
+    ? (orderData.subtotalAmount ??
+       (orderData.totalWithFees != null
+         ? orderData.totalWithFees - (orderData.feeAmount || 0)
+         : orderData.totalAmount - (orderData.feeAmount || 0)))
+    : (orderData.subtotalAmount ?? orderData.totalAmount);
+
+  const totalWithFees = hasFees
+    ? (orderData.totalWithFees ?? orderData.totalAmount)
+    : orderData.totalAmount;
   
   // Group tickets by pass type
   const ticketsByPassType = new Map<string, typeof orderData.tickets>();
@@ -2124,10 +2143,20 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
               </thead>
               <tbody>
                 ${passesSummary}
-                <tr class="total-row">
-                  <td colspan="2" style="text-align: right; padding-right: 20px; background-color: transparent !important;"><strong>Total Amount Paid:</strong></td>
-                  <td style="text-align: right; background-color: transparent !important;"><strong>${orderData.totalAmount.toFixed(2)} TND</strong></td>
-                </tr>
+        ${hasFees ? `
+        <tr class="total-row">
+          <td colspan="2" style="text-align: right; padding-right: 20px; background-color: transparent !important;"><strong>Subtotal:</strong></td>
+          <td style="text-align: right; background-color: transparent !important;"><strong>${subtotalAmount.toFixed(2)} TND</strong></td>
+        </tr>
+        <tr class="total-row">
+          <td colspan="2" style="text-align: right; padding-right: 20px; background-color: transparent !important;"><strong>Payment Fees:</strong></td>
+          <td style="text-align: right; background-color: transparent !important;"><strong>${orderData.feeAmount!.toFixed(2)} TND</strong></td>
+        </tr>
+        ` : ''}
+        <tr class="total-row">
+          <td colspan="2" style="text-align: right; padding-right: 20px; background-color: transparent !important;"><strong>Total Amount Paid:</strong></td>
+          <td style="text-align: right; background-color: transparent !important;"><strong>${totalWithFees.toFixed(2)} TND</strong></td>
+        </tr>
               </tbody>
             </table>
           </div>

@@ -6,6 +6,7 @@ import '../lib/sentry-server.js';
 import { createRequire } from 'module';
 
 const requireFromRoot = createRequire(import.meta.url);
+const { buildOnlineTicketEmailHtml } = requireFromRoot('./lib/online-ticket-email-html.js');
 
 // Inlined verifyAdminAuth function (for admin-update-application and send-email)
 async function verifyAdminAuth(req) {
@@ -2394,39 +2395,10 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
               price: p.price,
             }));
             
-            // Build tickets HTML for email
-            const ticketsHtml = Array.from(ticketsByPassType.entries())
-              .map(([passType, passTickets]) => {
-                const ticketsList = passTickets
-                  .map((ticket, index) => {
-                    return `
-                      <div style="margin: 20px 0; padding: 20px; background: #E8E8E8; border-radius: 8px; text-align: center; border: 1px solid rgba(0, 0, 0, 0.1);">
-                        <h4 style="margin: 0 0 15px 0; color: #E21836; font-size: 16px; font-weight: 600;">${passType} - Ticket ${index + 1}</h4>
-                        <img src="${ticket.qr_code_url}" alt="QR Code for ${passType}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid rgba(226, 24, 54, 0.3); display: block; margin: 0 auto;" />
-                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #666666; font-family: 'Courier New', monospace;">Token: ${ticket.secure_token.substring(0, 8)}...</p>
-                      </div>
-                    `;
-                  })
-                  .join('');
-                
-                return `
-                  <div style="margin: 30px 0;">
-                    <h3 style="color: #E21836; margin-bottom: 15px; font-size: 18px; font-weight: 600;">${passType} Tickets (${passTickets.length})</h3>
-                    ${ticketsList}
-                  </div>
-                `;
-              })
-              .join('');
-            
-            const passesSummaryHtml = passesSummary.map(p => `
-              <tr style="border-bottom: 1px solid rgba(0, 0, 0, 0.1);">
-                <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px;">${p.passType}</td>
-                <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: center;">${p.quantity}</td>
-                <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: right;">${p.price.toFixed(2)} TND</td>
-              </tr>
-            `).join('');
-            
-            // Send email with QR codes
+            // Send email with QR codes (official template = online-ticket-email-preview.html)
+            const totalAmountFirst = fullOrder.total_with_fees ?? fullOrder.total_price ?? 0;
+            const feeAmountFirst = typeof fullOrder.fee_amount === 'number' ? fullOrder.fee_amount : undefined;
+            const subtotalAmountFirst = feeAmountFirst != null ? totalAmountFirst - feeAmountFirst : undefined;
             if (fullOrder.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
               try {
                 const nodemailer = await import('nodemailer');
@@ -2439,136 +2411,19 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                     pass: process.env.EMAIL_PASS,
                   },
                 });
-                
-                const emailHtml = `
-                  <!DOCTYPE html>
-                  <html>
-                  <head>
-                    <meta charset="utf-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Your Digital Tickets - Andiamo Events</title>
-                    <style>
-                      * { margin: 0; padding: 0; box-sizing: border-box; }
-                      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #1A1A1A; background: #FFFFFF; }
-                      .email-wrapper { max-width: 600px; margin: 0 auto; background: #FFFFFF; }
-                      .content-card { background: #F5F5F5; margin: 0 20px 30px; border-radius: 12px; padding: 50px 40px; border: 1px solid rgba(0, 0, 0, 0.1); }
-                      .title-section { text-align: center; margin-bottom: 40px; padding-bottom: 30px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); }
-                      .title { font-size: 32px; font-weight: 700; color: #1A1A1A; margin-bottom: 12px; }
-                      .subtitle { font-size: 16px; color: #666666; }
-                      .greeting { font-size: 18px; color: #1A1A1A; margin-bottom: 30px; }
-                      .greeting strong { color: #E21836; font-weight: 600; }
-                      .message { font-size: 16px; color: #666666; margin-bottom: 25px; }
-                      .order-info-block { background: #E8E8E8; border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 8px; padding: 30px; margin: 40px 0; }
-                      .info-row { margin-bottom: 20px; }
-                      .info-label { font-size: 11px; color: #999999; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 10px; font-weight: 600; }
-                      .info-value { font-family: 'Courier New', monospace; font-size: 18px; color: #1A1A1A; font-weight: 500; }
-                      .passes-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                      .passes-table th { text-align: left; padding: 12px 0; color: #E21836; font-weight: 600; font-size: 14px; border-bottom: 2px solid rgba(226, 24, 54, 0.3); }
-                      .passes-table td { padding: 12px 0; color: #1A1A1A; font-size: 15px; }
-                      .total-row { border-top: 2px solid rgba(226, 24, 54, 0.3); }
-                      .total-row td { font-weight: 700; font-size: 18px; color: #E21836; padding-top: 15px; }
-                      .tickets-section { background: #E8E8E8; border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 8px; padding: 30px; margin: 40px 0; }
-                      .support-section { background: #E8E8E8; border-left: 3px solid rgba(226, 24, 54, 0.3); padding: 20px 25px; margin: 35px 0; border-radius: 4px; }
-                      .support-text { font-size: 14px; color: #666666; line-height: 1.7; }
-                      .support-email { color: #E21836 !important; text-decoration: none; font-weight: 500; }
-                      .closing-section { text-align: center; margin: 50px 0 40px; padding-top: 40px; border-top: 1px solid rgba(0, 0, 0, 0.1); }
-                      .slogan { font-size: 24px; font-style: italic; color: #E21836; font-weight: 300; margin-bottom: 30px; }
-                      .signature { font-size: 16px; color: #666666; line-height: 1.7; }
-                      .footer { margin-top: 50px; padding: 40px 20px 30px; text-align: center; border-top: 1px solid rgba(0, 0, 0, 0.1); }
-                      .footer-text { font-size: 12px; color: #999999; margin-bottom: 20px; line-height: 1.6; }
-                      .footer-links { margin: 15px auto 0; text-align: center; }
-                      .footer-link { color: #999999; text-decoration: none; font-size: 13px; margin: 0 8px; }
-                      .footer-link:hover { color: #E21836 !important; }
-                    </style>
-                  </head>
-                  <body>
-                    <div class="email-wrapper">
-                      <div class="content-card">
-                        <div class="title-section">
-                          <h1 class="title">Your Tickets Are Ready</h1>
-                          <p class="subtitle">Order Confirmation - Andiamo Events</p>
-                        </div>
-                        <p class="greeting">Dear <strong>${fullOrder.user_name || 'Valued Customer'}</strong>,</p>
-                        <p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.</p>
-                        <div class="order-info-block">
-                          <div class="info-row">
-                            <div class="info-label">Order Number</div>
-                            <div class="info-value">${fullOrder.order_number !== null && fullOrder.order_number !== undefined ? `#${fullOrder.order_number}` : orderId.substring(0, 8).toUpperCase()}</div>
-                          </div>
-                          <div class="info-row">
-                            <div class="info-label">Event</div>
-                            <div style="font-size: 18px; color: #E21836; font-weight: 600;">${fullOrder.events?.name || 'Event'}</div>
-                          </div>
-                          <div class="info-row">
-                            <div class="info-label">Event Time</div>
-                            <div style="font-size: 18px; color: #E21836; font-weight: 600;">${fullOrder.events?.date ? (() => {
-                              try {
-                                const date = new Date(fullOrder.events.date);
-                                if (!isNaN(date.getTime())) {
-                                  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                                  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-                                  const dayName = days[date.getDay()];
-                                  const day = date.getDate();
-                                  const monthName = months[date.getMonth()];
-                                  const year = date.getFullYear();
-                                  const hours = date.getHours().toString().padStart(2, '0');
-                                  const minutes = date.getMinutes().toString().padStart(2, '0');
-                                  return `${dayName} · ${day} ${monthName} ${year} · ${hours}:${minutes}`;
-                                }
-                              } catch (e) {}
-                              return 'TBA';
-                            })() : 'TBA'}</div>
-                          </div>
-                          <div class="info-row">
-                            <div class="info-label">Venue</div>
-                            <div style="font-size: 18px; color: #E21836; font-weight: 600;">${fullOrder.events?.venue || 'Venue to be announced'}</div>
-                          </div>
-                        </div>
-                        <div class="order-info-block">
-                          <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Passes Purchased</h3>
-                          <table class="passes-table">
-                            <thead>
-                              <tr>
-                                <th>Pass Type</th>
-                                <th style="text-align: center;">Quantity</th>
-                                <th style="text-align: right;">Price</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              ${passesSummaryHtml}
-                              <tr class="total-row">
-                                <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
-                                <td style="text-align: right;"><strong>${Number((fullOrder.total_with_fees ?? fullOrder.total_price ?? 0)).toFixed(2)} TND</strong></td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
-                        <div class="tickets-section">
-                          <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Your Digital Tickets</h3>
-                          <p class="message" style="margin-bottom: 25px;">Please present these QR codes at the event entrance. Each ticket has a unique QR code for verification.</p>
-                          ${ticketsHtml}
-                        </div>
-                        <div class="support-section">
-                          <p class="support-text">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a> or in our Instagram page <a href="https://www.instagram.com/andiamo.events/" target="_blank" class="support-email">@andiamo.events</a> or contact with <a href="tel:28070128" class="support-email">28070128</a>.</p>
-                        </div>
-                        <div class="closing-section">
-                          <p class="slogan">We Create Memories</p>
-                          <p class="signature">Best regards,<br>The Andiamo Events Team</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="footer">
-                      <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
-                      <div class="footer-links">
-                        <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
-                        <span style="color: #999999;">•</span>
-                        <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
-                      </div>
-                    </div>
-                  </body>
-                  </html>
-                `;
-                
+                const emailHtml = buildOnlineTicketEmailHtml({
+                  customerName: fullOrder.user_name,
+                  orderNumber: fullOrder.order_number,
+                  orderId,
+                  eventName: fullOrder.events?.name,
+                  eventTime: fullOrder.events?.date,
+                  venueName: fullOrder.events?.venue,
+                  passes: passesSummary,
+                  totalAmount: totalAmountFirst,
+                  feeAmount: feeAmountFirst,
+                  subtotalAmount: subtotalAmountFirst,
+                  ticketsByPassType,
+                });
                 // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
                 // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
                 await transporter.sendMail({
@@ -3009,16 +2864,26 @@ We Create Memories`;
               if (p) { if (!ticketsByPassType.has(p.pass_type)) ticketsByPassType.set(p.pass_type, []); ticketsByPassType.get(p.pass_type).push({ ...t, passType: p.pass_type }); }
             });
             const passesSummary = orderPasses.map(p => ({ passType: p.pass_type, quantity: p.quantity, price: p.price }));
-            const ticketsHtml = Array.from(ticketsByPassType.entries()).map(([passType, passTickets]) => {
-              const list = passTickets.map((ticket, idx) => `<div style="margin: 20px 0; padding: 20px; background: #E8E8E8; border-radius: 8px; text-align: center;"><h4 style="margin: 0 0 15px 0; color: #E21836;">${passType} - Ticket ${idx + 1}</h4><img src="${ticket.qr_code_url}" alt="QR" style="max-width: 250px; height: auto;" /><p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">Token: ${ticket.secure_token.substring(0, 8)}...</p></div>`).join('');
-              return `<div style="margin: 30px 0;"><h3 style="color: #E21836;">${passType} Tickets (${passTickets.length})</h3>${list}</div>`;
-            }).join('');
-            const passesSummaryHtml = passesSummary.map(p => `<tr><td style="padding: 12px 0;">${p.passType}</td><td style="padding: 12px 0; text-align: center;">${p.quantity}</td><td style="padding: 12px 0; text-align: right;">${p.price.toFixed(2)} TND</td></tr>`).join('');
+            const totalAmount = fullOrder.total_with_fees ?? fullOrder.total_price ?? 0;
+            const feeAmount = typeof fullOrder.fee_amount === 'number' ? fullOrder.fee_amount : undefined;
+            const subtotalAmount = feeAmount != null ? (fullOrder.total_with_fees ?? fullOrder.total_price ?? 0) - feeAmount : undefined;
             if (fullOrder.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
               try {
                 const nodemailer = await import('nodemailer');
                 const transporter = nodemailer.default.createTransport({ host: process.env.EMAIL_HOST, port: parseInt(process.env.EMAIL_PORT || '587'), secure: false, auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-                const emailHtml = `<!DOCTYPE html><html><body style="font-family: Arial,sans-serif; line-height: 1.6; color: #1A1A1A;"><div style="max-width: 600px; margin: 0 auto; padding: 20px;"><h1 style="color: #E21836;">Your Tickets Are Ready</h1><p>Dear ${fullOrder.user_name || 'Valued Customer'},</p><p>Your order has been successfully processed. Your digital tickets with unique QR codes are below.</p><div style="background: #E8E8E8; padding: 20px; border-radius: 8px; margin: 20px 0;"><p><strong>Order:</strong> ${fullOrder.order_number != null ? '#' + fullOrder.order_number : orderId.substring(0, 8)}</p><p><strong>Event:</strong> ${fullOrder.events?.name || 'Event'}</p><p><strong>Venue:</strong> ${fullOrder.events?.venue || 'TBA'}</p></div><table style="width:100%; border-collapse: collapse;"><thead><tr style="border-bottom: 2px solid #E21836;"><th style="text-align:left;">Pass</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th></tr></thead><tbody>${passesSummaryHtml}</tbody></table><div style="margin: 30px 0;">${ticketsHtml}</div><p>Present these QR codes at the entrance. Need help? Contact@andiamoevents.com</p><p>— Andiamo Events</p></div></body></html>`;
+                const emailHtml = buildOnlineTicketEmailHtml({
+                  customerName: fullOrder.user_name,
+                  orderNumber: fullOrder.order_number,
+                  orderId,
+                  eventName: fullOrder.events?.name,
+                  eventTime: fullOrder.events?.date,
+                  venueName: fullOrder.events?.venue,
+                  passes: passesSummary,
+                  totalAmount,
+                  feeAmount,
+                  subtotalAmount,
+                  ticketsByPassType,
+                });
                 await transporter.sendMail({ from: '"Andiamo Events" <contact@andiamoevents.com>', replyTo: '"Andiamo Events" <contact@andiamoevents.com>', to: fullOrder.user_email, subject: 'Your Digital Tickets Are Ready - Andiamo Events', html: emailHtml });
                 await dbClient.from('tickets').update({ status: 'DELIVERED', email_delivery_status: 'sent', delivered_at: new Date().toISOString() }).in('id', tickets.map(t => t.id));
                 await dbClient.from('email_delivery_logs').insert({ order_id: orderId, email_type: 'ticket_delivery', recipient_email: fullOrder.user_email, recipient_name: fullOrder.user_name, subject: 'Your Digital Tickets Are Ready - Andiamo Events', status: 'sent', sent_at: new Date().toISOString() });
@@ -3599,142 +3464,22 @@ Billets envoyés par email. We Create Memories`;
           price: parseFloat(p.price)
         }));
         
-        const passesSummaryHtml = passesSummary.map(p => `
-          <tr style="border-bottom: 1px solid rgba(0, 0, 0, 0.1);">
-            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px;">${p.passType}</td>
-            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: center;">${p.quantity}</td>
-            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: right;">${p.price.toFixed(2)} TND</td>
-          </tr>
-        `).join('');
-        
-        const emailHtml = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Your Digital Tickets - Andiamo Events</title>
-            <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #1A1A1A; background: #FFFFFF; }
-              .email-wrapper { max-width: 600px; margin: 0 auto; background: #FFFFFF; }
-              .content-card { background: #F5F5F5; margin: 0 20px 30px; border-radius: 12px; padding: 50px 40px; border: 1px solid rgba(0, 0, 0, 0.1); }
-              .title-section { text-align: center; margin-bottom: 40px; padding-bottom: 30px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); }
-              .title { font-size: 32px; font-weight: 700; color: #1A1A1A; margin-bottom: 12px; }
-              .subtitle { font-size: 16px; color: #666666; }
-              .greeting { font-size: 18px; color: #1A1A1A; margin-bottom: 30px; }
-              .greeting strong { color: #E21836; font-weight: 600; }
-              .message { font-size: 16px; color: #666666; margin-bottom: 25px; }
-              .order-info-block { background: #E8E8E8; border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 8px; padding: 30px; margin: 40px 0; }
-              .info-row { margin-bottom: 20px; }
-              .info-label { font-size: 11px; color: #999999; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 10px; font-weight: 600; }
-              .info-value { font-family: 'Courier New', monospace; font-size: 18px; color: #1A1A1A; font-weight: 500; }
-              .passes-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-              .passes-table th { text-align: left; padding: 12px 0; color: #E21836; font-weight: 600; font-size: 14px; border-bottom: 2px solid rgba(226, 24, 54, 0.3); }
-              .passes-table td { padding: 12px 0; color: #1A1A1A; font-size: 15px; }
-              .total-row { border-top: 2px solid rgba(226, 24, 54, 0.3); }
-              .total-row td { font-weight: 700; font-size: 18px; color: #E21836; padding-top: 15px; }
-              .tickets-section { background: #E8E8E8; border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 8px; padding: 30px; margin: 40px 0; }
-              .support-section { background: #E8E8E8; border-left: 3px solid rgba(226, 24, 54, 0.3); padding: 20px 25px; margin: 35px 0; border-radius: 4px; }
-              .support-text { font-size: 14px; color: #666666; line-height: 1.7; }
-              .support-email { color: #E21836 !important; text-decoration: none; font-weight: 500; }
-              .closing-section { text-align: center; margin: 50px 0 40px; padding-top: 40px; border-top: 1px solid rgba(0, 0, 0, 0.1); }
-              .slogan { font-size: 24px; font-style: italic; color: #E21836; font-weight: 300; margin-bottom: 30px; }
-              .signature { font-size: 16px; color: #666666; line-height: 1.7; }
-              .footer { margin-top: 50px; padding: 40px 20px 30px; text-align: center; border-top: 1px solid rgba(0, 0, 0, 0.1); }
-              .footer-text { font-size: 12px; color: #999999; margin-bottom: 20px; line-height: 1.6; }
-              .footer-links { margin: 15px auto 0; text-align: center; }
-              .footer-link { color: #999999; text-decoration: none; font-size: 13px; margin: 0 8px; }
-              .footer-link:hover { color: #E21836 !important; }
-            </style>
-          </head>
-          <body>
-            <div class="email-wrapper">
-              <div class="content-card">
-                <div class="title-section">
-                  <h1 class="title">Your Tickets Are Ready</h1>
-                  <p class="subtitle">Order Confirmation - Andiamo Events</p>
-                </div>
-                <p class="greeting">Dear <strong>${order.user_name || 'Valued Customer'}</strong>,</p>
-                <p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.</p>
-                <div class="order-info-block">
-                  <div class="info-row">
-                    <div class="info-label">Order Number</div>
-                    <div class="info-value">${order.order_number !== null && order.order_number !== undefined ? `#${order.order_number}` : orderId.substring(0, 8).toUpperCase()}</div>
-                  </div>
-                  <div class="info-row">
-                    <div class="info-label">Event</div>
-                    <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.name || 'Event'}</div>
-                  </div>
-                  <div class="info-row">
-                    <div class="info-label">Event Time</div>
-                    <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.date ? (() => {
-                      try {
-                        const date = new Date(order.events.date);
-                        if (!isNaN(date.getTime())) {
-                          const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                          const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-                          const dayName = days[date.getDay()];
-                          const day = date.getDate();
-                          const monthName = months[date.getMonth()];
-                          const year = date.getFullYear();
-                          const hours = date.getHours().toString().padStart(2, '0');
-                          const minutes = date.getMinutes().toString().padStart(2, '0');
-                          return `${dayName} · ${day} ${monthName} ${year} · ${hours}:${minutes}`;
-                        }
-                      } catch (e) {}
-                      return 'TBA';
-                    })() : 'TBA'}</div>
-                  </div>
-                  <div class="info-row">
-                    <div class="info-label">Venue</div>
-                    <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.events?.venue || 'Venue to be announced'}</div>
-                  </div>
-                </div>
-                <div class="order-info-block">
-                  <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Passes Purchased</h3>
-                  <table class="passes-table">
-                    <thead>
-                      <tr>
-                        <th>Pass Type</th>
-                        <th style="text-align: center;">Quantity</th>
-                        <th style="text-align: right;">Price</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${passesSummaryHtml}
-                      <tr class="total-row">
-                        <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
-                        <td style="text-align: right;"><strong>${Number((order.total_with_fees ?? order.total_price ?? 0)).toFixed(2)} TND</strong></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <div class="tickets-section">
-                  <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Your Digital Tickets</h3>
-                  <p class="message" style="margin-bottom: 25px;">Please present these QR codes at the event entrance. Each ticket has a unique QR code for verification.</p>
-                  ${ticketsHtml}
-                </div>
-                <div class="support-section">
-                  <p class="support-text">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a> or in our Instagram page <a href="https://www.instagram.com/andiamo.events/" target="_blank" class="support-email">@andiamo.events</a> or contact with <a href="tel:28070128" class="support-email">28070128</a>.</p>
-                </div>
-                <div class="closing-section">
-                  <p class="slogan">We Create Memories</p>
-                  <p class="signature">Best regards,<br>The Andiamo Events Team</p>
-                </div>
-              </div>
-            </div>
-            <div class="footer">
-              <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
-              <div class="footer-links">
-                <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
-                <span style="color: #999999;">•</span>
-                <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
-              </div>
-            </div>
-          </body>
-          </html>
-        `;
+        const totalAmountResend = order.total_with_fees ?? order.total_price ?? 0;
+        const feeAmountResend = typeof order.fee_amount === 'number' ? order.fee_amount : undefined;
+        const subtotalAmountResend = feeAmountResend != null ? totalAmountResend - feeAmountResend : undefined;
+        const emailHtml = buildOnlineTicketEmailHtml({
+          customerName: order.user_name,
+          orderNumber: order.order_number,
+          orderId,
+          eventName: order.events?.name,
+          eventTime: order.events?.date,
+          venueName: order.events?.venue,
+          passes: passesSummary,
+          totalAmount: totalAmountResend,
+          feeAmount: feeAmountResend,
+          subtotalAmount: subtotalAmountResend,
+          ticketsByPassType,
+        });
         
         // Step 7: Send email
         let emailSent = false;
