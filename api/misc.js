@@ -3861,21 +3861,19 @@ Billets envoyés par email. We Create Memories`;
           });
         }
         
-        const { createClient } = await import('@supabase/supabase-js');
-        
-        // Use service role key if available (for RLS bypass)
-        let supabase;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        } else {
-          supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_ANON_KEY
-          );
+        // Admin must use service role so RLS does not block reading orders
+        if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(503).json({ 
+            error: 'Server configuration error',
+            details: 'SUPABASE_SERVICE_ROLE_KEY is required for admin ambassador sales. Add it in your Vercel (or server) environment variables.'
+          });
         }
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
         
         // Parse query parameters from req.url
         const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
@@ -3887,9 +3885,8 @@ Billets envoyés par email. We Create Memories`;
         const ville = searchParams.get('ville');
         const date_from = searchParams.get('date_from');
         const date_to = searchParams.get('date_to');
-        const limit = parseInt(searchParams.get('limit') || '50');
-        const offset = parseInt(searchParams.get('offset') || '0');
-        const include_removed = searchParams.get('include_removed');
+        const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10) || 50, 1000);
+        const offset = Math.max(0, parseInt(searchParams.get('offset') || '0', 10) || 0);
         
         // Select orders + order_passes; avoid embedding ambassadors (can cause 500 if RLS/relation differs)
         let query = supabase

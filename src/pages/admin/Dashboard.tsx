@@ -2483,19 +2483,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const fetchAmbassadorSalesData = async (statusFilter?: string) => {
     setLoadingOrders(true);
     try {
-      // First, fetch ALL ambassadors (including paused/removed) so we can show names and status
+      const ambassadorNameMap = new Map<string, string>();
+      const ambassadorStatusMap = new Map<string, string>();
+
       const { data: allAmbassadorsData, error: ambassadorsError } = await (supabase as any)
         .from('ambassadors')
         .select('id, full_name, ville, status, city');
-      
-      if (ambassadorsError) throw ambassadorsError;
-      
-      const ambassadorNameMap = new Map<string, string>();
-      const ambassadorStatusMap = new Map<string, string>();
-      (allAmbassadorsData || []).forEach((amb: any) => {
-        ambassadorNameMap.set(amb.id, amb.full_name);
-        ambassadorStatusMap.set(amb.id, amb.status || '');
-      });
+
+      if (!ambassadorsError && allAmbassadorsData?.length) {
+        (allAmbassadorsData || []).forEach((amb: any) => {
+          ambassadorNameMap.set(amb.id, amb.full_name);
+          ambassadorStatusMap.set(amb.id, amb.status || '');
+        });
+      }
 
       // Use API endpoint instead of direct Supabase queries
       // API endpoint excludes REMOVED_BY_ADMIN orders by default, but includes them when status=REMOVED_BY_ADMIN
@@ -2513,7 +2513,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
 
       if (!ordersResponse.ok) {
-        throw new Error('Failed to fetch ambassador orders');
+        let errMessage = 'Failed to fetch ambassador orders';
+        try {
+          const errBody = await ordersResponse.json();
+          if (errBody?.details) errMessage = errBody.details;
+          else if (errBody?.error) errMessage = errBody.error;
+        } catch {
+          // ignore
+        }
+        throw new Error(errMessage);
       }
 
       const ordersResult = await ordersResponse.json();
@@ -2606,25 +2614,32 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }));
       setAllAmbassadorOrders(enrichedAllOrders);
 
-      // Fetch order logs
+      // Fetch order logs (non-blocking: do not throw so orders still show if logs fail)
       const { data: logsData, error: logsError } = await (supabase as any)
         .from('order_logs')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (logsError) throw logsError;
-      setOrderLogs(logsData || []);
-
-
+      if (logsError) {
+        console.warn('Order logs fetch failed (optional):', logsError);
+        setOrderLogs([]);
+      } else {
+        setOrderLogs(logsData || []);
+      }
     } catch (error: any) {
-      // Only log to console if it's not a network error (to avoid duplicate logs)
       if (error?.message && !error.message.includes('Failed to fetch') && !error.message.includes('NetworkError')) {
         console.error('Error fetching ambassador sales data:', error);
       }
+      setCodAmbassadorOrders([]);
+      setManualOrders([]);
+      setAllAmbassadorOrders([]);
+      setCodOrders([]);
+      setOrderLogs([]);
+      const description = error?.message || (language === 'en' ? 'Failed to fetch sales data' : 'Échec de la récupération des données de vente');
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
-        description: language === 'en' ? 'Failed to fetch sales data' : 'Ã‰chec de la rÃ©cupÃ©ration des donnÃ©es de vente',
+        description,
         variant: 'destructive'
       });
     } finally {
@@ -6686,9 +6701,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }, [isPassManagementDialogOpen, eventForPassManagement?.id, language]);
 
   const fetchAllData = async () => {
+    setLoading(true);
+    const SAFETY_TIMEOUT_MS = 25000;
+    const safetyTimer = window.setTimeout(() => {
+      setLoading(false);
+    }, SAFETY_TIMEOUT_MS);
+
     try {
-      setLoading(true);
-      
       // Fetch applications
       const { data: appsData, error: appsError } = await supabase
         .from('ambassador_applications')
@@ -6820,10 +6839,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error fetching data:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to load data" : "Ã‰chec du chargement des donnÃ©es",
+        description: language === 'en' ? "Failed to load data" : "Échec du chargement des données",
         variant: "destructive",
       });
     } finally {
+      window.clearTimeout(safetyTimer);
       setLoading(false);
     }
   };

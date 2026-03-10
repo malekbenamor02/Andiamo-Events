@@ -6374,27 +6374,30 @@ app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res)
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
     }
+    // Use service role so RLS does not block reading orders; anon would return empty/fail
+    const dbClient = supabaseService || supabase;
+    if (!supabaseService) {
+      return res.status(503).json({
+        error: 'Server configuration error',
+        details: 'SUPABASE_SERVICE_ROLE_KEY is required for admin ambassador sales. Add it in your server environment variables.'
+      });
+    }
 
     const { status, ambassador_id, event_id, city, ville, date_from, date_to, limit = 50, offset = 0, include_removed } = req.query;
 
     const lim = Math.min(parseInt(limit, 10) || 50, 1000);
-    const off = parseInt(offset, 10) || 0;
-    let query = supabase
+    const off = Math.max(0, parseInt(offset, 10) || 0);
+    let query = dbClient
       .from('orders')
       .select('*, order_passes (*)', { count: 'exact' })
       .eq('payment_method', 'ambassador_cash')
       .order('created_at', { ascending: false })
       .range(off, off + lim - 1);
-    
-    // Include expiration fields in the select (they're part of *)
 
     // Exclude REMOVED_BY_ADMIN orders by default (only show when explicitly filtering by that status)
-    // If status is REMOVED_BY_ADMIN, show only removed orders
-    // Otherwise, exclude removed orders from results
     if (status === 'REMOVED_BY_ADMIN') {
       query = query.eq('status', 'REMOVED_BY_ADMIN');
     } else {
-      // Default: exclude removed orders from all queries
       query = query.neq('status', 'REMOVED_BY_ADMIN');
       if (status) {
         query = query.eq('status', status);
@@ -6408,7 +6411,6 @@ app.get('/api/admin/ambassador-sales/orders', requireAdminAuth, async (req, res)
     if (date_to) query = query.lte('created_at', date_to);
 
     // Check and auto-reject expired orders before fetching (on-demand checking)
-    const dbClient = supabaseService || supabase;
     try {
       await dbClient.rpc('auto_reject_expired_pending_cash_orders');
     } catch (rejectError) {
