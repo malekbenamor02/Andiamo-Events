@@ -2538,7 +2538,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                               ${passesSummaryHtml}
                               <tr class="total-row">
                                 <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
-                                <td style="text-align: right;"><strong>${fullOrder.total_price.toFixed(2)} TND</strong></td>
+                                <td style="text-align: right;"><strong>${Number((fullOrder.total_with_fees ?? fullOrder.total_price ?? 0)).toFixed(2)} TND</strong></td>
                               </tr>
                             </tbody>
                           </table>
@@ -2832,11 +2832,16 @@ We Create Memories`;
               password: apiPassword,
               orderId: String(ctpOrderId)
             });
+            // Bound the gateway call with a timeout so the confirm endpoint never hangs indefinitely
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000);
             const statusRes = await fetch(statusUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: statusParams.toString()
+              body: statusParams.toString(),
+              signal: controller.signal
             });
+            clearTimeout(timeoutId);
             const statusText = await statusRes.text();
             let statusData = {};
             try {
@@ -2880,11 +2885,29 @@ We Create Memories`;
         }
 
         if (!gatewayStatusOk) {
+          // If we never received a structured response from ClicToPay (network error, timeout, etc.),
+          // do NOT immediately fail the order. Mark status as UNKNOWN so the frontend can show a
+          // clear message and let a later auto-fail job handle cleanup and stock release.
+          if (paymentConfirmResponse == null) {
+            return res.status(200).json({
+              success: false,
+              status: 'UNKNOWN',
+              orderId,
+              message: 'Unable to verify payment with the gateway. Please try again later or contact support.',
+            });
+          }
+
+          // We have a real gateway response that indicates failure/decline: mark the order as FAILED
+          // and release reserved stock immediately.
           try {
             await dbClient.rpc('release_order_stock_internal', { order_id_param: orderId });
           } catch (e) { /* ignore */ }
-          const failUpdate = { status: 'FAILED', payment_status: 'FAILED', updated_at: new Date().toISOString() };
-          if (paymentConfirmResponse != null) failUpdate.payment_confirm_response = sanitizeClicToPayConfirmResponse(paymentConfirmResponse);
+          const failUpdate = {
+            status: 'FAILED',
+            payment_status: 'FAILED',
+            updated_at: new Date().toISOString(),
+            payment_confirm_response: sanitizeClicToPayConfirmResponse(paymentConfirmResponse),
+          };
 
           const { error: failUpdateError } = await dbClient
             .from('orders')
@@ -2909,7 +2932,7 @@ We Create Memories`;
             success: false,
             status: 'failed',
             orderId,
-            message: 'Payment failed or could not be verified with the gateway',
+            message: 'Payment failed or was declined by the gateway',
           });
         }
 
@@ -3004,19 +3027,91 @@ We Create Memories`;
             }
             if (fullOrder.user_phone && process.env.WINSMS_API_KEY) {
               try {
-                let cleaned = fullOrder.user_phone.replace(/\D/g, '');
-                if (cleaned.startsWith('216')) cleaned = cleaned.substring(3);
-                cleaned = cleaned.replace(/^0+/, '');
-                if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
-                  const formattedPhone = '+216' + cleaned;
-                  const smsMsg = `Paiement confirmé #${fullOrder.order_number != null ? fullOrder.order_number : ''}\nTotal: ${parseFloat(fullOrder.total_price).toFixed(0)} DT\nBillets envoyés par email. We Create Memories`;
+                // Reuse the same formatting + logging rules as COD order SMS helpers.
+                // Helper-style logic is in /api/orders-create.js; we inline the minimal equivalent here.
+                const rawPhone = fullOrder.user_phone;
+                const normalizePhone = (phone) => {
+                  if (!phone) return null;
+                  let cleaned = phone.replace(/\D/g, '');
+                  if (cleaned.startsWith('216')) cleaned = cleaned.substring(3);
+                  cleaned = cleaned.replace(/^0+/, '');
+                  if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
+                    return '+216' + cleaned;
+                  }
+                  return null;
+                };
+                const formattedPhone = normalizePhone(rawPhone);
+                if (formattedPhone) {
+                  const totalDisplay = parseFloat(
+                    (fullOrder.total_with_fees ?? fullOrder.total_price ?? 0).toString()
+                  ).toFixed(0);
+                  const smsMsg = `Paiement confirmé #${fullOrder.order_number != null ? fullOrder.order_number : ''}
+Total: ${totalDisplay} DT
+Billets envoyés par email. We Create Memories`;
+
                   const qs = (await import('querystring')).default;
                   const https = (await import('https')).default;
-                  const url = `https://www.winsmspro.com/sms/sms/api?${qs.stringify({ action: 'send-sms', api_key: process.env.WINSMS_API_KEY, to: formattedPhone, sms: smsMsg, from: 'Andiamo', response: 'json' })}`;
-                  const smsRes = await new Promise((resolve, reject) => { https.get(url, (r) => { let d = ''; r.on('data', c => d += c); r.on('end', () => { try { resolve({ status: r.statusCode, data: JSON.parse(d) }); } catch { resolve({ status: r.statusCode, data: d }); } }); }).on('error', reject); });
-                  if (smsRes.status === 200 && smsRes.data && (smsRes.data.code === 'ok' || smsRes.data.code === '200')) { ticketResult.smsSent = true; }
+                  const url = `https://www.winsmspro.com/sms/sms/api?${qs.stringify({
+                    action: 'send-sms',
+                    api_key: process.env.WINSMS_API_KEY,
+                    to: formattedPhone,
+                    sms: smsMsg,
+                    from: 'Andiamo',
+                    response: 'json',
+                  })}`;
+
+                  const smsRes = await new Promise((resolve, reject) => {
+                    https
+                      .get(url, (r) => {
+                        let d = '';
+                        r.on('data', (c) => (d += c));
+                        r.on('end', () => {
+                          try {
+                            resolve({ status: r.statusCode, data: JSON.parse(d) });
+                          } catch {
+                            resolve({ status: r.statusCode, data: d });
+                          }
+                        });
+                      })
+                      .on('error', (err) => reject(err));
+                  });
+
+                  const isSuccess =
+                    smsRes.status === 200 &&
+                    smsRes.data &&
+                    (smsRes.data.code === 'ok' ||
+                      smsRes.data.code === '200' ||
+                      (smsRes.data.message &&
+                        typeof smsRes.data.message === 'string' &&
+                        smsRes.data.message.toLowerCase().includes('success')));
+
+                  // Log to sms_logs so SMS/Email tab can display online-payment SMS.
+                  try {
+                    await dbClient.from('sms_logs').insert({
+                      order_id: fullOrder.id,
+                      phone_number: rawPhone,
+                      message: smsMsg.trim(),
+                      status: isSuccess ? 'sent' : 'failed',
+                      api_response:
+                        typeof smsRes.data === 'string'
+                          ? smsRes.data
+                          : JSON.stringify(smsRes.data || null),
+                      sent_at: isSuccess ? new Date().toISOString() : null,
+                      error_message: isSuccess
+                        ? null
+                        : (smsRes.data && smsRes.data.message) || 'SMS sending failed',
+                    });
+                  } catch (logErr) {
+                    console.warn('⚠️ Failed to log online payment SMS:', logErr);
+                  }
+
+                  if (isSuccess) {
+                    ticketResult.smsSent = true;
+                  }
                 }
-              } catch (e) { ticketResult.error = (ticketResult.error || '') + ' SMS: ' + e.message; }
+              } catch (e) {
+                ticketResult.error = (ticketResult.error || '') + ' SMS: ' + e.message;
+              }
             }
             ticketResult.success = true;
             ticketResult.message = 'Tickets generated';
@@ -3610,7 +3705,7 @@ We Create Memories`;
                       ${passesSummaryHtml}
                       <tr class="total-row">
                         <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
-                        <td style="text-align: right;"><strong>${order.total_price.toFixed(2)} TND</strong></td>
+                        <td style="text-align: right;"><strong>${Number((order.total_with_fees ?? order.total_price ?? 0)).toFixed(2)} TND</strong></td>
                       </tr>
                     </tbody>
                   </table>
@@ -3864,6 +3959,138 @@ We Create Memories`;
           error: 'Internal server error',
           details: error.message || 'An unexpected error occurred',
           troubleshooting: 'Check server logs for details. See TROUBLESHOOT_REJECT_ERROR.md for help.'
+        });
+      }
+    }
+
+    // ============================================
+    // /api/auto-fail-pending-online-orders (GET/POST) - Cron endpoint for online payments
+    // Marks long-pending online orders as FAILED and releases stock.
+    // ============================================
+    if (path === '/api/auto-fail-pending-online-orders' && (method === 'GET' || method === 'POST')) {
+      try {
+        // Protect this endpoint with CRON_SECRET when configured; otherwise require admin auth
+        const cronSecret = process.env.CRON_SECRET;
+        if (cronSecret) {
+          const providedSecret = req.headers['x-cron-secret'] || req.query.secret;
+          if (providedSecret !== cronSecret) {
+            const authResult = await verifyAdminAuth(req);
+            if (!authResult.valid) {
+              return res.status(401).json({
+                error: 'Unauthorized',
+                details: 'Invalid cron secret or admin authentication required for auto-fail-pending-online-orders'
+              });
+            }
+          }
+        } else {
+          const authResult = await verifyAdminAuth(req);
+          if (!authResult.valid) {
+            return res.status(authResult.statusCode || 401).json({
+              error: authResult.error || 'Unauthorized',
+              details: authResult.reason || 'Admin authentication required for auto-fail-pending-online-orders'
+            });
+          }
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(500).json({
+            error: 'Server configuration error',
+            details: 'Supabase not configured'
+          });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+
+        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+
+        // Find online orders stuck in pending payment beyond the timeout window
+        const { data: pendingOrders, error: pendingError } = await supabase
+          .from('orders')
+          .select('id, status, payment_status, source, stock_released')
+          .eq('source', 'platform_online')
+          .eq('payment_status', 'PENDING_PAYMENT')
+          .eq('status', 'PENDING_ONLINE')
+          .lte('created_at', thirtyMinutesAgo)
+          .is('stock_released', false);
+
+        if (pendingError) {
+          console.error('❌ Error fetching pending online orders for auto-fail:', pendingError);
+          return res.status(500).json({
+            error: 'Failed to fetch pending online orders',
+            details: pendingError.message || String(pendingError)
+          });
+        }
+
+        if (!pendingOrders || pendingOrders.length === 0) {
+          return res.status(200).json({
+            success: true,
+            failed_count: 0,
+            failed_order_ids: [],
+            message: 'No pending online orders exceeded the timeout window.',
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        const failedOrderIds = [];
+
+        for (const ord of pendingOrders) {
+          try {
+            // Release stock via shared database function (same as confirm flow)
+            try {
+              await supabase.rpc('release_order_stock_internal', { order_id_param: ord.id });
+            } catch (e) {
+              console.warn('⚠️ Failed to release stock for pending online order', ord.id, e);
+            }
+
+            const { error: updateError } = await supabase
+              .from('orders')
+              .update({
+                status: 'FAILED',
+                payment_status: 'FAILED',
+                stock_released: true,
+                cancellation_reason: 'Auto-failed after 30 minutes without payment confirmation',
+                cancelled_by: 'system',
+                cancelled_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', ord.id)
+              .eq('status', 'PENDING_ONLINE');
+
+            if (updateError) {
+              console.error('❌ Failed to mark pending online order as FAILED:', {
+                orderId: ord.id,
+                error: updateError.message || updateError,
+              });
+              continue;
+            }
+
+            failedOrderIds.push(ord.id);
+          } catch (e) {
+            console.error('❌ Error auto-failing pending online order:', ord.id, e);
+          }
+        }
+
+        return res.status(200).json({
+          success: true,
+          failed_count: failedOrderIds.length,
+          failed_order_ids: failedOrderIds,
+          message:
+            failedOrderIds.length > 0
+              ? `Auto-failed ${failedOrderIds.length} pending online order(s) after 30 minutes without payment confirmation.`
+              : 'No pending online orders were auto-failed (all updates failed).',
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Error in auto-fail-pending-online-orders:', error);
+        console.error('Stack trace:', error.stack);
+        return res.status(500).json({
+          error: 'Internal server error',
+          details: error.message || 'An unexpected error occurred',
+          troubleshooting: 'Check server logs for details.'
         });
       }
     }

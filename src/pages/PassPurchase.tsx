@@ -509,7 +509,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     // Note: useEffect will handle clearing payment method if it becomes incompatible
   };
 
-  // Calculate total price
+  // Calculate total price (subtotal before any online payment fees)
   const calculateTotal = (): number => {
     if (!event?.passes) return 0;
     
@@ -785,6 +785,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
   // Calculate values that might be needed in early returns
   const totalPrice = calculateTotal();
+  const isOnlinePayment = paymentMethod === PaymentMethod.ONLINE;
+  const onlineFeeAmount =
+    isOnlinePayment && totalPrice > 0
+      ? Number((totalPrice * 0.05).toFixed(3))
+      : 0;
+  const totalWithFees = isOnlinePayment ? totalPrice + onlineFeeAmount : totalPrice;
   const hasSelectedPasses = Object.values(selectedPasses).some(qty => qty > 0);
   const selectedPassesArray = getSelectedPassesArray();
 
@@ -796,7 +802,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           ambassador={selectedAmbassadorDetails}
           eventName={event.name}
           eventDate={event.date}
-          totalPrice={totalPrice}
+          totalPrice={isOnlinePayment ? totalWithFees : totalPrice}
           passes={selectedPassesArray}
           onBackToEvents={() => navigate('/events')}
           language={language}
@@ -827,7 +833,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t[language].total}</p>
-                  <p className="text-2xl font-bold text-primary">{totalPrice} TND</p>
+                  <p className="text-2xl font-bold text-primary">
+                    {isOnlinePayment ? totalWithFees : totalPrice} TND
+                  </p>
                 </div>
               </div>
               <Button onClick={() => navigate('/events')} className="w-full">
@@ -1262,6 +1270,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       termsAccepted={termsAccepted}
                       onTermsChange={setTermsAccepted}
                       language={language}
+                      feeAmount={onlineFeeAmount}
+                      totalWithFees={totalWithFees}
                     />
                     
                     {/* Terms Acceptance Notice */}

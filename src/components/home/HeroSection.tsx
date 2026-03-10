@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { generateSlug } from "@/lib/utils";
+import { getOptimizedImageUrl } from "@/lib/image-utils";
 import TypewriterText from "./TypewriterText";
 
 interface HeroSectionProps {
@@ -372,13 +373,15 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
                 />
               ) : (
                 <img
-                  src={slide.src}
+                  src={getOptimizedImageUrl(slide.src, { width: 1920, height: 1080, quality: 85, resize: 'cover' })}
                   alt={slide.alt || `Andiamo Events – Hero image ${index + 1}`}
                   className="w-full h-full object-cover"
                   style={{ objectFit: 'cover' }}
                   loading="eager"
                   fetchPriority="high"
                   decoding="async"
+                  width={1920}
+                  height={1080}
                   onLoad={() => {
                     // Image is ready when decoded - this is what we need for LCP
                     // Browser has finished decoding the image

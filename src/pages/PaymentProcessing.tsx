@@ -24,7 +24,7 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
 
   // Success/failure is determined only by the backend (ClicToPay getOrderStatus). Frontend does not trust URL params.
 
-  const [state, setState] = useState<'loading' | 'success' | 'failed' | 'redirecting'>('loading');
+  const [state, setState] = useState<'loading' | 'success' | 'failed' | 'redirecting' | 'unknown'>('loading');
   const [error, setError] = useState<string | null>(null);
   const [confirmResult, setConfirmResult] = useState<{
     success?: boolean;
@@ -101,6 +101,9 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
 
         if (data.alreadyPaid || (data.success && data.status === 'PAID')) {
           setState('success');
+        } else if (data.status === 'UNKNOWN') {
+          setState('unknown');
+          setError(data.message || t.genericError);
         } else if (data.status === 'failed' || !data.success) {
           setState('failed');
           setError(data.message || t.failedMessage);
@@ -135,6 +138,29 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
               <Loader size="xl" className="mx-auto mb-4" />
               <h1 className="text-xl font-heading font-bold text-foreground mb-2">{t.title}</h1>
               <p className="text-muted-foreground">{state === 'redirecting' ? (language === 'en' ? 'Redirecting to payment...' : 'Redirection vers le paiement...') : 'Please wait...'}</p>
+            </div>
+          )}
+
+          {state === 'unknown' && (
+            <div className="text-center">
+              <XCircle className="w-24 h-24 text-yellow-500 mx-auto mb-6" />
+              <h1 className="text-2xl font-heading font-bold text-foreground mb-2">
+                {language === 'en' ? 'We could not confirm your payment' : 'Nous n’avons pas pu confirmer votre paiement'}
+              </h1>
+              <p className="text-muted-foreground mb-6">
+                {error ||
+                  (language === 'en'
+                    ? 'We could not reach the bank to confirm your payment. If you see a debit on your card, please wait for an email/SMS confirmation or contact our support.'
+                    : 'Nous n’avons pas pu joindre la banque pour confirmer votre paiement. Si vous voyez un débit sur votre carte, veuillez attendre un email/SMS de confirmation ou contacter notre support.')}
+              </p>
+              <div className="flex gap-3 justify-center">
+                <Button variant="outline" onClick={() => navigate(-1)} size="lg">
+                  {language === 'en' ? 'Go back' : 'Retour'}
+                </Button>
+                <Button onClick={() => navigate('/contact')} size="lg">
+                  {language === 'en' ? 'Contact support' : 'Contacter le support'}
+                </Button>
+              </div>
             </div>
           )}
 

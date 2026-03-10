@@ -65,6 +65,8 @@ export default async function handler(req, res) {
       order_number,
       status,
       total_price,
+      fee_amount,
+      total_with_fees,
       payment_gateway_reference,
       order_passes (
         id,
@@ -92,13 +94,26 @@ export default async function handler(req, res) {
     });
   }
 
+  // Prefer the canonical fee-inclusive amount from total_with_fees when available.
+  // Fallbacks:
+  // - total_price (for legacy rows already fee-inclusive)
+  // - recomputed subtotal * 1.05 from order_passes as a last resort.
   let amount = 0;
-  if (order.order_passes?.length) {
-    amount = order.order_passes.reduce((sum, p) => sum + Number(p.price) * Number(p.quantity), 0);
-  } else {
-    amount = Number(order.total_price) || 0;
+  if (order.total_with_fees != null) {
+    amount = Number(order.total_with_fees);
+  } else if (order.total_price != null) {
+    amount = Number(order.total_price);
+  } else if (order.order_passes?.length) {
+    const baseAmount = order.order_passes.reduce(
+      (sum, p) => sum + Number(p.price) * Number(p.quantity),
+      0
+    );
+    amount = Number((baseAmount * 1.05).toFixed(3));
   }
-  if (amount <= 0) return res.status(400).json({ error: 'Invalid order amount' });
+
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ error: 'Invalid order amount' });
+  }
 
   // Prefer request Origin so user returns to same host (e.g. 172.20.10.4:3000 on phone, not localhost)
   let base = req.headers?.origin;

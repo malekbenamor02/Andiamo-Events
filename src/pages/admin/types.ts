@@ -241,6 +241,10 @@ export interface OnlineOrder {
   quantity?: number;
   pass_type?: string;
   total_price?: number;
+  /** 5% online payment fee amount when applicable (online orders). */
+  fee_amount?: number | null;
+  /** Canonical fee-inclusive total for online payments. */
+  total_with_fees?: number | null;
   city?: string;
   ville?: string;
   payment_status?: string;

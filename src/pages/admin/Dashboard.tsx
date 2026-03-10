@@ -1007,6 +1007,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
     let passes: any[] = [];
 
+    let feesFromNotes: { subtotal?: number; total_with_fees?: number } | null = null;
+
     if (order.notes) {
       try {
         const notesData =
@@ -1015,6 +1017,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             : order.notes;
         if (Array.isArray(notesData?.all_passes)) {
           passes = notesData.all_passes;
+        }
+        if (notesData?.payment_fees) {
+          const f = notesData.payment_fees;
+          feesFromNotes = {
+            subtotal:
+              typeof f.subtotal === "number" ? f.subtotal : undefined,
+            total_with_fees:
+              typeof f.total_with_fees === "number"
+                ? f.total_with_fees
+                : undefined,
+          };
         }
       } catch {
         // ignore parse errors
@@ -1038,12 +1051,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           return `${String(label)} x${qty}`;
         })
         .join(", ");
-      if (total == null) {
-        total = passes.reduce(
-          (sum: number, p: any) =>
-            sum + (Number(p.price) || 0) * (p.quantity || 0),
-          0,
-        );
+      const subtotalFromPasses = passes.reduce(
+        (sum: number, p: any) =>
+          sum + (Number(p.price) || 0) * (p.quantity || 0),
+        0,
+      );
+      if (feesFromNotes?.total_with_fees != null) {
+        total = feesFromNotes.total_with_fees;
+      } else if (order.payment_method === "online") {
+        // Ensure notifications always show the fee-inclusive total for online orders.
+        total = Number((subtotalFromPasses * 1.05).toFixed(2));
+      } else if (total == null) {
+        total = subtotalFromPasses;
       }
     } else {
       const label =

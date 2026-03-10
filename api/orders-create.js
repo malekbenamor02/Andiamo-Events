@@ -427,7 +427,14 @@ export default async (req, res) => {
 
     // STEP 4: Calculate totals (server-side authority)
     const totalQuantity = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
-    const totalPrice = validatedPasses.reduce((sum, p) => sum + (parseFloat(p.price) * p.quantity), 0);
+    const subtotal = validatedPasses.reduce((sum, p) => sum + (parseFloat(p.price) * p.quantity), 0);
+    // Apply 5% fee only for online card payments; other methods use pure subtotal.
+    let feeAmount = 0;
+    let totalWithFees = subtotal;
+    if (paymentMethod === 'online' && subtotal > 0) {
+      feeAmount = Number((subtotal * 0.05).toFixed(3));
+      totalWithFees = subtotal + feeAmount;
+    }
 
     // STEP 5: Determine initial status
     let initialStatus;
@@ -477,7 +484,10 @@ export default async (req, res) => {
       event_id: eventId || null,
       ambassador_id: ambassadorId || null,
       quantity: totalQuantity,
-      total_price: totalPrice,
+      // For online orders, total_price is fee-inclusive and mirrors total_with_fees.
+      total_price: isOnline ? totalWithFees : subtotal,
+      fee_amount: isOnline ? feeAmount : null,
+      total_with_fees: isOnline ? totalWithFees : null,
       payment_method: paymentMethod,
       status: initialStatus,
       payment_status: isOnline ? 'PENDING_PAYMENT' : null,  // So "Pending Payment" filter works
@@ -490,8 +500,19 @@ export default async (req, res) => {
           quantity: p.quantity,
           price: p.price
         })),
-        total_order_price: totalPrice,
-        pass_count: validatedPasses.length
+        total_order_price: isOnline ? totalWithFees : subtotal,
+        pass_count: validatedPasses.length,
+        // Persist fee breakdown for online payments so admin and reports can see with/without fees.
+        ...(paymentMethod === 'online'
+          ? {
+              payment_fees: {
+                fee_rate: 0.05,
+                fee_amount: feeAmount,
+                subtotal,
+                total_with_fees: totalWithFees
+              }
+            }
+          : {})
       })
     };
 

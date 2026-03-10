@@ -4,6 +4,7 @@ import { Calendar, MapPin, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { generateSlug } from '@/lib/utils';
 import { formatDateTimeLong } from '@/lib/date-utils';
+import { getOptimizedImageUrl } from '@/lib/image-utils';
 import { useFeaturedEvents, type Event } from '@/hooks/useEvents';
 
 interface Event {
@@ -59,11 +60,13 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
             >
               <div className="relative">
                 <img
-                  src={event.poster_url || '/api/placeholder/400/300'}
+                  src={getOptimizedImageUrl(event.poster_url || '/api/placeholder/400/300', { width: 400, height: 288, quality: 80, resize: 'cover' })}
                   alt={event.name}
                   className="w-full h-48 object-cover"
                   loading="lazy"
                   decoding="async"
+                  width={400}
+                  height={288}
                 />
                 {event.featured && (
                   <span className="absolute top-4 left-4 bg-gradient-primary text-white px-3 py-1 rounded-full text-sm font-semibold">

@@ -307,6 +307,30 @@ export function OnlineOrdersTab({
                         passItems = [{ name: order.pass_type ?? "STANDARD", quantity: order.quantity ?? 0 }];
                       }
                       const email = order.user_email ?? order.email ?? "N/A";
+                      // Optional: parse fee breakdown to show a tooltip on total price.
+                      // Prefer dedicated columns (total_with_fees/fee_amount) and fall back to notes.payment_fees.
+                      let subtotalWithoutFees: number | null = null;
+                      let feeAmount: number | null = null;
+                      try {
+                        if (typeof order.total_with_fees === "number") {
+                          if (typeof order.fee_amount === "number") {
+                            feeAmount = order.fee_amount;
+                            subtotalWithoutFees = Number((order.total_with_fees - order.fee_amount).toFixed(3));
+                          }
+                        }
+                        if (subtotalWithoutFees === null || feeAmount === null) {
+                          if (order.notes) {
+                            const notesData = typeof order.notes === "string" ? JSON.parse(order.notes) : order.notes;
+                            const fees = (notesData as any)?.payment_fees;
+                            if (fees && typeof fees.subtotal === "number" && typeof fees.fee_amount === "number") {
+                              subtotalWithoutFees = fees.subtotal;
+                              feeAmount = fees.fee_amount;
+                            }
+                          }
+                        }
+                      } catch {
+                        // ignore parse errors - fallback to showing total_price only
+                      }
                       const statusMap: Record<string, string> = {
                         PENDING_PAYMENT: language === "en" ? "Pending Payment" : "Paiement en Attente",
                         PAID: language === "en" ? "Paid" : "Payé",
@@ -360,9 +384,40 @@ export function OnlineOrdersTab({
                             )}
                           </TableCell>
                           <TableCell className="py-2 text-center text-xs font-semibold">
-                            {order.total_price != null
-                              ? `${Number(order.total_price).toFixed(2)} TND`
-                              : "N/A"}
+                            {order.total_price != null ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="cursor-help inline-block">
+                                      {Number(order.total_with_fees ?? order.total_price).toFixed(2)} TND
+                                    </span>
+                                  </TooltipTrigger>
+                                  {subtotalWithoutFees != null && feeAmount != null ? (
+                                    <TooltipContent className="text-xs space-y-1">
+                                      <p className="font-semibold">
+                                        {language === "en" ? "Total with fees" : "Total avec frais"}:{" "}
+                                        {Number(order.total_price).toFixed(2)} TND
+                                      </p>
+                                      <p>
+                                        {language === "en" ? "Subtotal (without fees)" : "Sous-total (hors frais)"}:{" "}
+                                        {subtotalWithoutFees.toFixed(2)} TND
+                                      </p>
+                                      <p>
+                                        {language === "en" ? "Fees" : "Frais"}: {feeAmount.toFixed(2)} TND
+                                      </p>
+                                    </TooltipContent>
+                                  ) : (
+                                    <TooltipContent className="text-xs">
+                                      <p className="font-semibold">
+                                        {language === "en" ? "Total amount (including fees)" : "Montant total (frais inclus)"}
+                                      </p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              "N/A"
+                            )}
                           </TableCell>
                           <TableCell className="py-2 text-center">
                             <div className="flex justify-center items-center gap-2">

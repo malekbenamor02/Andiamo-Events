@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { SelectedPass } from '@/types/orders';
-import { Receipt, Ticket } from 'lucide-react';
+import { Receipt, Ticket, Info } from 'lucide-react';
 import { PaymentMethod } from '@/lib/constants/orderStatuses';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface OrderSummaryProps {
   selectedPasses: SelectedPass[];
@@ -17,6 +18,10 @@ interface OrderSummaryProps {
   termsAccepted?: boolean;
   onTermsChange?: (accepted: boolean) => void;
   language?: 'en' | 'fr';
+  /** Optional 5% fee amount for online payments (frontend display only). */
+  feeAmount?: number;
+  /** Optional grand total including fees (frontend display only). */
+  totalWithFees?: number;
 }
 
 export function OrderSummary({
@@ -25,25 +30,49 @@ export function OrderSummary({
   paymentMethod,
   termsAccepted,
   onTermsChange,
-  language = 'en'
+  language = 'en',
+  feeAmount,
+  totalWithFees,
 }: OrderSummaryProps) {
-  const t = language === 'en' ? {
-    summary: 'Order Summary',
-    pass: 'Pass',
-    quantity: 'Quantity',
-    price: 'Price',
-    total: 'Total',
-    noPasses: 'No passes selected',
-    subtotal: 'Subtotal'
-  } : {
-    summary: 'Résumé de la Commande',
-    pass: 'Pass',
-    quantity: 'Quantité',
-    price: 'Prix',
-    total: 'Total',
-    noPasses: 'Aucun pass sélectionné',
-    subtotal: 'Sous-total'
-  };
+  const t = language === 'en'
+    ? {
+        summary: 'Order Summary',
+        pass: 'Pass',
+        quantity: 'Quantity',
+        price: 'Price',
+        total: 'Total',
+        noPasses: 'No passes selected',
+        subtotal: 'Subtotal',
+        fees: 'Fees',
+        feesTitle: 'Fee details',
+        feesLine1: 'This amount is split between:',
+        feesLine2: '• Banking and transaction fees',
+        feesLine3: '• Platform operation and maintenance',
+        feesLine4: '• Technical support and customer service',
+        totalWithFees: 'Total (incl. fees)',
+      }
+    : {
+        summary: 'Résumé de la Commande',
+        pass: 'Pass',
+        quantity: 'Quantité',
+        price: 'Prix',
+        total: 'Total',
+        noPasses: 'Aucun pass sélectionné',
+        subtotal: 'Sous-total',
+        fees: 'Frais',
+        feesTitle: 'Détail des frais',
+        feesLine1: 'Ce montant est réparti entre :',
+        feesLine2: '• Les frais bancaires et de transaction',
+        feesLine3: '• Le fonctionnement et la maintenance de la plateforme',
+        feesLine4: '• Le support technique et service client',
+        totalWithFees: 'Total (frais inclus)',
+      };
+
+  const isOnline = paymentMethod === PaymentMethod.ONLINE;
+  const effectiveFee = isOnline && typeof feeAmount === 'number' && !Number.isNaN(feeAmount) ? feeAmount : 0;
+  const grandTotal = isOnline && typeof totalWithFees === 'number' && !Number.isNaN(totalWithFees)
+    ? totalWithFees
+    : totalPrice;
 
   const hasPasses = selectedPasses.length > 0 && selectedPasses.some(p => p.quantity > 0);
 
@@ -104,12 +133,54 @@ export function OrderSummary({
 
           <Separator />
 
-          {/* Total */}
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-lg font-semibold">{t.total}</span>
-            <span className="text-2xl font-bold text-primary">
-              {totalPrice.toFixed(2)} TND
-            </span>
+          {/* Subtotal, fees (if online), and total */}
+          <div className="space-y-1 pt-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">{t.subtotal}</span>
+              <span className="font-semibold">
+                {totalPrice.toFixed(2)} TND
+              </span>
+            </div>
+
+            {isOnline && effectiveFee > 0 && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-muted-foreground">{t.fees}</span>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-muted-foreground/40 text-muted-foreground hover:text-primary hover:border-primary transition-colors text-[10px]"
+                          aria-label={t.feesTitle}
+                        >
+                          <Info className="w-3 h-3" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs text-xs space-y-1">
+                        <p className="font-semibold">{t.feesTitle}</p>
+                        <p>{t.feesLine1}</p>
+                        <p>{t.feesLine2}</p>
+                        <p>{t.feesLine3}</p>
+                        <p>{t.feesLine4}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <span className="font-semibold">
+                  {effectiveFee.toFixed(2)} TND
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-lg font-semibold">
+                {isOnline && effectiveFee > 0 ? t.totalWithFees : t.total}
+              </span>
+              <span className="text-2xl font-bold text-primary">
+                {grandTotal.toFixed(2)} TND
+              </span>
+            </div>
           </div>
         </div>
       </CardContent>

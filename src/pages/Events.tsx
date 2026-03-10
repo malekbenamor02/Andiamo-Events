@@ -9,6 +9,7 @@ import { PageMeta } from "@/components/PageMeta";
 import { JsonLdWebPage, JsonLdBreadcrumb, JsonLdItemList } from "@/components/JsonLd";
 import { generateSlug } from "@/lib/utils";
 import { formatDateTimeLong } from "@/lib/date-utils";
+import { getOptimizedImageUrl } from "@/lib/image-utils";
 import { useEvents, type Event } from "@/hooks/useEvents";
 
 // Event types are now imported from useEvents hook
@@ -542,11 +543,13 @@ const Events = ({ language }: EventsProps) => {
                     {/* Image Layer - No transforms that affect layout */}
                     <div className="relative w-full h-48">
                       <img
-                        src={event.poster_url || "/api/placeholder/400/300"}
+                        src={getOptimizedImageUrl(event.poster_url || "/api/placeholder/400/300", { width: 400, height: 288, quality: 80, resize: "cover" })}
                         alt={event.name}
                         className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-90"
                         loading="lazy"
                         decoding="async"
+                        width={400}
+                        height={288}
                       />
                       
                       {/* Overlay Layer - Smooth fade in, not too strong */}
@@ -654,10 +657,13 @@ const Events = ({ language }: EventsProps) => {
                         
                         {/* Image - only opacity changes, no scale transforms */}
                         <img
-                          src={event.poster_url || "/api/placeholder/400/400"}
+                          src={getOptimizedImageUrl(event.poster_url || "/api/placeholder/400/400", { width: 400, height: 400, quality: 80, resize: "cover" })}
                           alt={event.name}
                           className="w-full h-full object-cover transition-opacity duration-300 group-hover:opacity-90"
                           loading="lazy"
+                          decoding="async"
+                          width={400}
+                          height={400}
                         />
                         
                         {/* Hover Overlay - Smooth fade, not too strong */}
@@ -777,9 +783,10 @@ const Events = ({ language }: EventsProps) => {
                     />
                   ) : (
                     <img
-                      src={allMedia[currentMediaIndex].url}
+                      src={getOptimizedImageUrl(allMedia[currentMediaIndex].url, { width: 1200, quality: 85 })}
                       alt={`${selectedEvent.name} - Image ${currentMediaIndex + 1}`}
                       className="max-w-full max-h-full object-contain"
+                      decoding="async"
                     />
                   )}
                 </div>
@@ -832,11 +839,13 @@ const Events = ({ language }: EventsProps) => {
                         </div>
                       ) : (
                         <img
-                          src={media.url}
+                          src={getOptimizedImageUrl(media.url, { width: 128, height: 128, quality: 70, resize: "cover" })}
                           alt={`Thumbnail ${index + 1}`}
                           className="w-full h-full object-cover"
                           loading="lazy"
                           decoding="async"
+                          width={64}
+                          height={64}
                         />
                       )}
                     </button>
@@ -872,10 +881,13 @@ const Events = ({ language }: EventsProps) => {
                 <div className="relative overflow-hidden rounded-t-3xl flex-shrink-0">
                   <div className="relative w-full h-80 md:h-96 overflow-hidden">
                     <img
-                      src={selectedEvent.poster_url || "/api/placeholder/800/400"}
+                      src={getOptimizedImageUrl(selectedEvent.poster_url || "/api/placeholder/800/400", { width: 800, height: 384, quality: 85, resize: "cover" })}
                       alt={selectedEvent.name}
                       className="w-full h-full object-cover"
                       loading="eager"
+                      decoding="async"
+                      width={800}
+                      height={384}
                     />
                     
                     {/* Gradient Overlay for Readability */}
@@ -1243,10 +1255,11 @@ const Events = ({ language }: EventsProps) => {
                                     
                                     {/* Main Image */}
                                     <img
-                                      src={media.url}
+                                      src={getOptimizedImageUrl(media.url, { width: 800, quality: 85 })}
                                       alt={`${selectedEvent.name} - Image ${index + 1}`}
                                       className="w-full h-full object-contain transition-opacity duration-300"
                                       loading="lazy"
+                                      decoding="async"
                                       onLoad={() => {
                                         setImageLoaded(prev => new Set([...prev, imageKey]));
                                       }}
@@ -1323,10 +1336,13 @@ const Events = ({ language }: EventsProps) => {
                                   </>
                                 ) : (
                                   <img
-                                    src={media.url}
+                                    src={getOptimizedImageUrl(media.url, { width: 128, height: 128, quality: 70, resize: "cover" })}
                                     alt={`Thumbnail ${index + 1}`}
                                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                                     loading="lazy"
+                                    decoding="async"
+                                    width={96}
+                                    height={96}
                                   />
                                 )}
                                 {/* Active Indicator */}
@@ -1451,10 +1467,11 @@ const Events = ({ language }: EventsProps) => {
                   </>
                 ) : (
                   <img
-                    src={allMedia[lightboxIndex].url}
+                    src={getOptimizedImageUrl(allMedia[lightboxIndex].url, { width: 1200, quality: 85 })}
                     alt={`${selectedEvent.name} - Image ${lightboxIndex + 1}`}
                     className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
                     loading="eager"
+                    decoding="async"
                   />
                 )}
               </div>
@@ -1493,10 +1510,13 @@ const Events = ({ language }: EventsProps) => {
                       </div>
                     ) : (
                       <img
-                        src={media.url}
+                        src={getOptimizedImageUrl(media.url, { width: 128, height: 128, quality: 70, resize: "cover" })}
                         alt={`Thumbnail ${index + 1}`}
                         className="w-full h-full object-cover"
                         loading="lazy"
+                        decoding="async"
+                        width={80}
+                        height={80}
                       />
                     )}
                   </button>

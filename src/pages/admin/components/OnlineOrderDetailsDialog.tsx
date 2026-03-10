@@ -60,6 +60,8 @@ export interface OnlineOrderDetailsDialogProps {
     payment_gateway_reference?: string;
     payment_response_data?: unknown;
     payment_confirm_response?: unknown;
+    fee_amount?: number | null;
+    total_with_fees?: number | null;
   } | null;
   language: "en" | "fr";
   onUpdateStatus: (orderId: string, newStatus: "PENDING_PAYMENT" | "PAID" | "FAILED" | "REFUNDED") => void | Promise<void>;
@@ -76,6 +78,46 @@ export function OnlineOrderDetailsDialog({
   onResendTicket,
 }: OnlineOrderDetailsDialogProps) {
   const { toast } = useToast();
+
+  // Safely parse fee breakdown, preferring dedicated columns and falling back to notes JSON.
+  let paymentFees: { fee_rate?: number; fee_amount?: number; subtotal?: number; total_with_fees?: number } | null = null;
+  try {
+    if (order) {
+      // Prefer new columns when present
+      if (typeof order.total_with_fees === "number") {
+        const feeAmount = typeof order.fee_amount === "number" ? order.fee_amount : undefined;
+        const subtotal =
+          typeof feeAmount === "number"
+            ? Number((order.total_with_fees - feeAmount).toFixed(3))
+            : undefined;
+        paymentFees = {
+          fee_rate: typeof feeAmount === "number" && typeof subtotal === "number" && subtotal > 0
+            ? Number((feeAmount / subtotal).toFixed(3))
+            : undefined,
+          fee_amount: feeAmount,
+          subtotal,
+          total_with_fees: order.total_with_fees,
+        };
+      }
+
+    }
+    if (!paymentFees && order?.notes) {
+      const raw = order.notes as any;
+      const notesData = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (notesData?.payment_fees) {
+        const fees = notesData.payment_fees;
+        paymentFees = {
+          fee_rate: typeof fees.fee_rate === "number" ? fees.fee_rate : undefined,
+          fee_amount: typeof fees.fee_amount === "number" ? fees.fee_amount : undefined,
+          subtotal: typeof fees.subtotal === "number" ? fees.subtotal : undefined,
+          total_with_fees: typeof fees.total_with_fees === "number" ? fees.total_with_fees : undefined,
+        };
+      }
+    }
+  } catch (e) {
+    // If notes cannot be parsed, just ignore fee breakdown for this view
+    paymentFees = null;
+  }
 
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(
@@ -205,7 +247,16 @@ export function OnlineOrderDetailsDialog({
                         <DollarSign className="w-3 h-3" />
                         {language === "en" ? "Total Amount" : "Montant Total"}
                       </Label>
-                      <p className="text-lg font-bold text-primary">{order.total_price.toFixed(2)} TND</p>
+                      <p className="text-lg font-bold text-primary">
+                        {(order.total_with_fees ?? order.total_price).toFixed(2)} TND
+                      </p>
+                      {paymentFees?.subtotal != null && paymentFees.fee_amount != null && (
+                        <p className="text-xs text-muted-foreground">
+                          {language === "en"
+                            ? `Subtotal (without fees): ${paymentFees.subtotal.toFixed(2)} TND · Fees: ${paymentFees.fee_amount.toFixed(2)} TND`
+                            : `Sous-total (hors frais) : ${paymentFees.subtotal.toFixed(2)} TND · Frais : ${paymentFees.fee_amount.toFixed(2)} TND`}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -328,12 +379,32 @@ export function OnlineOrderDetailsDialog({
                           ))}
                           <TableRow className="font-bold border-t-2">
                             <TableCell colSpan={3} className="text-right">
-                              {language === "en" ? "Total" : "Total"}
+                              {language === "en" ? "Subtotal (without fees)" : "Sous-total (hors frais)"}
                             </TableCell>
                             <TableCell className="text-lg">
                               {calculatedTotal.toFixed(2)} TND
                             </TableCell>
                           </TableRow>
+                          {paymentFees?.fee_amount != null && (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-right text-sm">
+                                {language === "en" ? "Fees" : "Frais"}
+                              </TableCell>
+                              <TableCell className="text-sm font-semibold">
+                                {paymentFees.fee_amount.toFixed(2)} TND
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {paymentFees?.total_with_fees != null && (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-right text-sm">
+                                {language === "en" ? "Total (incl. fees)" : "Total (frais inclus)"}
+                              </TableCell>
+                              <TableCell className="text-sm font-semibold">
+                                {paymentFees.total_with_fees.toFixed(2)} TND
+                              </TableCell>
+                            </TableRow>
+                          )}
                         </TableBody>
                       </Table>
                     );
