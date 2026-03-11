@@ -329,14 +329,19 @@ const Footer = ({ language }: FooterProps) => {
               </div>
             </div>
             
-            {/* Legal Links */}
-            <div className="flex items-center gap-4 sm:gap-6 text-sm flex-wrap justify-center">
+            {/* Legal Links & Payment Methods */}
+            <div className="flex flex-col items-center gap-4 text-sm">
               <RouterLink 
                 to="/terms" 
                 className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-4"
               >
                 {content[language].terms}
               </RouterLink>
+              <div className="flex items-center gap-4">
+                <img src="/assets/Visa.svg" alt="Visa" className="h-8 w-14 object-contain opacity-90" />
+                <img src="/assets/mastercard.svg" alt="Mastercard" className="h-8 w-14 object-contain opacity-90" />
+                <img src="/assets/edinar.svg" alt="eDinar" className="h-6 w-10 object-contain opacity-90" />
+              </div>
             </div>
           </div>
 
@@ -359,14 +364,19 @@ const Footer = ({ language }: FooterProps) => {
               </a>
             </div>
             
-            {/* Legal Links */}
-            <div className="flex items-center gap-3 shrink-0">
+            {/* Legal Links & Payment Methods */}
+            <div className="flex items-center gap-4 shrink-0">
               <RouterLink 
                 to="/terms" 
                 className="text-muted-foreground hover:text-primary transition-all duration-300 hover:underline underline-offset-2 whitespace-nowrap"
               >
                 {content[language].terms}
               </RouterLink>
+              <div className="flex items-center gap-3">
+                <img src="/assets/Visa.svg" alt="Visa" className="h-8 w-14 object-contain opacity-90" />
+                <img src="/assets/mastercard.svg" alt="Mastercard" className="h-8 w-14 object-contain opacity-90" />
+                <img src="/assets/edinar.svg" alt="eDinar" className="h-6 w-10 object-contain opacity-90" />
+              </div>
             </div>
           </div>
         </div>
