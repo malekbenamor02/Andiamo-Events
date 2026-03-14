@@ -8,6 +8,7 @@ import LoadingScreen from "@/components/ui/LoadingScreen";
 import TeamSection from "@/components/home/TeamSection";
 import { PageMeta } from "@/components/PageMeta";
 import { JsonLdBreadcrumb } from "@/components/JsonLd";
+import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 
 interface AboutProps {
   language: 'en' | 'fr';
@@ -226,15 +227,15 @@ const About = ({ language }: AboutProps) => {
         subtitle: "Des fêtes côtières aux célébrations urbaines",
         locations: [
           { name: "Sousse", description: "Célébrations en bord de mer et festivals d'été" },
-          { name: "Tunis", description: "Vie nocturne urbaine et événements exclusifs sur toit" },
+          { name: "Tunis", description: "Événements urbains et exclusifs sur toit" },
           { name: "Monastir", description: "Fêtes en bord de mer et expériences de lieux de luxe" },
           { name: "Hammamet", description: "Célébrations de station et lieux touristiques" },
-          { name: "Sfax", description: "Événements culturels et vie nocturne moderne" }
+          { name: "Sfax", description: "Événements culturels et expériences modernes" }
         ]
       },
       cta: {
         title: "Rejoignez le Mouvement",
-        subtitle: "Faites partie de la communauté de vie nocturne la plus excitante de Tunisie",
+        subtitle: "Faites partie de la communauté événementielle la plus excitante de Tunisie",
         button: "Devenir Ambassadeur"
       }
     }
@@ -255,7 +256,7 @@ const About = ({ language }: AboutProps) => {
     <main className="min-h-screen bg-background pt-16 overflow-x-hidden" id="main-content">
       <PageMeta
         title="About Us"
-        description="Creating innovative and inspiring event experiences in Tunisia. We create memories."
+        description={PAGE_DESCRIPTIONS.about[language]}
         path="/about"
       />
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "About", url: "/about" }]} />

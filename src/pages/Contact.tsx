@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { logFormSubmission, logger } from "@/lib/logger";
 import { Mail, Phone, MapPin } from "lucide-react";
 import { PageMeta } from "@/components/PageMeta";
+import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 import { JsonLdBreadcrumb } from "@/components/JsonLd";
 
 interface ContactProps {
@@ -202,7 +203,7 @@ const Contact = ({ language }: ContactProps) => {
     <main className="pt-16 min-h-screen bg-background relative overflow-hidden" id="main-content">
       <PageMeta
         title="Contact"
-        description="Get in touch with Andiamo Events – customer service, inquiries and support. Tunisia events and ticketing."
+        description={PAGE_DESCRIPTIONS.contact[language]}
         path="/contact"
       />
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Contact", url: "/contact" }]} />

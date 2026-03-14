@@ -5,6 +5,7 @@ import { Calendar, MapPin, ExternalLink } from "lucide-react";
 import HeroSection from "@/components/home/HeroSection";
 import { PageMeta } from "@/components/PageMeta";
 import { JsonLdWebPage } from "@/components/JsonLd";
+import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 import placeholder from "/placeholder.svg";
 import { supabase } from "@/integrations/supabase/client";
 import CounterSection from "@/components/home/CounterSection";
@@ -29,12 +30,6 @@ interface Event {
 interface IndexProps {
   language: 'en' | 'fr';
 }
-
-const INDEX_META = {
-  title: "Andiamo Events – We Create Memories",
-  description:
-    "Andiamo Events – find local events this weekend in Tunis, Sousse and across Tunisia. Concerts, parties, festivals. We create memories.",
-};
 
 const Index = ({ language }: IndexProps) => {
   const navigate = useNavigate();
@@ -151,10 +146,10 @@ const Index = ({ language }: IndexProps) => {
 
   return (
     <main className="relative" id="main-content">
-      <PageMeta title={INDEX_META.title} description={INDEX_META.description} path="/" />
+      <PageMeta title="Andiamo Events – We Create Memories" description={PAGE_DESCRIPTIONS.home[language]} path="/" />
       <JsonLdWebPage
         name="Andiamo Events – We Create Memories"
-        description="Creating innovative and inspiring event experiences in Tunisia. We create memories."
+        description={PAGE_DESCRIPTIONS.home.en}
         path="/"
       />
       {/* Loading Screen - Appears instantly to prevent blank screen */}

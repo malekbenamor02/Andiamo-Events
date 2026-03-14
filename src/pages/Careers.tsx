@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { PageMeta } from "@/components/PageMeta";
+import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import {
   fetchCareerDomains,
@@ -494,7 +495,7 @@ export default function Careers({ language }: CareersProps) {
     const benefits = whyJoinUs?.[langKey];
     return (
       <>
-        <PageMeta title={t.title} description={t.subtitle} />
+        <PageMeta title={t.title} description={PAGE_DESCRIPTIONS.careers[language]} path="/careers" />
         <div className="min-h-screen bg-background">
           {/* Hero */}
           <section className="container pt-16 pb-4 md:pt-16 md:pb-8 px-4">
@@ -671,7 +672,7 @@ export default function Careers({ language }: CareersProps) {
   if (isApplyPage) {
     return (
       <>
-        <PageMeta title={language === "fr" ? `Postuler – ${domain?.name}` : `Apply – ${domain?.name}`} description={domain?.description || t.subtitle} />
+        <PageMeta title={language === "fr" ? `Postuler – ${domain?.name}` : `Apply – ${domain?.name}`} description={domain?.description || PAGE_DESCRIPTIONS.careers[language]} path={slug ? `/careers/${slug}/apply` : "/careers"} />
         <div className="min-h-screen bg-background">
           <div className="max-w-2xl mx-auto px-4 py-24">
             <div className="mb-6">
@@ -803,7 +804,7 @@ export default function Careers({ language }: CareersProps) {
 
   return (
     <>
-      <PageMeta title={`${domain?.name} – ${t.title}`} description={domain?.description || t.subtitle} />
+      <PageMeta title={`${domain?.name} – ${t.title}`} description={domain?.description || PAGE_DESCRIPTIONS.careers[language]} path={slug ? `/careers/${slug}` : "/careers"} />
       <div className="min-h-screen bg-background">
         {/* Mobile: stacked. Desktop (md+): fixed left column + scrollable right column */}
         <div className="md:grid md:grid-cols-[minmax(0,360px)_1fr] lg:grid-cols-[minmax(0,400px)_1fr] md:gap-10 md:min-h-screen">

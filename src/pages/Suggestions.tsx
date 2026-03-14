@@ -9,6 +9,7 @@ import { API_ROUTES } from "@/lib/api-routes";
 import { safeApiCall } from "@/lib/api-client";
 import { Music, MapPin, Calendar } from "lucide-react";
 import { PageMeta } from "@/components/PageMeta";
+import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 import { JsonLdBreadcrumb } from "@/components/JsonLd";
 
 const TITLE_MAX = 200;
@@ -256,7 +257,7 @@ const Suggestions = ({ language }: SuggestionsProps) => {
 
   return (
     <main className="pt-16 min-h-screen bg-background relative overflow-hidden" id="main-content">
-      <PageMeta title="Suggestions" description="Suggest events, artists, or venues to Andiamo Events. We read every suggestion." path="/suggestions" />
+      <PageMeta title="Suggestions" description={PAGE_DESCRIPTIONS.suggestions[language]} path="/suggestions" />
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Suggestions", url: "/suggestions" }]} />
       <div ref={topRef} className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 relative z-10">
         {submitted ? (

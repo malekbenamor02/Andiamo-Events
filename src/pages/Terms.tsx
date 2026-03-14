@@ -1,4 +1,5 @@
 import { PageMeta } from "@/components/PageMeta";
+import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 import { JsonLdBreadcrumb } from "@/components/JsonLd";
 
 interface TermsProps {
@@ -297,7 +298,7 @@ const Terms = ({ language }: TermsProps) => {
     <main className="pt-16 min-h-screen bg-background" id="main-content">
       <PageMeta
         title="Terms and Conditions"
-        description="Andiamo Events terms and conditions of sale. Tickets, payment, QR code access and event rules. Tunisia."
+        description={PAGE_DESCRIPTIONS.terms[language]}
         path="/terms"
       />
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Terms and Conditions", url: "/terms" }]} />

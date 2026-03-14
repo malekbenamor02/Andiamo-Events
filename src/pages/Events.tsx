@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { PageMeta } from "@/components/PageMeta";
+import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 import { JsonLdWebPage, JsonLdBreadcrumb, JsonLdItemList } from "@/components/JsonLd";
 import { generateSlug } from "@/lib/utils";
 import { formatDateTimeLong } from "@/lib/date-utils";
@@ -483,12 +484,12 @@ const Events = ({ language }: EventsProps) => {
     <main className="pt-16 min-h-screen bg-background animate-page-intro" id="main-content">
       <PageMeta
         title="Upcoming Events"
-        description="Local events this weekend in Tunis, Sousse and Tunisia. Find weekend events, concerts, parties and festivals. Andiamo Events."
+        description={PAGE_DESCRIPTIONS.events[language]}
         path="/events"
       />
       <JsonLdWebPage
         name="Upcoming Events | Andiamo Events – Local Weekend Events in Tunis & Sousse"
-        description="Local events this weekend in Tunis, Sousse and Tunisia. Find weekend events, concerts, parties and festivals. Andiamo Events."
+        description={PAGE_DESCRIPTIONS.events.en}
         path="/events"
       />
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Events", url: "/events" }]} />

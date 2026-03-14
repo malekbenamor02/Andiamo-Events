@@ -17,6 +17,7 @@ import DOMPurify from 'dompurify';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { PageMeta } from '@/components/PageMeta';
+import { PAGE_DESCRIPTIONS } from '@/lib/seo';
 import { trackMetaEvent } from '@/lib/meta';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
@@ -609,7 +610,7 @@ const Application = ({ language }: ApplicationProps) => {
     <main className="min-h-screen bg-gradient-dark flex flex-col items-center justify-start p-0 md:p-8 relative overflow-hidden animate-page-intro" id="main-content">
       <PageMeta
         title="Become an Ambassador"
-        description="Creating innovative and inspiring event experiences in Tunisia. We create memories."
+        description={PAGE_DESCRIPTIONS.ambassador[language]}
         path="/ambassador"
       />
       <div className="absolute inset-0 pointer-events-none">
