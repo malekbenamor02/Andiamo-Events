@@ -2666,11 +2666,11 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                 if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
                   const formattedPhone = '+216' + cleaned;
                   
-                  // Build SMS message
+                  // Build SMS message (use total with fee for online purchases)
                   const orderNumber = fullOrder.order_number != null ? fullOrder.order_number.toString() : '';
-                  const totalPrice = parseFloat(fullOrder.total_price).toFixed(0);
+                  const totalDisplay = parseFloat((fullOrder.total_with_fees ?? fullOrder.total_price ?? 0).toString()).toFixed(0);
                   const smsMessage = `Paiement confirmé #${orderNumber}
-Total: ${totalPrice} DT
+Total: ${totalDisplay} DT
 Billets envoyés par email (Check SPAM).
 We Create Memories`;
                   

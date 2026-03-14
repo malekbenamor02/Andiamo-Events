@@ -738,7 +738,7 @@ export default async (req, res) => {
                           ${passesSummaryHtml}
                           <tr class="total-row">
                             <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>Total Amount Paid:</strong></td>
-                            <td style="text-align: right;"><strong>${fullOrder.total_price.toFixed(2)} TND</strong></td>
+                            <td style="text-align: right;"><strong>${(fullOrder.total_with_fees ?? fullOrder.total_price ?? 0).toFixed(2)} TND</strong></td>
                           </tr>
                         </tbody>
                       </table>
@@ -824,11 +824,11 @@ export default async (req, res) => {
             if (cleaned.length === 8 && /^[2594]/.test(cleaned)) {
               const formattedPhone = '+216' + cleaned;
               
-              // Build SMS message
+              // Build SMS message (use total with fee when available, e.g. online orders)
               const orderNumber = fullOrder.order_number != null ? fullOrder.order_number.toString() : '';
-              const totalPrice = parseFloat(fullOrder.total_price).toFixed(0);
+              const totalDisplay = parseFloat((fullOrder.total_with_fees ?? fullOrder.total_price ?? 0).toString()).toFixed(0);
               const smsMessage = `Paiement confirmé #${orderNumber}
-Total: ${totalPrice} DT
+Total: ${totalDisplay} DT
 Billets envoyés par email (Check SPAM).
 We Create Memories`;
               
