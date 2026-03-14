@@ -24,6 +24,7 @@ import { CustomerInfo, SelectedPass, Ambassador } from '@/types/orders';
 import { createOrder } from '@/lib/orders/orderService';
 import { PageMeta } from '@/components/PageMeta';
 import { trackEvent } from '@/lib/ga';
+import { trackMetaEvent, trackMetaPurchase } from '@/lib/meta';
 
 interface EventPass {
   id: string;
@@ -99,6 +100,51 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     customerInfo.ville
   );
 
+  const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+
+  // Load reCAPTCHA v3 script for order creation
+  useEffect(() => {
+    if (!RECAPTCHA_SITE_KEY || typeof window === 'undefined') return;
+    if ((window as any).grecaptcha) return;
+    const script = document.createElement('script');
+    script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+    return () => {
+      const existing = document.querySelector('script[src*="recaptcha/api.js"]');
+      if (existing?.parentNode) existing.parentNode.removeChild(existing);
+      const badge = document.querySelector('.grecaptcha-badge') as HTMLElement | null;
+      if (badge?.parentNode) badge.parentNode.removeChild(badge);
+      delete (window as any).grecaptcha;
+    };
+  }, [RECAPTCHA_SITE_KEY]);
+
+  const RECAPTCHA_TIMEOUT_MS = 15000;
+
+  const executeRecaptchaForOrder = async (): Promise<string | null> => {
+    const isLocalhost = window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.') ||
+      window.location.hostname.startsWith('10.0.') ||
+      window.location.hostname.startsWith('172.');
+    if (isLocalhost) return 'localhost-bypass-token';
+    if (!RECAPTCHA_SITE_KEY || !(window as any).grecaptcha) return null;
+    try {
+      const executePromise = (window as any).grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'order_create' });
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('RECAPTCHA_TIMEOUT')), RECAPTCHA_TIMEOUT_MS);
+      });
+      return await Promise.race([executePromise, timeoutPromise]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'RECAPTCHA_TIMEOUT' || (typeof msg === 'string' && msg.includes('reCAPTCHA Timeout'))) {
+        throw new Error('RECAPTCHA_TIMEOUT');
+      }
+      return null;
+    }
+  };
+
   // Reset ambassador selection when payment method changes
   useEffect(() => {
     if (paymentMethod !== PaymentMethod.AMBASSADOR_CASH) {
@@ -158,10 +204,18 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   // Track visit to the pass purchase flow (once event is loaded and purchase is allowed)
   useEffect(() => {
     if (event && !purchaseBlockedReason) {
+      const page_path = typeof window !== 'undefined' ? window.location.pathname + window.location.search : undefined;
       trackEvent('pass_purchase_visit', {
         event_id: event.id,
         event_name: event.name,
         language,
+        ...(page_path && { page_path }),
+      });
+      trackMetaEvent('PassPurchaseVisit', {
+        event_id: event.id,
+        event_name: event.name,
+        language,
+        page_path: page_path ?? undefined,
       });
     }
   }, [event?.id, purchaseBlockedReason, language, event?.name]);
@@ -503,6 +557,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         price: pass.price,
         language,
       });
+      trackMetaEvent('PassSelect', {
+        event_id: event.id,
+        event_name: event.name,
+        pass_id: pass.id,
+        pass_name: pass.name,
+        quantity: clampedQuantity,
+        price: pass.price,
+        language,
+      });
     }
 
     setSelectedPasses(newPasses);
@@ -640,24 +703,58 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     }
 
     try {
+      const idempotencyKey = crypto.randomUUID();
+      let recaptchaToken: string | null = null;
+      try {
+        recaptchaToken = await executeRecaptchaForOrder();
+      } catch (recaptchaErr: unknown) {
+        if (recaptchaErr instanceof Error && recaptchaErr.message === 'RECAPTCHA_TIMEOUT') {
+          toast({
+            title: language === 'en' ? 'Verification timed out' : 'Vérification expirée',
+            description: language === 'en'
+              ? "Verification timed out. Please try again or open this page in your device's browser (e.g. Safari or Chrome) instead of the in-app browser."
+              : "Vérification expirée. Veuillez réessayer ou ouvrir cette page dans le navigateur de votre appareil (ex. Safari ou Chrome) plutôt que dans le navigateur intégré.",
+            variant: 'destructive',
+          });
+          setProcessing(false);
+          return;
+        }
+        throw recaptchaErr;
+      }
+      const isLocalhost = window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.0.') ||
+        window.location.hostname.startsWith('172.');
+      if (!isLocalhost && !recaptchaToken) {
+        toast({
+          title: t[language].error,
+          description: language === 'en' ? 'reCAPTCHA verification failed. Please try again.' : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.',
+          variant: 'destructive',
+        });
+        setProcessing(false);
+        return;
+      }
       const order = await createOrder({
         customerInfo,
         passes: selectedPassesArray,
         paymentMethod,
         ambassadorId: paymentMethod === PaymentMethod.AMBASSADOR_CASH ? selectedAmbassadorId || undefined : undefined,
-        eventId: event?.id || eventId || undefined
+        eventId: event?.id || eventId || undefined,
+        recaptchaToken: recaptchaToken ?? undefined,
+        idempotencyKey,
       });
 
       // Handle redirect based on payment method
       if (paymentMethod === PaymentMethod.ONLINE) {
         // Track online payment order
-        trackEvent('order_submit_online', {
+        const onlineParams = {
           event_id: event?.id || eventId || undefined,
           event_name: event?.name,
           order_id: order.id,
           value: totalPrice,
-          currency: 'TND',
-          payment_method: 'online',
+          currency: 'TND' as const,
+          payment_method: 'online' as const,
           total_quantity: totalQuantity,
           language,
           items: selectedPassesArray.map((p) => ({
@@ -666,6 +763,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             quantity: p.quantity,
             price: p.price,
           })),
+        };
+        trackEvent('order_submit_online', onlineParams);
+        trackMetaEvent('OrderSubmitOnline', onlineParams);
+        trackMetaPurchase({
+          value: totalPrice,
+          currency: 'TND',
+          content_ids: selectedPassesArray.map((p) => p.passId),
+          content_type: 'product',
+          num_items: totalQuantity,
         });
 
         // Redirect to payment processing (ClicToPay flow)
@@ -684,13 +790,13 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         }
       } else if (paymentMethod === PaymentMethod.AMBASSADOR_CASH) {
         // Track ambassador payment order
-        trackEvent('order_submit_ambassador', {
+        const ambassadorParams = {
           event_id: event?.id || eventId || undefined,
           event_name: event?.name,
           order_id: order.id,
           value: totalPrice,
-          currency: 'TND',
-          payment_method: 'ambassador_cash',
+          currency: 'TND' as const,
+          payment_method: 'ambassador_cash' as const,
           total_quantity: totalQuantity,
           language,
           ambassador_id: selectedAmbassadorId || undefined,
@@ -700,7 +806,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             quantity: p.quantity,
             price: p.price,
           })),
-        });
+        };
+        trackEvent('order_submit_ambassador', ambassadorParams);
+        trackMetaEvent('OrderSubmitAmbassador', ambassadorParams);
 
         toast({
           title: t[language].success,

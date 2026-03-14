@@ -17,6 +17,7 @@ import DOMPurify from 'dompurify';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { PageMeta } from '@/components/PageMeta';
+import { trackMetaEvent } from '@/lib/meta';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
 interface ApplicationProps {
@@ -154,6 +155,17 @@ const Application = ({ language }: ApplicationProps) => {
     };
   }, [language]);
 
+  // Track visit to ambassador application page (once applications are open and page is ready)
+  useEffect(() => {
+    if (applicationEnabled === true && !loadingApplicationStatus) {
+      const page_path = typeof window !== 'undefined' ? window.location.pathname + window.location.search : undefined;
+      trackMetaEvent('AmbassadorApplicationVisit', {
+        language,
+        page_path: page_path ?? undefined,
+      });
+    }
+  }, [applicationEnabled, loadingApplicationStatus, language]);
+
   useEffect(() => {
     const isLocalhost =
       window.location.hostname === 'localhost' ||
@@ -196,6 +208,8 @@ const Application = ({ language }: ApplicationProps) => {
     };
   }, [RECAPTCHA_SITE_KEY]);
 
+  const RECAPTCHA_TIMEOUT_MS = 15000;
+
   const executeRecaptcha = async (): Promise<string | null> => {
     const isLocalhost =
       window.location.hostname === 'localhost' ||
@@ -218,9 +232,17 @@ const Application = ({ language }: ApplicationProps) => {
         });
       }
 
-      const token = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'ambassador_application' });
+      const executePromise = window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'ambassador_application' });
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('RECAPTCHA_TIMEOUT')), RECAPTCHA_TIMEOUT_MS);
+      });
+      const token = await Promise.race([executePromise, timeoutPromise]);
       return token;
-    } catch (error) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg === 'RECAPTCHA_TIMEOUT' || (typeof msg === 'string' && msg.includes('reCAPTCHA Timeout'))) {
+        throw new Error('RECAPTCHA_TIMEOUT');
+      }
       console.error('reCAPTCHA execution error:', error);
       return null;
     }
@@ -248,7 +270,8 @@ const Application = ({ language }: ApplicationProps) => {
       submit: "Submit Application",
       submitting: "Submitting...",
       success: "Application submitted! We will review and contact you soon.",
-      login: "Already approved? Login here"
+      login: "Already approved? Login here",
+      recaptchaTimeout: "Verification timed out. Please try again or open this page in your device's browser (e.g. Safari or Chrome) instead of the in-app browser."
     },
     fr: {
       heroTitle: "Devenez Ambassadeur",
@@ -271,7 +294,8 @@ const Application = ({ language }: ApplicationProps) => {
       submit: "Soumettre la Candidature",
       submitting: "Soumission...",
       success: "Candidature soumise! Nous vous contacterons bientôt.",
-      login: "Déjà approuvé ? Connectez-vous ici"
+      login: "Déjà approuvé ? Connectez-vous ici",
+      recaptchaTimeout: "Vérification expirée. Veuillez réessayer ou ouvrir cette page dans le navigateur de votre appareil (ex. Safari ou Chrome) plutôt que dans le navigateur intégré."
     }
   }[language];
 
@@ -403,7 +427,21 @@ const Application = ({ language }: ApplicationProps) => {
       }
 
       // Execute reCAPTCHA v3 (bypassed on localhost)
-      const recaptchaToken = await executeRecaptcha();
+      let recaptchaToken: string | null = null;
+      try {
+        recaptchaToken = await executeRecaptcha();
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message === 'RECAPTCHA_TIMEOUT') {
+          toast({
+            title: language === 'en' ? 'Verification timed out' : 'Vérification expirée',
+            description: t.recaptchaTimeout,
+            variant: 'destructive',
+          });
+          setIsSubmitting(false);
+          return;
+        }
+        throw err;
+      }
 
       if (!recaptchaToken) {
         toast({
@@ -455,7 +493,14 @@ const Application = ({ language }: ApplicationProps) => {
       });
 
       if (data.success) {
-        
+        const page_path = typeof window !== 'undefined' ? window.location.pathname + window.location.search : undefined;
+        trackMetaEvent('AmbassadorApplicationSubmitSuccess', {
+          language,
+          page_path: page_path ?? undefined,
+          city: sanitizedCity,
+          ville: villeValue ?? undefined,
+        });
+
         logFormSubmission('Ambassador Application', true, {
           fullName: sanitizedFullName,
           phone: formData.phoneNumber,

@@ -1,51 +1,37 @@
 ## Meta Ads Events Plan – Andiamo Events
 
-This document describes how to mirror our Google Analytics 4 events into Meta Pixel events, so we can use them in Meta Ads for conversion optimization, remarketing, and lookalikes.
-
-The goal is: **same business meaning, same funnel, same parameters** across GA4 and Meta.
+This document describes the Meta Pixel events we send for Meta Ads: conversion optimization, remarketing, and lookalikes.
 
 ---
 
 ### 1. Overview of Core Events
 
-We already send the following events to GA4:
+We send the following custom events to the Meta Pixel (PascalCase names):
 
-- **`pass_purchase_visit`**: user visits the pass purchase flow.
-- **`pass_select`**: user selects (adds) at least one pass.
-- **`order_submit_online`**: order created with online payment.
-- **`order_submit_ambassador`**: order created with ambassador cash payment.
-
-For Meta, we will mirror them as Pixel events:
-
-- **Meta event `PassPurchaseVisit`** ⇔ GA4 `pass_purchase_visit`
-- **Meta event `PassSelect`** ⇔ GA4 `pass_select`
-- **Meta event `OrderSubmitOnline`** ⇔ GA4 `order_submit_online`
-- **Meta event `OrderSubmitAmbassador`** ⇔ GA4 `order_submit_ambassador`
-
-We keep **names in PascalCase for Meta** and **snake_case for GA4**, but business meaning and parameters stay aligned.
+- **`PassPurchaseVisit`**: user visits the pass purchase flow.
+- **`PassSelect`**: user selects (adds) at least one pass.
+- **`OrderSubmitOnline`**: order created with online payment.
+- **`OrderSubmitAmbassador`**: order created with ambassador cash payment.
+- **`AmbassadorApplicationVisit`**: user visits the ambassador application page (when applications are open).
+- **`AmbassadorApplicationSubmitSuccess`**: user submits the ambassador application successfully.
 
 ---
 
 ### 2. Meta Pixel Integration – High-Level
 
-Later, we will:
+The app uses a `meta.ts` helper that:
 
-1. **Add Meta Pixel base code** to the app (likely via a `meta.ts` helper, similar to `ga.ts` and `clarity.ts`):
-   - Read `VITE_META_PIXEL_ID` from env.
-   - Initialize `fbq('init', PIXEL_ID)` once.
-   - Provide helper: `trackMetaEvent(name: string, params?: Record<string, any>)`.
-
-2. **Call `trackMetaEvent` in the same places** where we already call `trackEvent` (GA4 helper) in:
+1. **Loads the Pixel** and reads `VITE_META_PIXEL_ID` from env.
+2. **Initializes** with `fbq('init', PIXEL_ID)` once.
+3. **Exposes** `trackMetaEvent(name, params)` and fires it from:
    - `PassPurchase.tsx` (visit, pass selection, order submit events).
-
-3. **Avoid double-firing**:
-   - All business events will be fired through a single abstraction per place in the code, which calls both GA and Meta helpers to keep them synchronized.
+   - `Application.tsx` (ambassador application page visit, application submit success).
 
 ---
 
 ### 3. Event Definitions for Meta
 
-Below are the four core events, with:
+Below are the core events, with:
 
 - **Where they fire** (in the app).
 - **Meta event name**.
@@ -56,7 +42,6 @@ Below are the four core events, with:
 
 - **When (frontend):**
   - In `PassPurchase.tsx`, once the event is loaded and pass purchase is allowed (not past/completed).
-  - Same condition as GA4 `pass_purchase_visit`.
 
 - **Meta event name:**
   - `PassPurchaseVisit` (custom event).
@@ -158,6 +143,41 @@ Below are the four core events, with:
   - **Lookalike audiences**:
     - Create lookalikes from `OrderSubmitAmbassador` for campaigns focused on people likely to use ambassadors.
 
+#### 3.5 `AmbassadorApplicationVisit`
+
+- **When (frontend):**
+  - In `Application.tsx`, once the ambassador application page is loaded and applications are open (not closed by site settings).
+
+- **Meta event name:**
+  - `AmbassadorApplicationVisit` (custom event).
+
+- **Parameters (example):**
+  - `language` – 'en' or 'fr'.
+  - `page_path` – URL path (e.g. `/ambassador/apply` or the route used for the application page).
+
+- **Usage in Meta:**
+  - **Custom Audience**: people who visited the ambassador application page (intent to apply).
+  - **Funnel**: exclude `AmbassadorApplicationSubmitSuccess` to build an "visited but did not submit" segment for remarketing.
+
+#### 3.6 `AmbassadorApplicationSubmitSuccess`
+
+- **When (frontend):**
+  - In `Application.tsx`, inside `handleSubmit`, after the API returns success (application submitted successfully).
+
+- **Meta event name:**
+  - `AmbassadorApplicationSubmitSuccess` (custom event).
+
+- **Parameters (example):**
+  - `language`
+  - `page_path`
+  - `city` – user’s city.
+  - `ville` – sub-city/area when applicable (e.g. Sousse/Tunis).
+
+- **Usage in Meta:**
+  - **Custom Conversion**: define a conversion based on `AmbassadorApplicationSubmitSuccess` for recruitment/ambassador campaigns.
+  - **Custom Audience**: people who submitted an application (for exclusions or lookalike source).
+  - **Lookalike**: create lookalikes from applicants for ambassador-focused campaigns.
+
 ---
 
 ### 4. Meta Custom Conversions Setup (Later)
@@ -166,7 +186,7 @@ When we implement the Pixel events, the next steps in **Meta Events Manager** wi
 
 1. **Verify events are received:**
    - Use the **Test Events** tab and open the site.
-   - Confirm `PassPurchaseVisit`, `PassSelect`, `OrderSubmitOnline`, `OrderSubmitAmbassador` appear.
+   - Confirm `PassPurchaseVisit`, `PassSelect`, `OrderSubmitOnline`, `OrderSubmitAmbassador`, `AmbassadorApplicationVisit`, `AmbassadorApplicationSubmitSuccess` appear.
 
 2. **Create custom conversions:**
    - **Conversion 1 – Online Orders**
@@ -196,25 +216,9 @@ When we implement the Pixel events, the next steps in **Meta Events Manager** wi
 
 ---
 
-### 5. Technical Work Checklist (For Later)
+### 5. Technical Summary
 
-When we are ready to implement Meta:
-
-- **Env & config**
-  - Add `VITE_META_PIXEL_ID` to environment variables.
-
-- **Code**
-  - Create `src/lib/meta.ts`:
-    - Initialize Pixel with `fbq('init', PIXEL_ID)`.
-    - Export `trackMetaEvent(name, params)`.
-  - In `PassPurchase.tsx`:
-    - Where `trackEvent('pass_purchase_visit', ...)` is called, also call `trackMetaEvent('PassPurchaseVisit', ...)`.
-    - Where `trackEvent('pass_select', ...)` is called, also call `trackMetaEvent('PassSelect', ...)`.
-    - Where `trackEvent('order_submit_online', ...)` is called, also call `trackMetaEvent('OrderSubmitOnline', ...)` (and possibly `fbq('track', 'Purchase', ...)`).
-    - Where `trackEvent('order_submit_ambassador', ...)` is called, also call `trackMetaEvent('OrderSubmitAmbassador', ...)`.
-
-- **Testing**
-  - Use Meta’s **Test Events** and **Diagnostics** to confirm payloads.
-
-Once these steps are executed, Meta Ads will have the **same funnel visibility** as GA4, making optimization and reporting consistent across both platforms. 
+- **Env:** `VITE_META_PIXEL_ID` in environment variables.
+- **Code:** `src/lib/meta.ts` initializes the Pixel and exports `trackMetaEvent`; `PassPurchase.tsx` fires pass-purchase events; `Application.tsx` (ambassador) fires `AmbassadorApplicationVisit` and `AmbassadorApplicationSubmitSuccess`.
+- **Testing:** Use Meta’s **Test Events** and **Diagnostics** to confirm payloads. 
 

@@ -42,17 +42,27 @@ function isLocalOrDevHost(): boolean {
   );
 }
 
+const RECAPTCHA_TIMEOUT_MS = 15000;
+
 function getRecaptchaToken(): Promise<string | null> {
   if (isLocalOrDevHost()) return Promise.resolve("localhost-bypass-token");
   if (!RECAPTCHA_SITE_KEY || typeof window === "undefined" || !(window as any).grecaptcha) return Promise.resolve(null);
-  return new Promise((resolve) => {
+  const executePromise = new Promise<string | null>((resolve, reject) => {
     (window as any).grecaptcha.ready(() => {
       (window as any).grecaptcha
         .execute(RECAPTCHA_SITE_KEY, { action: "career_application" })
         .then(resolve)
-        .catch(() => resolve(null));
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (typeof msg === "string" && msg.includes("reCAPTCHA Timeout")) reject(new Error("RECAPTCHA_TIMEOUT"));
+          else resolve(null);
+        });
     });
   });
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error("RECAPTCHA_TIMEOUT")), RECAPTCHA_TIMEOUT_MS);
+  });
+  return Promise.race([executePromise, timeoutPromise]);
 }
 
 const LINK_PLACEHOLDERS: Record<string, { en: string; fr: string }> = {
@@ -443,6 +453,18 @@ export default function Careers({ language }: CareersProps) {
           variant: "default",
         });
       } catch (err: any) {
+        if (err?.message === "RECAPTCHA_TIMEOUT") {
+          toast({
+            title: language === "fr" ? "Vérification expirée" : "Verification timed out",
+            description:
+              language === "fr"
+                ? "La vérification a expiré. Réessayez ou ouvrez cette page dans le navigateur de votre appareil (ex. Safari ou Chrome) plutôt que dans le navigateur intégré."
+                : "Verification timed out. Please try again or open this page in your device's browser (e.g. Safari or Chrome) instead of the in-app browser.",
+            variant: "destructive",
+          });
+          setSubmitting(false);
+          return;
+        }
         const details = err?.data?.details;
         let description = err?.message || "Submission failed.";
         if (Array.isArray(details) && details.length > 0) {

@@ -43,11 +43,10 @@ function loadMetaScript(): void {
 
 export function initMeta(): void {
   if (isInitialized) return;
+  if (!isProduction) return;
   const id = META_PIXEL_ID;
   if (!id) {
-    if (isProduction) {
-      console.warn('[Meta] VITE_META_PIXEL_ID not set – Meta Pixel disabled');
-    }
+    console.warn('[Meta] VITE_META_PIXEL_ID not set – Meta Pixel disabled');
     return;
   }
   try {

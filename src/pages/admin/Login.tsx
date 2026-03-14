@@ -74,6 +74,8 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     };
   }, [RECAPTCHA_SITE_KEY]);
 
+  const RECAPTCHA_TIMEOUT_MS = 15000;
+
   // Execute reCAPTCHA v3
   const executeRecaptcha = async (): Promise<string | null> => {
     // Bypass reCAPTCHA on localhost for development
@@ -92,9 +94,17 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     }
 
     try {
-      const token = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'login' });
+      const executePromise = window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'login' });
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('RECAPTCHA_TIMEOUT')), RECAPTCHA_TIMEOUT_MS);
+      });
+      const token = await Promise.race([executePromise, timeoutPromise]);
       return token;
-    } catch (error) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg === 'RECAPTCHA_TIMEOUT' || (typeof msg === 'string' && msg.includes('reCAPTCHA Timeout'))) {
+        throw new Error('RECAPTCHA_TIMEOUT');
+      }
       console.error('reCAPTCHA execution error:', error);
       return null;
     }
@@ -129,7 +139,25 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
     setError("");
 
     // Execute reCAPTCHA v3 (bypassed on localhost)
-    const recaptchaToken = await executeRecaptcha();
+    let recaptchaToken: string | null = null;
+    try {
+      recaptchaToken = await executeRecaptcha();
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'RECAPTCHA_TIMEOUT') {
+        const timeoutMsg = language === 'en'
+          ? "Verification timed out. Please try again or open this page in your device's browser (e.g. Safari or Chrome) instead of the in-app browser."
+          : "Vérification expirée. Veuillez réessayer ou ouvrir cette page dans le navigateur de votre appareil (ex. Safari ou Chrome) plutôt que dans le navigateur intégré.";
+        setError(timeoutMsg);
+        toast({
+          title: language === 'en' ? "Verification timed out" : "Vérification expirée",
+          description: timeoutMsg,
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+      throw err;
+    }
     
     // Only require reCAPTCHA if not on localhost
     const isLocalhost = window.location.hostname === 'localhost' || 

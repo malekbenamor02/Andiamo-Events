@@ -123,6 +123,10 @@ export interface CreateOrderData {
   ambassadorId?: string;  // Required for AMBASSADOR_CASH
   eventId?: string;
   notes?: string;
+  /** reCAPTCHA v3 token; backend bypasses if missing or localhost-bypass-token */
+  recaptchaToken?: string;
+  /** Idempotency key for duplicate submit prevention; same key returns existing order */
+  idempotencyKey?: string;
 }
 
 /**

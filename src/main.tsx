@@ -4,6 +4,7 @@ import './index.css'
 import { initSentry, Sentry } from './lib/sentry'
 import { initClarity } from './lib/clarity'
 import { initGA } from './lib/ga'
+import { initMeta } from './lib/meta'
 import { logger } from './lib/logger'
 import { sanitizeConsoleArgs, sanitizeObject, sanitizeString } from './lib/sanitize'
 
@@ -14,6 +15,11 @@ initSentry()
 if (typeof window !== 'undefined') {
   try {
     initGA()
+  } catch {
+    // ignore analytics init errors
+  }
+  try {
+    initMeta()
   } catch {
     // ignore analytics init errors
   }
@@ -48,7 +54,9 @@ const suppressBrowserExtensionError = (error: any) => {
          errorString.includes("message channel closed before a response was received") ||
          errorString.includes("Could not establish connection") ||
          errorString.includes("Receiving end does not exist") ||
-         (errorString.includes("webkit") && errorString.includes("messageHandlers"));
+         (errorString.includes("webkit") && errorString.includes("messageHandlers")) ||
+         (errorString.includes("Java object is gone") && errorString.includes("enableButtonsClickedMetaDataLogging")) ||
+         errorString.includes("reCAPTCHA Timeout");
 };
 
 // Set up early promise rejection handler
@@ -102,6 +110,8 @@ const setupErrorHandlers = async () => {
         errorMessage.includes("Extension context invalidated") ||
         errorMessage.includes("message channel closed before a response was received") ||
         (errorMessage.includes("webkit") && errorMessage.includes("messageHandlers")) ||
+        (errorMessage.includes("Java object is gone") && errorMessage.includes("enableButtonsClickedMetaDataLogging")) ||
+        errorMessage.includes("reCAPTCHA Timeout") ||
         filename.includes("chrome-extension://") ||
         filename.includes("moz-extension://") ||
         filename.includes("safari-extension://") ||

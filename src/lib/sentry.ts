@@ -44,6 +44,12 @@ export function initSentry() {
       // In-app browsers (e.g. Instagram) where webkit.messageHandlers isn't available
       /webkit\.messageHandlers/i,
       /undefined is not an object \(evaluating 'window\.webkit\.messageHandlers[^']*'\)/i,
+      // Vercel Speed Insights in WebViews: native object torn down (Java object is gone)
+      /enableButtonsClickedMetaDataLogging.*Java object is gone/i,
+      /Java object is gone/i,
+      // reCAPTCHA timeout in in-app browsers (e.g. Instagram WebView) – we handle in UI
+      /reCAPTCHA Timeout/i,
+      'RECAPTCHA_TIMEOUT',
     ],
     denyUrls: [
       /chrome-extension:\/\//i,
@@ -53,6 +59,12 @@ export function initSentry() {
       // Ignore errors originating from Google Analytics / gtag (we can't fix third-party script)
       /googletagmanager\.com\/gtag\/js/i,
       /analytics\.google\.com/i,
+      // Vercel Speed Insights (insights script can throw in WebViews)
+      /vercel.*insights/i,
+      /_vercel\/insights/i,
+      // Google reCAPTCHA (timeouts in in-app browsers; we handle in UI)
+      /google\.com\/recaptcha/i,
+      /recaptcha.*\.js/i,
     ],
   });
 }

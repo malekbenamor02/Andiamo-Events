@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import FileUpload from "@/components/ui/file-upload";
-import { Plus, Edit, Trash2, Save, X, Image, Video, Upload, Package, Calendar as CalendarIcon, MapPin, DollarSign, Instagram, ImagePlus, RefreshCw, ArrowLeft } from "lucide-react";
+import { Plus, Edit, Trash2, Save, X, Image, Video, Upload, Package, Calendar as CalendarIcon, MapPin, DollarSign, Instagram, ImagePlus, RefreshCw, ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { getApiBaseUrl } from "@/lib/api-routes";
@@ -702,7 +702,8 @@ export function EventsTab(p: EventsTabProps) {
                                           is_unlimited: p.is_unlimited || false,
                                           is_active: p.is_active !== undefined ? p.is_active : true,
                                           is_sold_out: p.is_sold_out || false,
-                                          allowed_payment_methods: p.allowed_payment_methods || null
+                                          allowed_payment_methods: p.allowed_payment_methods || null,
+                                          sold_by_payment_method: p.sold_by_payment_method || null
                                         }));
                                         p.setPassesForManagement(passesWithStock);
                                       }
@@ -836,6 +837,38 @@ export function EventsTab(p: EventsTabProps) {
                                           </div>
                                         ))}
                                       </div>
+                                    </div>
+                                  )}
+
+                                  {/* Sales by payment method */}
+                                  {pass.id && (
+                                    <div className="space-y-2 p-3 bg-muted/20 rounded-lg border">
+                                      <Label className="text-sm font-semibold">
+                                        {p.language === 'en' ? 'Sales by payment method' : 'Ventes par type de paiement'}
+                                      </Label>
+                                      <p className="text-xs text-muted-foreground mb-2">
+                                        {p.language === 'en'
+                                          ? 'Number of passes sold per payment method for this pass.'
+                                          : 'Nombre de passes vendus par méthode de paiement pour ce pass.'}
+                                      </p>
+                                      <ul className="space-y-1.5 text-sm">
+                                        <li className="flex justify-between">
+                                          <span>{p.language === 'en' ? 'Online Payment' : 'Paiement en ligne'}</span>
+                                          <span className="font-medium">{pass.sold_by_payment_method?.online ?? 0}</span>
+                                        </li>
+                                        <li className="flex justify-between">
+                                          <span>{p.language === 'en' ? 'Cash on Delivery (Ambassador)' : 'Paiement à la livraison (Ambassadeur)'}</span>
+                                          <span className="font-medium">{pass.sold_by_payment_method?.ambassador_cash ?? 0}</span>
+                                        </li>
+                                        <li className="flex justify-between">
+                                          <span>{p.language === 'en' ? 'Point de Vente (POS)' : 'Point de vente (POS)'}</span>
+                                          <span className="font-medium">{pass.sold_by_payment_method?.pos ?? 0}</span>
+                                        </li>
+                                        <li className="flex justify-between">
+                                          <span>{p.language === 'en' ? 'External App' : 'Application externe'}</span>
+                                          <span className="font-medium">{pass.sold_by_payment_method?.external_app ?? 0}</span>
+                                        </li>
+                                      </ul>
                                     </div>
                                   )}
 
@@ -1188,6 +1221,7 @@ export function EventsTab(p: EventsTabProps) {
                             <Button 
                               size="sm" 
                               variant="ghost" 
+                              disabled={p.isPassManagementLoading}
                               className="h-8 w-full min-w-[7rem] px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground rounded-sm transition-all duration-200 justify-start"
                               onClick={async () => {
                               p.setIsPassManagementLoading(true);
@@ -1213,7 +1247,8 @@ export function EventsTab(p: EventsTabProps) {
                                     is_unlimited: p.is_unlimited || false,
                                     is_active: p.is_active !== undefined ? p.is_active : true,
                                     is_sold_out: p.is_sold_out || false,
-                                    allowed_payment_methods: p.allowed_payment_methods || null
+                                    allowed_payment_methods: p.allowed_payment_methods || null,
+                                    sold_by_payment_method: p.sold_by_payment_method || null
                                   }));
                                   p.setPassesForManagement(passesWithStock);
                                   p.setEventForPassManagement(event);
@@ -1236,8 +1271,17 @@ export function EventsTab(p: EventsTabProps) {
                               }
                             }}
                           >
-                            <Package className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                            {p.language === 'en' ? 'Pass Stock' : 'Stock Passes'}
+                            {p.isPassManagementLoading ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 mr-1.5 shrink-0 animate-spin" />
+                                {p.language === 'en' ? 'Loading...' : 'Chargement...'}
+                              </>
+                            ) : (
+                              <>
+                                <Package className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                                {p.language === 'en' ? 'Pass Stock' : 'Stock Passes'}
+                              </>
+                            )}
                           </Button>
                           </div>
                           )}
