@@ -12128,7 +12128,13 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
 
     // STEP 4: Calculate totals (server-side authority)
     const totalQuantity = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
-    const totalPrice = validatedPasses.reduce((sum, p) => sum + (parseFloat(p.price) * p.quantity), 0);
+    const subtotal = validatedPasses.reduce((sum, p) => sum + (parseFloat(p.price) * p.quantity), 0);
+    let feeAmount = 0;
+    let totalWithFees = subtotal;
+    if (paymentMethod === 'online' && subtotal > 0) {
+      feeAmount = Number((subtotal * 0.05).toFixed(3));
+      totalWithFees = subtotal + feeAmount;
+    }
 
     // STEP 5: Determine initial status
     let initialStatus;
@@ -12168,6 +12174,7 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     }
 
     // STEP 6: Create order
+    const isOnline = paymentMethod !== 'ambassador_cash';
     const orderData = {
       source: paymentMethod === 'ambassador_cash' ? 'platform_cod' : 'platform_online',
       user_name: customerInfo.full_name.trim(),
@@ -12178,8 +12185,12 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
       event_id: eventId || null,
       ambassador_id: ambassadorId || null,
       quantity: totalQuantity,
-      total_price: totalPrice,
+      // For online orders, total_price is fee-inclusive; store total_with_fees and fee_amount
+      total_price: isOnline ? totalWithFees : subtotal,
+      fee_amount: isOnline ? feeAmount : null,
+      total_with_fees: isOnline ? totalWithFees : null,
       payment_method: paymentMethod,
+      payment_status: isOnline ? 'PENDING_PAYMENT' : null,
       status: initialStatus,
       stock_released: false,  // Stock is reserved, not released
       assigned_at: ambassadorId ? new Date().toISOString() : null,
@@ -12191,8 +12202,18 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
           quantity: p.quantity,
           price: p.price
         })),
-        total_order_price: totalPrice,
-        pass_count: validatedPasses.length
+        total_order_price: isOnline ? totalWithFees : subtotal,
+        pass_count: validatedPasses.length,
+        ...(paymentMethod === 'online'
+          ? {
+              payment_fees: {
+                fee_rate: 0.05,
+                fee_amount: feeAmount,
+                subtotal,
+                total_with_fees: totalWithFees
+              }
+            }
+          : {})
       })
     };
 

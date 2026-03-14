@@ -3051,9 +3051,21 @@ We Create Memories`;
               if (p) { if (!ticketsByPassType.has(p.pass_type)) ticketsByPassType.set(p.pass_type, []); ticketsByPassType.get(p.pass_type).push({ ...t, passType: p.pass_type }); }
             });
             const passesSummary = orderPasses.map(p => ({ passType: p.pass_type, quantity: p.quantity, price: p.price }));
-            const totalAmount = fullOrder.total_with_fees ?? fullOrder.total_price ?? 0;
-            const feeAmount = typeof fullOrder.fee_amount === 'number' ? fullOrder.fee_amount : undefined;
-            const subtotalAmount = feeAmount != null ? (fullOrder.total_with_fees ?? fullOrder.total_price ?? 0) - feeAmount : undefined;
+            // For online orders use total with fee; compute from notes/passes when total_with_fees not set
+            let totalAmount = fullOrder.total_with_fees ?? fullOrder.total_price ?? 0;
+            const isOnlineOrder = fullOrder.payment_method === 'online' || fullOrder.source === 'platform_online';
+            if (isOnlineOrder && (fullOrder.total_with_fees == null || fullOrder.total_with_fees === '')) {
+              try {
+                const notes = typeof fullOrder.notes === 'string' ? JSON.parse(fullOrder.notes) : fullOrder.notes;
+                if (notes?.payment_fees?.total_with_fees != null) totalAmount = Number(notes.payment_fees.total_with_fees);
+                else if (orderPasses?.length) {
+                  const sub = orderPasses.reduce((s, p) => s + (Number(p.price) || 0) * (p.quantity || 1), 0);
+                  if (sub > 0) totalAmount = Math.round((sub * 1.05) * 1000) / 1000;
+                }
+              } catch (_) { /* keep fallback */ }
+            }
+            const feeAmount = typeof fullOrder.fee_amount === 'number' ? fullOrder.fee_amount : (isOnlineOrder && totalAmount > 0 ? Math.round((totalAmount / 1.05) * 0.05 * 1000) / 1000 : undefined);
+            const subtotalAmount = feeAmount != null ? totalAmount - feeAmount : undefined;
             if (fullOrder.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
               try {
                 const nodemailer = await import('nodemailer');
@@ -3094,9 +3106,20 @@ We Create Memories`;
                 };
                 const formattedPhone = normalizePhone(rawPhone);
                 if (formattedPhone) {
-                  const totalDisplay = parseFloat(
-                    (fullOrder.total_with_fees ?? fullOrder.total_price ?? 0).toString()
-                  ).toFixed(0);
+                  // For online orders always show total WITH fee; use total_with_fees or compute from notes/passes
+                  let totalForSms = fullOrder.total_with_fees ?? fullOrder.total_price ?? 0;
+                  const isOnline = fullOrder.payment_method === 'online' || fullOrder.source === 'platform_online';
+                  if (isOnline && (fullOrder.total_with_fees == null || fullOrder.total_with_fees === '')) {
+                    try {
+                      const notes = typeof fullOrder.notes === 'string' ? JSON.parse(fullOrder.notes) : fullOrder.notes;
+                      if (notes?.payment_fees?.total_with_fees != null) totalForSms = Number(notes.payment_fees.total_with_fees);
+                      else if (orderPasses?.length) {
+                        const subtotal = orderPasses.reduce((s, p) => s + (Number(p.price) || 0) * (p.quantity || 1), 0);
+                        if (subtotal > 0) totalForSms = Math.round((subtotal * 1.05) * 1000) / 1000;
+                      }
+                    } catch (_) { /* keep total_price fallback */ }
+                  }
+                  const totalDisplay = parseFloat(Number(totalForSms).toString()).toFixed(0);
                   const smsMsg = `Paiement confirmé #${fullOrder.order_number != null ? fullOrder.order_number : ''}
 Total: ${totalDisplay} DT
 Billets envoyés par email. We Create Memories`;
