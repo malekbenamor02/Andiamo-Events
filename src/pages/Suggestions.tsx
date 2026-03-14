@@ -30,8 +30,10 @@ const Suggestions = ({ language }: SuggestionsProps) => {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [animatedSections, setAnimatedSections] = useState<Set<string>>(new Set());
   const { toast } = useToast();
+  const topRef = useRef<HTMLDivElement>(null);
 
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   const heroRef = useRef<HTMLDivElement>(null);
@@ -183,13 +185,15 @@ const Suggestions = ({ language }: SuggestionsProps) => {
       });
 
       logFormSubmission("Suggestions Form", true, { type: formData.suggestion_type, title: formData.title }, "guest");
+      setFormData({ suggestion_type: "", title: "", details: "", email: "" });
+      setSubmitted(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
       toast({
         title: language === "en" ? "Thank you!" : "Merci !",
         description: language === "en"
           ? "Your suggestion has been received. We read every one and use them to plan future events."
           : "Votre suggestion a bien été reçue. Nous lisons chacune et les utilisons pour nos prochains événements.",
       });
-      setFormData({ suggestion_type: "", title: "", details: "", email: "" });
     } catch (err: any) {
       logFormSubmission("Suggestions Form", false, { error: err?.message }, "guest");
       logger.error("Suggestions form submission failed", err, { category: "form_submission", details: { formName: "Suggestions" } });
@@ -223,6 +227,9 @@ const Suggestions = ({ language }: SuggestionsProps) => {
       emailPlaceholder: "your@email.com",
       submit: "Submit suggestion",
       submitting: "Sending...",
+      thankYouTitle: "Thank you!",
+      thankYouMessage: "Your suggestion has been received. We read every one and use them to plan future events.",
+      submitAnother: "Submit another suggestion",
     },
     fr: {
       title: "Proposez-nous",
@@ -239,6 +246,9 @@ const Suggestions = ({ language }: SuggestionsProps) => {
       emailPlaceholder: "votre@email.com",
       submit: "Envoyer la suggestion",
       submitting: "Envoi...",
+      thankYouTitle: "Merci !",
+      thankYouMessage: "Votre suggestion a bien été reçue. Nous lisons chacune et les utilisons pour nos prochains événements.",
+      submitAnother: "Proposer une autre suggestion",
     },
   };
 
@@ -248,24 +258,46 @@ const Suggestions = ({ language }: SuggestionsProps) => {
     <main className="pt-16 min-h-screen bg-background relative overflow-hidden" id="main-content">
       <PageMeta title="Suggestions" description="Suggest events, artists, or venues to Andiamo Events. We read every suggestion." path="/suggestions" />
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Suggestions", url: "/suggestions" }]} />
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 relative z-10">
-        <div
-          ref={heroRef}
-          className={`text-center mb-12 transform transition-all duration-1000 ease-out ${
-            animatedSections.has("hero") ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-8 scale-95"
-          }`}
-        >
-          <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-4 uppercase">{t.title}</h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">{t.description}</p>
-        </div>
+      <div ref={topRef} className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 relative z-10">
+        {submitted ? (
+          <div className="max-w-2xl mx-auto text-center space-y-6">
+            <div className="bg-green-950/30 rounded-sm p-8 border border-green-500/50">
+              <h2 className="text-3xl md:text-4xl font-heading font-bold text-green-400 mb-4">{t.thankYouTitle}</h2>
+              <p className="text-lg text-green-300/90">
+                {t.thankYouMessage}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="btn-gradient"
+              onClick={() => {
+                setSubmitted(false);
+                setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+              }}
+            >
+              {t.submitAnother}
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div
+              ref={heroRef}
+              className={`text-center mb-12 transform transition-all duration-1000 ease-out ${
+                animatedSections.has("hero") ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-8 scale-95"
+              }`}
+            >
+              <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-4 uppercase">{t.title}</h1>
+              <p className="text-xl text-muted-foreground max-w-2xl mx-auto">{t.description}</p>
+            </div>
 
-        <div
-          ref={formRef}
-          className={`bg-card rounded-sm p-8 max-w-2xl mx-auto transform transition-all duration-1000 ease-out ${
-            animatedSections.has("form") ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-          }`}
-        >
-          <form onSubmit={handleSubmit} className="space-y-6">
+            <div
+              ref={formRef}
+              className={`bg-card rounded-sm p-8 max-w-2xl mx-auto transform transition-all duration-1000 ease-out ${
+                animatedSections.has("form") ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+              }`}
+            >
+              <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <Label className="text-sm font-medium">{t.typeLabel} *</Label>
               <div className="flex flex-wrap gap-4 mt-2">
@@ -345,12 +377,14 @@ const Suggestions = ({ language }: SuggestionsProps) => {
               {isSubmitting ? t.submitting : t.submit}
             </Button>
           </form>
-        </div>
-        <p className="text-center text-muted-foreground text-sm mt-8">
-          {language === "en"
-            ? "We read every suggestion and use them to plan future events."
-            : "Nous lisons chaque suggestion et nous en servons pour nos prochains événements."}
-        </p>
+            </div>
+            <p className="text-center text-muted-foreground text-sm mt-8">
+              {language === "en"
+                ? "We read every suggestion and use them to plan future events."
+                : "Nous lisons chaque suggestion et nous en servons pour nos prochains événements."}
+            </p>
+          </>
+        )}
       </div>
     </main>
   );
