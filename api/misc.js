@@ -190,6 +190,23 @@ function checkAmbassadorApplicationRateLimit(ip) {
   return true;
 }
 
+// Audience suggestions: 10 per hour per IP (serverless best-effort)
+const suggestionsAttempts = new Map();
+const SUGGESTIONS_WINDOW_MS = 60 * 60 * 1000;
+const SUGGESTIONS_MAX = 10;
+
+function checkSuggestionsRateLimit(ip) {
+  const now = Date.now();
+  let rec = suggestionsAttempts.get(ip);
+  if (!rec || now > rec.resetAt) {
+    suggestionsAttempts.set(ip, { count: 1, resetAt: now + SUGGESTIONS_WINDOW_MS });
+    return true;
+  }
+  rec.count += 1;
+  if (rec.count > SUGGESTIONS_MAX) return false;
+  return true;
+}
+
 // Helper to parse request body
 async function parseBody(req) {
   if (req.body) {
@@ -1400,7 +1417,119 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         });
       }
     }
-    
+
+    // ============================================
+    // POST /api/audience-suggestions (events, artists, venues)
+    // ============================================
+    if (path === '/api/audience-suggestions' && method === 'POST') {
+      try {
+        const ip = getClientIp(req);
+        const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1' || !!process.env.VERCEL_URL;
+        if (isProd && !checkSuggestionsRateLimit(ip)) {
+          return res.status(429).json({ error: 'Too many suggestions submitted. Please try again later.' });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Server error', details: 'Service temporarily unavailable.' });
+        }
+
+        const bodyData = await parseBody(req);
+        const { suggestion_type, title, details, email, recaptchaToken } = bodyData || {};
+
+        const validTypes = ['event', 'artist', 'venue'];
+        if (!suggestion_type || !validTypes.includes(String(suggestion_type).toLowerCase())) {
+          return res.status(400).json({ error: 'Invalid suggestion type', details: 'Must be event, artist, or venue.' });
+        }
+        const typeVal = String(suggestion_type).toLowerCase().trim();
+
+        if (!title || typeof title !== 'string') {
+          return res.status(400).json({ error: 'Title is required.' });
+        }
+        const titleVal = String(title).trim();
+        if (titleVal.length === 0) {
+          return res.status(400).json({ error: 'Title cannot be empty.' });
+        }
+        if (titleVal.length > 200) {
+          return res.status(400).json({ error: 'Title is too long (max 200 characters).' });
+        }
+
+        let detailsVal = null;
+        if (details != null && details !== '') {
+          detailsVal = String(details).trim();
+          if (detailsVal.length > 2000) {
+            return res.status(400).json({ error: 'Details are too long (max 2000 characters).' });
+          }
+          if (detailsVal === '') detailsVal = null;
+        }
+
+        let emailVal = null;
+        if (email != null && String(email).trim() !== '') {
+          const emailTrimmed = String(email).trim();
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(emailTrimmed)) {
+            return res.status(400).json({ error: 'Invalid email format.' });
+          }
+          emailVal = emailTrimmed;
+        }
+
+        const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+        const shouldBypassRecaptcha = recaptchaToken === 'localhost-bypass-token' || !RECAPTCHA_SECRET_KEY;
+
+        if (!shouldBypassRecaptcha) {
+          if (!recaptchaToken) {
+            return res.status(400).json({ error: 'reCAPTCHA verification required.' });
+          }
+          try {
+            const verifyRes = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`,
+            });
+            const verifyData = await verifyRes.json();
+            if (!verifyData.success) {
+              return res.status(400).json({
+                error: 'reCAPTCHA verification failed',
+                details: verifyData['error-codes']?.join(', ') || 'Please try again.',
+              });
+            }
+          } catch (recaptchaErr) {
+            console.error('reCAPTCHA verification error:', recaptchaErr);
+            return res.status(500).json({
+              error: 'Verification service unavailable',
+              details: 'Unable to verify. Please try again later.',
+            });
+          }
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+
+        const { data: row, error } = await supabase
+          .from('audience_suggestions')
+          .insert({
+            suggestion_type: typeVal,
+            title: titleVal,
+            details: detailsVal,
+            email: emailVal,
+          })
+          .select('id, created_at')
+          .single();
+
+        if (error) {
+          console.error('Error inserting audience suggestion:', error);
+          return res.status(500).json({ error: 'Failed to save suggestion', details: error.message });
+        }
+
+        return res.status(201).json({
+          success: true,
+          suggestion: { id: row.id, created_at: row.created_at },
+        });
+      } catch (err) {
+        console.error('Error in /api/audience-suggestions:', err);
+        return res.status(500).json({ error: 'Internal server error', details: err.message });
+      }
+    }
+
     // ============================================
     // /api/send-email
     // ============================================
@@ -1553,10 +1682,56 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           });
         }
         
+        // Sold-by-payment-method breakdown: same "counted as sold" rules as sold_quantity.
+        // Query from order_passes (by event's pass ids) then filter orders in code, so we don't rely on orders.event_id.
+        const COUNTED_STATUSES = ['COMPLETED', 'PAID', 'MANUAL_COMPLETED', 'PENDING_CASH', 'PENDING_ONLINE', 'MANUAL_ACCEPTED', 'PENDING_ADMIN_APPROVAL', 'PENDING_AMBASSADOR_CONFIRMATION'];
+        const passIds = (passes || []).map(p => p.id).filter(Boolean);
+        let soldByPaymentMap = {};
+        if (passIds.length > 0) {
+          const { data: orderPassesRows } = await dbClient
+            .from('order_passes')
+            .select('order_id, pass_id, quantity')
+            .in('pass_id', passIds);
+          if (orderPassesRows && orderPassesRows.length > 0) {
+            const orderIds = [...new Set(orderPassesRows.map(op => op.order_id))];
+            const { data: ordersRows } = await dbClient
+              .from('orders')
+              .select('id, payment_method, status, stock_released, event_id')
+              .in('id', orderIds);
+            const validOrderIds = new Set(
+              (ordersRows || []).filter(o =>
+                o.stock_released === false &&
+                COUNTED_STATUSES.includes(o.status) &&
+                (o.event_id === eventId || o.event_id == null)
+              ).map(o => o.id)
+            );
+            const orderPaymentMap = Object.fromEntries(
+              (ordersRows || []).filter(o => validOrderIds.has(o.id)).map(o => [o.id, o.payment_method])
+            );
+            const breakdown = {};
+            for (const op of orderPassesRows) {
+              if (!validOrderIds.has(op.order_id)) continue;
+              const paymentMethod = orderPaymentMap[op.order_id];
+              if (!paymentMethod) continue;
+              if (!breakdown[op.pass_id]) breakdown[op.pass_id] = {};
+              breakdown[op.pass_id][paymentMethod] = (breakdown[op.pass_id][paymentMethod] || 0) + (op.quantity || 0);
+            }
+            soldByPaymentMap = breakdown;
+          }
+        }
+        
         // Calculate stock information for each pass
         const passesWithStock = (passes || []).map(pass => {
+          const isUnlimited = pass.max_quantity === null;
           const maxQty = pass.max_quantity != null ? pass.max_quantity : 0;
-          const remainingQuantity = Math.max(0, maxQty - (pass.sold_quantity || 0));
+          const remainingQuantity = isUnlimited ? null : Math.max(0, maxQty - (pass.sold_quantity || 0));
+          const byPayment = soldByPaymentMap[pass.id] || {};
+          const sold_by_payment_method = {
+            online: byPayment.online ?? 0,
+            ambassador_cash: byPayment.ambassador_cash ?? 0,
+            pos: byPayment.pos ?? 0,
+            external_app: byPayment.external_app ?? 0
+          };
           
           return {
             id: pass.id,
@@ -1566,12 +1741,13 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             is_primary: pass.is_primary || false,
             is_active: pass.is_active,
             release_version: pass.release_version || 1,
-            max_quantity: maxQty,
+            max_quantity: pass.max_quantity,
             sold_quantity: pass.sold_quantity || 0,
             remaining_quantity: remainingQuantity,
-            is_unlimited: false,
+            is_unlimited: isUnlimited,
             // Payment method restrictions
             allowed_payment_methods: pass.allowed_payment_methods || null,
+            sold_by_payment_method,
             created_at: pass.created_at,
             updated_at: pass.updated_at
           };

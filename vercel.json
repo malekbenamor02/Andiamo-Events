@@ -64,6 +64,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/audience-suggestions",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/phone-subscribe",
       "destination": "/api/misc.js"
     },
