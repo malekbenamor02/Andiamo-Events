@@ -11,31 +11,54 @@ import Footer from "./components/layout/Footer";
 import MaintenanceMode from "./components/layout/MaintenanceMode";
 import LoadingScreen from "./components/ui/LoadingScreen";
 
+// Lazy with recovery: on chunk load / MIME type error (e.g. stale cache after deploy), reload once.
+const CHUNK_RELOAD_KEY = "andiamo_chunk_reload";
+function lazyWithChunkRecovery<T extends React.ComponentType<unknown>>(
+  factory: () => Promise<{ default: T }>
+) {
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isChunkError =
+        /Loading chunk \d+ failed|ChunkLoadError|MIME type|text\/html.*JavaScript/i.test(msg);
+      if (isChunkError && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+        sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+        window.location.reload();
+        return new Promise(() => {});
+      }
+      sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+      throw err;
+    }
+  });
+}
+
 // Route-level code splitting for main pages
-const Index = lazy(() => import("./pages/Index"));
-const Events = lazy(() => import("./pages/Events"));
-const About = lazy(() => import("./pages/About"));
-const Contact = lazy(() => import("./pages/Contact"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const Terms = lazy(() => import("./pages/Terms"));
+const Index = lazyWithChunkRecovery(() => import("./pages/Index"));
+const Events = lazyWithChunkRecovery(() => import("./pages/Events"));
+const About = lazyWithChunkRecovery(() => import("./pages/About"));
+const Contact = lazyWithChunkRecovery(() => import("./pages/Contact"));
+const NotFound = lazyWithChunkRecovery(() => import("./pages/NotFound"));
+const Terms = lazyWithChunkRecovery(() => import("./pages/Terms"));
 import ScrollToTop from "./components/layout/ScrollToTop";
 // Auth / dashboard sections (loaded on demand)
-const Auth = lazy(() => import("./pages/ambassador/Auth"));
-const AdminLogin = lazy(() => import("./pages/admin/Login"));
-const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
+const Auth = lazyWithChunkRecovery(() => import("./pages/ambassador/Auth"));
+const AdminLogin = lazyWithChunkRecovery(() => import("./pages/admin/Login"));
+const AdminDashboard = lazyWithChunkRecovery(() => import("./pages/admin/Dashboard"));
 import ProtectedAdminRoute from "./components/auth/ProtectedAdminRoute";
-const AmbassadorDashboard = lazy(() => import("./pages/ambassador/Dashboard"));
+const AmbassadorDashboard = lazyWithChunkRecovery(() => import("./pages/ambassador/Dashboard"));
 import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute";
 
-const AmbassadorApplication = lazy(() => import("./pages/ambassador/Application"));
-const Suggestions = lazy(() => import("./pages/Suggestions"));
-const Careers = lazy(() => import("./pages/Careers"));
-const PassPurchase = lazy(() => import("./pages/PassPurchase"));
-const PaymentProcessing = lazy(() => import("./pages/PaymentProcessing"));
-const GalleryEvent = lazy(() => import("./pages/GalleryEvent"));
-const UpcomingEvent = lazy(() => import("./pages/UpcomingEvent"));
-const ScannerApp = lazy(() => import("./pages/scanner/ScannerApp"));
-const PosApp = lazy(() => import("./pages/pos/PosApp"));
+const AmbassadorApplication = lazyWithChunkRecovery(() => import("./pages/ambassador/Application"));
+const Suggestions = lazyWithChunkRecovery(() => import("./pages/Suggestions"));
+const Careers = lazyWithChunkRecovery(() => import("./pages/Careers"));
+const PassPurchase = lazyWithChunkRecovery(() => import("./pages/PassPurchase"));
+const PaymentProcessing = lazyWithChunkRecovery(() => import("./pages/PaymentProcessing"));
+const GalleryEvent = lazyWithChunkRecovery(() => import("./pages/GalleryEvent"));
+const UpcomingEvent = lazyWithChunkRecovery(() => import("./pages/UpcomingEvent"));
+const ScannerApp = lazyWithChunkRecovery(() => import("./pages/scanner/ScannerApp"));
+const PosApp = lazyWithChunkRecovery(() => import("./pages/pos/PosApp"));
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
 import PhoneCapturePopup from "./components/PhoneCapturePopup";
