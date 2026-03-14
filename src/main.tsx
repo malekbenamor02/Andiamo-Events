@@ -216,48 +216,67 @@ const setupErrorHandlers = async () => {
     Sentry.captureException(event.reason instanceof Error ? event.reason : new Error(errorMessage));
   });
 
+  // URLs we never log as API errors (third-party analytics/tracking often blocked by ad blockers)
+  const isThirdPartyAnalyticsUrl = (url: string) => {
+    try {
+      const u = url.toLowerCase();
+      return (
+        u.includes('analytics.google.com') ||
+        u.includes('google-analytics.com') ||
+        u.includes('googletagmanager.com') ||
+        u.includes('googleadservices.com') ||
+        u.includes('doubleclick.net') ||
+        u.includes('/g/collect')
+      );
+    } catch {
+      return false;
+    }
+  };
+
   // Handle fetch/API errors globally
   const originalFetch = window.fetch;
   window.fetch = async (...args) => {
     const startTime = Date.now();
+    const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+    const sanitizedUrl = sanitizeString(url);
     try {
       const response = await originalFetch(...args);
       const duration = Date.now() - startTime;
-      
+
       // Log API errors (4xx, 5xx) - sanitize URL to remove credentials
-      // Skip logging 404 errors for missing resources (images, assets) as they're often expected
-      if (!response.ok && response.status !== 404) {
-        const url = typeof args[0] === 'string' ? args[0] : args[0].url;
-        const sanitizedUrl = sanitizeString(url);
-        logger.error(`API Error: ${response.status} ${response.statusText}`, new Error(`${response.status} ${response.statusText}`), {
+      // Skip: 404 (missing assets), status 0 (blocked/CORS/network), and third-party analytics
+      const status = response.status;
+      const skipLog =
+        status === 404 ||
+        status === 0 ||
+        isThirdPartyAnalyticsUrl(sanitizedUrl);
+      if (!response.ok && !skipLog) {
+        logger.error(`API Error: ${status} ${response.statusText}`, new Error(`${status} ${response.statusText}`), {
           category: 'api_call',
           details: sanitizeObject({
             url: sanitizedUrl,
             method: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
-            status: response.status,
+            status,
             statusText: response.statusText,
             duration
           }),
           requestMethod: typeof args[0] === 'string' ? 'GET' : (args[0].method || 'GET'),
           requestPath: sanitizedUrl,
-          responseStatus: response.status
+          responseStatus: status
         });
       }
-      
+
       return response;
     } catch (error) {
       const duration = Date.now() - startTime;
-      const url = typeof args[0] === 'string' ? args[0] : args[0].url;
-      
-      const sanitizedUrl = sanitizeString(url);
-      
-      // Don't log service worker fetch errors or network errors that are expected
+
+      // Don't log service worker, network errors, or third-party analytics failures
       const errorMessage = error instanceof Error ? error.message : String(error);
       const isServiceWorkerError = sanitizedUrl.includes('sw.js') || errorMessage.includes('Failed to fetch');
       const isNetworkError = errorMessage.includes('NetworkError') || errorMessage.includes('Network request failed');
-      
-      // Only log unexpected errors (not service worker or handled network errors)
-      if (!isServiceWorkerError && !isNetworkError) {
+      const isAnalyticsUrl = isThirdPartyAnalyticsUrl(sanitizedUrl);
+
+      if (!isServiceWorkerError && !isNetworkError && !isAnalyticsUrl) {
         Sentry.captureException(error, { extra: { url: sanitizedUrl } });
         logger.error('Fetch Error', sanitizeObject(error), {
           category: 'api_call',
@@ -270,7 +289,7 @@ const setupErrorHandlers = async () => {
           requestPath: sanitizedUrl
         });
       }
-      
+
       throw error;
     }
   };
