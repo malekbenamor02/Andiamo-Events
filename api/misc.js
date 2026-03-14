@@ -3106,20 +3106,16 @@ We Create Memories`;
                 };
                 const formattedPhone = normalizePhone(rawPhone);
                 if (formattedPhone) {
-                  // For online orders always show total WITH fee; use total_with_fees or compute from notes/passes
-                  let totalForSms = fullOrder.total_with_fees ?? fullOrder.total_price ?? 0;
+                  // For online orders always show total WITH fee: compute from order_passes (subtotal + 5%) so it's correct regardless of order row
                   const isOnline = fullOrder.payment_method === 'online' || fullOrder.source === 'platform_online';
-                  if (isOnline && (fullOrder.total_with_fees == null || fullOrder.total_with_fees === '')) {
-                    try {
-                      const notes = typeof fullOrder.notes === 'string' ? JSON.parse(fullOrder.notes) : fullOrder.notes;
-                      if (notes?.payment_fees?.total_with_fees != null) totalForSms = Number(notes.payment_fees.total_with_fees);
-                      else if (orderPasses?.length) {
-                        const subtotal = orderPasses.reduce((s, p) => s + (Number(p.price) || 0) * (p.quantity || 1), 0);
-                        if (subtotal > 0) totalForSms = Math.round((subtotal * 1.05) * 1000) / 1000;
-                      }
-                    } catch (_) { /* keep total_price fallback */ }
+                  let totalForSms;
+                  if (isOnline && orderPasses?.length) {
+                    const subtotal = orderPasses.reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.quantity) || 1), 0);
+                    totalForSms = subtotal > 0 ? Math.round((subtotal * 1.05) * 1000) / 1000 : (fullOrder.total_with_fees ?? fullOrder.total_price ?? 0);
+                  } else {
+                    totalForSms = fullOrder.total_with_fees ?? fullOrder.total_price ?? 0;
                   }
-                  const totalDisplay = parseFloat(Number(totalForSms).toString()).toFixed(0);
+                  const totalDisplay = parseFloat(Number(totalForSms).toString()).toFixed(2);
                   const smsMsg = `Paiement confirmé #${fullOrder.order_number != null ? fullOrder.order_number : ''}
 Total: ${totalDisplay} DT
 Billets envoyés par email. We Create Memories`;
