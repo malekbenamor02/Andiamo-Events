@@ -28,6 +28,7 @@ const AmbassadorDashboard = lazy(() => import("./pages/ambassador/Dashboard"));
 import ProtectedAmbassadorRoute from "./components/auth/ProtectedAmbassadorRoute";
 
 const AmbassadorApplication = lazy(() => import("./pages/ambassador/Application"));
+const Suggestions = lazy(() => import("./pages/Suggestions"));
 const Careers = lazy(() => import("./pages/Careers"));
 const PassPurchase = lazy(() => import("./pages/PassPurchase"));
 const PaymentProcessing = lazy(() => import("./pages/PaymentProcessing"));
@@ -40,8 +41,18 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import PhoneCapturePopup from "./components/PhoneCapturePopup";
 import { usePhoneCapture } from "./hooks/usePhoneCapture";
 import { trackPageView } from "./lib/ga";
+import { trackMetaPageView } from "./lib/meta";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
+
+// In-app browsers (Instagram, Facebook, etc.) use WebViews that can tear down native
+// objects; Vercel Speed Insights' button metadata code then throws "Java object is gone".
+// Skip loading Speed Insights there to avoid the error (we still load Analytics).
+const isInAppBrowser =
+  typeof navigator !== "undefined" &&
+  /Instagram|FBAN|FBAV|FB_IAB|Twitter|Line\/|Snapchat|Pinterest|LinkedInApp/i.test(
+    navigator.userAgent || ""
+  );
 
 // Configure React Query with smart caching
 const queryClient = new QueryClient({
@@ -73,9 +84,11 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
     }
   }, [shouldShowPhonePopup]);
 
-  // Track SPA page views in Google Analytics when the route changes
+  // Track SPA page views in Google Analytics and Meta Pixel when the route changes
   useEffect(() => {
-    trackPageView(location.pathname + location.search);
+    const path = location.pathname + location.search;
+    trackPageView(path);
+    trackMetaPageView(path);
   }, [location.pathname, location.search]);
 
   return (
@@ -133,6 +146,7 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
                 }
               />
               <Route path="/contact" element={<Contact language={language} />} />
+              <Route path="/suggestions" element={<Suggestions language={language} />} />
               <Route path="/terms" element={<Terms language={language} />} />
               {/* Friendly URL route for event pass purchase: /event-slug */}
               <Route path="/:eventSlug" element={<PassPurchase language={language} />} />
@@ -166,7 +180,7 @@ const App = () => {
             <Toaster />
             <Sonner />
             <Analytics />
-            <SpeedInsights />
+            {!isInAppBrowser && <SpeedInsights />}
             <BrowserRouter>
               <AppContent language={language} toggleLanguage={toggleLanguage} />
             </BrowserRouter>

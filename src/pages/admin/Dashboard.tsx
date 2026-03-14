@@ -88,6 +88,7 @@ import {
   Menu,
   PanelLeft,
   Bell,
+  Lightbulb,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useNavigate } from "react-router-dom";
@@ -136,6 +137,8 @@ import { CareerTab } from "./components/CareerTab";
 import { SponsorsTab } from "./components/SponsorsTab";
 import { TeamTab } from "./components/TeamTab";
 import { ContactTab } from "./components/ContactTab";
+import { SuggestionsTab } from "./components/SuggestionsTab";
+import type { SuggestionReadFilter, SuggestionTypeFilter } from "./components/SuggestionsTab";
 import { OfficialInvitationsTab } from "./components/OfficialInvitationsTab";
 import { OnlineOrdersTab } from "./components/OnlineOrdersTab";
 import { AioEventsTab } from "./components/AioEventsTab";
@@ -402,6 +405,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [messageToDelete, setMessageToDelete] = useState<any>(null);
   const [isDeleteMessageDialogOpen, setIsDeleteMessageDialogOpen] = useState(false);
   const [contactMessageSearchTerm, setContactMessageSearchTerm] = useState('');
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [suggestionSearchTerm, setSuggestionSearchTerm] = useState('');
+  const [suggestionReadFilter, setSuggestionReadFilter] = useState<SuggestionReadFilter>('all');
+  const [suggestionTypeFilter, setSuggestionTypeFilter] = useState<SuggestionTypeFilter>('all');
+  const [selectedSuggestion, setSelectedSuggestion] = useState<any>(null);
+  const [suggestionToDelete, setSuggestionToDelete] = useState<any>(null);
+  const [isDeleteSuggestionDialogOpen, setIsDeleteSuggestionDialogOpen] = useState(false);
               const [tickets, setTickets] = useState<any[]>([]);
             const [animatedTickets, setAnimatedTickets] = useState<Set<string>>(new Set());
             const [hasTicketsAnimated, setHasTicketsAnimated] = useState(false);
@@ -1859,6 +1869,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       message.subject.toLowerCase().includes(searchLower) ||
       message.message.toLowerCase().includes(searchLower)
     );
+  });
+
+  // Filter suggestions by search, read status, and type
+  const filteredSuggestions = suggestions.filter(s => {
+    const searchLower = suggestionSearchTerm.toLowerCase();
+    const matchesSearch = !suggestionSearchTerm || (
+      (s.title || '').toLowerCase().includes(searchLower) ||
+      (s.details || '').toLowerCase().includes(searchLower) ||
+      (s.email || '').toLowerCase().includes(searchLower) ||
+      (s.suggestion_type || '').toLowerCase().includes(searchLower)
+    );
+    const matchesRead = suggestionReadFilter === 'all' ||
+      (suggestionReadFilter === 'read' && s.read_at) ||
+      (suggestionReadFilter === 'unread' && !s.read_at);
+    const matchesType = suggestionTypeFilter === 'all' || s.suggestion_type === suggestionTypeFilter;
+    return matchesSearch && matchesRead && matchesType;
   });
 
   // Enhanced animation effect for tickets
@@ -9981,6 +10007,29 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     fetchContactMessages();
   }, []);
 
+  // Fetch audience suggestions on mount (table not in generated types yet)
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      const { data, error } = await (supabase as any).from('audience_suggestions').select('*').order('created_at', { ascending: false });
+      if (!error && data) setSuggestions(data);
+    };
+    fetchSuggestions();
+  }, []);
+
+  // Mark suggestion as read when detail is opened
+  useEffect(() => {
+    if (!selectedSuggestion || selectedSuggestion.read_at) return;
+    const id = selectedSuggestion.id;
+    const readAt = new Date().toISOString();
+    (async () => {
+      const { error } = await (supabase as any).from('audience_suggestions').update({ read_at: readAt }).eq('id', id);
+      if (!error) {
+        setSuggestions(prev => prev.map(s => s.id === id ? { ...s, read_at: readAt } : s));
+        setSelectedSuggestion((prev: any) => prev && prev.id === id ? { ...prev, read_at: readAt } : prev);
+      }
+    })();
+  }, [selectedSuggestion?.id]);
+
   // Generate tickets and stats when events or ambassadors change
   useEffect(() => {
     if (events.length > 0 && ambassadors.length > 0) {
@@ -10152,6 +10201,36 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const closeDeleteMessageDialog = () => {
     setMessageToDelete(null);
     setIsDeleteMessageDialogOpen(false);
+  };
+
+  const openDeleteSuggestionDialog = (s: any) => {
+    setSuggestionToDelete(s);
+    setIsDeleteSuggestionDialogOpen(true);
+  };
+  const closeDeleteSuggestionDialog = () => {
+    setSuggestionToDelete(null);
+    setIsDeleteSuggestionDialogOpen(false);
+  };
+  const handleDeleteSuggestion = async () => {
+    if (!suggestionToDelete) return;
+    try {
+      const id = suggestionToDelete.id;
+      const { error } = await (supabase as any).from('audience_suggestions').delete().eq('id', id);
+      if (error) throw error;
+      setSuggestions(prev => prev.filter(s => s.id !== id));
+      if (selectedSuggestion?.id === id) setSelectedSuggestion(null);
+      closeDeleteSuggestionDialog();
+      toast({
+        title: language === 'en' ? 'Suggestion deleted' : 'Suggestion supprimée',
+        description: language === 'en' ? 'Suggestion removed successfully.' : 'Suggestion supprimée avec succès.',
+      });
+    } catch (err: any) {
+      toast({
+        title: t.error,
+        description: err.message || (language === 'en' ? 'Failed to delete suggestion.' : 'Échec de la suppression.'),
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleDeleteMessage = async () => {
@@ -10438,8 +10517,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {activeTab === "tickets" && (language === 'en' ? 'Reports' : 'Rapports')}
               {activeTab === "marketing" && (language === 'en' ? 'SMS - E-mail' : 'SMS - E-mail')}
               {activeTab === "contact" && (language === 'en' ? 'Contact Messages' : 'Messages de Contact')}
+              {activeTab === "suggestions" && (language === 'en' ? 'Suggestions' : 'Suggestions')}
               {activeTab === "settings" && t.settings}
-              {!["overview","events","ambassadors","applications","careers","online-orders","ambassador-sales","pos","official-invitations","tickets","marketing","contact","settings"].includes(activeTab) && t.title}
+              {!["overview","events","ambassadors","applications","careers","online-orders","ambassador-sales","pos","official-invitations","tickets","marketing","contact","suggestions","settings"].includes(activeTab) && t.title}
             </span>
           </button>
           <div className="flex items-center gap-1.5 shrink-0 text-xs font-medium" style={{ color: '#B8B8B8' }}>
@@ -10894,6 +10974,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               >
                 <MessageCircle className={`w-4 h-4 transition-transform duration-300 ${activeTab === "contact" ? "animate-pulse" : ""}`} />
                 <span>Contact Messages</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("suggestions")}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
+                  activeTab === "suggestions" 
+                    ? "shadow-lg" 
+                    : ""
+                }`}
+                style={{
+                  color: activeTab === "suggestions" ? '#E21836' : '#B8B8B8',
+                  background: activeTab === "suggestions" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
+                }}
+              >
+                <Lightbulb className={`w-4 h-4 transition-transform duration-300 ${activeTab === "suggestions" ? "animate-pulse" : ""}`} />
+                <span>Suggestions</span>
               </button>
               <button
                 onClick={() => {
@@ -11420,6 +11515,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onOpenDelete={openDeleteMessageDialog}
                 onCloseDelete={closeDeleteMessageDialog}
                 onConfirmDelete={handleDeleteMessage}
+              />
+
+              {/* Audience Suggestions Tab */}
+              <SuggestionsTab
+                filteredSuggestions={filteredSuggestions}
+                suggestions={suggestions}
+                suggestionSearchTerm={suggestionSearchTerm}
+                setSuggestionSearchTerm={setSuggestionSearchTerm}
+                readFilter={suggestionReadFilter}
+                setReadFilter={setSuggestionReadFilter}
+                typeFilter={suggestionTypeFilter}
+                setTypeFilter={setSuggestionTypeFilter}
+                selectedSuggestion={selectedSuggestion}
+                onView={(s) => setSelectedSuggestion(s)}
+                onCloseDetail={() => setSelectedSuggestion(null)}
+                suggestionToDelete={suggestionToDelete}
+                isDeleteDialogOpen={isDeleteSuggestionDialogOpen}
+                setIsDeleteDialogOpen={setIsDeleteSuggestionDialogOpen}
+                onOpenDelete={openDeleteSuggestionDialog}
+                onCloseDelete={closeDeleteSuggestionDialog}
+                onConfirmDelete={handleDeleteSuggestion}
               />
 
               {/* Reports & Analytics Tab */}

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Instagram, Menu, X } from "lucide-react";
@@ -24,33 +23,64 @@ interface ContactInfo {
   [key: string]: string | undefined;
 }
 
+// Desktop: one slot that cycles Contact / Suggestions with smooth animation
+const CYCLE_MS = 3500;
+
+function AnimatedContactSuggestionsSlot({ language, isActive }: { language: 'en' | 'fr'; isActive: (path: string) => boolean }) {
+  const [index, setIndex] = useState(0);
+  const contact = language === 'en' ? { name: "Contact", href: "/contact" } : { name: "Contact", href: "/contact" };
+  const suggestions = language === 'en' ? { name: "Suggestions", href: "/suggestions" } : { name: "Suggestions", href: "/suggestions" };
+  const items = [contact, suggestions];
+
+  useEffect(() => {
+    const t = setInterval(() => setIndex((i) => (i + 1) % items.length), CYCLE_MS);
+    return () => clearInterval(t);
+  }, [items.length]);
+
+  const current = items[index];
+  const active = isActive("/contact") || isActive("/suggestions");
+
+  return (
+    <div className="relative h-5 flex items-center min-w-[100px]" style={{ perspective: '100px' }}>
+      {items.map((item, i) => (
+        <Link
+          key={item.href}
+          to={item.href}
+          className={`absolute inset-0 flex items-center text-sm font-medium transition-all duration-500 ease-in-out ${
+            i === index ? 'opacity-100 translate-y-0' : 'opacity-0 pointer-events-none -translate-y-2'
+          } ${active ? 'text-primary' : 'text-white hover:text-primary'}`}
+          style={{ transform: i === index ? 'translateY(0)' : 'translateY(-8px)' }}
+        >
+          {item.name}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
   const [navigationContent, setNavigationContent] = useState<NavigationContent>({});
   const [contactInfo, setContactInfo] = useState<ContactInfo>({});
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
 
-  // Use cached site content hook
   const { data: siteContent } = useNavigationContent();
-  
   useEffect(() => {
     if (siteContent) {
-      if (siteContent.navigation) {
-        setNavigationContent(siteContent.navigation as NavigationContent);
-      }
-      if (siteContent.contact_info) {
-        setContactInfo(siteContent.contact_info as ContactInfo);
-      }
+      if (siteContent.navigation) setNavigationContent(siteContent.navigation as NavigationContent);
+      if (siteContent.contact_info) setContactInfo(siteContent.contact_info as ContactInfo);
     }
   }, [siteContent]);
 
-  const defaultNavigation = {
+  // Mobile: separate Contact and Suggestions links (7 items)
+  const navigationMobile = {
     en: [
       { name: "Home", href: "/" },
       { name: "Events", href: "/events" },
       { name: "Ambassador", href: "/ambassador" },
       { name: "Careers", href: "/careers" },
       { name: "Contact", href: "/contact" },
+      { name: "Suggestions", href: "/suggestions" },
       { name: "About", href: "/about" },
     ],
     fr: [
@@ -59,22 +89,42 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
       { name: "Ambassadeur", href: "/ambassador" },
       { name: "Carrières", href: "/careers" },
       { name: "Contact", href: "/contact" },
+      { name: "Suggestions", href: "/suggestions" },
       { name: "À Propos", href: "/about" },
-    ]
+    ],
   };
 
-  // Always use default navigation to ensure no gallery links appear
-  const navigation = defaultNavigation[language];
+  // Desktop: Contact/Suggestions animated slot last (after About)
+  const desktopNavItems = {
+    en: [
+      { name: "Home", href: "/" },
+      { name: "Events", href: "/events" },
+      { name: "Ambassador", href: "/ambassador" },
+      { name: "Careers", href: "/careers" },
+      { name: "About", href: "/about" },
+      { type: "contact_suggestions" as const },
+    ],
+    fr: [
+      { name: "Accueil", href: "/" },
+      { name: "Événements", href: "/events" },
+      { name: "Ambassadeur", href: "/ambassador" },
+      { name: "Carrières", href: "/careers" },
+      { name: "À Propos", href: "/about" },
+      { type: "contact_suggestions" as const },
+    ],
+  };
+
+  const isActive = (path: string) => location.pathname === path;
 
   const instagramClick = () => {
     window.open("https://www.instagram.com/andiamo.events/", "_blank");
   };
 
-  const isActive = (path: string) => location.pathname === path;
-
   const toggleMenu = () => {
     setIsMenuOpen(prev => !prev);
   };
+
+  const desktopItems = desktopNavItems[language];
 
   return (
     <>
@@ -88,19 +138,23 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center space-x-8">
-              {navigation.map((item) => (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  className={`text-sm font-medium transition-colors ${
-                    isActive(item.href) 
-                      ? "text-primary" 
-                      : "text-white hover:text-primary"
-                  }`}
-                >
-                  {item.name}
-                </Link>
-              ))}
+              {desktopItems.map((item, i) =>
+                'type' in item && item.type === 'contact_suggestions' ? (
+                  <AnimatedContactSuggestionsSlot key="contact-suggestions" language={language} isActive={isActive} />
+                ) : (
+                  <Link
+                    key={'href' in item ? item.href : i}
+                    to={'href' in item ? item.href : '/'}
+                    className={`text-sm font-medium transition-colors ${
+                      isActive('href' in item ? item.href : '/')
+                        ? "text-primary"
+                        : "text-white hover:text-primary"
+                    }`}
+                  >
+                    {'name' in item ? item.name : ''}
+                  </Link>
+                )
+              )}
             </div>
 
             {/* Desktop Actions */}
@@ -196,7 +250,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
               className="backdrop-blur-xl border-b border-border/50 bg-card"
             >
               <div className="p-6 space-y-1">
-                {navigation.map((item, index) => (
+                {navigationMobile[language].map((item, index) => (
                   <Link
                     key={item.href}
                     to={item.href}
@@ -216,7 +270,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
                 <div 
                   className="pt-6 mt-6 border-t border-border space-y-3"
                   style={{
-                    animation: `slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${navigation.length * 0.05 + 0.1}s both`,
+                    animation: `slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${navigationMobile[language].length * 0.05 + 0.1}s both`,
                   }}
                 >
                   <Button

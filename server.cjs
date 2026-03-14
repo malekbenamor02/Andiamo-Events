@@ -647,6 +647,14 @@ const recaptchaLimiter = createRateLimiter({
   legacyHeaders: false,
 });
 
+const suggestionsLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // 10 submissions per hour per IP
+  message: { error: 'Too many suggestions submitted. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const emailLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // 10 emails per 15 minutes
@@ -746,6 +754,15 @@ const smsLimiter = createRateLimiter({
     }
     res.status(429).json({ error: 'Too many SMS requests, please try again later.' });
   }
+});
+
+// Rate limiter for order creation - 10 orders per hour per IP
+const orderCreateLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many orders. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
 });
 
 app.use('/api/send-email', emailLimiter);
@@ -1190,6 +1207,108 @@ app.post('/api/verify-recaptcha', recaptchaLimiter, async (req, res) => {
       error: 'Internal server error',
       details: error.message 
     });
+  }
+});
+
+// Audience suggestions (events, artists, venues) - rate limited, captcha, validation
+app.post('/api/audience-suggestions', suggestionsLimiter, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Server error', details: 'Service temporarily unavailable.' });
+    }
+
+    const { suggestion_type, title, details, email, recaptchaToken } = req.body || {};
+
+    // Backend validation
+    const validTypes = ['event', 'artist', 'venue'];
+    if (!suggestion_type || !validTypes.includes(String(suggestion_type).toLowerCase())) {
+      return res.status(400).json({ error: 'Invalid suggestion type', details: 'Must be event, artist, or venue.' });
+    }
+    const typeVal = String(suggestion_type).toLowerCase().trim();
+
+    if (!title || typeof title !== 'string') {
+      return res.status(400).json({ error: 'Title is required.' });
+    }
+    const titleVal = String(title).trim();
+    if (titleVal.length === 0) {
+      return res.status(400).json({ error: 'Title cannot be empty.' });
+    }
+    if (titleVal.length > 200) {
+      return res.status(400).json({ error: 'Title is too long (max 200 characters).' });
+    }
+
+    let detailsVal = null;
+    if (details != null && details !== '') {
+      detailsVal = String(details).trim();
+      if (detailsVal.length > 2000) {
+        return res.status(400).json({ error: 'Details are too long (max 2000 characters).' });
+      }
+      if (detailsVal === '') detailsVal = null;
+    }
+
+    let emailVal = null;
+    if (email != null && String(email).trim() !== '') {
+      const emailTrimmed = String(email).trim();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(emailTrimmed)) {
+        return res.status(400).json({ error: 'Invalid email format.' });
+      }
+      emailVal = emailTrimmed;
+    }
+
+    // reCAPTCHA verification (production)
+    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+    const shouldBypassRecaptcha = recaptchaToken === 'localhost-bypass-token' || !RECAPTCHA_SECRET_KEY;
+
+    if (!shouldBypassRecaptcha) {
+      if (!recaptchaToken) {
+        return res.status(400).json({ error: 'reCAPTCHA verification required.' });
+      }
+      try {
+        const verifyResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
+        });
+        const verifyData = await verifyResponse.json();
+        if (!verifyData.success) {
+          return res.status(400).json({
+            error: 'reCAPTCHA verification failed',
+            details: verifyData['error-codes']?.join(', ') || 'Please try again.'
+          });
+        }
+      } catch (recaptchaError) {
+        console.error('reCAPTCHA verification error:', recaptchaError);
+        return res.status(500).json({
+          error: 'Verification service unavailable',
+          details: 'Unable to verify. Please try again later.'
+        });
+      }
+    }
+
+    const { data: row, error } = await supabase
+      .from('audience_suggestions')
+      .insert({
+        suggestion_type: typeVal,
+        title: titleVal,
+        details: detailsVal,
+        email: emailVal
+      })
+      .select('id, created_at')
+      .single();
+
+    if (error) {
+      console.error('Error inserting audience suggestion:', error);
+      return res.status(500).json({ error: 'Failed to save suggestion', details: error.message });
+    }
+
+    return res.status(201).json({
+      success: true,
+      suggestion: { id: row.id, created_at: row.created_at }
+    });
+  } catch (err) {
+    console.error('Error in /api/audience-suggestions:', err);
+    return res.status(500).json({ error: 'Internal server error', details: err.message });
   }
 });
 
@@ -5820,10 +5939,58 @@ app.get('/api/admin/passes/:eventId', requireAdminAuth, async (req, res) => {
       });
     }
 
+    // Sold-by-payment-method breakdown: same "counted as sold" rules as sold_quantity.
+    // Query from order_passes (by event's pass ids) then filter orders in code, so we don't rely on orders.event_id.
+    const COUNTED_STATUSES = ['COMPLETED', 'PAID', 'MANUAL_COMPLETED', 'PENDING_CASH', 'PENDING_ONLINE', 'MANUAL_ACCEPTED', 'PENDING_ADMIN_APPROVAL', 'PENDING_AMBASSADOR_CONFIRMATION'];
+    const passIds = (passes || []).map(p => p.id).filter(Boolean);
+    let soldByPaymentMap = {};
+
+    if (passIds.length > 0) {
+      const { data: orderPassesRows } = await dbClient
+        .from('order_passes')
+        .select('order_id, pass_id, quantity')
+        .in('pass_id', passIds);
+
+      if (orderPassesRows && orderPassesRows.length > 0) {
+        const orderIds = [...new Set(orderPassesRows.map(op => op.order_id))];
+        const { data: ordersRows } = await dbClient
+          .from('orders')
+          .select('id, payment_method, status, stock_released, event_id')
+          .in('id', orderIds);
+
+        const validOrderIds = new Set(
+          (ordersRows || []).filter(o =>
+            o.stock_released === false &&
+            COUNTED_STATUSES.includes(o.status) &&
+            (o.event_id === eventId || o.event_id == null)
+          ).map(o => o.id)
+        );
+        const orderPaymentMap = Object.fromEntries(
+          (ordersRows || []).filter(o => validOrderIds.has(o.id)).map(o => [o.id, o.payment_method])
+        );
+        const breakdown = {};
+        for (const op of orderPassesRows) {
+          if (!validOrderIds.has(op.order_id)) continue;
+          const paymentMethod = orderPaymentMap[op.order_id];
+          if (!paymentMethod) continue;
+          if (!breakdown[op.pass_id]) breakdown[op.pass_id] = {};
+          breakdown[op.pass_id][paymentMethod] = (breakdown[op.pass_id][paymentMethod] || 0) + (op.quantity || 0);
+        }
+        soldByPaymentMap = breakdown;
+      }
+    }
+
     // Calculate stock information for each pass
     const passesWithStock = (passes || []).map(pass => {
       const isUnlimited = pass.max_quantity === null;
       const remainingQuantity = isUnlimited ? null : (pass.max_quantity - pass.sold_quantity);
+      const byPayment = soldByPaymentMap[pass.id] || {};
+      const sold_by_payment_method = {
+        online: byPayment.online ?? 0,
+        ambassador_cash: byPayment.ambassador_cash ?? 0,
+        pos: byPayment.pos ?? 0,
+        external_app: byPayment.external_app ?? 0
+      };
 
       return {
         id: pass.id,
@@ -5840,6 +6007,7 @@ app.get('/api/admin/passes/:eventId', requireAdminAuth, async (req, res) => {
         is_unlimited: isUnlimited,
         // Payment method restrictions
         allowed_payment_methods: pass.allowed_payment_methods || null,
+        sold_by_payment_method,
         created_at: pass.created_at,
         updated_at: pass.updated_at
       };
@@ -11664,15 +11832,71 @@ async function releaseOrderStock(orderId, reason) {
   };
 }
 
+// Helper: log order creation failure to security_audit_logs (for Logs tab)
+async function logOrderCreateFailure(req, statusCode, details) {
+  const securityLogClient = supabaseService || supabase;
+  if (!securityLogClient) return;
+  try {
+    await securityLogClient.from('security_audit_logs').insert({
+      event_type: 'order_create_failed',
+      endpoint: 'POST /api/orders/create',
+      request_method: 'POST',
+      request_path: '/api/orders/create',
+      ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+      user_agent: req.headers['user-agent'] || 'unknown',
+      response_status: statusCode,
+      details: details || {},
+      severity: statusCode >= 500 ? 'high' : 'medium'
+    });
+  } catch (e) {
+    console.error('Failed to log order_create_failed:', e);
+  }
+}
+
+async function logOrderCreateSuccess(req, orderId, details) {
+  const securityLogClient = supabaseService || supabase;
+  if (!securityLogClient) return;
+  try {
+    await securityLogClient.from('security_audit_logs').insert({
+      event_type: 'order_create_success',
+      endpoint: 'POST /api/orders/create',
+      request_method: 'POST',
+      request_path: '/api/orders/create',
+      ip_address: req.ip || req.headers['x-forwarded-for'] || 'unknown',
+      user_agent: req.headers['user-agent'] || 'unknown',
+      response_status: 201,
+      details: { order_id: orderId, ...details },
+      severity: 'low'
+    });
+  } catch (e) {
+    console.error('Failed to log order_create_success:', e);
+  }
+}
+
+// Validate phone: 8 digits, first digit 2, 4, 5, or 9 (Tunisian format)
+function validateOrderPhone(phone) {
+  if (!phone || typeof phone !== 'string') return false;
+  const digits = phone.replace(/\D/g, '');
+  return digits.length === 8 && ['2', '4', '5', '9'].includes(digits[0]);
+}
+
+// Validate email: non-empty, contains @ and dot, max 254 chars
+function validateOrderEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  const trimmed = email.trim();
+  return trimmed.length > 0 && trimmed.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
 // ============================================
 // PHASE 1: SERVER-SIDE ORDER CREATION
 // ============================================
 // POST /api/orders/create
 // Server-side order creation with atomic stock reservation
 // REPLACES frontend direct Supabase inserts
-app.post('/api/orders/create', async (req, res) => {
+app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
   try {
     if (!supabase) {
+      await logOrderCreateFailure(req, 500, { error: 'Supabase not configured' });
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
@@ -11681,11 +11905,46 @@ app.post('/api/orders/create', async (req, res) => {
       passes,
       paymentMethod,
       ambassadorId,
-      eventId
+      eventId,
+      recaptchaToken,
+      idempotencyKey
     } = req.body;
+
+    // reCAPTCHA: bypass if localhost-bypass-token or RECAPTCHA_SECRET_KEY not set
+    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+    const shouldBypassRecaptcha = recaptchaToken === 'localhost-bypass-token' || !RECAPTCHA_SECRET_KEY;
+    if (!shouldBypassRecaptcha) {
+      if (!recaptchaToken) {
+        await logOrderCreateFailure(req, 400, { error: 'reCAPTCHA verification required' });
+        return res.status(400).json({ error: 'reCAPTCHA verification required' });
+      }
+      try {
+        const verifyResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `secret=${RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
+        });
+        const verifyData = await verifyResponse.json();
+        if (!verifyData.success) {
+          await logOrderCreateFailure(req, 400, { error: 'reCAPTCHA verification failed' });
+          return res.status(400).json({
+            error: 'reCAPTCHA verification failed',
+            details: verifyData['error-codes']?.join(', ') || 'Please complete the reCAPTCHA verification and try again.'
+          });
+        }
+      } catch (recaptchaError) {
+        console.error('reCAPTCHA verification error:', recaptchaError);
+        await logOrderCreateFailure(req, 500, { error: 'reCAPTCHA service unavailable' });
+        return res.status(500).json({
+          error: 'reCAPTCHA verification service unavailable',
+          details: 'Unable to verify reCAPTCHA. Please try again later.'
+        });
+      }
+    }
 
     // Validate required fields
     if (!customerInfo || !passes || !paymentMethod) {
+      await logOrderCreateFailure(req, 400, { error: 'Missing required fields' });
       return res.status(400).json({
         error: 'Missing required fields',
         details: 'customerInfo, passes, and paymentMethod are required'
@@ -11693,31 +11952,52 @@ app.post('/api/orders/create', async (req, res) => {
     }
 
     if (!Array.isArray(passes) || passes.length === 0) {
+      await logOrderCreateFailure(req, 400, { error: 'Invalid passes' });
       return res.status(400).json({
         error: 'Invalid passes',
         details: 'passes must be a non-empty array'
       });
     }
 
-    // Validate customer info
+    // Validate customer info (required fields)
     if (!customerInfo.full_name || !customerInfo.phone || !customerInfo.email || !customerInfo.city) {
+      await logOrderCreateFailure(req, 400, { error: 'Missing customer information' });
       return res.status(400).json({
         error: 'Missing customer information',
         details: 'full_name, phone, email, and city are required'
       });
     }
 
+    // Phone: 8 digits, first digit 2, 4, 5, or 9
+    if (!validateOrderPhone(customerInfo.phone)) {
+      await logOrderCreateFailure(req, 400, { error: 'Invalid phone number' });
+      return res.status(400).json({
+        error: 'Invalid phone number',
+        details: 'Phone must be 8 digits starting with 2, 4, 5, or 9.'
+      });
+    }
+    // Email: format and length
+    if (!validateOrderEmail(customerInfo.email)) {
+      await logOrderCreateFailure(req, 400, { error: 'Invalid email' });
+      return res.status(400).json({
+        error: 'Invalid email',
+        details: 'Please provide a valid email address.'
+      });
+    }
+
     // Validate payment method
     const validPaymentMethods = ['online', 'external_app', 'ambassador_cash'];
     if (!validPaymentMethods.includes(paymentMethod)) {
+      await logOrderCreateFailure(req, 400, { error: 'Invalid payment method' });
       return res.status(400).json({
         error: 'Invalid payment method',
         details: `Payment method must be one of: ${validPaymentMethods.join(', ')}`
       });
     }
 
-    // Validate ambassador for ambassador_cash
+    // Validate ambassador for ambassador_cash (required)
     if (paymentMethod === 'ambassador_cash' && !ambassadorId) {
+      await logOrderCreateFailure(req, 400, { error: 'Ambassador ID required' });
       return res.status(400).json({
         error: 'Ambassador ID required',
         details: 'ambassadorId is required for ambassador_cash payment method'
@@ -11725,6 +12005,50 @@ app.post('/api/orders/create', async (req, res) => {
     }
 
     const dbClient = supabaseService || supabase;
+
+    // Ambassador must exist and be active (not paused) for ambassador_cash
+    if (paymentMethod === 'ambassador_cash' && ambassadorId) {
+      const { data: ambassador, error: ambassadorError } = await dbClient
+        .from('ambassadors')
+        .select('id, status')
+        .eq('id', ambassadorId)
+        .single();
+      if (ambassadorError || !ambassador) {
+        await logOrderCreateFailure(req, 400, { error: 'Ambassador not found' });
+        return res.status(400).json({ error: 'Ambassador not found', details: 'The selected ambassador was not found.' });
+      }
+      const activeStatuses = ['approved', 'ACTIVE'];
+      if (!activeStatuses.includes(ambassador.status)) {
+        await logOrderCreateFailure(req, 400, { error: 'Ambassador cannot receive orders' });
+        return res.status(400).json({
+          error: 'This ambassador cannot receive new orders',
+          details: 'The selected ambassador is paused or not active.'
+        });
+      }
+    }
+
+    // Idempotency: if key provided, return existing order if already created
+    const safeIdempotencyKey = idempotencyKey && typeof idempotencyKey === 'string'
+      ? idempotencyKey.trim().slice(0, 128)
+      : null;
+    if (safeIdempotencyKey) {
+      const { data: existingOrder, error: lookupErr } = await dbClient
+        .from('orders')
+        .select('id')
+        .eq('idempotency_key', safeIdempotencyKey)
+        .maybeSingle();
+      if (!lookupErr && existingOrder) {
+        const { data: existingWithPasses } = await dbClient
+          .from('orders')
+          .select('*, order_passes (*)')
+          .eq('id', existingOrder.id)
+          .single();
+        return res.status(200).json({
+          success: true,
+          order: existingWithPasses || existingOrder
+        });
+      }
+    }
 
     // STEP 1: Validate all passes exist and are active
     const passIds = passes.map(p => p.passId);
@@ -11735,6 +12059,7 @@ app.post('/api/orders/create', async (req, res) => {
 
     if (passesError) {
       console.error('Error fetching passes:', passesError);
+      await logOrderCreateFailure(req, 500, { error: 'Failed to validate passes', details: passesError.message });
       return res.status(500).json({
         error: 'Failed to validate passes',
         details: passesError.message
@@ -11742,6 +12067,7 @@ app.post('/api/orders/create', async (req, res) => {
     }
 
     if (!eventPasses || eventPasses.length !== passIds.length) {
+      await logOrderCreateFailure(req, 400, { error: 'One or more passes not found' });
       return res.status(400).json({
         error: 'Invalid passes',
         details: 'One or more passes not found'
@@ -11758,6 +12084,7 @@ app.post('/api/orders/create', async (req, res) => {
       const eventPass = passMap.get(pass.passId);
       
       if (!eventPass) {
+        await logOrderCreateFailure(req, 400, { error: 'Invalid pass', passId: pass.passId });
         return res.status(400).json({
           error: 'Invalid pass',
           details: `Pass ${pass.passId} not found`
@@ -11766,6 +12093,7 @@ app.post('/api/orders/create', async (req, res) => {
 
       // Check if pass is active
       if (!eventPass.is_active) {
+        await logOrderCreateFailure(req, 400, { error: 'Pass not available', passName: eventPass.name });
         return res.status(400).json({
           error: 'Pass not available',
           details: `Pass "${eventPass.name}" is no longer available for purchase`
@@ -11776,6 +12104,7 @@ app.post('/api/orders/create', async (req, res) => {
       // If allowed_payment_methods is NULL, allow all methods (backward compatible)
       if (eventPass.allowed_payment_methods && eventPass.allowed_payment_methods.length > 0) {
         if (!eventPass.allowed_payment_methods.includes(paymentMethod)) {
+          await logOrderCreateFailure(req, 400, { error: 'Payment method not allowed' });
           return res.status(400).json({
             error: 'Payment method not allowed',
             details: `Pass "${eventPass.name}" is only available with the following payment methods: ${eventPass.allowed_payment_methods.join(', ')}. Selected method: ${paymentMethod}`
@@ -11794,6 +12123,7 @@ app.post('/api/orders/create', async (req, res) => {
       if (eventPass.max_quantity !== null) {
         const remaining = eventPass.max_quantity - eventPass.sold_quantity;
         if (remaining < pass.quantity) {
+          await logOrderCreateFailure(req, 400, { error: 'Insufficient stock', remaining, requested: pass.quantity });
           return res.status(400).json({
             error: 'Insufficient stock',
             details: `Only ${remaining} ${eventPass.name} pass(es) available, requested ${pass.quantity}`
@@ -11804,6 +12134,16 @@ app.post('/api/orders/create', async (req, res) => {
       validatedPasses.push({
         ...pass,
         eventPass: eventPass
+      });
+    }
+
+    // Max 10 passes per order
+    const totalQuantityForCap = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
+    if (totalQuantityForCap > 10) {
+      await logOrderCreateFailure(req, 400, { error: 'Maximum 10 passes per order' });
+      return res.status(400).json({
+        error: 'Maximum 10 passes per order',
+        details: 'You can order at most 10 passes per order.'
       });
     }
 
@@ -11848,6 +12188,7 @@ app.post('/api/orders/create', async (req, res) => {
             }
           }
         }
+        await logOrderCreateFailure(req, 400, { error: 'Pass not found', passId: id });
         return res.status(400).json({
           error: 'Pass not found',
           details: `Pass with ID ${id} not found`
@@ -11875,6 +12216,7 @@ app.post('/api/orders/create', async (req, res) => {
             }
           }
         }
+        await logOrderCreateFailure(req, 400, { error: 'Pass no longer active', passName: validatedPass.eventPass.name });
         return res.status(400).json({
           error: 'Pass not available',
           details: `Pass "${validatedPass.eventPass.name}" is no longer active`
@@ -11904,6 +12246,7 @@ app.post('/api/orders/create', async (req, res) => {
             }
           }
           const remaining = currentPass.max_quantity - currentPass.sold_quantity;
+          await logOrderCreateFailure(req, 400, { error: 'Insufficient stock', remaining, requested: validatedPass.quantity });
           return res.status(400).json({
             error: 'Insufficient stock',
             details: `Only ${remaining} ${validatedPass.eventPass.name} pass(es) available, requested ${validatedPass.quantity}`
@@ -11947,6 +12290,7 @@ app.post('/api/orders/create', async (req, res) => {
           }
         }
 
+        await logOrderCreateFailure(req, 400, { error: 'Stock reservation failed', passName: validatedPass.eventPass.name });
         return res.status(400).json({
           error: 'Stock reservation failed',
           details: `Insufficient stock for "${validatedPass.eventPass.name}" or pass is no longer active`
@@ -11990,6 +12334,7 @@ app.post('/api/orders/create', async (req, res) => {
             }
           }
         }
+        await logOrderCreateFailure(req, 400, { error: 'Invalid payment method', paymentMethod });
         return res.status(400).json({
           error: 'Invalid payment method',
           details: `Unknown payment method: ${paymentMethod}`
@@ -12012,6 +12357,7 @@ app.post('/api/orders/create', async (req, res) => {
       status: initialStatus,
       stock_released: false,  // Stock is reserved, not released
       assigned_at: ambassadorId ? new Date().toISOString() : null,
+      idempotency_key: safeIdempotencyKey || null,
       notes: JSON.stringify({
         all_passes: validatedPasses.map(p => ({
           passId: p.passId,
@@ -12051,6 +12397,7 @@ app.post('/api/orders/create', async (req, res) => {
           }
         }
       }
+      await logOrderCreateFailure(req, 500, { error: 'Failed to create order', details: orderError.message });
       return res.status(500).json({
         error: 'Failed to create order',
         details: orderError.message
@@ -12092,6 +12439,7 @@ app.post('/api/orders/create', async (req, res) => {
             }
           }
         }
+      await logOrderCreateFailure(req, 500, { error: 'Failed to create order passes', details: passesInsertError.message });
       return res.status(500).json({
         error: 'Failed to create order passes',
         details: passesInsertError.message
@@ -12135,13 +12483,19 @@ app.post('/api/orders/create', async (req, res) => {
 
     if (fetchError) {
       console.warn('Failed to fetch created order with relations:', fetchError);
-      // Return order without relations
+      await logOrderCreateSuccess(req, order.id, { payment_method: paymentMethod, total_quantity: totalQuantity });
       return res.status(201).json({
         success: true,
         order: order
       });
     }
 
+    await logOrderCreateSuccess(req, createdOrder.id, {
+      payment_method: paymentMethod,
+      total_quantity: totalQuantity,
+      ambassador_id: ambassadorId || null,
+      event_id: eventId || null
+    });
     res.status(201).json({
       success: true,
       order: createdOrder
@@ -12149,6 +12503,7 @@ app.post('/api/orders/create', async (req, res) => {
 
   } catch (error) {
     console.error('Error in /api/orders/create:', error);
+    await logOrderCreateFailure(req, 500, { error: error.message }).catch(() => {});
     res.status(500).json({
       error: 'Internal server error',
       details: error.message

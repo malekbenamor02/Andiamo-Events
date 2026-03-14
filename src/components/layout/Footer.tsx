@@ -104,6 +104,7 @@ const Footer = ({ language }: FooterProps) => {
       { name: "About", href: "/about" },
       { name: "Ambassador", href: "/ambassador" },
       { name: "Contact", href: "/contact" },
+      { name: "Suggestions", href: "/suggestions" },
       { name: "Terms", href: "/terms" },
     ],
     fr: [
@@ -111,6 +112,7 @@ const Footer = ({ language }: FooterProps) => {
       { name: "À Propos", href: "/about" },
       { name: "Ambassadeur", href: "/ambassador" },
       { name: "Contact", href: "/contact" },
+      { name: "Suggestions", href: "/suggestions" },
       { name: "CGV", href: "/terms" },
     ]
   };

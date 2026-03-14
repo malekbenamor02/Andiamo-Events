@@ -74,6 +74,9 @@ export const API_ROUTES = {
   
   // reCAPTCHA
   VERIFY_RECAPTCHA: '/api/verify-recaptcha',
+
+  // Audience suggestions (events, artists, venues)
+  AUDIENCE_SUGGESTIONS: '/api/audience-suggestions',
   
   // Payment Options
   PAYMENT_OPTIONS: '/api/payment-options',

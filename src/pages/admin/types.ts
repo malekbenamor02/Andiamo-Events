@@ -44,6 +44,8 @@ export interface EventPass {
   is_sold_out?: boolean;
   // Payment method restrictions
   allowed_payment_methods?: string[] | null;
+  // Sold count per payment method (from admin passes API)
+  sold_by_payment_method?: Record<string, number>;
 }
 
 export interface Event {
@@ -207,6 +209,17 @@ export interface ContactMessage {
   subject: string;
   message: string;
   created_at: string;
+}
+
+/** Audience suggestion (events, artists, venues) – admin suggestions tab. */
+export interface AudienceSuggestion {
+  id: string;
+  suggestion_type: 'event' | 'artist' | 'venue';
+  title: string;
+  details: string | null;
+  email: string | null;
+  created_at: string;
+  read_at: string | null;
 }
 
 /** Filters for online orders tab (same names/order as COD, without ambassador). */
