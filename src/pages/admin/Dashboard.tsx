@@ -756,9 +756,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const [onlineOrdersForChart, setOnlineOrdersForChart] = useState<any[]>([]);
 
-  // Activity chart: last 7 days with Applications, Orders (ambassador + online), Revenue, Events created
+  // Activity chart: last 7 days with Applications, Orders (ambassador + online), Revenue, Events created, Approved (per day)
   const activityChartData = useMemo(() => {
-    const out: { name: string; applications: number; orders: number; revenue: number; eventsCreated: number }[] = [];
+    const out: { name: string; applications: number; approved: number; orders: number; revenue: number; eventsCreated: number }[] = [];
     const now = new Date();
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
@@ -766,6 +766,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const dateStr = format(d, 'yyyy-MM-dd');
       const dayLabel = format(d, 'EEE');
       const appCount = applications.filter((a: { created_at?: string }) => format(new Date(a.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
+      const approvedCount = applications.filter((a: { created_at?: string; status?: string }) => a.status === 'approved' && format(new Date(a.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
       const dayAmbassador = codAmbassadorOrders.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
       const dayOnline = onlineOrdersForChart.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
       const ambassadorRevenue = dayAmbassador.reduce((s: number, o: { total_price?: number }) => s + (Number(o.total_price) || 0), 0);
@@ -774,6 +775,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       out.push({
         name: dayLabel,
         applications: appCount,
+        approved: approvedCount,
         orders: dayAmbassador.length + dayOnline.length,
         revenue: Math.round(ambassadorRevenue + onlineRevenue),
         eventsCreated: eventsCount,

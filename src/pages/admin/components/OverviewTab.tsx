@@ -53,7 +53,7 @@ export interface OverviewTabProps {
   };
   pendingAmbassadorOrdersCount: number;
   previousPendingAmbassadorOrdersCount: number | null;
-  activityChartData: { name: string; applications: number; orders: number; revenue: number; eventsCreated: number }[];
+  activityChartData: { name: string; applications: number; approved: number; orders: number; revenue: number; eventsCreated: number }[];
   animatedCards: Set<number>;
   setActiveTab: (tab: string) => void;
   getStatusBadge: (status: string) => React.ReactNode;
@@ -236,16 +236,16 @@ export function OverviewTab({
             <div className="mt-4">
               <div className="h-8 flex items-end gap-1">
                 {activityChartData.map((day, i) => {
-                  const maxApps = Math.max(...activityChartData.map((x) => x.applications), 1);
+                  const maxApproved = Math.max(...activityChartData.map((x) => x.approved), 1);
                   return (
                     <div
                       key={i}
                       className="flex-1 flex flex-col justify-end items-center gap-0.5 h-8"
-                      title={`${day.name}: ${day.applications}`}
+                      title={`${day.name}: ${day.approved}`}
                     >
                       <div
                         className="w-full rounded-t transition-all duration-300 min-h-[2px]"
-                        style={{ backgroundColor: "rgba(34, 197, 94, 0.3)", height: `${(day.applications / maxApps) * 100}%` }}
+                        style={{ backgroundColor: "rgba(34, 197, 94, 0.3)", height: `${((day.approved ?? 0) / maxApproved) * 100}%` }}
                         onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(34, 197, 94, 0.5)")}
                         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgba(34, 197, 94, 0.3)")}
                       />
