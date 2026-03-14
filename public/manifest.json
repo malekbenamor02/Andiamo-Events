@@ -1,7 +1,7 @@
 {
-  "name": "Andiamo Events Scanner",
-  "short_name": "Event Scanner",
-  "description": "QR Code scanner for event tickets",
+  "name": "Andiamo Events",
+  "short_name": "Andiamo",
+  "description": "Andiamo Events – find local events, buy tickets, and scan at the door",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -9,9 +9,16 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/placeholder.svg",
+      "src": "/assets/faviconn.png",
       "sizes": "192x192",
-      "type": "image/svg+xml"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/faviconn.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     }
   ],
   "permissions": [
