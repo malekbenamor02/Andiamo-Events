@@ -344,6 +344,26 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/email-addresses/counts",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/email-addresses/sources",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/marketing/campaigns",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/marketing/campaigns/:id",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/marketing/campaigns/:id/send-batch",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/sms-balance",
       "destination": "/api/misc.js"
     },

@@ -1,12 +1,12 @@
 /**
- * Admin Dashboard — Marketing tab (SMS + Email).
+ * Admin Dashboard â€” Marketing tab (SMS + Email).
  * Extracted from Dashboard.tsx for maintainability.
  */
 
-import React from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +15,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from "@/components/ui/badge";
 import { PhoneCall, Mail, CreditCard, Download, Upload, Send, RefreshCw, FileText, Info, Phone, CheckCircle, XCircle, Clock } from "lucide-react";
 import { BulkSmsSelector } from "@/components/admin/BulkSmsSelector";
+import { BulkEmailSelector } from "@/components/admin/BulkEmailSelector";
+import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
+import type { MarketingCampaign } from "@/types/bulk-sms";
 
 export interface MarketingTabProps {
   language: "en" | "fr";
@@ -63,8 +66,183 @@ export interface MarketingTabProps {
 }
 
 export function MarketingTab(p: MarketingTabProps) {
+  const [campaigns, setCampaigns] = useState<MarketingCampaign[]>([]);
+  const [sendingOneBatchId, setSendingOneBatchId] = useState<string | null>(null);
+  const [resumingId, setResumingId] = useState<string | null>(null);
+  const cancelResumeRef = useRef(false);
+
+  const fetchCampaigns = useCallback(async () => {
+    try {
+      const res = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGNS), { credentials: "include" });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) setCampaigns(data.data);
+    } catch {
+      setCampaigns([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCampaigns();
+  }, [fetchCampaigns]);
+
+  const handleSendOneBatch = async (campaignId: string) => {
+    if (sendingOneBatchId || resumingId) return;
+    setSendingOneBatchId(campaignId);
+    try {
+      const res = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN_SEND_BATCH(campaignId)), {
+        method: "POST",
+        credentials: "include",
+      });
+      await fetchCampaigns();
+      if (res.status === 429 && p.language === "en") {
+        alert("Daily email limit (300/day). Resume tomorrow.");
+      } else if (res.status === 429) {
+        alert("Limite 300 emails/jour. Reprenez demain.");
+      }
+    } finally {
+      setSendingOneBatchId(null);
+    }
+  };
+
+  const handleResumeAuto = async (c: MarketingCampaign) => {
+    if ((c.counts?.pending ?? 0) <= 0 || resumingId || sendingOneBatchId) return;
+    cancelResumeRef.current = false;
+    setResumingId(c.id);
+    const batchDelay = c.batch_delay_ms != null && c.batch_delay_ms >= 0 ? c.batch_delay_ms : 2000;
+    try {
+      for (;;) {
+        if (cancelResumeRef.current) break;
+        const res = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN_SEND_BATCH(c.id)), {
+          method: "POST",
+          credentials: "include",
+        });
+        const data = await res.json();
+        await fetchCampaigns();
+        if (res.status === 429 && c.type === "email") {
+          if (p.language === "en") {
+            alert("Daily email limit reached. Resume tomorrow from here.");
+          } else {
+            alert("Limite quotidienne atteinte. Reprenez demain.");
+          }
+          break;
+        }
+        if (!data.success) break;
+        const remaining = data.data?.remaining ?? 0;
+        if (remaining <= 0) break;
+        await new Promise((r) => setTimeout(r, batchDelay));
+      }
+    } finally {
+      setResumingId(null);
+      cancelResumeRef.current = false;
+    }
+  };
+
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleString(p.language === "en" ? "en-US" : "fr-FR", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+
   return (
     <TabsContent value="marketing" className="space-y-6">
+                {/* Campaign results: always visible */}
+                <Card>
+                  <CardHeader className="pb-2 flex flex-row flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <CardTitle className="text-base">
+                        {p.language === "en" ? "Campaign results" : "Résultats des campagnes"}
+                      </CardTitle>
+                      <CardDescription>
+                        {p.language === "en"
+                          ? "Sent / failed / remaining for every campaign. New sends start automatically when you start a campaign."
+                          : "Envoyés / échoués / restants pour chaque campagne."}
+                      </CardDescription>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => fetchCampaigns()}>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      {p.language === "en" ? "Refresh" : "Actualiser"}
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="overflow-x-auto">
+                    {campaigns.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-4 text-center">
+                        {p.language === "en" ? "No campaigns yet." : "Aucune campagne pour le moment."}
+                      </p>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-left text-muted-foreground">
+                            <th className="py-2 pr-2">{p.language === "en" ? "Date" : "Date"}</th>
+                            <th className="py-2 pr-2">{p.language === "en" ? "Type" : "Type"}</th>
+                            <th className="py-2 pr-2 min-w-[140px]">{p.language === "en" ? "Subject / name" : "Sujet / nom"}</th>
+                            <th className="py-2 pr-2">{p.language === "en" ? "Status" : "Statut"}</th>
+                            <th className="py-2 pr-1 text-green-600">OK</th>
+                            <th className="py-2 pr-1 text-destructive">Fail</th>
+                            <th className="py-2 pr-1">{p.language === "en" ? "Pending" : "En attente"}</th>
+                            <th className="py-2 pr-2">{p.language === "en" ? "Total" : "Total"}</th>
+                            <th className="py-2">{p.language === "en" ? "Actions" : "Actions"}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {campaigns.map((c) => {
+                            const pending = c.counts?.pending ?? 0;
+                            const canResume = pending > 0 && (c.status === "sending" || c.status === "paused");
+                            return (
+                              <tr key={c.id} className="border-b border-border/60">
+                                <td className="py-2 pr-2 whitespace-nowrap">{fmtDate(c.created_at)}</td>
+                                <td className="py-2 pr-2 uppercase">{c.type}</td>
+                                <td className="py-2 pr-2 max-w-[200px] truncate" title={c.type === "email" ? (c.subject || "") : (c.body ? c.body.slice(0, 80) + (c.body.length > 80 ? "…" : "") : (c.name || ""))}>
+                                  {c.type === "email" ? (c.subject || "—") : (c.name || (c.body ? (c.body.length > 50 ? c.body.slice(0, 50) + "…" : c.body) : "SMS"))}
+                                </td>
+                                <td className="py-2 pr-2">{c.status}</td>
+                                <td className="py-2 pr-1">{c.counts?.sent ?? 0}</td>
+                                <td className="py-2 pr-1">{c.counts?.failed ?? 0}</td>
+                                <td className="py-2 pr-1">{pending}</td>
+                                <td className="py-2 pr-2">{c.counts?.total ?? 0}</td>
+                                <td className="py-2">
+                                  {canResume && (
+                                    <div className="flex flex-wrap gap-1">
+                                      <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        disabled={!!resumingId || !!sendingOneBatchId}
+                                        onClick={() => handleResumeAuto(c)}
+                                      >
+                                        {resumingId === c.id ? (
+                                          <><Loader size="sm" className="mr-1" />{p.language === "en" ? "Auto…" : "Auto…"}</>
+                                        ) : (
+                                          p.language === "en" ? "Resume auto" : "Reprendre auto"
+                                        )}
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={!!resumingId || !!sendingOneBatchId}
+                                        onClick={() => handleSendOneBatch(c.id)}
+                                      >
+                                        {sendingOneBatchId === c.id ? (
+                                          <Loader size="sm" />
+                                        ) : (
+                                          p.language === "en" ? "Send next group" : "Envoyer le groupe suivant"
+                                        )}
+                                      </Button>
+                                      {resumingId === c.id && (
+                                        <Button size="sm" variant="ghost" onClick={() => { cancelResumeRef.current = true; }}>
+                                          {p.language === "en" ? "Stop" : "Arrêt"}
+                                        </Button>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </CardContent>
+                </Card>
+
                 {/* Sub-tabs for SMS and Email Marketing */}
                 <Tabs value={p.marketingSubTab} onValueChange={(value) => {
                   p.setMarketingSubTab(value as 'sms' | 'email');
@@ -101,7 +279,7 @@ export function MarketingTab(p: MarketingTabProps) {
                           <div className="flex flex-col items-center justify-center py-8 space-y-3">
                             <Loader size="lg" />
                             <p className="text-sm text-muted-foreground font-heading">
-                              {p.language === 'en' ? 'Checking balance...' : 'Vérification du solde...'}
+                              {p.language === 'en' ? 'Checking balance...' : 'VÃ©rification du solde...'}
                             </p>
                           </div>
                         ) : p.smsBalance?.balance ? (
@@ -116,7 +294,7 @@ export function MarketingTab(p: MarketingTabProps) {
                                       </p>
                                       {p.smsBalance.balance.balance === 0 || p.smsBalance.balance.solde === 0 || p.smsBalance.balance.credit === 0 ? (
                                       <p className="text-xs text-red-500 mt-1 font-heading">
-                                          âš ï¸ {p.language === 'en' ? 'Insufficient balance!' : 'Solde insuffisant!'}
+                                          Ã¢Å¡Â Ã¯Â¸Â {p.language === 'en' ? 'Insufficient balance!' : 'Solde insuffisant!'}
                                         </p>
                                       ) : null}
                                     </div>
@@ -125,7 +303,7 @@ export function MarketingTab(p: MarketingTabProps) {
                                       {p.smsBalance.balance}
                                       {p.smsBalance.balance === '0' || p.smsBalance.balance === 0 ? (
                                         <span className="text-xs text-red-500 ml-2">
-                                          âš ï¸ {p.language === 'en' ? 'Insufficient!' : 'Insuffisant!'}
+                                          Ã¢Å¡Â Ã¯Â¸Â {p.language === 'en' ? 'Insufficient!' : 'Insuffisant!'}
                                         </span>
                                       ) : null}
                                   </p>
@@ -151,7 +329,7 @@ export function MarketingTab(p: MarketingTabProps) {
                             <p className="text-sm text-muted-foreground text-center font-heading">
                               {p.language === 'en' 
                                 ? 'Click the button below to check your SMS balance' 
-                                : 'Cliquez sur le bouton ci-dessous pour vÃ©rifier votre solde SMS'}
+                                : 'Cliquez sur le bouton ci-dessous pour vÃƒÂ©rifier votre solde SMS'}
                             </p>
                             <Button
                               onClick={p.fetchSmsBalance}
@@ -160,7 +338,7 @@ export function MarketingTab(p: MarketingTabProps) {
                               size="lg"
                             >
                               <CreditCard className="w-5 h-5 mr-2" />
-                              {p.language === 'en' ? 'Check SMS Balance' : 'VÃ©rifier le Solde SMS'}
+                              {p.language === 'en' ? 'Check SMS Balance' : 'VÃƒÂ©rifier le Solde SMS'}
                             </Button>
                           </div>
                         )}
@@ -179,12 +357,12 @@ export function MarketingTab(p: MarketingTabProps) {
                         <p className="text-sm text-foreground/70 mt-2">
                           {p.language === 'en' 
                             ? 'Test SMS functionality with a specific phone number'
-                            : 'Tester la fonctionnalitÃ© SMS avec un numÃ©ro de tÃ©lÃ©phone spÃ©cifique'}
+                            : 'Tester la fonctionnalitÃƒÂ© SMS avec un numÃƒÂ©ro de tÃƒÂ©lÃƒÂ©phone spÃƒÂ©cifique'}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         <div className="space-y-2">
-                          <Label htmlFor="testPhone">{p.language === 'en' ? 'Phone Number' : 'NumÃ©ro de TÃ©lÃ©phone'} *</Label>
+                          <Label htmlFor="testPhone">{p.language === 'en' ? 'Phone Number' : 'NumÃƒÂ©ro de TÃƒÂ©lÃƒÂ©phone'} *</Label>
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-muted-foreground font-heading">+216</span>
                             <Input
@@ -211,7 +389,7 @@ export function MarketingTab(p: MarketingTabProps) {
                             className="min-h-[100px] text-sm bg-background text-foreground font-heading"
                           />
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{p.language === 'en' ? 'Characters' : 'CaractÃ¨res'}: {p.testSmsMessage.length}</span>
+                            <span>{p.language === 'en' ? 'Characters' : 'CaractÃƒÂ¨res'}: {p.testSmsMessage.length}</span>
                             <span>{p.language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(p.testSmsMessage.length / 160)}</span>
                           </div>
                         </div>
@@ -243,19 +421,19 @@ export function MarketingTab(p: MarketingTabProps) {
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
                           <Download className="w-5 h-5 text-primary" />
-                          {p.language === 'en' ? 'Export/Import Phone Subscribers' : 'Exporter/Importer Abonnés'}
+                          {p.language === 'en' ? 'Export/Import Phone Subscribers' : 'Exporter/Importer AbonnÃ©s'}
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {p.language === 'en' 
                             ? `Export or import phone subscribers from Excel`
-                            : `Exporter ou importer des abonnÃ©s tÃ©lÃ©phone depuis Excel`}
+                            : `Exporter ou importer des abonnÃƒÂ©s tÃƒÂ©lÃƒÂ©phone depuis Excel`}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {/* Subscriber Count */}
                         <div className="p-3 bg-muted/30 rounded-lg border border-border">
                           <div className="text-sm font-semibold text-foreground mb-1">
-                            {p.language === 'en' ? 'Subscribers Count' : "Nombre d'Abonnés"}
+                            {p.language === 'en' ? 'Subscribers Count' : "Nombre d'AbonnÃ©s"}
                           </div>
                           <div className="text-2xl font-bold text-primary">
                             {p.phoneSubscribers.length}
@@ -288,7 +466,7 @@ export function MarketingTab(p: MarketingTabProps) {
                             <DialogContent className="max-w-2xl">
                               <DialogHeader>
                                 <DialogTitle>
-                                  {p.language === 'en' ? 'Import Phone Numbers from Excel' : 'Importer des NumÃ©ros depuis Excel'}
+                                  {p.language === 'en' ? 'Import Phone Numbers from Excel' : 'Importer des NumÃƒÂ©ros depuis Excel'}
                                 </DialogTitle>
                               </DialogHeader>
                               <div className="space-y-4">
@@ -304,22 +482,22 @@ export function MarketingTab(p: MarketingTabProps) {
                                         <li>
                                           {p.language === 'en' 
                                             ? 'First column: Phone Number (8 digits, starts with 2, 4, 5, or 9)'
-                                            : 'PremiÃ¨re colonne: NumÃ©ro de tÃ©lÃ©phone (8 chiffres, commence par 2, 4, 5 ou 9)'}
+                                            : 'PremiÃƒÂ¨re colonne: NumÃƒÂ©ro de tÃƒÂ©lÃƒÂ©phone (8 chiffres, commence par 2, 4, 5 ou 9)'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'First row should be headers (will be skipped)'
-                                            : 'La premiÃ¨re ligne doit contenir les en-tÃªtes (sera ignorÃ©e)'}
+                                            : 'La premiÃƒÂ¨re ligne doit contenir les en-tÃƒÂªtes (sera ignorÃƒÂ©e)'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'Duplicate numbers will be automatically skipped'
-                                            : 'Les numÃ©ros en double seront automatiquement ignorÃ©s'}
+                                            : 'Les numÃƒÂ©ros en double seront automatiquement ignorÃƒÂ©s'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'Subscription time will be set automatically to import time'
-                                            : 'La date d\'abonnement sera dÃ©finie automatiquement Ã  l\'heure d\'importation'}
+                                            : 'La date d\'abonnement sera dÃƒÂ©finie automatiquement ÃƒÂ  l\'heure d\'importation'}
                                         </li>
                                       </ul>
                                       <div className="mt-3 p-2 bg-background rounded border border-border">
@@ -329,7 +507,7 @@ export function MarketingTab(p: MarketingTabProps) {
                                         <pre className="text-xs text-muted-foreground">
                                           {p.language === 'en' 
                                             ? 'Phone Number\n27169458\n98765432'
-                                            : 'NumÃ©ro de TÃ©lÃ©phone\n27169458\n98765432'}
+                                            : 'NumÃƒÂ©ro de TÃƒÂ©lÃƒÂ©phone\n27169458\n98765432'}
                                         </pre>
                                       </div>
                                     </div>
@@ -339,7 +517,7 @@ export function MarketingTab(p: MarketingTabProps) {
                                 {/* File Upload */}
                                 <div className="space-y-2">
                                   <Label>
-                                    {p.language === 'en' ? 'Select Excel File (.xlsx)' : 'SÃ©lectionner un Fichier Excel (.xlsx)'}
+                                    {p.language === 'en' ? 'Select Excel File (.xlsx)' : 'SÃƒÂ©lectionner un Fichier Excel (.xlsx)'}
                                   </Label>
                                   <div className="flex items-center gap-2">
                                     <Input
@@ -378,6 +556,7 @@ export function MarketingTab(p: MarketingTabProps) {
                         p.fetchSmsLogs();
                         p.fetchPhoneSubscribers();
                       }}
+                      onCampaignProgress={fetchCampaigns}
                     />
                   </div>
 
@@ -392,7 +571,7 @@ export function MarketingTab(p: MarketingTabProps) {
                         <p className="text-sm text-foreground/70 mt-2">
                           {p.language === 'en' 
                             ? 'Recent SMS sending history and errors'
-                            : 'Historique rÃ©cent d\'envoi SMS et erreurs'}
+                            : 'Historique rÃƒÂ©cent d\'envoi SMS et erreurs'}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
@@ -489,9 +668,9 @@ export function MarketingTab(p: MarketingTabProps) {
                                             }
                                           >
                                             {isSuccess
-                                              ? (p.language === 'en' ? 'Sent' : 'EnvoyÃ©')
+                                              ? (p.language === 'en' ? 'Sent' : 'EnvoyÃƒÂ©')
                                               : log.status === 'failed'
-                                              ? (p.language === 'en' ? 'Failed' : 'Ã‰chouÃ©')
+                                              ? (p.language === 'en' ? 'Failed' : 'Ãƒâ€°chouÃƒÂ©')
                                               : (p.language === 'en' ? 'Pending' : 'En Attente')}
                                           </Badge>
                                           <div className="flex items-center gap-1.5 text-sm font-medium">
@@ -540,9 +719,9 @@ export function MarketingTab(p: MarketingTabProps) {
                                           <details className="mt-2 group">
                                             <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors flex items-center gap-1.5 list-none">
                                               <FileText className="w-3.5 h-3.5" />
-                                              <span>{p.language === 'en' ? 'View API Response' : 'Voir RÃ©ponse API'}</span>
-                                              <span className="ml-auto text-muted-foreground/50 group-open:hidden">â–¼</span>
-                                              <span className="ml-auto text-muted-foreground/50 hidden group-open:inline">â–²</span>
+                                              <span>{p.language === 'en' ? 'View API Response' : 'Voir RÃƒÂ©ponse API'}</span>
+                                              <span className="ml-auto text-muted-foreground/50 group-open:hidden">Ã¢â€“Â¼</span>
+                                              <span className="ml-auto text-muted-foreground/50 hidden group-open:inline">Ã¢â€“Â²</span>
                                             </summary>
                                             <div className="mt-2 p-3 bg-muted/50 rounded-md border border-border">
                                               <pre className="text-xs font-mono text-foreground/80 overflow-auto max-h-40 whitespace-pre-wrap break-words">
@@ -606,14 +785,14 @@ export function MarketingTab(p: MarketingTabProps) {
                         <p className="text-sm text-foreground/70 mt-2">
                           {p.language === 'en' 
                             ? `Send emails to all newsletter subscribers`
-                            : `Envoyer des emails Ã  tous les abonnÃ©s newsletter`}
+                            : `Envoyer des emails ÃƒÂ  tous les abonnÃƒÂ©s newsletter`}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {/* Subscriber Count */}
                         <div className="p-3 bg-muted/30 rounded-lg border border-border">
                           <div className="text-sm font-semibold text-foreground mb-1">
-                            {p.language === 'en' ? 'Subscribers Count' : "Nombre d'Abonnés"}
+                            {p.language === 'en' ? 'Subscribers Count' : "Nombre d'AbonnÃ©s"}
                           </div>
                           <div className="text-2xl font-bold text-primary">
                             {p.loadingEmailSubscribers ? (
@@ -625,7 +804,7 @@ export function MarketingTab(p: MarketingTabProps) {
                           <div className="text-xs text-muted-foreground mt-1">
                             {p.language === 'en' 
                               ? 'This email will be sent to all newsletter subscribers'
-                              : 'Cet email sera envoyÃ© Ã  tous les abonnÃ©s newsletter'}
+                              : 'Cet email sera envoyÃƒÂ© ÃƒÂ  tous les abonnÃƒÂ©s newsletter'}
                           </div>
                         </div>
 
@@ -671,22 +850,22 @@ export function MarketingTab(p: MarketingTabProps) {
                                         <li>
                                           {p.language === 'en' 
                                             ? 'First column: Email Address (valid email format required)'
-                                            : 'PremiÃ¨re colonne: Adresse Email (format email valide requis)'}
+                                            : 'PremiÃƒÂ¨re colonne: Adresse Email (format email valide requis)'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'First row should be headers (will be skipped)'
-                                            : 'La premiÃ¨re ligne doit contenir les en-tÃªtes (sera ignorÃ©e)'}
+                                            : 'La premiÃƒÂ¨re ligne doit contenir les en-tÃƒÂªtes (sera ignorÃƒÂ©e)'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'Duplicate emails will be automatically skipped'
-                                            : 'Les emails en double seront automatiquement ignorÃ©s'}
+                                            : 'Les emails en double seront automatiquement ignorÃƒÂ©s'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'Subscription time will be set automatically to import time'
-                                            : 'La date d\'abonnement sera dÃ©finie automatiquement Ã  l\'heure d\'importation'}
+                                            : 'La date d\'abonnement sera dÃƒÂ©finie automatiquement ÃƒÂ  l\'heure d\'importation'}
                                         </li>
                                       </ul>
                                       <div className="mt-3 p-2 bg-background rounded border border-border">
@@ -706,7 +885,7 @@ export function MarketingTab(p: MarketingTabProps) {
                                 {/* File Upload */}
                                 <div className="space-y-2">
                                   <Label>
-                                    {p.language === 'en' ? 'Select Excel File (.xlsx)' : 'SÃ©lectionner un Fichier Excel (.xlsx)'}
+                                    {p.language === 'en' ? 'Select Excel File (.xlsx)' : 'SÃƒÂ©lectionner un Fichier Excel (.xlsx)'}
                                   </Label>
                                   <div className="flex items-center gap-2">
                                     <Input
@@ -737,134 +916,13 @@ export function MarketingTab(p: MarketingTabProps) {
                     </Card>
                   </div>
 
-                  {/* Email Composition Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600">
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Mail className="w-5 h-5 text-primary" />
-                          {p.language === 'en' ? 'Compose Email' : 'Composer Email'}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {p.language === 'en' 
-                            ? `Create and send bulk emails to subscribers`
-                            : `CrÃ©er et envoyer des emails en masse aux abonnÃ©s`}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {/* Email Subject */}
-                        <div className="space-y-2">
-                          <Label>{p.language === 'en' ? 'Subject' : 'Sujet'} *</Label>
-                          <Input
-                            value={p.emailSubject}
-                            onChange={(e) => p.setEmailSubject(e.target.value)}
-                            placeholder={p.language === 'en' ? 'Enter email subject...' : 'Entrez le sujet de l\'email...'}
-                            className="bg-background text-foreground"
-                          />
-                        </div>
-
-                        {/* Email Content */}
-                        <div className="space-y-2 flex-1 flex flex-col">
-                          <Label>{p.language === 'en' ? 'Email Content' : 'Contenu Email'} *</Label>
-                          <Textarea
-                            value={p.emailContent}
-                            onChange={(e) => p.setEmailContent(e.target.value)}
-                            placeholder={p.language === 'en' ? 'Enter your email content (HTML supported)...' : 'Entrez le contenu de votre email (HTML supportÃ©)...'}
-                            className="min-h-[300px] text-sm bg-background text-foreground"
-                          />
-                          <div className="text-xs text-muted-foreground">
-                            {p.language === 'en' 
-                              ? 'Your content will be wrapped in our email template. HTML tags are supported: <p>, <h1>, <strong>, <a>, etc.'
-                              : 'Votre contenu sera enveloppÃ© dans notre modÃ¨le d\'email. Les balises HTML sont supportÃ©es: <p>, <h1>, <strong>, <a>, etc.'}
-                          </div>
-                        </div>
-
-                        {/* Test Email Section */}
-                        <div className="p-4 bg-muted/30 rounded-lg border border-border space-y-3">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Mail className="w-4 h-4 text-primary" />
-                            <Label className="font-semibold">
-                              {p.language === 'en' ? 'Test Email' : 'Email de Test'}
-                            </Label>
-                          </div>
-                          <div className="space-y-2">
-                            <Input
-                              type="email"
-                              value={p.testEmailAddress}
-                              onChange={(e) => p.setTestEmailAddress(e.target.value)}
-                              placeholder={p.language === 'en' ? 'Enter test email address...' : 'Entrez l\'adresse email de test...'}
-                              className="bg-background text-foreground"
-                            />
-                            <Button
-                              onClick={p.handleSendTestEmail}
-                              disabled={p.sendingTestEmail || !p.testEmailAddress.trim() || !p.emailSubject.trim() || !p.emailContent.trim()}
-                              variant="outline"
-                              size="sm"
-                              className="w-full"
-                            >
-                              {p.sendingTestEmail ? (
-                                <>
-                                  <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                                  {p.language === 'en' ? 'Sending Test...' : 'Envoi du Test...'}
-                                </>
-                              ) : (
-                                <>
-                                  <Send className="w-4 h-4 mr-2" />
-                                  {p.language === 'en' ? 'Send Test Email' : 'Envoyer Email de Test'}
-                                </>
-                              )}
-                            </Button>
-                            <div className="text-xs text-muted-foreground">
-                              {p.language === 'en' 
-                                ? 'Send a test email to preview how it will look before sending to all subscribers'
-                                : 'Envoyez un email de test pour prÃ©visualiser son apparence avant de l\'envoyer Ã  tous les abonnÃ©s'}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Delay Setting */}
-                        <div className="space-y-2">
-                          <Label>
-                            {p.language === 'en' ? 'Delay Between Emails (seconds)' : 'DÃ©lai Entre les Emails (secondes)'}
-                          </Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            max="60"
-                            value={p.emailDelaySeconds}
-                            onChange={(e) => p.setEmailDelaySeconds(Math.max(1, Math.min(60, parseInt(e.target.value) || 2)))}
-                            className="bg-background text-foreground"
-                          />
-                          <div className="text-xs text-muted-foreground">
-                            {p.language === 'en' 
-                              ? `Each email will be sent ${p.emailDelaySeconds} second(s) after the previous one`
-                              : `Chaque email sera envoyÃ© ${p.emailDelaySeconds} seconde(s) aprÃ¨s le prÃ©cÃ©dent`}
-                          </div>
-                        </div>
-
-                        {/* Send Button */}
-                        <Button
-                          onClick={p.handleSendBulkEmails}
-                          disabled={p.sendingBulkEmails || !p.emailSubject.trim() || !p.emailContent.trim() || p.emailSubscribers.length === 0}
-                          className="w-full btn-gradient"
-                          size="lg"
-                        >
-                          {p.sendingBulkEmails ? (
-                            <>
-                              <Loader size="sm" className="mr-2" />
-                              {p.language === 'en' ? 'Sending Emails...' : 'Envoi des Emails...'}
-                            </>
-                          ) : (
-                            <>
-                              <Send className="w-5 h-5 mr-2" />
-                              {p.language === 'en' 
-                                ? `Send to ${p.emailSubscribers.length} Subscribers`
-                                : `Envoyer Ã  ${p.emailSubscribers.length} AbonnÃ©s`}
-                            </>
-                          )}
-                        </Button>
-                      </CardContent>
-                    </Card>
+                  {/* Bulk Email Selector: sources, filters, preview, compose, Start campaign */}
+                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600 lg:col-span-2">
+                    <BulkEmailSelector
+                      language={p.language}
+                      onCampaignCreated={() => fetchCampaigns()}
+                      onCampaignProgress={fetchCampaigns}
+                    />
                   </div>
                 </div>
                   </TabsContent>

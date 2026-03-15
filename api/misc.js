@@ -426,6 +426,89 @@ function formatPhoneNumber(phone) {
   return null;
 }
 
+// Official campaign email template (footer, branding, support section)
+function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber') {
+  const content = String(body || '').replace(/\n/g, '<br>');
+  const emailSubject = subject || 'Newsletter Update';
+  const supportUrl = 'https://www.andiamoevents.com/contact';
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>${emailSubject.replace(/</g, '&lt;').replace(/>/g, '&gt;')} - Andiamo Events</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #1A1A1A; background: #FFFFFF; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+    @media (prefers-color-scheme: dark) { body { color: #FFFFFF; background: #1A1A1A; } }
+    a { color: #E21836 !important; text-decoration: none; }
+    .email-wrapper { max-width: 600px; margin: 0 auto; background: #FFFFFF; }
+    @media (prefers-color-scheme: dark) { .email-wrapper { background: #1A1A1A; } }
+    .content-card { background: #F5F5F5; margin: 0 20px 30px; border-radius: 12px; padding: 50px 40px; border: 1px solid rgba(0,0,0,0.1); }
+    @media (prefers-color-scheme: dark) { .content-card { background: #1F1F1F; border: 1px solid rgba(42,42,42,0.5); } }
+    .title-section { text-align: center; margin-bottom: 40px; padding-bottom: 30px; border-bottom: 1px solid rgba(0,0,0,0.1); }
+    @media (prefers-color-scheme: dark) { .title-section { border-bottom: 1px solid rgba(255,255,255,0.1); } }
+    .title { font-size: 32px; font-weight: 700; color: #1A1A1A; margin-bottom: 12px; }
+    @media (prefers-color-scheme: dark) { .title { color: #FFFFFF; } }
+    .subtitle { font-size: 16px; color: #666666; font-weight: 400; }
+    @media (prefers-color-scheme: dark) { .subtitle { color: #B0B0B0; } }
+    .greeting { font-size: 18px; color: #1A1A1A; margin-bottom: 30px; line-height: 1.7; }
+    @media (prefers-color-scheme: dark) { .greeting { color: #FFFFFF; } }
+    .greeting strong { color: #E21836; font-weight: 600; }
+    .message-content { font-size: 16px; color: #666666; margin-bottom: 25px; line-height: 1.7; }
+    @media (prefers-color-scheme: dark) { .message-content { color: #B0B0B0; } }
+    .support-section { background: #E8E8E8; border-left: 3px solid rgba(226,24,54,0.3); padding: 20px 25px; margin: 35px 0; border-radius: 4px; }
+    @media (prefers-color-scheme: dark) { .support-section { background: #252525; } }
+    .support-text { font-size: 14px; color: #666666; line-height: 1.7; }
+    @media (prefers-color-scheme: dark) { .support-text { color: #B0B0B0; } }
+    .support-email { color: #E21836 !important; text-decoration: none; font-weight: 500; }
+    .closing-section { text-align: center; margin: 50px 0 40px; padding-top: 40px; border-top: 1px solid rgba(0,0,0,0.1); }
+    @media (prefers-color-scheme: dark) { .closing-section { border-top: 1px solid rgba(255,255,255,0.1); } }
+    .slogan { font-size: 24px; font-style: italic; color: #E21836; font-weight: 300; margin-bottom: 30px; }
+    .signature { font-size: 16px; color: #666666; line-height: 1.7; }
+    @media (prefers-color-scheme: dark) { .signature { color: #B0B0B0; } }
+    .footer { margin-top: 50px; padding: 40px 20px 30px; text-align: center; border-top: 1px solid rgba(0,0,0,0.1); }
+    @media (prefers-color-scheme: dark) { .footer { border-top: 1px solid rgba(255,255,255,0.05); } }
+    .footer-text { font-size: 12px; color: #999999; margin-bottom: 20px; line-height: 1.6; }
+    @media (prefers-color-scheme: dark) { .footer-text { color: #6B6B6B; } }
+    .footer-links { margin: 15px auto 0; text-align: center; }
+    .footer-link { color: #999999; text-decoration: none; font-size: 13px; margin: 0 8px; }
+    @media (prefers-color-scheme: dark) { .footer-link { color: #6B6B6B; } }
+    .footer-link:hover { color: #E21836 !important; }
+    @media only screen and (max-width: 600px) { .content-card { margin: 0 15px 20px; padding: 35px 25px; } .title { font-size: 26px; } }
+  </style>
+</head>
+<body>
+  <div class="email-wrapper">
+    <div class="content-card">
+      <div class="title-section">
+        <h1 class="title">Andiamo Events</h1>
+        <p class="subtitle">${emailSubject.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+      </div>
+      <p class="greeting">Dear <strong>${String(recipientDisplay).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</strong>,</p>
+      <div class="message-content">${content}</div>
+      <div class="support-section">
+        <p class="support-text">Need assistance? Contact us at <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a> or visit our <a href="${supportUrl}" class="support-email">contact page</a>.</p>
+      </div>
+      <div class="closing-section">
+        <p class="slogan">We Create Memories</p>
+        <p class="signature">Best regards,<br>The Andiamo Events Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">You're receiving this email from Andiamo Events.<br>If you no longer wish to receive these emails, please contact us.</p>
+      <p class="footer-text" style="margin-top: 20px;">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+      <div class="footer-links">
+        <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
+        <span style="color: #999999;">&bull;</span>
+        <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 // Helper function to send SMS via WinSMS API
 async function sendSms(phoneNumbers, message, senderId = 'Andiamo') {
   const WINSMS_API_KEY = process.env.WINSMS_API_KEY;
@@ -6394,6 +6477,297 @@ Billets envoyés par email. We Create Memories`;
     }
 
     // ============================================
+    // GET /api/admin/email-addresses/counts - Get quick counts per source (email parity with phone)
+    // ============================================
+    if (path === '/api/admin/email-addresses/counts' && method === 'GET') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ success: false, error: 'Supabase not configured' });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+
+        let supabaseService = null;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabaseService = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        }
+
+        const dbClient = supabaseService || supabase;
+        const counts = {};
+
+        if (true) {
+          const { count: total } = await dbClient.from('orders').select('*', { count: 'exact', head: true });
+          const { count: withEmail } = await dbClient.from('orders').select('*', { count: 'exact', head: true }).not('user_email', 'is', null);
+          const { data: cityData } = await dbClient.from('orders').select('city').not('user_email', 'is', null);
+          const byCity = {};
+          if (cityData) {
+            cityData.forEach(item => {
+              if (item.city) {
+                byCity[item.city] = (byCity[item.city] || 0) + 1;
+              }
+            });
+          }
+          counts.orders = { total: total || 0, withEmail: withEmail || 0, byCity };
+        }
+
+        const { count: nsTotal } = await dbClient.from('newsletter_subscribers').select('*', { count: 'exact', head: true });
+        const { count: nsWithEmail } = await dbClient.from('newsletter_subscribers').select('*', { count: 'exact', head: true }).not('email', 'is', null);
+        counts.newsletter_subscribers = { total: nsTotal || 0, withEmail: nsWithEmail || 0 };
+
+        const { count: ambTotal } = await dbClient.from('ambassadors').select('*', { count: 'exact', head: true }).eq('status', 'approved');
+        const { count: ambWithEmail } = await dbClient.from('ambassadors').select('*', { count: 'exact', head: true }).eq('status', 'approved').not('email', 'is', null);
+        counts.approved_ambassadors = { total: ambTotal || 0, withEmail: ambWithEmail || 0 };
+
+        const { data: appStatusData } = await dbClient.from('ambassador_applications').select('status').not('email', 'is', null);
+        const byStatus = {};
+        if (appStatusData) {
+          appStatusData.forEach(item => {
+            byStatus[item.status] = (byStatus[item.status] || 0) + 1;
+          });
+        }
+        const { count: appTotal } = await dbClient.from('ambassador_applications').select('*', { count: 'exact', head: true });
+        const { count: appWithEmail } = await dbClient.from('ambassador_applications').select('*', { count: 'exact', head: true }).not('email', 'is', null);
+        counts.ambassador_applications = { total: appTotal || 0, withEmail: appWithEmail || 0, byStatus };
+
+        const { count: aioTotal } = await dbClient.from('aio_events_submissions').select('*', { count: 'exact', head: true });
+        const { count: aioWithEmail } = await dbClient.from('aio_events_submissions').select('*', { count: 'exact', head: true }).not('email', 'is', null);
+        counts.aio_events_submissions = { total: aioTotal || 0, withEmail: aioWithEmail || 0 };
+
+        return res.json({ success: true, data: counts });
+      } catch (error) {
+        console.error('Error fetching email counts:', error);
+        return res.status(500).json({
+          success: false,
+          error: error.message || 'Failed to fetch email counts'
+        });
+      }
+    }
+
+    // ============================================
+    // GET /api/admin/email-addresses/sources - Get emails from selected sources with filters (deduplicated)
+    // ============================================
+    if (path === '/api/admin/email-addresses/sources' && method === 'GET') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ success: false, error: 'Supabase not configured' });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_ANON_KEY
+        );
+
+        let supabaseService = null;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabaseService = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+        }
+
+        const dbClient = supabaseService || supabase;
+
+        let queryParams = req.query || {};
+        if (!req.query && req.url && req.url.includes('?')) {
+          const queryString = req.url.split('?')[1];
+          const searchParams = new URLSearchParams(queryString);
+          queryParams = Object.fromEntries(searchParams);
+        }
+
+        const { sources, includeMetadata } = queryParams;
+        if (!sources) {
+          return res.status(400).json({ success: false, error: 'Sources parameter is required' });
+        }
+
+        let sourcesConfig;
+        try {
+          sourcesConfig = typeof sources === 'string' ? JSON.parse(sources) : sources;
+        } catch (e) {
+          return res.status(400).json({ success: false, error: 'Invalid sources JSON format' });
+        }
+
+        const allEmails = [];
+        const sourceCounts = {};
+
+        const normalizeEmail = (email) => {
+          if (!email || typeof email !== 'string') return null;
+          const e = email.trim().toLowerCase();
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : null;
+        };
+
+        const deduplicateEmails = (items) => {
+          const seen = new Map();
+          const duplicates = [];
+          items.forEach(item => {
+            const norm = normalizeEmail(item.email);
+            if (!norm) return;
+            if (seen.has(norm)) {
+              const existing = seen.get(norm);
+              duplicates.push({ email: norm, sources: [existing.source, item.source] });
+            } else {
+              seen.set(norm, item);
+            }
+          });
+          return { unique: Array.from(seen.values()), duplicates };
+        };
+
+        if (sourcesConfig.orders?.enabled) {
+          let query = dbClient.from('orders').select('id, user_email, city, ville, status, payment_method, source, user_name, order_number').not('user_email', 'is', null);
+          const filters = sourcesConfig.orders.filters || {};
+          if (filters.city) query = query.eq('city', filters.city);
+          if (filters.ville) query = query.eq('ville', filters.ville);
+          if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) query = query.in('status', filters.status);
+          if (filters.payment_method) query = query.eq('payment_method', filters.payment_method);
+          if (filters.source) query = query.eq('source', filters.source);
+          const { data, error } = await query;
+          if (!error && data) {
+            const emails = data.filter(o => o.user_email).map(o => ({
+              email: normalizeEmail(o.user_email),
+              source: 'orders',
+              sourceId: o.id,
+              city: o.city || null,
+              ville: o.ville || null,
+              metadata: includeMetadata === 'true' ? { order_number: o.order_number, user_name: o.user_name, status: o.status, payment_method: o.payment_method, source: o.source } : undefined
+            })).filter(p => p.email);
+            allEmails.push(...emails);
+            sourceCounts.orders = emails.length;
+          }
+        }
+
+        if (sourcesConfig.newsletter_subscribers?.enabled) {
+          let query = dbClient.from('newsletter_subscribers').select('id, email, subscribed_at').not('email', 'is', null);
+          const filters = sourcesConfig.newsletter_subscribers.filters || {};
+          if (filters.dateFrom) query = query.gte('subscribed_at', filters.dateFrom);
+          if (filters.dateTo) query = query.lte('subscribed_at', filters.dateTo);
+          const { data, error } = await query;
+          if (!error && data) {
+            const emails = data.filter(s => s.email).map(s => ({
+              email: normalizeEmail(s.email),
+              source: 'newsletter_subscribers',
+              sourceId: s.id,
+              city: null,
+              ville: null,
+              metadata: includeMetadata === 'true' ? { subscribed_at: s.subscribed_at } : undefined
+            })).filter(p => p.email);
+            allEmails.push(...emails);
+            sourceCounts.newsletter_subscribers = emails.length;
+          }
+        }
+
+        if (sourcesConfig.approved_ambassadors?.enabled) {
+          let query = dbClient.from('ambassadors').select('id, email, city, ville, full_name, status').eq('status', 'approved').not('email', 'is', null);
+          const filters = sourcesConfig.approved_ambassadors.filters || {};
+          if (filters.city) query = query.eq('city', filters.city);
+          if (filters.ville) query = query.eq('ville', filters.ville);
+          const { data, error } = await query;
+          if (!error && data) {
+            const emails = data.filter(a => a.email).map(a => ({
+              email: normalizeEmail(a.email),
+              source: 'approved_ambassadors',
+              sourceId: a.id,
+              city: a.city || null,
+              ville: a.ville || null,
+              metadata: includeMetadata === 'true' ? { full_name: a.full_name, status: a.status } : undefined
+            })).filter(p => p.email);
+            allEmails.push(...emails);
+            sourceCounts.approved_ambassadors = emails.length;
+          }
+        }
+
+        if (sourcesConfig.ambassador_applications?.enabled) {
+          let query = dbClient.from('ambassador_applications').select('id, email, city, ville, status, full_name').not('email', 'is', null);
+          const filters = sourcesConfig.ambassador_applications.filters || {};
+          if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) query = query.in('status', filters.status);
+          if (filters.city) query = query.eq('city', filters.city);
+          if (filters.ville) query = query.eq('ville', filters.ville);
+          const { data, error } = await query;
+          if (!error && data) {
+            const emails = data.filter(a => a.email).map(a => ({
+              email: normalizeEmail(a.email),
+              source: 'ambassador_applications',
+              sourceId: a.id,
+              city: a.city || null,
+              ville: a.ville || null,
+              metadata: includeMetadata === 'true' ? { status: a.status, full_name: a.full_name } : undefined
+            })).filter(p => p.email);
+            allEmails.push(...emails);
+            sourceCounts.ambassador_applications = emails.length;
+          }
+        }
+
+        if (sourcesConfig.aio_events_submissions?.enabled) {
+          let query = dbClient.from('aio_events_submissions').select('id, email, city, ville, status, full_name, event_id').not('email', 'is', null);
+          const filters = sourcesConfig.aio_events_submissions.filters || {};
+          if (filters.city) query = query.eq('city', filters.city);
+          if (filters.ville) query = query.eq('ville', filters.ville);
+          if (filters.status && Array.isArray(filters.status) && filters.status.length > 0) query = query.in('status', filters.status);
+          if (filters.event_id) query = query.eq('event_id', filters.event_id);
+          const { data, error } = await query;
+          if (!error && data) {
+            const emails = data.filter(s => s.email).map(s => ({
+              email: normalizeEmail(s.email),
+              source: 'aio_events_submissions',
+              sourceId: s.id,
+              city: s.city || null,
+              ville: s.ville || null,
+              metadata: includeMetadata === 'true' ? { status: s.status, full_name: s.full_name, event_id: s.event_id } : undefined
+            })).filter(p => p.email);
+            allEmails.push(...emails);
+            sourceCounts.aio_events_submissions = emails.length;
+          }
+        }
+
+        const { unique, duplicates } = deduplicateEmails(allEmails);
+
+        return res.json({
+          success: true,
+          data: {
+            emailAddresses: unique,
+            counts: {
+              total: allEmails.length,
+              unique: unique.length,
+              duplicates: duplicates.length,
+              bySource: sourceCounts
+            },
+            duplicates
+          }
+        });
+      } catch (error) {
+        console.error('Error fetching email addresses:', error);
+        return res.status(500).json({
+          success: false,
+          error: error.message || 'Failed to fetch email addresses'
+        });
+      }
+    }
+
+    // ============================================
     // GET /api/admin/phone-numbers/sources - Get phone numbers from selected sources with filters
     // ============================================
     if (path === '/api/admin/phone-numbers/sources' && method === 'GET') {
@@ -6935,6 +7309,520 @@ Billets envoyés par email. We Create Memories`;
           success: false,
           error: error.message || 'Failed to send bulk SMS'
         });
+      }
+    }
+
+    // ============================================
+    // POST /api/marketing/campaigns - Create campaign and snapshot recipients
+    // ============================================
+    if (path === '/api/marketing/campaigns' && method === 'POST') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ success: false, error: 'Supabase not configured' });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+        let supabaseService = null;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+        }
+        const dbClient = supabaseService || supabase;
+
+        const bodyData = await parseBody(req);
+        const { type, name, subject, body, batch_size, period, sources, filters, recipients: rawRecipientsList, delay_ms, batch_delay_ms } = bodyData;
+
+        if (!type || !body || (type === 'email' && !subject)) {
+          return res.status(400).json({
+            success: false,
+            error: type === 'email' ? 'type, subject, and body are required' : 'type and body are required'
+          });
+        }
+
+        const batchSize = Math.max(1, parseInt(batch_size, 10) || 300);
+        const periodVal = period || 'day';
+        const sourcesConfig = sources || {};
+        const filtersConfig = filters || {};
+        const delayMs = delay_ms != null ? Math.max(0, parseInt(delay_ms, 10) || 0) : null;
+        const batchDelayMs = batch_delay_ms != null ? Math.max(0, parseInt(batch_delay_ms, 10) || 0) : null;
+
+        const normalizeCampaignEmail = (e) => {
+          if (!e || typeof e !== 'string') return null;
+          const x = e.trim().toLowerCase();
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x) ? x : null;
+        };
+        const normalizeCampaignPhone = (p) => {
+          if (!p) return null;
+          let c = String(p).trim().replace(/\D/g, '');
+          if (c.startsWith('00216')) c = c.substring(5);
+          else if (c.startsWith('216')) c = c.substring(3);
+          c = c.replace(/^0+/, '');
+          return (c.length === 8 && /^[2594]/.test(c)) ? c : null;
+        };
+
+        const explicitInputs = Array.isArray(rawRecipientsList) ? rawRecipientsList : [];
+        const useExplicitRecipients = explicitInputs.some((r) => r != null && String(r).trim() !== '');
+
+        const insertPayload = {
+          type,
+          name: name || null,
+          subject: type === 'email' ? subject : null,
+          body: body.trim(),
+          status: 'sending',
+          batch_size: batchSize,
+          period: periodVal,
+          delay_ms: delayMs !== null ? delayMs : null,
+          batch_delay_ms: batchDelayMs !== null ? batchDelayMs : null
+        };
+
+        const { data: campaign, error: campError } = await dbClient
+          .from('marketing_campaigns')
+          .insert(insertPayload)
+          .select('id')
+          .single();
+
+        if (campError || !campaign) {
+          console.error('Failed to create campaign:', campError);
+          return res.status(500).json({ success: false, error: campError?.message || 'Failed to create campaign' });
+        }
+
+        const recipientType = type === 'email' ? 'email' : 'phone';
+        const recipients = [];
+
+        if (useExplicitRecipients) {
+          const seen = new Set();
+          for (const raw of explicitInputs) {
+            const val = typeof raw === 'string' ? raw.trim() : String(raw).trim();
+            if (!val) continue;
+            const normalized = type === 'email' ? normalizeCampaignEmail(val) : normalizeCampaignPhone(val);
+            if (normalized && !seen.has(normalized)) {
+              seen.add(normalized);
+              recipients.push({ recipient_type: recipientType, recipient_value: normalized });
+            }
+          }
+          if (recipients.length === 0) {
+            return res.status(400).json({
+              success: false,
+              error: type === 'email' ? 'No valid email addresses in the list' : 'No valid phone numbers in the list'
+            });
+          }
+        } else if (type === 'sms') {
+          const allPhones = [];
+          if (sourcesConfig.ambassador_applications?.enabled) {
+            let q = dbClient.from('ambassador_applications').select('id, phone_number').not('phone_number', 'is', null);
+            const f = filtersConfig.ambassador_applications || {};
+            if (f.status?.length) q = q.in('status', f.status);
+            if (f.city) q = q.eq('city', f.city);
+            if (f.ville) q = q.eq('ville', f.ville);
+            const { data: d } = await q;
+            if (d) allPhones.push(...d.map(r => ({ value: normalizeCampaignPhone(r.phone_number) })).filter(r => r.value));
+          }
+          if (sourcesConfig.orders?.enabled) {
+            let q = dbClient.from('orders').select('id, user_phone').not('user_phone', 'is', null);
+            const f = filtersConfig.orders || {};
+            if (f.city) q = q.eq('city', f.city);
+            if (f.ville) q = q.eq('ville', f.ville);
+            if (f.status?.length) q = q.in('status', f.status);
+            if (f.payment_method) q = q.eq('payment_method', f.payment_method);
+            if (f.source) q = q.eq('source', f.source);
+            const { data: d } = await q;
+            if (d) allPhones.push(...d.map(r => ({ value: normalizeCampaignPhone(r.user_phone) })).filter(r => r.value));
+          }
+          if (sourcesConfig.aio_events_submissions?.enabled) {
+            let q = dbClient.from('aio_events_submissions').select('id, phone').not('phone', 'is', null);
+            const f = filtersConfig.aio_events_submissions || {};
+            if (f.city) q = q.eq('city', f.city);
+            if (f.ville) q = q.eq('ville', f.ville);
+            if (f.status?.length) q = q.in('status', f.status);
+            if (f.event_id) q = q.eq('event_id', f.event_id);
+            const { data: d } = await q;
+            if (d) allPhones.push(...d.map(r => ({ value: normalizeCampaignPhone(r.phone) })).filter(r => r.value));
+          }
+          if (sourcesConfig.approved_ambassadors?.enabled) {
+            let q = dbClient.from('ambassadors').select('id, phone').eq('status', 'approved').not('phone', 'is', null);
+            const f = filtersConfig.approved_ambassadors || {};
+            if (f.city) q = q.eq('city', f.city);
+            if (f.ville) q = q.eq('ville', f.ville);
+            const { data: d } = await q;
+            if (d) allPhones.push(...d.map(r => ({ value: normalizeCampaignPhone(r.phone) })).filter(r => r.value));
+          }
+          if (sourcesConfig.phone_subscribers?.enabled) {
+            let q = dbClient.from('phone_subscribers').select('id, phone_number').not('phone_number', 'is', null);
+            const f = filtersConfig.phone_subscribers || {};
+            if (f.dateFrom) q = q.gte('subscribed_at', f.dateFrom);
+            if (f.dateTo) q = q.lte('subscribed_at', f.dateTo);
+            const { data: d } = await q;
+            if (d) allPhones.push(...d.map(r => ({ value: normalizeCampaignPhone(r.phone_number) })).filter(r => r.value));
+          }
+          const seen = new Set();
+          allPhones.forEach(p => {
+            if (p.value && !seen.has(p.value)) {
+              seen.add(p.value);
+              recipients.push({ recipient_type: 'phone', recipient_value: p.value });
+            }
+          });
+        } else {
+          const allEmails = [];
+          if (sourcesConfig.orders?.enabled) {
+            let q = dbClient.from('orders').select('id, user_email').not('user_email', 'is', null);
+            const f = filtersConfig.orders || {};
+            if (f.city) q = q.eq('city', f.city);
+            if (f.ville) q = q.eq('ville', f.ville);
+            if (f.status?.length) q = q.in('status', f.status);
+            if (f.payment_method) q = q.eq('payment_method', f.payment_method);
+            if (f.source) q = q.eq('source', f.source);
+            const { data: d } = await q;
+            if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.user_email) })).filter(r => r.value));
+          }
+          if (sourcesConfig.newsletter_subscribers?.enabled) {
+            let q = dbClient.from('newsletter_subscribers').select('id, email').not('email', 'is', null);
+            const f = filtersConfig.newsletter_subscribers || {};
+            if (f.dateFrom) q = q.gte('subscribed_at', f.dateFrom);
+            if (f.dateTo) q = q.lte('subscribed_at', f.dateTo);
+            const { data: d } = await q;
+            if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.email) })).filter(r => r.value));
+          }
+          if (sourcesConfig.approved_ambassadors?.enabled) {
+            let q = dbClient.from('ambassadors').select('id, email').eq('status', 'approved').not('email', 'is', null);
+            const f = filtersConfig.approved_ambassadors || {};
+            if (f.city) q = q.eq('city', f.city);
+            if (f.ville) q = q.eq('ville', f.ville);
+            const { data: d } = await q;
+            if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.email) })).filter(r => r.value));
+          }
+          if (sourcesConfig.ambassador_applications?.enabled) {
+            let q = dbClient.from('ambassador_applications').select('id, email').not('email', 'is', null);
+            const f = filtersConfig.ambassador_applications || {};
+            if (f.status?.length) q = q.in('status', f.status);
+            if (f.city) q = q.eq('city', f.city);
+            if (f.ville) q = q.eq('ville', f.ville);
+            const { data: d } = await q;
+            if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.email) })).filter(r => r.value));
+          }
+          if (sourcesConfig.aio_events_submissions?.enabled) {
+            let q = dbClient.from('aio_events_submissions').select('id, email').not('email', 'is', null);
+            const f = filtersConfig.aio_events_submissions || {};
+            if (f.city) q = q.eq('city', f.city);
+            if (f.ville) q = q.eq('ville', f.ville);
+            if (f.status?.length) q = q.in('status', f.status);
+            if (f.event_id) q = q.eq('event_id', f.event_id);
+            const { data: d } = await q;
+            if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.email) })).filter(r => r.value));
+          }
+          const seen = new Set();
+          allEmails.forEach(p => {
+            if (p.value && !seen.has(p.value)) {
+              seen.add(p.value);
+              recipients.push({ recipient_type: 'email', recipient_value: p.value });
+            }
+          });
+        }
+
+        if (recipients.length === 0) {
+          await dbClient.from('marketing_campaigns').update({ status: 'completed' }).eq('id', campaign.id);
+          return res.status(400).json({
+            success: false,
+            error: 'No recipients found for the selected sources and filters'
+          });
+        }
+
+        const rows = recipients.map(r => ({
+          campaign_id: campaign.id,
+          recipient_type: r.recipient_type,
+          recipient_value: r.recipient_value,
+          status: 'pending'
+        }));
+        const { error: insError } = await dbClient.from('marketing_campaign_recipients').insert(rows);
+        if (insError) {
+          console.error('Failed to insert campaign recipients:', insError);
+          return res.status(500).json({ success: false, error: insError.message || 'Failed to save recipients' });
+        }
+
+        return res.json({
+          success: true,
+          data: { campaign_id: campaign.id, total_recipients: recipients.length }
+        });
+      } catch (error) {
+        console.error('Error creating campaign:', error);
+        return res.status(500).json({
+          success: false,
+          error: error.message || 'Failed to create campaign'
+        });
+      }
+    }
+
+    // ============================================
+    // GET /api/marketing/campaigns - List campaigns with counts
+    // ============================================
+    if (path === '/api/marketing/campaigns' && method === 'GET') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ success: false, error: 'Supabase not configured' });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+        let supabaseService = null;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+        }
+        const dbClient = supabaseService || supabase;
+
+        const { data: campaigns, error } = await dbClient
+          .from('marketing_campaigns')
+          .select('id, type, name, subject, body, status, batch_size, period, created_at, delay_ms, batch_delay_ms')
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) {
+          return res.status(500).json({ success: false, error: error.message });
+        }
+
+        const withCounts = await Promise.all((campaigns || []).map(async (c) => {
+          const { data: recs } = await dbClient
+            .from('marketing_campaign_recipients')
+            .select('status')
+            .eq('campaign_id', c.id);
+          const total = recs?.length || 0;
+          const sent = recs?.filter(r => r.status === 'sent').length || 0;
+          const failed = recs?.filter(r => r.status === 'failed').length || 0;
+          const pending = recs?.filter(r => r.status === 'pending').length || 0;
+          return { ...c, counts: { total, sent, failed, pending } };
+        }));
+
+        return res.json({ success: true, data: withCounts });
+      } catch (err) {
+        console.error('Error listing campaigns:', err);
+        return res.status(500).json({ success: false, error: err.message });
+      }
+    }
+
+    // ============================================
+    // POST /api/marketing/campaigns/:id/send-batch - Send next batch
+    // ============================================
+    if (path.match(/^\/api\/marketing\/campaigns\/[^/]+\/send-batch$/) && method === 'POST') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ success: false, error: 'Supabase not configured' });
+        }
+
+        const campaignId = path.split('/')[4];
+        if (!campaignId) {
+          return res.status(400).json({ success: false, error: 'Campaign ID required' });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+        let supabaseService = null;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+        }
+        const dbClient = supabaseService || supabase;
+
+        const { data: campaign, error: campErr } = await dbClient
+          .from('marketing_campaigns')
+          .select('id, type, subject, body, status, batch_size, delay_ms')
+          .eq('id', campaignId)
+          .single();
+
+        if (campErr || !campaign) {
+          return res.status(404).json({ success: false, error: 'Campaign not found' });
+        }
+        if (campaign.status !== 'sending' && campaign.status !== 'paused') {
+          return res.status(400).json({ success: false, error: 'Campaign is not in a sendable state' });
+        }
+
+        let cap = campaign.batch_size;
+        if (campaign.type === 'email') {
+          const today = new Date().toISOString().split('T')[0];
+          const dayStart = `${today}T00:00:00.000Z`;
+          const dayEnd = `${today}T23:59:59.999Z`;
+          const { count: sentToday } = await dbClient
+            .from('marketing_campaign_recipients')
+            .select('*', { count: 'exact', head: true })
+            .eq('recipient_type', 'email')
+            .not('sent_at', 'is', null)
+            .gte('sent_at', dayStart)
+            .lte('sent_at', dayEnd);
+          cap = Math.min(cap, Math.max(0, 300 - (sentToday || 0)));
+          if (cap <= 0) {
+            return res.status(429).json({
+              success: false,
+              error: 'Daily email limit reached (300/day). Try again tomorrow.',
+              data: { sent: 0, failed: 0, remaining: null, campaign_status: campaign.status }
+            });
+          }
+        }
+
+        const { data: pending, error: pendErr } = await dbClient
+          .from('marketing_campaign_recipients')
+          .select('id, recipient_value')
+          .eq('campaign_id', campaignId)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true })
+          .limit(cap);
+
+        if (pendErr || !pending || pending.length === 0) {
+          const remaining = await dbClient.from('marketing_campaign_recipients').select('id').eq('campaign_id', campaignId).eq('status', 'pending');
+          if (remaining?.data?.length === 0) {
+            await dbClient.from('marketing_campaigns').update({ status: 'completed' }).eq('id', campaignId);
+          }
+          return res.json({
+            success: true,
+            data: {
+              sent: 0,
+              failed: 0,
+              remaining: remaining?.data?.length ?? 0,
+              campaign_status: remaining?.data?.length === 0 ? 'completed' : campaign.status
+            }
+          });
+        }
+
+        let sentCount = 0;
+        let failCount = 0;
+        const now = new Date().toISOString();
+
+        for (const rec of pending) {
+          try {
+            if (campaign.type === 'email') {
+              const nodemailer = await import('nodemailer');
+              const transporter = nodemailer.default.createTransport({
+                host: process.env.EMAIL_HOST,
+                port: parseInt(process.env.EMAIL_PORT || '587'),
+                secure: false,
+                auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+              });
+              const recipientDisplay = rec.recipient_value && rec.recipient_value.includes('@')
+                ? (rec.recipient_value.split('@')[0] || 'Subscriber').replace(/[^a-zA-Z0-9._-]/g, ' ') || 'Subscriber'
+                : 'Subscriber';
+              const html = buildCampaignEmailHtml(campaign.subject || 'Newsletter', campaign.body, recipientDisplay);
+              await transporter.sendMail({
+                from: '"Andiamo Events" <contact@andiamoevents.com>',
+                replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+                to: rec.recipient_value,
+                subject: campaign.subject || 'Newsletter',
+                html
+              });
+              await dbClient.from('marketing_campaign_recipients').update({ status: 'sent', sent_at: now }).eq('id', rec.id);
+              sentCount++;
+            } else {
+              const formatted = formatPhoneNumber(rec.recipient_value);
+              if (!formatted) {
+                await dbClient.from('marketing_campaign_recipients').update({ status: 'failed', error_message: 'Invalid phone format', sent_at: now }).eq('id', rec.id);
+                failCount++;
+                continue;
+              }
+              const responseData = await sendSms(formatted, campaign.body);
+              const isSuccess = responseData.status === 200 && responseData.data && (responseData.data.code === 'ok' || responseData.data.code === '200' || (responseData.data.message && responseData.data.message.toLowerCase().includes('successfully')));
+              if (isSuccess) {
+                await dbClient.from('marketing_campaign_recipients').update({ status: 'sent', sent_at: now }).eq('id', rec.id);
+                sentCount++;
+              } else {
+                const errMsg = responseData.data?.message || (responseData.data?.code ? `Error code ${responseData.data.code}` : 'SMS failed');
+                await dbClient.from('marketing_campaign_recipients').update({ status: 'failed', error_message: errMsg, sent_at: now }).eq('id', rec.id);
+                failCount++;
+              }
+            }
+          } catch (err) {
+            await dbClient.from('marketing_campaign_recipients').update({ status: 'failed', error_message: err.message || 'Unknown error', sent_at: now }).eq('id', rec.id);
+            failCount++;
+          }
+          const delay = campaign.delay_ms != null ? campaign.delay_ms : (campaign.type === 'email' ? 500 : 100);
+          await new Promise(r => setTimeout(r, delay));
+        }
+
+        const { data: remainingRecs } = await dbClient.from('marketing_campaign_recipients').select('id').eq('campaign_id', campaignId).eq('status', 'pending');
+        const remaining = remainingRecs?.length ?? 0;
+        if (remaining === 0) {
+          await dbClient.from('marketing_campaigns').update({ status: 'completed' }).eq('id', campaignId);
+        }
+
+        return res.json({
+          success: true,
+          data: {
+            sent: sentCount,
+            failed: failCount,
+            remaining,
+            campaign_status: remaining === 0 ? 'completed' : campaign.status
+          }
+        });
+      } catch (err) {
+        console.error('Error send-batch:', err);
+        return res.status(500).json({ success: false, error: err.message });
+      }
+    }
+
+    // ============================================
+    // PATCH /api/marketing/campaigns/:id - Pause/resume
+    // ============================================
+    if (path.match(/^\/api\/marketing\/campaigns\/[^/]+$/) && method === 'PATCH') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ success: false, error: 'Supabase not configured' });
+        }
+
+        const campaignId = path.split('/')[4];
+        if (!campaignId) {
+          return res.status(400).json({ success: false, error: 'Campaign ID required' });
+        }
+
+        const bodyData = await parseBody(req);
+        const { status: newStatus } = bodyData;
+        if (!newStatus || !['paused', 'sending'].includes(newStatus)) {
+          return res.status(400).json({ success: false, error: 'status must be paused or sending' });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        let supabaseService = null;
+        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+        } else {
+          supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+        }
+        const { error } = await supabaseService.from('marketing_campaigns').update({ status: newStatus }).eq('id', campaignId);
+        if (error) {
+          return res.status(500).json({ success: false, error: error.message });
+        }
+        return res.json({ success: true, data: { status: newStatus } });
+      } catch (err) {
+        console.error('Error PATCH campaign:', err);
+        return res.status(500).json({ success: false, error: err.message });
       }
     }
 

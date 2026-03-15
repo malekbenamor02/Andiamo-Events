@@ -126,3 +126,72 @@ export interface SourceCountsResponse {
     withPhone: number;
   };
 }
+
+// --- Email (parity with SMS: same source/filter shape for BulkEmailSelector) ---
+
+export interface EmailSourceSelection {
+  orders: boolean;
+  newsletter_subscribers: boolean;
+  approved_ambassadors: boolean;
+  ambassador_applications: boolean;
+  aio_events_submissions: boolean;
+}
+
+export interface EmailSourceFilters {
+  orders: OrdersFilters;
+  newsletter_subscribers: PhoneSubscribersFilters; // dateFrom, dateTo
+  approved_ambassadors: ApprovedAmbassadorsFilters;
+  ambassador_applications: AmbassadorApplicationsFilters;
+  aio_events_submissions: AioEventsFilters;
+}
+
+export interface EmailAddressWithMetadata {
+  email: string;
+  source: keyof EmailSourceSelection;
+  sourceId: string;
+  city?: string | null;
+  ville?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface EmailAddressesPreviewResponse {
+  emailAddresses: EmailAddressWithMetadata[];
+  counts: {
+    total: number;
+    unique: number;
+    duplicates: number;
+    bySource: Record<string, number>;
+  };
+  duplicates: Array<{ email: string; sources: string[] }>;
+}
+
+export interface EmailCountsResponse {
+  orders?: { total: number; withEmail: number; byCity?: Record<string, number> };
+  newsletter_subscribers?: { total: number; withEmail: number };
+  approved_ambassadors?: { total: number; withEmail: number };
+  ambassador_applications?: { total: number; withEmail: number; byStatus?: Record<string, number> };
+  aio_events_submissions?: { total: number; withEmail: number };
+}
+
+// Marketing campaigns
+export interface MarketingCampaign {
+  id: string;
+  type: 'email' | 'sms';
+  name: string | null;
+  subject: string | null;
+  body: string;
+  status: string;
+  batch_size: number;
+  period: string;
+  created_at: string;
+  delay_ms?: number | null;
+  batch_delay_ms?: number | null;
+  counts?: { total: number; sent: number; failed: number; pending: number };
+}
+
+export interface SendBatchResponse {
+  sent: number;
+  failed: number;
+  remaining: number;
+  campaign_status: string;
+}

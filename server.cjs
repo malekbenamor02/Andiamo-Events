@@ -4435,6 +4435,27 @@ app.get('/api/admin/phone-numbers/sources', requireAdminAuth, async (req, res) =
 });
 
 // ============================================
+// Email addresses & marketing campaigns (forward to api/misc.js for parity with Vercel)
+// ============================================
+async function forwardToMisc(req, res) {
+  try {
+    const mod = await import('./api/misc.js');
+    const handler = mod.default;
+    return await handler(req, res);
+  } catch (err) {
+    console.error('Forward to misc.js failed:', err);
+    res.status(500).json({ success: false, error: err.message || 'Request failed' });
+  }
+}
+
+app.get('/api/admin/email-addresses/counts', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.get('/api/admin/email-addresses/sources', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.post('/api/marketing/campaigns', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.get('/api/marketing/campaigns', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.post('/api/marketing/campaigns/:id/send-batch', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.patch('/api/marketing/campaigns/:id', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+
+// ============================================
 // GET /api/admin/phone-numbers/counts - Get quick counts per source
 // ============================================
 app.get('/api/admin/phone-numbers/counts', requireAdminAuth, async (req, res) => {

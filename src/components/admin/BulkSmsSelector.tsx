@@ -3,16 +3,18 @@
  * Allows admin to select phone numbers from multiple sources, apply filters, and send bulk SMS
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import Loader from '@/components/ui/Loader';
 import { 
@@ -35,15 +37,31 @@ import {
   getSourceDisplayName,
   hasSelectedSource
 } from '@/lib/phone-numbers';
-import { PhoneNumberPreview } from './PhoneNumberPreview';
 import { BulkSmsResults } from './BulkSmsResults';
+
+function parsePhoneCampaignList(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(/[\n,;]+/)) {
+    let c = part.trim().replace(/\D/g, '');
+    if (c.startsWith('00216')) c = c.substring(5);
+    else if (c.startsWith('216')) c = c.substring(3);
+    c = c.replace(/^0+/, '');
+    if (c.length === 8 && /^[2594]/.test(c) && !seen.has(c)) {
+      seen.add(c);
+      out.push(c);
+    }
+  }
+  return out;
+}
 
 interface BulkSmsSelectorProps {
   language: 'en' | 'fr';
   onSendComplete?: () => void;
+  onCampaignProgress?: () => void;
 }
 
-export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorProps) {
+export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }: BulkSmsSelectorProps) {
   const { toast } = useToast();
   
   // Source selection state
@@ -77,6 +95,15 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
 
   // Results state
   const [bulkSmsResults, setBulkSmsResults] = useState<any>(null);
+
+  // Campaign state (batched sending over time)
+  const [batchSize, setBatchSize] = useState(100);
+  const [delayBetweenSmsMin, setDelayBetweenSmsMin] = useState('0.5');
+  const [delayBetweenBatchesMin, setDelayBetweenBatchesMin] = useState('2');
+  const [startingCampaign, setStartingCampaign] = useState(false);
+  const cancelAutoSendRef = useRef(false);
+  const [recipientMode, setRecipientMode] = useState<'sources' | 'custom'>('sources');
+  const [customPhonesRaw, setCustomPhonesRaw] = useState('');
 
   // Load source counts on mount
   useEffect(() => {
@@ -338,6 +365,118 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
     }
   };
 
+  const handleStartCampaign = async () => {
+    if (!bulkSmsMessage.trim()) {
+      toast({
+        title: language === 'en' ? 'Message required' : 'Message requis',
+        description: language === 'en' ? 'Enter the SMS body' : 'Saisissez le message SMS',
+        variant: 'destructive'
+      });
+      return;
+    }
+    if (recipientMode === 'sources') {
+      if (!hasSelectedSource(selectedSources) || previewPhoneNumbers.length === 0) {
+        toast({
+          title: language === 'en' ? 'No Sources / numbers' : 'Aucune source / numéros',
+          description: language === 'en' ? 'Select sources and ensure preview has numbers' : 'Sélectionnez des sources et vérifiez l\'aperçu',
+          variant: 'destructive'
+        });
+        return;
+      }
+    } else if (parsePhoneCampaignList(customPhonesRaw).length === 0) {
+      toast({
+        title: language === 'en' ? 'No valid numbers' : 'Aucun numéro valide',
+        description: language === 'en' ? 'Paste 8-digit TN numbers (2/4/5/9…)' : 'Collez des numéros TN 8 chiffres',
+        variant: 'destructive'
+      });
+      return;
+    }
+    cancelAutoSendRef.current = false;
+    setStartingCampaign(true);
+    const delaySmsMs = Math.max(0, Math.round((parseFloat(String(delayBetweenSmsMin).replace(',', '.')) || 0) * 60 * 1000));
+    const delayBatchesMs = Math.max(0, Math.round((parseFloat(String(delayBetweenBatchesMin).replace(',', '.')) || 0) * 60 * 1000));
+    try {
+      const createPayload =
+        recipientMode === 'custom'
+          ? {
+              type: 'sms' as const,
+              body: bulkSmsMessage.trim(),
+              batch_size: batchSize,
+              period: 'day',
+              recipients: parsePhoneCampaignList(customPhonesRaw),
+              delay_ms: delaySmsMs,
+              batch_delay_ms: delayBatchesMs
+            }
+          : (() => {
+              const sourcesConfig: Record<string, { enabled: boolean; filters: unknown }> = {};
+              (Object.keys(selectedSources) as (keyof SourceSelection)[]).forEach(key => {
+                sourcesConfig[key] = { enabled: selectedSources[key], filters: sourceFilters[key] };
+              });
+              return {
+                type: 'sms' as const,
+                body: bulkSmsMessage.trim(),
+                batch_size: batchSize,
+                period: 'day',
+                sources: sourcesConfig,
+                filters: sourceFilters,
+                delay_ms: delaySmsMs,
+                batch_delay_ms: delayBatchesMs
+              };
+            })();
+      const createRes = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGNS), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(createPayload)
+      });
+      const createData = await createRes.json();
+      if (!createData.success || !createData.data?.campaign_id) {
+        throw new Error(createData.error || 'Failed to create campaign');
+      }
+      const campaignId = createData.data.campaign_id;
+
+      for (;;) {
+        if (cancelAutoSendRef.current) {
+          toast({
+            title: language === 'en' ? 'Stopped' : 'Arrêté',
+            description: language === 'en' ? 'Auto-send cancelled.' : 'Envoi auto annulé.',
+            variant: 'default'
+          });
+          break;
+        }
+        const batchRes = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN_SEND_BATCH(campaignId)), {
+          method: 'POST',
+          credentials: 'include'
+        });
+        const batchData = await batchRes.json();
+        onCampaignProgress?.();
+        if (!batchData.success) {
+          throw new Error(batchData.error || 'Failed to send this group');
+        }
+        const remaining = batchData.data?.remaining ?? 0;
+        if (remaining <= 0) {
+          toast({
+            title: language === 'en' ? 'Campaign complete' : 'Campagne terminée',
+            description: language === 'en' ? 'All SMS batches sent.' : 'Tous les lots SMS ont été envoyés.',
+            variant: 'default'
+          });
+          break;
+        }
+        await new Promise((r) => setTimeout(r, delayBatchesMs));
+      }
+      if (onSendComplete) onSendComplete();
+      if (recipientMode === 'custom') setCustomPhonesRaw('');
+    } catch (error: any) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: error.message || (language === 'en' ? 'Failed to start campaign' : 'Échec du démarrage'),
+        variant: 'destructive'
+      });
+    } finally {
+      setStartingCampaign(false);
+    }
+  };
+
   const handleSourceToggle = (source: keyof SourceSelection) => {
     setSelectedSources(prev => ({
       ...prev,
@@ -382,7 +521,20 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
       messages: 'Approx. messages',
       refresh: 'Refresh',
       export: 'Export',
-      import: 'Import'
+      import: 'Import',
+      batchSize: 'Max SMS per send (then pause)',
+      startCampaign: 'Start campaign',
+      starting: 'Starting...',
+      campaignProgress: 'Campaign in progress',
+      sentTotal: 'Sent',
+      remaining: 'Remaining',
+      tabSources: 'From sources',
+      tabCustom: 'Custom list',
+      customPlaceholder: 'One number per line (8 digits, e.g. 21234567)',
+      customCount: 'Valid numbers',
+      delaySms: 'Pause between each SMS (min)',
+      delayBatches: 'Pause before next group (min)',
+      cancelAuto: 'Stop auto-send'
     },
     fr: {
       title: 'Sélection SMS en Masse',
@@ -402,7 +554,20 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
       messages: 'Messages approx.',
       refresh: 'Actualiser',
       export: 'Exporter',
-      import: 'Importer'
+      import: 'Importer',
+      batchSize: 'Taille du lot (par période)',
+      startCampaign: 'Démarrer la campagne',
+      starting: 'Démarrage...',
+      campaignProgress: 'Campagne en cours',
+      sentTotal: 'Envoyé',
+      remaining: 'Restant',
+      tabSources: 'Depuis les sources',
+      tabCustom: 'Liste personnalisée',
+      customPlaceholder: 'Un numéro par ligne (8 chiffres)',
+      customCount: 'Numéros valides',
+      delaySms: 'Pause entre chaque SMS (min)',
+      delayBatches: 'Pause avant le prochain groupe (min)',
+      cancelAuto: 'Arrêter l\'envoi auto'
     }
   }[language];
 
@@ -414,9 +579,31 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
             <Phone className="w-5 h-5 text-primary" />
             {t.title}
           </CardTitle>
-          <CardDescription>{t.description}</CardDescription>
+          <CardDescription>
+            {language === 'en'
+              ? 'Same campaign: sources or paste a list. Messages are sent in groups with pauses.'
+              : 'Même campagne : sources ou liste collée. Les messages partent par groupes avec des pauses.'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          <Tabs value={recipientMode} onValueChange={(v) => setRecipientMode(v as 'sources' | 'custom')}>
+            <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsTrigger value="sources">{t.tabSources}</TabsTrigger>
+              <TabsTrigger value="custom">{t.tabCustom}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="custom" className="space-y-4 mt-4">
+              <Label>{t.tabCustom}</Label>
+              <Textarea
+                value={customPhonesRaw}
+                onChange={(e) => setCustomPhonesRaw(e.target.value)}
+                placeholder={t.customPlaceholder}
+                className="min-h-[120px] font-mono text-sm"
+              />
+              <p className="text-sm text-muted-foreground">
+                {t.customCount}: {parsePhoneCampaignList(customPhonesRaw).length}
+              </p>
+            </TabsContent>
+            <TabsContent value="sources" className="space-y-6 mt-4">
           {/* Source Selection */}
           <div className="space-y-4">
             <Label className="text-base font-semibold">{t.selectSources}</Label>
@@ -635,11 +822,6 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
                       </AlertDescription>
                     </Alert>
                   )}
-
-                  <PhoneNumberPreview
-                    phoneNumbers={previewPhoneNumbers}
-                    language={language}
-                  />
                 </div>
               ) : (
                 <Alert>
@@ -649,6 +831,8 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
               )}
             </div>
           )}
+            </TabsContent>
+          </Tabs>
 
           <Separator />
 
@@ -665,27 +849,89 @@ export function BulkSmsSelector({ language, onSendComplete }: BulkSmsSelectorPro
               <span>{t.characters}: {bulkSmsMessage.length}</span>
               <span>{t.messages}: {Math.ceil(bulkSmsMessage.length / 160)}</span>
             </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.batchSize}</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={batchSize}
+                  onChange={(e) => setBatchSize(Math.min(500, Math.max(1, parseInt(e.target.value, 10) || 100)))}
+                  className="w-24"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.delaySms}</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.5"
+                  value={delayBetweenSmsMin}
+                  onChange={(e) => setDelayBetweenSmsMin(e.target.value.replace(/[^\d.,]/g, ''))}
+                  className="w-24"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.delayBatches}</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="2"
+                  value={delayBetweenBatchesMin}
+                  onChange={(e) => setDelayBetweenBatchesMin(e.target.value.replace(/[^\d.,]/g, ''))}
+                  className="w-28"
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Send Button */}
-          <Button
-            onClick={handleSendBulkSms}
-            disabled={sendingBulkSms || !hasSelectedSource(selectedSources) || !bulkSmsMessage.trim() || previewPhoneNumbers.length === 0}
-            className="w-full"
-            size="lg"
-          >
-            {sendingBulkSms ? (
-              <>
-                <Loader size="sm" className="mr-2" />
-                {t.sending}
-              </>
-            ) : (
-              <>
-                <Send className="w-5 h-5 mr-2" />
-                {t.send} ({previewPhoneNumbers.length} {language === 'en' ? 'numbers' : 'numéros'})
-              </>
+          {/* Send SMS (one-shot) and Start campaign */}
+          <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
+            <Button
+              onClick={handleSendBulkSms}
+              disabled={
+                recipientMode === 'custom' ||
+                sendingBulkSms ||
+                startingCampaign ||
+                !hasSelectedSource(selectedSources) ||
+                !bulkSmsMessage.trim() ||
+                previewPhoneNumbers.length === 0
+              }
+              className="flex-1"
+              size="lg"
+            >
+              {sendingBulkSms ? (
+                <><Loader size="sm" className="mr-2" />{t.sending}</>
+              ) : (
+                <><Send className="w-5 h-5 mr-2" />{t.send} ({previewPhoneNumbers.length} {language === 'en' ? 'numbers' : 'numéros'})</>
+              )}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={handleStartCampaign}
+              disabled={
+                startingCampaign ||
+                sendingBulkSms ||
+                !bulkSmsMessage.trim() ||
+                (recipientMode === 'sources' && (!hasSelectedSource(selectedSources) || previewPhoneNumbers.length === 0)) ||
+                (recipientMode === 'custom' && parsePhoneCampaignList(customPhonesRaw).length === 0)
+              }
+              className="flex-1"
+              size="lg"
+            >
+              {startingCampaign ? (
+                <><Loader size="sm" className="mr-2" />{t.starting}</>
+              ) : (
+                <><Send className="w-5 h-5 mr-2" />{t.startCampaign} ({recipientMode === 'custom' ? parsePhoneCampaignList(customPhonesRaw).length : previewPhoneNumbers.length} · auto)</>
+              )}
+            </Button>
+            {startingCampaign && (
+              <Button type="button" variant="outline" onClick={() => { cancelAutoSendRef.current = true; }}>
+                {t.cancelAuto}
+              </Button>
             )}
-          </Button>
+          </div>
 
           {sendingBulkSms && sendProgress.total > 0 && (
             <div className="space-y-2">

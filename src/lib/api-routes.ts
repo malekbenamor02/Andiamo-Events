@@ -38,6 +38,15 @@ export const API_ROUTES = {
   ADMIN_PHONE_NUMBERS_SOURCES: '/api/admin/phone-numbers/sources',
   ADMIN_PHONE_NUMBERS_COUNTS: '/api/admin/phone-numbers/counts',
   ADMIN_BULK_SMS_SEND: '/api/admin/bulk-sms/send',
+
+  // Bulk Email (Admin) - same source/filter model as SMS
+  ADMIN_EMAIL_ADDRESSES_COUNTS: '/api/admin/email-addresses/counts',
+  ADMIN_EMAIL_ADDRESSES_SOURCES: '/api/admin/email-addresses/sources',
+
+  // Marketing campaigns (bulk email/SMS in batches)
+  MARKETING_CAMPAIGNS: '/api/marketing/campaigns',
+  MARKETING_CAMPAIGN: (id: string) => `/api/marketing/campaigns/${id}`,
+  MARKETING_CAMPAIGN_SEND_BATCH: (id: string) => `/api/marketing/campaigns/${id}/send-batch`,
   
   // Phone Subscription
   PHONE_SUBSCRIBE: '/api/phone-subscribe',

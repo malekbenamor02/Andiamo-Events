@@ -2,7 +2,7 @@
  * Utility functions for phone number processing in bulk SMS feature
  */
 
-import type { PhoneNumberWithMetadata, SourceSelection } from '@/types/bulk-sms';
+import type { PhoneNumberWithMetadata, SourceSelection, EmailSourceSelection } from '@/types/bulk-sms';
 
 /**
  * Normalize phone number to Tunisian format (8 digits, no prefix)
@@ -89,5 +89,23 @@ export function getSourceDisplayName(source: keyof SourceSelection, language: 'e
  * Check if at least one source is selected
  */
 export function hasSelectedSource(selection: SourceSelection): boolean {
+  return Object.values(selection).some(Boolean);
+}
+
+/**
+ * Get email source display name (for BulkEmailSelector)
+ */
+export function getEmailSourceDisplayName(source: keyof EmailSourceSelection, language: 'en' | 'fr' = 'en'): string {
+  const names: Record<keyof EmailSourceSelection, { en: string; fr: string }> = {
+    orders: { en: 'Orders (Clients)', fr: 'Commandes (Clients)' },
+    newsletter_subscribers: { en: 'Newsletter Subscribers', fr: 'Abonnés Newsletter' },
+    approved_ambassadors: { en: 'Approved Ambassadors', fr: 'Ambassadeurs Approuvés' },
+    ambassador_applications: { en: 'Ambassador Applications', fr: 'Candidatures Ambassadeurs' },
+    aio_events_submissions: { en: 'AIO Events Submissions', fr: 'Soumissions AIO Events' }
+  };
+  return names[source]?.[language] || source;
+}
+
+export function hasSelectedEmailSource(selection: EmailSourceSelection): boolean {
   return Object.values(selection).some(Boolean);
 }
