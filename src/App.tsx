@@ -59,6 +59,7 @@ const GalleryEvent = lazyWithChunkRecovery(() => import("./pages/GalleryEvent"))
 const UpcomingEvent = lazyWithChunkRecovery(() => import("./pages/UpcomingEvent"));
 const ScannerApp = lazyWithChunkRecovery(() => import("./pages/scanner/ScannerApp"));
 const PosApp = lazyWithChunkRecovery(() => import("./pages/pos/PosApp"));
+import type { PosAppProps } from "./pages/pos/PosApp";
 import DisableInspect from "./components/security/DisableInspect";
 import ErrorBoundary from "./components/ErrorBoundary";
 import PhoneCapturePopup from "./components/PhoneCapturePopup";
@@ -136,7 +137,7 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
           <Suspense fallback={<LoadingScreen />}>
             <Routes>
               <Route path="/scanner/*" element={<ScannerApp language={language} />} />
-              <Route path="/pos/:outletSlug/*" element={<PosApp language={language} />} />
+              <Route path="/pos/:outletSlug/*" element={<PosApp {...({ language, toggleLanguage } satisfies PosAppProps)} />} />
               <Route path="/" element={<Index language={language} />} />
               <Route path="/events" element={<Events language={language} />} />
               <Route path="/gallery/:eventSlug" element={<GalleryEvent language={language} />} />

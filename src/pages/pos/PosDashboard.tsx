@@ -9,11 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import Loader from "@/components/ui/Loader";
+import Navigation from "@/components/layout/Navigation";
+import Footer from "@/components/layout/Footer";
 import { Store, LogOut, ShoppingCart, Minus, Plus, CheckCircle, AlertCircle } from "lucide-react";
 
 interface PosDashboardProps {
   outletSlug: string;
   language: "en" | "fr";
+  toggleLanguage: () => void;
 }
 
 interface Event {
@@ -31,7 +34,7 @@ interface Pass {
   sold_quantity: number;
 }
 
-export default function PosDashboard({ outletSlug, language }: PosDashboardProps) {
+export default function PosDashboard({ outletSlug, language, toggleLanguage }: PosDashboardProps) {
   const navigate = useNavigate();
   const [auth, setAuth] = useState<{ pos_user: { name: string }; outlet: { name: string } } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,8 +124,9 @@ export default function PosDashboard({ outletSlug, language }: PosDashboardProps
   if (loading) return <div className="min-h-screen bg-[#1A1A1A] flex items-center justify-center"><Loader size="lg" className="[background:#E21836]" /></div>;
 
   return (
-    <div className="min-h-screen bg-[#1A1A1A] p-4">
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen bg-[#1A1A1A]">
+      <Navigation language={language} toggleLanguage={toggleLanguage} />
+      <div className="max-w-2xl mx-auto p-4 pt-20">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-xl font-bold flex items-center gap-2 text-white"><Store className="w-6 h-6" style={{ color: "#E21836" }} />{auth?.outlet?.name} — {auth?.pos_user?.name}</h1>
           <Button variant="ghost" size="sm" className="text-[#B0B0B0]" onClick={logout}><LogOut className="w-4 h-4 mr-1" />{t.logout}</Button>
@@ -206,6 +210,7 @@ export default function PosDashboard({ outletSlug, language }: PosDashboardProps
           </DialogContent>
         </Dialog>
       </div>
+      <Footer language={language} />
     </div>
   );
 }

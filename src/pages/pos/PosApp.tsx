@@ -3,11 +3,12 @@ import { useParams, useLocation, useNavigate } from "react-router-dom";
 import PosLogin from "./PosLogin";
 import PosDashboard from "./PosDashboard";
 
-interface PosAppProps {
+export interface PosAppProps {
   language: "en" | "fr";
+  toggleLanguage?: () => void;
 }
 
-export default function PosApp({ language }: PosAppProps) {
+export default function PosApp({ language, toggleLanguage = () => {} }: PosAppProps) {
   const { outletSlug } = useParams<{ outletSlug: string }>();
   const location = useLocation();
   const navigate = useNavigate();
@@ -24,7 +25,7 @@ export default function PosApp({ language }: PosAppProps) {
     return <div className="min-h-screen bg-[#1A1A1A] flex items-center justify-center text-[#B0B0B0]">Invalid outlet</div>;
   }
 
-  if (isDashboard) return <PosDashboard outletSlug={outletSlug} language={language} />;
+  if (isDashboard) return <PosDashboard outletSlug={outletSlug} language={language} toggleLanguage={toggleLanguage} />;
   // Login form: shown for /pos/:slug and /pos/:slug/login regardless of whether the outlet exists in DB (outlet is validated only on submit)
   return <PosLogin outletSlug={outletSlug} language={language} />;
 }
