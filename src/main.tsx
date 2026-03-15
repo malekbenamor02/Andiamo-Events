@@ -56,7 +56,11 @@ const suppressBrowserExtensionError = (error: any) => {
          errorString.includes("Receiving end does not exist") ||
          (errorString.includes("webkit") && errorString.includes("messageHandlers")) ||
          (errorString.includes("Java object is gone") && errorString.includes("enableButtonsClickedMetaDataLogging")) ||
-         errorString.includes("reCAPTCHA Timeout");
+         errorString.includes("reCAPTCHA Timeout") ||
+         // Service worker cache errors (browser/extension SW trying to cache POST or non-Response)
+         errorString.includes("Failed to execute 'put' on 'Cache'") ||
+         errorString.includes("Request method 'POST' is unsupported") ||
+         errorString.includes("Failed to convert value to 'Response'");
 };
 
 // Set up early promise rejection handler
@@ -316,10 +320,18 @@ const setupErrorHandlers = async () => {
       return;
     }
 
+    // Suppress service worker cache errors (POST / non-Response)
+    if (errorString.includes("Failed to execute 'put' on 'Cache'") ||
+        errorString.includes("Request method 'POST' is unsupported") ||
+        errorString.includes("Failed to convert value to 'Response'")) {
+      return;
+    }
+
     // Suppress external resource errors
     if (errorString.includes("youtubei") ||
         errorString.includes("doubleclick") ||
         errorString.includes("googleads") ||
+        errorString.includes("fbevents") ||
         errorString.includes("ERR_BLOCKED_BY_CLIENT") ||
         errorString.includes("ERR_CONNECTION_CLOSED")) {
       // Don't log to console or logger

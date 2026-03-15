@@ -7708,8 +7708,12 @@ Billets envoyés par email. We Create Memories`;
         let sentCount = 0;
         let failCount = 0;
         const now = new Date().toISOString();
+        // Cap wall time so we return before gateway/proxy timeout (e.g. 60s); 50s leaves buffer
+        const maxDurationMs = Math.min(Number(process.env.MARKETING_SEND_BATCH_MAX_MS) || 50000, 55000);
+        const deadline = Date.now() + maxDurationMs;
 
         for (const rec of pending) {
+          if (Date.now() >= deadline) break;
           try {
             if (campaign.type === 'email') {
               const nodemailer = await import('nodemailer');
