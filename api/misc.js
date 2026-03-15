@@ -7339,7 +7339,7 @@ Billets envoyés par email. We Create Memories`;
         const dbClient = supabaseService || supabase;
 
         const bodyData = await parseBody(req);
-        const { type, name, subject, body, batch_size, period, sources, filters, recipients: rawRecipientsList, delay_ms, batch_delay_ms } = bodyData;
+        const { type, name, subject, body, batch_size, period, sources, filters, recipients: rawRecipientsList, delay_ms, delay_minutes, batch_delay_ms } = bodyData;
 
         if (!type || !body || (type === 'email' && !subject)) {
           return res.status(400).json({
@@ -7353,6 +7353,7 @@ Billets envoyés par email. We Create Memories`;
         const sourcesConfig = sources || {};
         const filtersConfig = filters || {};
         const delayMs = delay_ms != null ? Math.max(0, parseInt(delay_ms, 10) || 0) : null;
+        const delayMinutes = delay_minutes != null ? Math.max(0, parseFloat(delay_minutes) || 0) : null;
         const batchDelayMs = batch_delay_ms != null ? Math.max(0, parseInt(batch_delay_ms, 10) || 0) : null;
 
         const normalizeCampaignEmail = (e) => {
@@ -7380,7 +7381,8 @@ Billets envoyés par email. We Create Memories`;
           status: 'sending',
           batch_size: batchSize,
           period: periodVal,
-          delay_ms: delayMs !== null ? delayMs : null,
+          delay_ms: type === 'email' ? (delayMs !== null ? delayMs : null) : null,
+          delay_minutes: type === 'sms' ? (delayMinutes !== null ? delayMinutes : null) : null,
           batch_delay_ms: batchDelayMs !== null ? batchDelayMs : null
         };
 
@@ -7588,7 +7590,7 @@ Billets envoyés par email. We Create Memories`;
 
         const { data: campaigns, error } = await dbClient
           .from('marketing_campaigns')
-          .select('id, type, name, subject, body, status, batch_size, period, created_at, delay_ms, batch_delay_ms')
+          .select('id, type, name, subject, body, status, batch_size, period, created_at, delay_ms, delay_minutes, batch_delay_ms')
           .order('created_at', { ascending: false })
           .limit(100);
 
@@ -7648,7 +7650,7 @@ Billets envoyés par email. We Create Memories`;
 
         const { data: campaign, error: campErr } = await dbClient
           .from('marketing_campaigns')
-          .select('id, type, subject, body, status, batch_size, delay_ms')
+          .select('id, type, subject, body, status, batch_size, delay_ms, delay_minutes')
           .eq('id', campaignId)
           .single();
 
@@ -7758,7 +7760,9 @@ Billets envoyés par email. We Create Memories`;
             await dbClient.from('marketing_campaign_recipients').update({ status: 'failed', error_message: err.message || 'Unknown error', sent_at: now }).eq('id', rec.id);
             failCount++;
           }
-          const delay = campaign.delay_ms != null ? campaign.delay_ms : (campaign.type === 'email' ? 500 : 100);
+          const delay = campaign.type === 'sms'
+            ? (campaign.delay_minutes != null ? Math.max(0, Math.round(Number(campaign.delay_minutes) * 60 * 1000)) : 60000)
+            : (campaign.delay_ms != null ? campaign.delay_ms : 500);
           await new Promise(r => setTimeout(r, delay));
         }
 

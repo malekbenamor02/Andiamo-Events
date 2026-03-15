@@ -185,6 +185,7 @@ export interface MarketingCampaign {
   period: string;
   created_at: string;
   delay_ms?: number | null;
+  delay_minutes?: number | null;
   batch_delay_ms?: number | null;
   counts?: { total: number; sent: number; failed: number; pending: number };
 }

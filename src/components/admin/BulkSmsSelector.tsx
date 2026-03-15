@@ -393,7 +393,7 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
     }
     cancelAutoSendRef.current = false;
     setStartingCampaign(true);
-    const delaySmsMs = Math.max(0, Math.round((parseFloat(String(delayBetweenSmsMin).replace(',', '.')) || 0) * 60 * 1000));
+    const delaySmsMinutes = Math.max(0, parseFloat(String(delayBetweenSmsMin).replace(',', '.')) || 0.5);
     const delayBatchesMs = Math.max(0, Math.round((parseFloat(String(delayBetweenBatchesMin).replace(',', '.')) || 0) * 60 * 1000));
     try {
       const createPayload =
@@ -404,7 +404,7 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
               batch_size: batchSize,
               period: 'day',
               recipients: parsePhoneCampaignList(customPhonesRaw),
-              delay_ms: delaySmsMs,
+              delay_minutes: delaySmsMinutes,
               batch_delay_ms: delayBatchesMs
             }
           : (() => {
@@ -419,7 +419,7 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
                 period: 'day',
                 sources: sourcesConfig,
                 filters: sourceFilters,
-                delay_ms: delaySmsMs,
+                delay_minutes: delaySmsMinutes,
                 batch_delay_ms: delayBatchesMs
               };
             })();
