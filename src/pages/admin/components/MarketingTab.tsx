@@ -108,7 +108,9 @@ export function MarketingTab(p: MarketingTabProps) {
     if ((c.counts?.pending ?? 0) <= 0 || resumingId || sendingOneBatchId) return;
     cancelResumeRef.current = false;
     setResumingId(c.id);
-    const batchDelay = c.batch_delay_ms != null && c.batch_delay_ms >= 0 ? c.batch_delay_ms : 2000;
+    const batchDelayMs = c.batch_delay_minutes != null && c.batch_delay_minutes >= 0
+      ? Math.round(c.batch_delay_minutes * 60 * 1000)
+      : 2 * 60 * 1000;
     try {
       for (;;) {
         if (cancelResumeRef.current) break;
@@ -129,7 +131,7 @@ export function MarketingTab(p: MarketingTabProps) {
         if (!data.success) break;
         const remaining = data.data?.remaining ?? 0;
         if (remaining <= 0) break;
-        await new Promise((r) => setTimeout(r, batchDelay));
+        await new Promise((r) => setTimeout(r, batchDelayMs));
       }
     } finally {
       setResumingId(null);

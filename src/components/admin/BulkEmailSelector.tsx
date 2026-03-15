@@ -191,8 +191,8 @@ export function BulkEmailSelector({ language, onCampaignCreated, onCampaignProgr
 
     cancelAutoSendRef.current = false;
     setStartingCampaign(true);
-    const delayEmailsMs = Math.max(0, Math.round((parseFloat(String(delayBetweenEmailsMin).replace(',', '.')) || 0) * 60 * 1000));
-    const delayBatchesMs = Math.max(0, Math.round((parseFloat(String(delayBetweenBatchesMin).replace(',', '.')) || 0) * 60 * 1000));
+    const delayEmailsMin = Math.max(0, parseFloat(String(delayBetweenEmailsMin).replace(',', '.')) || 0);
+    const delayBatchesMin = Math.max(0, parseFloat(String(delayBetweenBatchesMin).replace(',', '.')) || 0);
     try {
       const createPayload =
         recipientMode === 'custom'
@@ -203,8 +203,8 @@ export function BulkEmailSelector({ language, onCampaignCreated, onCampaignProgr
               batch_size: Math.min(batchSize, 300),
               period: 'day',
               recipients: parseEmailList(customRecipientsRaw),
-              delay_ms: delayEmailsMs,
-              batch_delay_ms: delayBatchesMs
+              delay_minutes: delayEmailsMin,
+              batch_delay_minutes: delayBatchesMin
             }
           : (() => {
               const sourcesConfig: Record<string, { enabled: boolean; filters: unknown }> = {};
@@ -219,8 +219,8 @@ export function BulkEmailSelector({ language, onCampaignCreated, onCampaignProgr
                 period: 'day',
                 sources: sourcesConfig,
                 filters: sourceFilters,
-                delay_ms: delayEmailsMs,
-                batch_delay_ms: delayBatchesMs
+                delay_minutes: delayEmailsMin,
+                batch_delay_minutes: delayBatchesMin
               };
             })();
 
@@ -281,7 +281,7 @@ export function BulkEmailSelector({ language, onCampaignCreated, onCampaignProgr
           });
           break;
         }
-        await new Promise((r) => setTimeout(r, delayBatchesMs));
+        await new Promise((r) => setTimeout(r, delayBatchesMin * 60 * 1000));
       }
 
       onCampaignCreated?.(campaignId, totalRecipients, totalSent, remaining);
@@ -331,8 +331,8 @@ export function BulkEmailSelector({ language, onCampaignCreated, onCampaignProgr
         subject: 'Subject',
         body: 'Body',
         batchSize: 'Max emails per send (then pause)',
-        delayEmails: 'Pause between each email (ms)',
-        delayBatches: 'Pause before next group (ms)',
+delayEmails: 'Pause between each email (min)',
+    delayBatches: 'Pause before next group (min)',
         cancelAuto: 'Stop auto-send',
         startCampaign: 'Start campaign (auto-send all)',
         starting: 'Sending…',

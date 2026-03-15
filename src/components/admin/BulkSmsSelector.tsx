@@ -393,8 +393,8 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
     }
     cancelAutoSendRef.current = false;
     setStartingCampaign(true);
-    const delaySmsMinutes = Math.max(0, parseFloat(String(delayBetweenSmsMin).replace(',', '.')) || 0.5);
-    const delayBatchesMs = Math.max(0, Math.round((parseFloat(String(delayBetweenBatchesMin).replace(',', '.')) || 0) * 60 * 1000));
+    const delaySmsMin = Math.max(0, parseFloat(String(delayBetweenSmsMin).replace(',', '.')) || 0);
+    const delayBatchesMin = Math.max(0, parseFloat(String(delayBetweenBatchesMin).replace(',', '.')) || 0);
     try {
       const createPayload =
         recipientMode === 'custom'
@@ -404,8 +404,8 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
               batch_size: batchSize,
               period: 'day',
               recipients: parsePhoneCampaignList(customPhonesRaw),
-              delay_minutes: delaySmsMinutes,
-              batch_delay_ms: delayBatchesMs
+              delay_minutes: delaySmsMin,
+              batch_delay_minutes: delayBatchesMin
             }
           : (() => {
               const sourcesConfig: Record<string, { enabled: boolean; filters: unknown }> = {};
@@ -419,8 +419,8 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
                 period: 'day',
                 sources: sourcesConfig,
                 filters: sourceFilters,
-                delay_minutes: delaySmsMinutes,
-                batch_delay_ms: delayBatchesMs
+                delay_minutes: delaySmsMin,
+                batch_delay_minutes: delayBatchesMin
               };
             })();
       const createRes = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGNS), {
@@ -462,7 +462,7 @@ export function BulkSmsSelector({ language, onSendComplete, onCampaignProgress }
           });
           break;
         }
-        await new Promise((r) => setTimeout(r, delayBatchesMs));
+        await new Promise((r) => setTimeout(r, delayBatchesMin * 60 * 1000));
       }
       if (onSendComplete) onSendComplete();
       if (recipientMode === 'custom') setCustomPhonesRaw('');
