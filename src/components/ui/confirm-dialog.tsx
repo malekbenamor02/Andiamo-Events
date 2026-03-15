@@ -8,6 +8,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import Loader from "@/components/ui/Loader";
 
 const dialogClass = "bg-[#1F1F1F] border-[#2A2A2A] text-white";
 
@@ -20,6 +21,10 @@ export interface ConfirmDialogProps {
   cancelLabel: string;
   onConfirm: () => void;
   variant?: "danger" | "default";
+  /** When true, confirm button shows loading and is disabled */
+  confirmLoading?: boolean;
+  /** When false, dialog does not close on confirm (parent closes after async work). Default true. */
+  closeOnConfirm?: boolean;
 }
 
 export function ConfirmDialog({
@@ -31,10 +36,13 @@ export function ConfirmDialog({
   cancelLabel,
   onConfirm,
   variant = "default",
+  confirmLoading = false,
+  closeOnConfirm = true,
 }: ConfirmDialogProps) {
   const handleConfirm = () => {
+    if (confirmLoading) return;
     onConfirm();
-    onOpenChange(false);
+    if (closeOnConfirm) onOpenChange(false);
   };
 
   const handleCancel = () => onOpenChange(false);
@@ -56,6 +64,7 @@ export function ConfirmDialog({
             variant="outline"
             className="border-[#2A2A2A] text-[#B0B0B0] hover:bg-[#2A2A2A] hover:text-white"
             onClick={handleCancel}
+            disabled={confirmLoading}
           >
             {cancelLabel}
           </Button>
@@ -67,8 +76,10 @@ export function ConfirmDialog({
                 : "bg-[#E21836] hover:bg-[#c4142e] text-white"
             }
             onClick={handleConfirm}
+            disabled={confirmLoading}
           >
-            {confirmLabel}
+            {confirmLoading ? <Loader size="sm" className="mr-2 shrink-0" /> : null}
+            {confirmLoading ? "Processing..." : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

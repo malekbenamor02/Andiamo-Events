@@ -37,9 +37,9 @@ export interface OrderDetailsDialogProps {
   onRefresh: (status?: string) => void;
   orderFilters?: { status?: string };
   onApprove: (orderId: string) => void | Promise<void>;
-  onRequestReject: (orderId: string) => void;
-  onRequestRemove: (orderId: string) => void;
-  onRequestSkip: (orderId: string) => void;
+  onReject: (orderId: string, reason?: string) => void | Promise<void>;
+  onRemove: (orderId: string) => void | Promise<void>;
+  onSkip: (orderId: string, reason?: string) => void | Promise<void>;
   onComplete: (orderId: string) => void | Promise<void>;
   onResendTicket: (orderId: string) => void | Promise<void>;
 }
@@ -82,6 +82,9 @@ export function OrderDetailsDialog({
   const [skippingOrderId, setSkippingOrderId] = useState<string | null>(null);
   const [skipReason, setSkipReason] = useState("");
   const [isSkipping, setIsSkipping] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
 
   return (
     <>
@@ -1139,21 +1142,30 @@ export function OrderDetailsDialog({
                       {order.payment_method === 'ambassador_cash' && order.status === 'PENDING_ADMIN_APPROVAL' && (
                         <>
                           <Button
-                            onClick={() => onApprove(order.id)}
+                            onClick={async () => {
+                              setIsApproving(true);
+                              try {
+                                await onApprove(order.id);
+                              } finally {
+                                setIsApproving(false);
+                              }
+                            }}
                             variant="default"
                             size="sm"
                             className="bg-green-600 hover:bg-green-700"
+                            disabled={isApproving}
                           >
-                            <CheckCircle className="w-4 h-4 mr-2" />
-                            {language === 'en' ? 'Approve Order' : 'Approuver la Commande'}
+                            {isApproving ? <Loader size="sm" className="mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                            {isApproving ? (language === 'en' ? 'Approving...' : 'Approbation...') : (language === 'en' ? 'Approve Order' : 'Approuver la Commande')}
                           </Button>
                           <Button
                             onClick={() => {
-                              // Open reject dialog (reason required for ambassador cash orders)
-                              onRequestReject(order.id);
+                              setRejectingOrderId(order.id);
+                              setIsRejectDialogOpen(true);
                             }}
                             variant="destructive"
                             size="sm"
+                            disabled={isRejecting}
                           >
                             <XCircle className="w-4 h-4 mr-2" />
                             {language === 'en' ? 'Reject Order' : 'Rejeter la Commande'}
@@ -1180,34 +1192,58 @@ export function OrderDetailsDialog({
                       {/* Approved COD orders can be completed */}
                       {order.payment_method === 'ambassador_cash' && order.status === 'APPROVED' && (
                         <Button
-                          onClick={() => onComplete(order.id)}
+                          onClick={async () => {
+                            setIsCompleting(true);
+                            try {
+                              await onComplete(order.id);
+                            } finally {
+                              setIsCompleting(false);
+                            }
+                          }}
                           variant="default"
                           size="sm"
+                          disabled={isCompleting}
                         >
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Complete Order' : 'Terminer la Commande'}
+                          {isCompleting ? <Loader size="sm" className="mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                          {isCompleting ? (language === 'en' ? 'Completing...' : 'En cours...') : (language === 'en' ? 'Complete Order' : 'Terminer la Commande')}
                         </Button>
                       )}
                       
                       {/* Legacy status support (for backward compatibility) */}
                       {order.status === 'PENDING' && order.payment_method !== 'ambassador_cash' && (
                         <Button
-                          onClick={() => onApprove(order.id)}
+                          onClick={async () => {
+                            setIsApproving(true);
+                            try {
+                              await onApprove(order.id);
+                            } finally {
+                              setIsApproving(false);
+                            }
+                          }}
                           variant="default"
                           size="sm"
+                          disabled={isApproving}
                         >
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Accept Order' : 'Accepter la Commande'}
+                          {isApproving ? <Loader size="sm" className="mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                          {isApproving ? (language === 'en' ? 'Approving...' : 'Approbation...') : (language === 'en' ? 'Accept Order' : 'Accepter la Commande')}
                         </Button>
                       )}
                       {order.status === 'ACCEPTED' && order.payment_method !== 'ambassador_cash' && (
                         <Button
-                          onClick={() => onComplete(order.id)}
+                          onClick={async () => {
+                            setIsCompleting(true);
+                            try {
+                              await onComplete(order.id);
+                            } finally {
+                              setIsCompleting(false);
+                            }
+                          }}
                           variant="default"
                           size="sm"
+                          disabled={isCompleting}
                         >
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
-                          {language === 'en' ? 'Complete Order' : 'Terminer la Commande'}
+                          {isCompleting ? <Loader size="sm" className="mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                          {isCompleting ? (language === 'en' ? 'Completing...' : 'En cours...') : (language === 'en' ? 'Complete Order' : 'Terminer la Commande')}
                         </Button>
                       )}
                     </div>
@@ -1348,6 +1384,7 @@ export function OrderDetailsDialog({
                   setRejectingOrderId(null);
                   setRejectionReason("");
                 }}
+                disabled={isRejecting}
               >
                 {language === "en" ? "Cancel" : "Annuler"}
               </Button>
@@ -1362,6 +1399,7 @@ export function OrderDetailsDialog({
                     });
                     return;
                   }
+                  setIsRejecting(true);
                   try {
                     await onReject(rejectingOrderId, rejectionReason.trim());
                     setIsRejectDialogOpen(false);
@@ -1369,12 +1407,14 @@ export function OrderDetailsDialog({
                     setRejectionReason("");
                   } catch {
                     // Error toast already shown by handler
+                  } finally {
+                    setIsRejecting(false);
                   }
                 }}
-                disabled={!rejectionReason.trim()}
+                disabled={!rejectionReason.trim() || isRejecting}
               >
-                <XCircle className="w-4 h-4 mr-2" />
-                {language === "en" ? "Reject Order" : "Rejeter la Commande"}
+                {isRejecting ? <Loader size="sm" className="mr-2" /> : <XCircle className="w-4 h-4 mr-2" />}
+                {isRejecting ? (language === "en" ? "Rejecting..." : "Rejet en cours...") : (language === "en" ? "Reject Order" : "Rejeter la Commande")}
               </Button>
             </div>
           </div>

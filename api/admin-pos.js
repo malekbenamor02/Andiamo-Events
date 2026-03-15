@@ -451,15 +451,15 @@ async function ordersResendTickets(sb, id, auth, req, res) {
   } catch (er) { return res.status(500).json({ error: String(er && er.message) }); }
 }
 
-// --- Orders: reject. Principal stock (event_passes) is released by DB trigger on status change. pos_pass_stock decremented for per-outlet reporting. ---
+// --- Orders: reject. Return principal stock (event_passes) via release_order_stock_internal; DB trigger is safety net. ---
 async function ordersReject(sb, id, body, auth, req, res) {
-  const { data: order, error: e0 } = await sb.from('orders').select('id, status, pos_outlet_id, event_id').eq('id', id).single();
+  const { data: order, error: e0 } = await sb.from('orders').select('id, status, pos_outlet_id, event_id, stock_released').eq('id', id).single();
   if (e0 || !order) return res.status(404).json({ error: 'Order not found' });
   if (order.status !== 'PENDING_ADMIN_APPROVAL') return res.status(400).json({ error: 'Order not in PENDING_ADMIN_APPROVAL' });
-  const { data: passes } = await sb.from('order_passes').select('pass_id, quantity').eq('order_id', id);
-  for (const p of passes || []) {
-    const { data: r } = await sb.from('pos_pass_stock').select('sold_quantity').eq('pos_outlet_id', order.pos_outlet_id).eq('event_id', order.event_id).eq('pass_id', p.pass_id).single();
-    if (r) await sb.from('pos_pass_stock').update({ sold_quantity: Math.max(0, (r.sold_quantity || 0) - p.quantity), updated_at: new Date().toISOString() }).eq('pos_outlet_id', order.pos_outlet_id).eq('event_id', order.event_id).eq('pass_id', p.pass_id);
+  // Return principal stock to event_passes (idempotent; trigger also runs on status change as safety net)
+  if (!order.stock_released) {
+    const { error: rpcErr } = await sb.rpc('release_order_stock_internal', { order_id_param: id });
+    if (rpcErr) console.error('release_order_stock_internal on reject:', rpcErr);
   }
   await sb.from('orders').update({
     status: 'REJECTED',
@@ -473,15 +473,15 @@ async function ordersReject(sb, id, body, auth, req, res) {
   return res.status(200).json({ success: true });
 }
 
-// --- Orders: remove. Principal stock (event_passes) is released by DB trigger on status change. pos_pass_stock decremented for per-outlet reporting. ---
+// --- Orders: remove. Return principal stock (event_passes) via release_order_stock_internal; DB trigger is safety net. ---
 async function ordersRemove(sb, id, auth, req, res) {
-  const { data: order, error: e0 } = await sb.from('orders').select('id, status, pos_outlet_id, event_id').eq('id', id).single();
+  const { data: order, error: e0 } = await sb.from('orders').select('id, status, pos_outlet_id, event_id, stock_released').eq('id', id).single();
   if (e0 || !order) return res.status(404).json({ error: 'Order not found' });
   if (order.status === 'REJECTED' || order.status === 'REMOVED_BY_ADMIN') return res.status(400).json({ error: 'Order already rejected or removed. Stock was already returned.' });
-  const { data: passes } = await sb.from('order_passes').select('pass_id, quantity').eq('order_id', id);
-  for (const p of passes || []) {
-    const { data: r } = await sb.from('pos_pass_stock').select('sold_quantity').eq('pos_outlet_id', order.pos_outlet_id).eq('event_id', order.event_id).eq('pass_id', p.pass_id).single();
-    if (r) await sb.from('pos_pass_stock').update({ sold_quantity: Math.max(0, (r.sold_quantity || 0) - p.quantity), updated_at: new Date().toISOString() }).eq('pos_outlet_id', order.pos_outlet_id).eq('event_id', order.event_id).eq('pass_id', p.pass_id);
+  // Return principal stock to event_passes (idempotent; trigger also runs on status change as safety net)
+  if (!order.stock_released) {
+    const { error: rpcErr } = await sb.rpc('release_order_stock_internal', { order_id_param: id });
+    if (rpcErr) console.error('release_order_stock_internal on remove:', rpcErr);
   }
   // Remove from qr_tickets so those QR codes can no longer be scanned (PAID orders had qr_tickets; PENDING had none)
   await sb.from('qr_tickets').delete().eq('order_id', id);

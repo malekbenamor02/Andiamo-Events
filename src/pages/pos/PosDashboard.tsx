@@ -180,7 +180,7 @@ export default function PosDashboard({ outletSlug, language }: PosDashboardProps
                 <div><Label className="text-[#B0B0B0]">{t.city}</Label><Input className="mt-1 bg-[#252525] border-[#2A2A2A] text-white" value={customer.city} onChange={e => setCustomer(c => ({ ...c, city: e.target.value }))} /></div>
                 <div><Label className="text-[#B0B0B0]">{t.ville}</Label><Input className="mt-1 bg-[#252525] border-[#2A2A2A] text-white" value={customer.ville} onChange={e => setCustomer(c => ({ ...c, ville: e.target.value }))} /></div>
               </div>
-              <Button type="submit" disabled={submitting || !selectedEvent} className="w-full bg-[#E21836] hover:bg-[#c4142e]">{submitting ? <Loader size="sm" className="[background:white] shrink-0" /> : t.create}</Button>
+              <Button type="submit" disabled={submitting || !selectedEvent} className="w-full bg-[#E21836] hover:bg-[#c4142e]">{submitting ? <><Loader size="sm" className="[background:white] shrink-0 mr-2" />{language === "en" ? "Creating..." : "Création..."}</> : t.create}</Button>
             </form>
           </CardContent>
         </Card>

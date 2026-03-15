@@ -259,28 +259,19 @@ async function handleVerify(req, res, supabase, outletSlug) {
   });
 }
 
-/** GET /api/pos/:outletSlug/events – events that have at least one pos_pass_stock for this outlet. */
+/** GET /api/pos/:outletSlug/events – all upcoming events (same pool as online/ambassador). */
 async function handleEvents(req, res, supabase, outletSlug) {
   const outlet = await getOutletBySlug(supabase, outletSlug);
   if (!outlet) return res.status(404).json({ error: 'Outlet not found or inactive' });
   const auth = await requirePosAuth(req, supabase, outlet);
   if (!auth.valid) return res.status(auth.statusCode || 401).json({ error: auth.error });
 
-  const { data: stocks } = await supabase
-    .from('pos_pass_stock')
-    .select('event_id')
-    .eq('pos_outlet_id', outlet.id)
-    .eq('is_active', true);
-  const eventIds = [...new Set((stocks || []).map((s) => s.event_id).filter(Boolean))];
-  if (eventIds.length === 0) {
-    res.setHeader('Content-Type', 'application/json');
-    return res.status(200).json([]);
-  }
-
+  const now = new Date().toISOString();
   const { data: events, error } = await supabase
     .from('events')
     .select('id, name, date, venue, city')
-    .in('id', eventIds)
+    .eq('event_type', 'upcoming')
+    .gte('date', now)
     .order('date', { ascending: true });
   if (error) return res.status(500).json({ error: 'Failed to fetch events' });
 
@@ -288,7 +279,7 @@ async function handleEvents(req, res, supabase, outletSlug) {
   return res.status(200).json(events || []);
 }
 
-/** GET /api/pos/:outletSlug/passes/:eventId – principal stock (event_passes): same as online/ambassador. */
+/** GET /api/pos/:outletSlug/passes/:eventId – pass stock from event_passes only (same as online/ambassador; no separate POS stock). */
 async function handlePasses(req, res, supabase, outletSlug, eventId) {
   if (!eventId) return res.status(400).json({ error: 'Event ID required' });
   const outlet = await getOutletBySlug(supabase, outletSlug);
@@ -296,46 +287,26 @@ async function handlePasses(req, res, supabase, outletSlug, eventId) {
   const auth = await requirePosAuth(req, supabase, outlet);
   if (!auth.valid) return res.status(auth.statusCode || 401).json({ error: auth.error });
 
-  const { data: stocks, error: stockErr } = await supabase
-    .from('pos_pass_stock')
-    .select('id, pass_id, sold_quantity')
-    .eq('pos_outlet_id', outlet.id)
-    .eq('event_id', eventId)
-    .eq('is_active', true);
-  if (stockErr) return res.status(500).json({ error: 'Failed to fetch passes' });
-  const passIds = (stocks || []).map((s) => s.pass_id).filter(Boolean);
-  if (passIds.length === 0) {
-    res.setHeader('Content-Type', 'application/json');
-    return res.status(200).json([]);
-  }
-
   const { data: eventPasses, error: epErr } = await supabase
     .from('event_passes')
     .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity')
-    .in('id', passIds)
     .eq('event_id', eventId)
     .eq('is_active', true);
   if (epErr) return res.status(500).json({ error: 'Failed to fetch passes' });
-  const epMap = new Map((eventPasses || []).map((p) => [p.id, p]));
-  const stockMap = new Map((stocks || []).map((s) => [s.pass_id, s]));
 
-  const passes = (eventPasses || [])
-    .map((ep) => {
-      const posSold = (stockMap.get(ep.id) || {}).sold_quantity || 0;
-      const remaining = ep.max_quantity == null ? null : Math.max(0, (ep.max_quantity || 0) - (ep.sold_quantity || 0));
-      return {
-        id: ep.id,
-        name: ep.name,
-        price: parseFloat(ep.price),
-        description: ep.description || '',
-        is_primary: !!ep.is_primary,
-        sold_quantity: ep.sold_quantity || 0,
-        max_quantity: ep.max_quantity,
-        remaining,
-        pos_sold_quantity: posSold
-      };
-    })
-    .filter(Boolean);
+  const passes = (eventPasses || []).map((ep) => {
+    const remaining = ep.max_quantity == null ? null : Math.max(0, (ep.max_quantity || 0) - (ep.sold_quantity || 0));
+    return {
+      id: ep.id,
+      name: ep.name,
+      price: parseFloat(ep.price),
+      description: ep.description || '',
+      is_primary: !!ep.is_primary,
+      sold_quantity: ep.sold_quantity || 0,
+      max_quantity: ep.max_quantity,
+      remaining
+    };
+  });
 
   res.setHeader('Content-Type', 'application/json');
   return res.status(200).json(passes);
@@ -371,14 +342,6 @@ async function handleOrdersCreate(req, res, supabase, outletSlug) {
   }
   const epMap = new Map(eventPasses.map((p) => [p.id, p]));
 
-  const { data: posStocks } = await supabase
-    .from('pos_pass_stock')
-    .select('pass_id')
-    .eq('pos_outlet_id', outlet.id)
-    .eq('event_id', eventId)
-    .eq('is_active', true);
-  const posPassIds = new Set((posStocks || []).map((s) => s.pass_id).filter(Boolean));
-
   const validatedPasses = [];
   let totalPrice = 0;
   let totalQty = 0;
@@ -386,7 +349,6 @@ async function handleOrdersCreate(req, res, supabase, outletSlug) {
     const ep = epMap.get(p.passId);
     if (!ep) return res.status(400).json({ error: `Pass ${p.passId} not found` });
     if (!ep.is_active) return res.status(400).json({ error: `Pass ${ep.name} is not available` });
-    if (!posPassIds.has(p.passId)) return res.status(400).json({ error: `No POS availability for pass ${ep.name}` });
     const qty = Math.max(1, parseInt(p.quantity, 10) || 1);
     const price = parseFloat(ep.price);
     if (ep.max_quantity != null && (ep.sold_quantity || 0) + qty > ep.max_quantity) {
@@ -478,18 +440,6 @@ async function handleOrdersCreate(req, res, supabase, outletSlug) {
     await supabase.from('orders').delete().eq('id', order.id);
     await rollbackPrincipalStock();
     return res.status(500).json({ error: 'Failed to create order passes' });
-  }
-
-  for (const p of validatedPasses) {
-    const { data: row } = await supabase.from('pos_pass_stock')
-      .select('sold_quantity')
-      .eq('pos_outlet_id', outlet.id).eq('event_id', eventId).eq('pass_id', p.passId)
-      .single();
-    if (row) {
-      await supabase.from('pos_pass_stock')
-        .update({ sold_quantity: (row.sold_quantity || 0) + p.quantity, updated_at: new Date().toISOString() })
-        .eq('pos_outlet_id', outlet.id).eq('event_id', eventId).eq('pass_id', p.passId);
-    }
   }
 
   // Audit

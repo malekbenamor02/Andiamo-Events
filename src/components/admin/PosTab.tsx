@@ -145,6 +145,7 @@ export function PosTab({ language, selectedEventId }: PosTabProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [rejectOrder, setRejectOrder] = useState<PosOrder | null>(null);
   const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
+  const [orderActionLoading, setOrderActionLoading] = useState<{ orderId: string; action: "approve" | "reject" | "remove" } | null>(null);
 
   const loadOutlets = async () => {
     const r = await fetcher(API_ROUTES.ADMIN_POS_OUTLETS);
@@ -324,10 +325,13 @@ export function PosTab({ language, selectedEventId }: PosTabProps) {
   };
 
   const onApprove = async (o: PosOrder) => {
-    setLoading(true);
-    const r = await fetcher(API_ROUTES.ADMIN_POS_ORDER_APPROVE(o.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-    setLoading(false);
-    if (r.ok) { loadOrders(); toast({ title: "Approved", description: "Tickets & email sent" }); } else { const e = await r.json(); toast({ title: "Error", description: e.error, variant: "destructive" }); }
+    setOrderActionLoading({ orderId: o.id, action: "approve" });
+    try {
+      const r = await fetcher(API_ROUTES.ADMIN_POS_ORDER_APPROVE(o.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      if (r.ok) { loadOrders(); toast({ title: "Approved", description: "Tickets & email sent" }); } else { const e = await r.json(); toast({ title: "Error", description: e.error, variant: "destructive" }); }
+    } finally {
+      setOrderActionLoading(null);
+    }
   };
   const onReject = (o: PosOrder) => {
     setRejectOrder(o);
@@ -338,33 +342,37 @@ export function PosTab({ language, selectedEventId }: PosTabProps) {
     setConfirmOpen(true);
   };
 
-  const handleConfirmAction = () => {
+  const handleConfirmAction = async () => {
     if (!confirmTarget) return;
     if (confirmTarget.kind === "delete-outlet") {
       fetcher(API_ROUTES.ADMIN_POS_OUTLET(confirmTarget.o.id), { method: "DELETE" }).then(r => {
-        if (r.ok) { loadOutlets(); setOutletFilter("__all__"); toast({ title: "Deleted" }); } else r.json().then((e: { error?: string }) => toast({ title: "Error", description: e.error, variant: "destructive" }));
+        if (r.ok) { loadOutlets(); setOutletFilter("__all__"); toast({ title: "Deleted" }); setConfirmOpen(false); setConfirmTarget(null); } else r.json().then((e: { error?: string }) => toast({ title: "Error", description: e.error, variant: "destructive" }));
       });
     } else if (confirmTarget.kind === "delete-user") {
       fetcher(API_ROUTES.ADMIN_POS_USER(confirmTarget.u.id), { method: "DELETE" }).then(r => {
-        if (r.ok) { loadUsers(); toast({ title: "Deleted" }); } else r.json().then((e: { error?: string }) => toast({ title: "Error", description: e.error, variant: "destructive" }));
+        if (r.ok) { loadUsers(); toast({ title: "Deleted" }); setConfirmOpen(false); setConfirmTarget(null); } else r.json().then((e: { error?: string }) => toast({ title: "Error", description: e.error, variant: "destructive" }));
       });
     } else if (confirmTarget.kind === "remove-order") {
-      setLoading(true);
-      fetcher(API_ROUTES.ADMIN_POS_ORDER_REMOVE(confirmTarget.o.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(r => {
-        setLoading(false);
-        if (r.ok) { loadOrders(); setSelectedOrder(null); toast({ title: "Removed" }); } else r.json().then((e: { error?: string }) => toast({ title: "Error", description: e.error, variant: "destructive" }));
-      });
+      setOrderActionLoading({ orderId: confirmTarget.o.id, action: "remove" });
+      try {
+        const r = await fetcher(API_ROUTES.ADMIN_POS_ORDER_REMOVE(confirmTarget.o.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        if (r.ok) { loadOrders(); setSelectedOrder(null); toast({ title: "Removed" }); setConfirmOpen(false); setConfirmTarget(null); } else { const e = await r.json(); toast({ title: "Error", description: e.error, variant: "destructive" }); }
+      } finally {
+        setOrderActionLoading(null);
+      }
     }
   };
 
   const handleRejectWithReason = async (reason: string | undefined) => {
     const order = rejectOrder;
-    setRejectOrder(null);
     if (!order) return;
-    setLoading(true);
-    const r = await fetcher(API_ROUTES.ADMIN_POS_ORDER_REJECT(order.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
-    setLoading(false);
-    if (r.ok) { loadOrders(); toast({ title: "Rejected" }); } else { const e = await r.json().catch(() => ({})); toast({ title: "Error", description: (e as { error?: string }).error, variant: "destructive" }); }
+    setOrderActionLoading({ orderId: order.id, action: "reject" });
+    try {
+      const r = await fetcher(API_ROUTES.ADMIN_POS_ORDER_REJECT(order.id), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
+      if (r.ok) { loadOrders(); toast({ title: "Rejected" }); setReasonDialogOpen(false); setRejectOrder(null); } else { const e = await r.json().catch(() => ({})); toast({ title: "Error", description: (e as { error?: string }).error, variant: "destructive" }); }
+    } finally {
+      setOrderActionLoading(null);
+    }
   };
 
   useEffect(() => { if (selectedOrder) setOrderDetailEmail(selectedOrder.user_email || ""); }, [selectedOrder?.id, selectedOrder?.user_email]);
@@ -617,12 +625,16 @@ export function PosTab({ language, selectedEventId }: PosTabProps) {
                           <Button variant="ghost" size="sm" className="mr-1" onClick={() => { setSelectedOrder(o); setOrderDetailEmail(o.user_email || ""); }}><Eye className="w-4 h-4" /></Button>
                           {o.status === "PENDING_ADMIN_APPROVAL" && (
                             <>
-                              <Button variant="ghost" size="sm" className="text-[#10B981] mr-1" onClick={() => onApprove(o)}>{t.approve}</Button>
-                              <Button variant="ghost" size="sm" className="text-[#F59E0B] mr-1" onClick={() => onReject(o)}>{t.reject}</Button>
+                              <Button variant="ghost" size="sm" className="text-[#10B981] mr-1" onClick={() => onApprove(o)} disabled={orderActionLoading?.orderId === o.id && orderActionLoading?.action === "approve"}>
+                                {orderActionLoading?.orderId === o.id && orderActionLoading?.action === "approve" ? <Loader size="sm" className="mr-1 shrink-0" /> : null}{t.approve}
+                              </Button>
+                              <Button variant="ghost" size="sm" className="text-[#F59E0B] mr-1" onClick={() => onReject(o)} disabled={orderActionLoading?.orderId === o.id && orderActionLoading?.action === "reject"}>{t.reject}</Button>
                             </>
                           )}
                           {(o.status === "PENDING_ADMIN_APPROVAL" || o.status === "PAID") && (
-                            <Button variant="ghost" size="sm" className="text-[#EF4444]" onClick={() => onRemove(o)}>{t.remove}</Button>
+                            <Button variant="ghost" size="sm" className="text-[#EF4444]" onClick={() => onRemove(o)} disabled={orderActionLoading?.orderId === o.id && orderActionLoading?.action === "remove"}>
+                              {orderActionLoading?.orderId === o.id && orderActionLoading?.action === "remove" ? <Loader size="sm" className="mr-1 shrink-0" /> : null}{t.remove}
+                            </Button>
                           )}
                         </TableCell>
                       </TableRow>
@@ -950,6 +962,8 @@ export function PosTab({ language, selectedEventId }: PosTabProps) {
           cancelLabel={t.cancel}
           onConfirm={handleConfirmAction}
           variant="danger"
+          confirmLoading={confirmTarget.kind === "remove-order" && orderActionLoading?.orderId === confirmTarget.o.id && orderActionLoading?.action === "remove"}
+          closeOnConfirm={confirmTarget.kind !== "remove-order"}
         />
       )}
 
@@ -961,6 +975,8 @@ export function PosTab({ language, selectedEventId }: PosTabProps) {
         confirmLabel={t.confirm}
         cancelLabel={t.cancel}
         onConfirm={handleRejectWithReason}
+        confirmLoading={!!(rejectOrder && orderActionLoading?.orderId === rejectOrder.id && orderActionLoading?.action === "reject")}
+        closeOnConfirm={false}
       />
     </div>
   );

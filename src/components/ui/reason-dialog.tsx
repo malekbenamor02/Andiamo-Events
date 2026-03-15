@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import Loader from "@/components/ui/Loader";
 
 const dialogClass = "bg-[#1F1F1F] border-[#2A2A2A] text-white";
 
@@ -21,6 +22,10 @@ export interface ReasonDialogProps {
   confirmLabel: string;
   cancelLabel: string;
   onConfirm: (value: string | undefined) => void;
+  /** When true, confirm button shows loading and is disabled */
+  confirmLoading?: boolean;
+  /** When false, dialog does not close on confirm (parent closes after async work). Default true. */
+  closeOnConfirm?: boolean;
 }
 
 export function ReasonDialog({
@@ -32,6 +37,8 @@ export function ReasonDialog({
   confirmLabel,
   cancelLabel,
   onConfirm,
+  confirmLoading = false,
+  closeOnConfirm = true,
 }: ReasonDialogProps) {
   const [value, setValue] = React.useState("");
 
@@ -40,9 +47,10 @@ export function ReasonDialog({
   }, [open]);
 
   const handleConfirm = () => {
+    if (confirmLoading) return;
     const v = value.trim() || undefined;
     onConfirm(v);
-    onOpenChange(false);
+    if (closeOnConfirm) onOpenChange(false);
   };
 
   const handleCancel = () => onOpenChange(false);
@@ -75,6 +83,7 @@ export function ReasonDialog({
             variant="outline"
             className="border-[#2A2A2A] text-[#B0B0B0] hover:bg-[#2A2A2A] hover:text-white"
             onClick={handleCancel}
+            disabled={confirmLoading}
           >
             {cancelLabel}
           </Button>
@@ -82,8 +91,10 @@ export function ReasonDialog({
             type="button"
             className="bg-[#E21836] hover:bg-[#c4142e] text-white"
             onClick={handleConfirm}
+            disabled={confirmLoading}
           >
-            {confirmLabel}
+            {confirmLoading ? <Loader size="sm" className="mr-2 shrink-0" /> : null}
+            {confirmLoading ? "Rejecting..." : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
