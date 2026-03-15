@@ -3981,7 +3981,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const { data, error } = await supabase
         .from('phone_subscribers' as any)
         .select('id, phone_number, created_at')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50000);
       
       if (error) {
         // If even basic query fails, table might not exist or RLS issue
@@ -4421,7 +4422,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const { data, error } = await supabase
         .from('newsletter_subscribers')
         .select('id, email, subscribed_at, language')
-        .order('subscribed_at', { ascending: false });
+        .order('subscribed_at', { ascending: false })
+        .limit(50000);
       
       if (error) {
         console.warn('newsletter_subscribers query error:', error);
