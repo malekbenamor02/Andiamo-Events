@@ -3971,34 +3971,39 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     await saveAboutImages(newOrder);
   };
 
-  // Fetch phone subscribers
+  // Fetch phone subscribers (paginated: Supabase/PostgREST caps at 1000 rows per request)
   const fetchPhoneSubscribers = async () => {
     try {
       setLoadingSubscribers(true);
-      
-      // Use only basic columns that definitely exist (id, phone_number, created_at)
-      // Don't try to detect optional columns - it causes 400 errors
-      const { data, error } = await supabase
-        .from('phone_subscribers' as any)
-        .select('id, phone_number, created_at')
-        .order('created_at', { ascending: false })
-        .limit(50000);
-      
-      if (error) {
-        // If even basic query fails, table might not exist or RLS issue
-        console.warn('phone_subscribers query error:', error);
-        setPhoneSubscribers([]);
-        return;
+      const PAGE_SIZE = 1000;
+      let allData: any[] = [];
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('phone_subscribers' as any)
+          .select('id, phone_number, created_at')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (error) {
+          console.warn('phone_subscribers query error:', error);
+          setPhoneSubscribers([]);
+          return;
+        }
+        const chunk = data || [];
+        allData = allData.concat(chunk);
+        hasMore = chunk.length === PAGE_SIZE;
+        offset += PAGE_SIZE;
       }
-      
-      // Map data to expected format (use created_at as subscribed_at fallback)
-      setPhoneSubscribers((data || []).map((item: any) => ({
+
+      setPhoneSubscribers(allData.map((item: any) => ({
         id: item.id,
         phone_number: item.phone_number,
         subscribed_at: item.created_at || new Date().toISOString(),
-        city: undefined // city column doesn't exist, always undefined
+        city: undefined
       })));
-      
     } catch (error) {
       console.error('Error fetching phone subscribers:', error);
       setPhoneSubscribers([]);
@@ -4415,23 +4420,34 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  // Fetch email subscribers
+  // Fetch email subscribers (paginated: Supabase/PostgREST caps at 1000 rows per request)
   const fetchEmailSubscribers = async () => {
     try {
       setLoadingEmailSubscribers(true);
-      const { data, error } = await supabase
-        .from('newsletter_subscribers')
-        .select('id, email, subscribed_at, language')
-        .order('subscribed_at', { ascending: false })
-        .limit(50000);
-      
-      if (error) {
-        console.warn('newsletter_subscribers query error:', error);
-        setEmailSubscribers([]);
-        return;
+      const PAGE_SIZE = 1000;
+      let allData: any[] = [];
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('newsletter_subscribers')
+          .select('id, email, subscribed_at, language')
+          .order('subscribed_at', { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (error) {
+          console.warn('newsletter_subscribers query error:', error);
+          setEmailSubscribers([]);
+          return;
+        }
+        const chunk = data || [];
+        allData = allData.concat(chunk);
+        hasMore = chunk.length === PAGE_SIZE;
+        offset += PAGE_SIZE;
       }
-      
-      setEmailSubscribers((data || []).map((item: any) => ({
+
+      setEmailSubscribers(allData.map((item: any) => ({
         id: item.id,
         email: item.email,
         subscribed_at: item.subscribed_at || new Date().toISOString(),
