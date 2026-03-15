@@ -411,12 +411,11 @@ export function PosTab({ language, selectedEventId }: PosTabProps) {
         <h2 className="text-2xl font-bold flex items-center gap-2" style={{ color: "#E21836" }}><Store className="w-7 h-7" />{t.title}</h2>
       </div>
       <Tabs value={subTab} onValueChange={setSubTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-6 gap-1 h-auto flex-wrap bg-[#1F1F1F] border-[#2A2A2A]">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 gap-1 h-auto flex-wrap bg-[#1F1F1F] border-[#2A2A2A]">
           <TabsTrigger value="orders" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><ShoppingCart className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.orders}</span></TabsTrigger>
           <TabsTrigger value="statistics" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><BarChart3 className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.statistics}</span></TabsTrigger>
           <TabsTrigger value="outlets" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><Building2 className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.outlets}</span></TabsTrigger>
           <TabsTrigger value="users" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><Users className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.users}</span></TabsTrigger>
-          <TabsTrigger value="stock" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><Package className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.stock}</span></TabsTrigger>
           <TabsTrigger value="audit" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><Activity className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.audit}</span></TabsTrigger>
         </TabsList>
 
@@ -491,62 +490,6 @@ export function PosTab({ language, selectedEventId }: PosTabProps) {
                         <TableCell>
                           <Button variant="ghost" size="sm" className="mr-1" onClick={() => { setEditUser(u); setForm({ name: u.name, email: u.email, is_active: (u.is_active && !u.is_paused) ? "1" : "0", password: "" }); }}>{t.edit}</Button>
                           <Button variant="ghost" size="sm" className="text-[#EF4444]" onClick={() => onDeleteUser(u)}>{t.delete}</Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="stock" className="mt-4">
-          <Card className="bg-[#1F1F1F] border-[#2A2A2A]">
-            <CardHeader className="flex flex-row justify-between flex-wrap gap-2">
-              <CardTitle style={{ color: "#E21836" }}>{t.stock}</CardTitle>
-              <div className="flex gap-2 flex-wrap">
-                <Select value={outletFilter === "__all__" ? "__none__" : outletFilter} onValueChange={v => { setOutletFilter(v); setEventFilter("__all__"); }}>
-                  <SelectTrigger className="w-[180px] bg-[#252525] border-[#2A2A2A] text-white"><SelectValue placeholder={t.outlet} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">—</SelectItem>
-                    {outlets.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Select value={eventFilter} onValueChange={setEventFilter}>
-                  <SelectTrigger className="w-[180px] bg-[#252525] border-[#2A2A2A] text-white"><SelectValue placeholder={t.event} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">{language === "en" ? "All" : "Tous"}</SelectItem>
-                    {events.filter((e) => e?.id != null && String(e.id).trim() !== "").map(e => <SelectItem key={e.id} value={e.id}>{e.name} {e.date ? format(new Date(e.date), "dd/MM/yy") : ""}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Button size="sm" variant="ghost" onClick={loadStock}><RefreshCw className="w-4 h-4" /></Button>
-                <Button size="sm" className="bg-[#E21836] hover:bg-[#c4142e]" disabled={!outletId} onClick={() => { setAddStock(true); setForm({ pos_outlet_id: outletId || outlets[0]?.id || "", event_id: (eventFilter && eventFilter !== "__all__") ? eventFilter : "", pass_id: "", max_quantity: "", sold_quantity: 0 }); }}><Plus className="w-4 h-4 mr-1" />{t.addStock}</Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {!outletId ? <p className="text-[#B0B0B0]">{t.noStock}</p> : stock.length === 0 ? <p className="text-[#B0B0B0]">{t.noStock}</p> : (
-                <Table>
-                  <TableHeader><TableRow className="border-[#2A2A2A]">
-                    <TableHead className="text-[#B0B0B0]">{t.pass}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.maxQ}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.sold}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.remaining}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.active}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.actions}</TableHead>
-                  </TableRow></TableHeader>
-                  <TableBody>
-                    {stock.map(s => (
-                      <TableRow key={s.id} className={`border-[#2A2A2A] ${s.is_active === false ? "opacity-70" : ""}`}>
-                        <TableCell className="text-white">{(s.event_passes as { name?: string })?.name || s.pass_id}</TableCell>
-                        <TableCell className="text-[#B0B0B0]">{s.max_quantity ?? "∞"}</TableCell>
-                        <TableCell className="text-[#B0B0B0]">{s.sold_quantity}</TableCell>
-                        <TableCell className="text-[#B0B0B0]">{s.remaining ?? "∞"}</TableCell>
-                        <TableCell>
-                          <Switch checked={s.is_active !== false} onCheckedChange={v => onToggleStockActive(s, v)} disabled={togglingStockId === s.id} className="data-[state=checked]:bg-[#E21836]" />
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm" onClick={() => { setEditStock(s); setForm({ max_quantity: s.max_quantity ?? "", sold_quantity: s.sold_quantity }); }}>{t.edit}</Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -840,50 +783,6 @@ export function PosTab({ language, selectedEventId }: PosTabProps) {
             <Input className="bg-[#252525] border-[#2A2A2A] text-white" type="password" value={String(form.password || "")} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
             {editUser && <div className="flex items-center gap-2"><Switch checked={form.is_active === "1"} onCheckedChange={v => setForm(f => ({ ...f, is_active: v ? "1" : "0" }))} /><Label className="text-[#B0B0B0]">{t.active}</Label></div>}
             <Button className="w-full bg-[#E21836] hover:bg-[#c4142e]" onClick={onSaveUser}>Save</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Stock add/edit */}
-      <Dialog open={addStock || !!editStock} onOpenChange={o => { if (!o) { setAddStock(false); setEditStock(null); setForm({}); } }}>
-        <DialogContent className="bg-[#1F1F1F] border-[#2A2A2A]">
-          <DialogHeader><DialogTitle className="text-white">{editStock ? t.edit : t.addStock}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            {!editStock && (
-              <>
-                <Label className="text-[#B0B0B0]">{t.outlet}</Label>
-                <Select value={String(form.pos_outlet_id || "")} onValueChange={v => setForm(f => ({ ...f, pos_outlet_id: v }))}><SelectTrigger className="bg-[#252525] border-[#2A2A2A] text-white"><SelectValue /></SelectTrigger><SelectContent>{outlets.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}</SelectContent></Select>
-                <Label className="text-[#B0B0B0]">{t.event}</Label>
-                <Select value={String(form.event_id || "")} onValueChange={v => setForm(f => ({ ...f, event_id: v, pass_id: "" }))}><SelectTrigger className="bg-[#252525] border-[#2A2A2A] text-white"><SelectValue /></SelectTrigger><SelectContent>{events.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select>
-                <Label className="text-[#B0B0B0]">{t.pass}</Label>
-                {(() => {
-                  const all = passesByEvent[String(form.event_id)] || [];
-                  const available = all.filter((p: { id: string }) => !addStockExistingPassIds.includes(p.id));
-                  return (
-                    <>
-                      <Select value={form.pass_id && !addStockExistingPassIds.includes(String(form.pass_id)) ? String(form.pass_id) : ""} onValueChange={v => setForm(f => ({ ...f, pass_id: v }))}><SelectTrigger className="bg-[#252525] border-[#2A2A2A] text-white"><SelectValue placeholder={available.length === 0 && all.length > 0 ? (language === "en" ? "All passes already have stock" : "Tous les passes ont déjà du stock") : "—"} /></SelectTrigger><SelectContent>{available.map((p: { id: string; name: string; price: number }) => <SelectItem key={p.id} value={p.id}>{p.name} — {p.price} DT</SelectItem>)}</SelectContent></Select>
-                      {available.length === 0 && all.length > 0 && <p className="text-[#F59E0B] text-sm mt-1">{language === "en" ? "Use Edit in the Stock table to update." : "Utilisez Modifier dans le tableau Stock."}</p>}
-                    </>
-                  );
-                })()}
-              </>
-            )}
-            <Label className="text-[#B0B0B0]">{t.maxQ} (empty = unlimited){editStock ? ` — ${language === "en" ? "min" : "min"} ${editStock.sold_quantity ?? 0}` : ""}</Label>
-            <Input className="bg-[#252525] border-[#2A2A2A] text-white" type="number" min={editStock ? (editStock.sold_quantity ?? 0) : 0} value={String(form.max_quantity ?? "")} onChange={e => setForm(f => ({ ...f, max_quantity: e.target.value }))} placeholder="∞" />
-            {editStock ? (
-              <>
-                <Label className="text-[#B0B0B0]">{t.sold} ({language === "en" ? "from orders, read-only" : "issu des commandes, lecture seule"})</Label>
-                <div className="py-2 px-3 rounded-lg bg-[#252525] border border-[#2A2A2A] text-[#B0B0B0]">{editStock.sold_quantity ?? 0}</div>
-                <Label className="text-[#B0B0B0]">{t.remaining}</Label>
-                <div className="py-2 px-3 rounded-lg bg-[#252525] border border-[#2A2A2A] text-[#B0B0B0]">{editStock.remaining != null ? editStock.remaining : (editStock.max_quantity == null ? "∞" : Math.max(0, (editStock.max_quantity || 0) - (editStock.sold_quantity || 0)))}</div>
-              </>
-            ) : (
-              <>
-                <Label className="text-[#B0B0B0]">{t.sold}</Label>
-                <Input className="bg-[#252525] border-[#2A2A2A] text-white" type="number" min={0} value={String(form.sold_quantity ?? 0)} onChange={e => setForm(f => ({ ...f, sold_quantity: e.target.value }))} />
-              </>
-            )}
-            <Button className="w-full bg-[#E21836] hover:bg-[#c4142e]" onClick={onSaveStock}>{editStock ? "Save" : "Create"}</Button>
           </div>
         </DialogContent>
       </Dialog>
