@@ -7352,8 +7352,8 @@ Billets envoyés par email. We Create Memories`;
         const periodVal = period || 'day';
         const sourcesConfig = sources || {};
         const filtersConfig = filters || {};
-        const delayMs = delay_ms != null ? Math.max(0, parseInt(delay_ms, 10) || 0) : null;
-        const batchDelayMs = batch_delay_ms != null ? Math.max(0, parseInt(batch_delay_ms, 10) || 0) : null;
+        const delayMin = delay_minutes != null ? Math.max(0, parseFloat(delay_minutes) || 0) : null;
+        const batchDelayMin = batch_delay_minutes != null ? Math.max(0, parseFloat(batch_delay_minutes) || 0) : null;
 
         const normalizeCampaignEmail = (e) => {
           if (!e || typeof e !== 'string') return null;
@@ -7648,7 +7648,7 @@ Billets envoyés par email. We Create Memories`;
 
         const { data: campaign, error: campErr } = await dbClient
           .from('marketing_campaigns')
-          .select('id, type, subject, body, status, batch_size, delay_ms')
+          .select('id, type, subject, body, status, batch_size, delay_minutes')
           .eq('id', campaignId)
           .single();
 
