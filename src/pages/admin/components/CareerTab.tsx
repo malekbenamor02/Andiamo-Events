@@ -117,7 +117,10 @@ interface CareerTabProps {
 
 export function CareerTab({ language }: CareerTabProps) {
   const { toast } = useToast();
-  const [settings, setSettings] = useState<CareerSettings>({ enabled: true });
+  const [settings, setSettings] = useState<CareerSettings>({
+    enabled: true,
+    admin_notification_emails: [],
+  });
   const [domains, setDomains] = useState<CareerDomainWithCount[]>([]);
   const [applications, setApplications] = useState<CareerApplication[]>([]);
   const [totalApps, setTotalApps] = useState(0);
@@ -380,7 +383,7 @@ export function CareerTab({ language }: CareerTabProps) {
 
   const handleToggleEnabled = async (checked: boolean) => {
     try {
-      await updateCareerSettings(checked);
+      await updateCareerSettings(checked, settings.admin_notification_emails);
       setSettings((prev) => ({ ...prev, enabled: checked }));
       toast({ title: checked ? "Applications opened" : "Applications closed" });
     } catch (e) {
@@ -1274,13 +1277,59 @@ export function CareerTab({ language }: CareerTabProps) {
                 <Settings className="h-5 w-5" />
                 Settings
               </CardTitle>
-              <CardContent className="pt-4">
-                <div className="flex items-center space-x-2">
-                  <Switch id="career-enabled" checked={settings.enabled} onCheckedChange={handleToggleEnabled} />
-                  <Label htmlFor="career-enabled">{t.enabled}</Label>
-                </div>
-              </CardContent>
             </CardHeader>
+            <CardContent className="pt-4 space-y-6">
+              <div className="flex items-center space-x-2">
+                <Switch id="career-enabled" checked={settings.enabled} onCheckedChange={handleToggleEnabled} />
+                <Label htmlFor="career-enabled">{t.enabled}</Label>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="career-admin-emails" className="flex items-center justify-between">
+                  <span>Admin notification emails</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {settings.admin_notification_emails?.length ?? 0} configured
+                  </span>
+                </Label>
+                <Input
+                  id="career-admin-emails"
+                  placeholder="admin1@example.com, admin2@example.com"
+                  value={(settings.admin_notification_emails ?? []).join(", ")}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const parts = raw
+                      .split(",")
+                      .map((p) => p.trim().toLowerCase())
+                      .filter((p) => p.length > 0);
+                    setSettings((prev) => ({
+                      ...prev,
+                      admin_notification_emails: parts,
+                    }));
+                  }}
+                  onBlur={async () => {
+                    try {
+                      await updateCareerSettings(
+                        settings.enabled,
+                        settings.admin_notification_emails ?? []
+                      );
+                      toast({
+                        title: language === "fr" ? "Paramètres enregistrés" : "Settings saved",
+                      });
+                    } catch (e) {
+                      toast({
+                        title: language === "fr" ? "Erreur" : "Error",
+                        description: (e as Error).message,
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  All email addresses listed here will receive a notification whenever a new career
+                  application is submitted.
+                </p>
+              </div>
+            </CardContent>
           </Card>
         </TabsContent>
       </Tabs>

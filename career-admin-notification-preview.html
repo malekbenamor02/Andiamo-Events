@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>New Career Application – Andiamo Events</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #1A1A1A;
+      background: #FFFFFF;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { color: #FFFFFF; background: #1A1A1A; }
+    }
+    a { color: #E21836 !important; text-decoration: none; }
+    .email-wrapper { max-width: 600px; margin: 0 auto; background: #FFFFFF; }
+    @media (prefers-color-scheme: dark) { .email-wrapper { background: #1A1A1A; } }
+    .content-card {
+      background: #F5F5F5;
+      margin: 20px;
+      border-radius: 12px;
+      padding: 32px 28px;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    @media (prefers-color-scheme: dark) {
+      .content-card { background: #1F1F1F; border: 1px solid rgba(42, 42, 42, 0.5); }
+    }
+    .title-section {
+      text-align: left;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      .title-section { border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+    }
+    .title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1A1A1A;
+      margin-bottom: 4px;
+    }
+    @media (prefers-color-scheme: dark) { .title { color: #FFFFFF; } }
+    .subtitle {
+      font-size: 14px;
+      color: #666666;
+    }
+    @media (prefers-color-scheme: dark) { .subtitle { color: #B0B0B0; } }
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 18px 0 8px;
+      color: #1A1A1A;
+    }
+    @media (prefers-color-scheme: dark) { .section-title { color: #FFFFFF; } }
+    .fields-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4px;
+    }
+    .fields-table th {
+      text-align: left;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #999999;
+      padding: 6px 12px;
+      border-bottom: 1px solid rgba(0,0,0,0.08);
+    }
+    .fields-table td {
+      padding: 8px 12px;
+      font-size: 13px;
+      border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+    .fields-table td.label {
+      color: #666666;
+      width: 35%;
+      white-space: nowrap;
+    }
+    .fields-table td.value {
+      color: #1A1A1A;
+      width: 65%;
+    }
+    @media (prefers-color-scheme: dark) {
+      .fields-table th {
+        color: #B0B0B0;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
+      .fields-table td.label {
+        color: #B0B0B0;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      .fields-table td.value {
+        color: #FFFFFF;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+    }
+    .cta-button {
+      display: inline-block;
+      margin-top: 24px;
+      padding: 10px 18px;
+      border-radius: 6px;
+      background: #E21836;
+      color: #FFFFFF !important;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .footer {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(0,0,0,0.06);
+      font-size: 12px;
+      color: #999999;
+    }
+    @media (prefers-color-scheme: dark) {
+      .footer { border-top: 1px solid rgba(255,255,255,0.08); color: #6B6B6B; }
+    }
+    @media only screen and (max-width: 600px) {
+      .content-card {
+        margin: 12px;
+        padding: 24px 18px;
+      }
+    }
+  </style>
+</head>
+B<body>
+  <div class="email-wrapper">
+    <div class="content-card">
+      <!-- Header -->
+      <div class="title-section">
+        <h1 class="title">New career application</h1>
+        <div class="subtitle">Domain: Marketing Manager · 2026-03-16 14:32</div>
+      </div>
+
+      <!-- Intro -->
+      <p style="font-size: 14px; margin-bottom: 12px; color: #1A1A1A;">
+        A new candidate has submitted an application on the careers page.
+      </p>
+
+      <!-- Applicant summary -->
+      <div style="margin-bottom: 16px; font-size: 14px; color: #1A1A1A;">
+        <div><strong>Name:</strong> John Doe</div>
+        <div><strong>Email:</strong> <a href="mailto:john.doe@example.com">john.doe@example.com</a></div>
+        <div><strong>Phone:</strong> <a href="tel:22123456">22 123 456</a></div>
+        <div><strong>City:</strong> Tunis</div>
+      </div>
+
+      <!-- Fields table -->
+      <div style="margin-top: 12px;">
+        <div class="section-title">Application details</div>
+        <table class="fields-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="label">Full name</td>
+              <td class="value">John Doe</td>
+            </tr>
+            <tr>
+              <td class="label">Email</td>
+              <td class="value">john.doe@example.com</td>
+            </tr>
+            <tr>
+              <td class="label">Phone</td>
+              <td class="value">22 123 456</td>
+            </tr>
+            <tr>
+              <td class="label">City</td>
+              <td class="value">Tunis</td>
+            </tr>
+            <tr>
+              <td class="label">Age</td>
+              <td class="value">24</td>
+            </tr>
+            <tr>
+              <td class="label">LinkedIn</td>
+              <td class="value">
+                <a href="https://www.linkedin.com/in/example" target="_blank">
+                  LinkedIn profile
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td class="label">Motivation</td>
+              <td class="value">
+                I’m very motivated to join Andiamo Events and work on large-scale events...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Admin dashboard link -->
+      <a
+        href="https://admin.andiamoevents.com/admin?tab=careers&applicationId=123e4567-e89b-12d3-a456-426614174000"
+        class="cta-button"
+        target="_blank"
+      >
+        View application in dashboard
+      </a>
+
+      <!-- Footer -->
+      <div class="footer">
+        This message was sent automatically by the Andiamo Events career system.<br/>
+        Please do not reply directly to this email.
+      </div>
+    </div>
+  </div>
+</body>
+</html>

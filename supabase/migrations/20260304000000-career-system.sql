@@ -1,4 +1,3 @@
--- Career / Recruitment system: domains, form fields, applications, audit log.
 -- See docs/career-page-implementation-plan.md.
 
 -- Career domains (e.g. Marketing, Tech, Events)
@@ -90,7 +89,11 @@ CREATE POLICY "Public can read fields of open career domains" ON public.career_a
 
 -- Global career open/close: use site_content
 INSERT INTO public.site_content (key, content, updated_at)
-VALUES ('career_applications_settings', '{"enabled": true}'::jsonb, NOW())
+VALUES (
+  'career_applications_settings',
+  '{"enabled": true, "admin_notification_emails": []}'::jsonb,
+  NOW()
+)
 ON CONFLICT (key) DO NOTHING;
 
 COMMENT ON TABLE public.career_domains IS 'Job/recruitment domains (e.g. Marketing, Tech). Admin can open/close and enable document upload.';

@@ -2209,6 +2209,261 @@ export const createQRCodeEmail = (orderData: QRCodeEmailData): EmailConfig => {
   };
 };
 
+export interface CareerAdminApplicationEmailParams {
+  domainName: string;
+  applicationId: string;
+  createdAt: string;
+  adminEmail: string;
+  applicantSummary?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    city?: string;
+  };
+  fields: Array<{
+    label: string;
+    value: unknown;
+  }>;
+  adminApplicationUrl?: string;
+}
+
+export const createCareerAdminApplicationEmail = (
+  params: CareerAdminApplicationEmailParams
+): EmailConfig => {
+  const subject = `New Career Application – ${params.domainName}`;
+
+  const rowsHtml = params.fields
+    .map((f) => {
+      let value: string;
+      if (Array.isArray(f.value)) {
+        value = f.value.join(', ');
+      } else if (f.value == null) {
+        value = '—';
+      } else if (typeof f.value === 'object') {
+        value = JSON.stringify(f.value);
+      } else {
+        value = String(f.value);
+      }
+      return `
+        <tr>
+          <td style="padding: 8px 12px; font-size: 13px; color: #666666; border-bottom: 1px solid rgba(0,0,0,0.05);">
+            ${f.label}
+          </td>
+          <td style="padding: 8px 12px; font-size: 13px; color: #1A1A1A; border-bottom: 1px solid rgba(0,0,0,0.05);">
+            ${value || '—'}
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const applicantLines: string[] = [];
+  if (params.applicantSummary?.name) {
+    applicantLines.push(`<div><strong>Name:</strong> ${params.applicantSummary.name}</div>`);
+  }
+  if (params.applicantSummary?.email) {
+    applicantLines.push(
+      `<div><strong>Email:</strong> <a href="mailto:${params.applicantSummary.email}">${params.applicantSummary.email}</a></div>`
+    );
+  }
+  if (params.applicantSummary?.phone) {
+    applicantLines.push(
+      `<div><strong>Phone:</strong> <a href="tel:${params.applicantSummary.phone}">${params.applicantSummary.phone}</a></div>`
+    );
+  }
+  if (params.applicantSummary?.city) {
+    applicantLines.push(`<div><strong>City:</strong> ${params.applicantSummary.city}</div>`);
+  }
+
+  const applicantSummaryHtml =
+    applicantLines.length > 0
+      ? `
+    <div style="margin-bottom: 16px; font-size: 14px; color: #1A1A1A;">
+      ${applicantLines.join('')}
+    </div>
+  `
+      : '';
+
+  const adminLinkHtml = params.adminApplicationUrl
+    ? `
+    <div style="margin-top: 24px;">
+      <a
+        href="${params.adminApplicationUrl}"
+        style="
+          display: inline-block;
+          padding: 10px 18px;
+          border-radius: 6px;
+          background: #E21836;
+          color: #FFFFFF !important;
+          text-decoration: none;
+          font-size: 14px;
+          font-weight: 600;
+        "
+      >
+        View application in dashboard
+      </a>
+    </div>
+  `
+    : '';
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
+      <title>New Career Application – Andiamo Events</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+          line-height: 1.6;
+          color: #1A1A1A;
+          background: #FFFFFF;
+          padding: 0;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+        @media (prefers-color-scheme: dark) {
+          body { color: #FFFFFF; background: #1A1A1A; }
+        }
+        a { color: #E21836 !important; text-decoration: none; }
+        .email-wrapper { max-width: 600px; margin: 0 auto; background: #FFFFFF; }
+        @media (prefers-color-scheme: dark) { .email-wrapper { background: #1A1A1A; } }
+        .content-card {
+          background: #F5F5F5;
+          margin: 0 20px 30px;
+          border-radius: 12px;
+          padding: 32px 28px;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        @media (prefers-color-scheme: dark) {
+          .content-card { background: #1F1F1F; border: 1px solid rgba(42, 42, 42, 0.5); }
+        }
+        .title-section {
+          text-align: left;
+          margin-bottom: 24px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        }
+        @media (prefers-color-scheme: dark) {
+          .title-section { border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+        }
+        .title {
+          font-size: 22px;
+          font-weight: 700;
+          color: #1A1A1A;
+          margin-bottom: 4px;
+        }
+        @media (prefers-color-scheme: dark) { .title { color: #FFFFFF; } }
+        .subtitle {
+          font-size: 14px;
+          color: #666666;
+        }
+        @media (prefers-color-scheme: dark) { .subtitle { color: #B0B0B0; } }
+        .meta {
+          font-size: 12px;
+          color: #999999;
+          margin-top: 4px;
+        }
+        .section-title {
+          font-size: 15px;
+          font-weight: 600;
+          margin: 18px 0 8px;
+          color: #1A1A1A;
+        }
+        @media (prefers-color-scheme: dark) { .section-title { color: #FFFFFF; } }
+        .fields-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 4px;
+        }
+        .fields-table th {
+          text-align: left;
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #999999;
+          padding: 6px 12px;
+          border-bottom: 1px solid rgba(0,0,0,0.08);
+        }
+        @media (prefers-color-scheme: dark) {
+          .fields-table th {
+            color: #B0B0B0;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+          }
+        }
+        .footer {
+          margin-top: 40px;
+          padding-top: 16px;
+          border-top: 1px solid rgba(0,0,0,0.06);
+          font-size: 12px;
+          color: #999999;
+        }
+        @media (prefers-color-scheme: dark) {
+          .footer { border-top: 1px solid rgba(255,255,255,0.08); color: #6B6B6B; }
+        }
+        @media only screen and (max-width: 600px) {
+          .content-card {
+            margin: 0 12px 20px;
+            padding: 24px 18px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="email-wrapper">
+        <div class="content-card">
+          <div class="title-section">
+            <h1 class="title">New career application</h1>
+            <div class="subtitle">${params.domainName}</div>
+            <div class="meta">
+              ID: ${params.applicationId} · ${params.createdAt}
+            </div>
+          </div>
+
+          <p style="font-size: 14px; margin-bottom: 12px; color: #1A1A1A;">
+            A new candidate has submitted an application on the careers page.
+          </p>
+
+          ${applicantSummaryHtml}
+
+          <div style="margin-top: 12px;">
+            <div class="section-title">Application details</div>
+            <table class="fields-table">
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </div>
+
+          ${adminLinkHtml}
+
+          <div class="footer">
+            This message was sent automatically by the Andiamo Events career system.
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return {
+    from: '"Andiamo Events" <contact@andiamoevents.com>',
+    to: params.adminEmail,
+    subject,
+    html,
+  };
+};
+
 
 // Email sending result type
 export interface EmailResult {

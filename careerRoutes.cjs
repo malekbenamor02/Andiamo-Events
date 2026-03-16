@@ -219,6 +219,167 @@ function buildCareerApprovalEmail(candidateName, domainName, toEmail) {
   };
 }
 
+function buildCareerAdminNotificationEmail(params) {
+  const {
+    domainName,
+    applicationId,
+    createdAt,
+    adminEmail,
+    applicantSummary,
+    fields,
+    adminApplicationUrl,
+  } = params || {};
+
+  const subject = `New Career Application – ${escapeHtml(domainName || 'Position')}`;
+
+  const applicantLines = [];
+  if (applicantSummary?.name) {
+    applicantLines.push(`<div><strong>Name:</strong> ${escapeHtml(applicantSummary.name)}</div>`);
+  }
+  if (applicantSummary?.email) {
+    const emailEscaped = escapeHtml(applicantSummary.email);
+    applicantLines.push(
+      `<div><strong>Email:</strong> <a href="mailto:${emailEscaped}">${emailEscaped}</a></div>`
+    );
+  }
+  if (applicantSummary?.phone) {
+    const phoneEscaped = escapeHtml(applicantSummary.phone);
+    applicantLines.push(
+      `<div><strong>Phone:</strong> <a href="tel:${phoneEscaped}">${phoneEscaped}</a></div>`
+    );
+  }
+  if (applicantSummary?.city) {
+    applicantLines.push(`<div><strong>City:</strong> ${escapeHtml(applicantSummary.city)}</div>`);
+  }
+
+  const applicantSummaryHtml = applicantLines.length
+    ? `<div style="margin-bottom: 16px; font-size: 14px; color: #1A1A1A;">${applicantLines.join(
+        ''
+      )}</div>`
+    : '';
+
+  const rowsHtml = (fields || [])
+    .map((f) => {
+      const label = escapeHtml(f.label || f.field_key || '');
+      let value = f.value;
+      if (Array.isArray(value)) {
+        value = value.join(', ');
+      } else if (value == null) {
+        value = '—';
+      } else if (typeof value === 'object') {
+        value = JSON.stringify(value);
+      } else {
+        value = String(value);
+      }
+
+      // If this looks like a URL, show a short label instead of the full URL text
+      let displayText = value;
+      if (typeof value === 'string' && /^https?:\/\//i.test(value)) {
+        const lowerLabel = (f.label || f.field_key || '').toLowerCase();
+        if (lowerLabel.includes('instagram')) {
+          displayText = 'Instagram profile';
+        } else if (lowerLabel.includes('linkedin')) {
+          displayText = 'LinkedIn profile';
+        } else if (lowerLabel.includes('facebook')) {
+          displayText = 'Facebook profile';
+        } else if (lowerLabel.includes('github')) {
+          displayText = 'GitHub profile';
+        } else {
+          displayText = 'View link';
+        }
+      }
+
+      const valueEscaped = escapeHtml(String(displayText));
+      const isUrl = typeof value === 'string' && /^https?:\/\//i.test(value);
+
+      const valueHtml = isUrl
+        ? `<a href="${escapeHtml(value)}" target="_blank">${valueEscaped}</a>`
+        : valueEscaped || '—';
+
+      return `
+        <tr>
+          <td style="padding: 8px 12px; font-size: 13px; color: #666666; border-bottom: 1px solid rgba(0,0,0,0.05);">
+            ${label}
+          </td>
+          <td style="padding: 8px 12px; font-size: 13px; color: #1A1A1A; border-bottom: 1px solid rgba(0,0,0,0.05);">
+            ${valueHtml}
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const adminLinkHtml = adminApplicationUrl
+    ? `
+    <div style="margin-top: 24px;">
+      <a
+        href="${adminApplicationUrl}"
+        style="
+          display: inline-block;
+          padding: 10px 18px;
+          border-radius: 6px;
+          background: #E21836;
+          color: #FFFFFF !important;
+          text-decoration: none;
+          font-size: 14px;
+          font-weight: 600;
+        "
+      >
+        View application in dashboard
+      </a>
+    </div>
+  `
+    : '';
+
+  const title = 'New career application';
+  const subtitle = escapeHtml(domainName || 'Careers');
+  const greeting = 'A new candidate has submitted an application on the careers page.';
+  const baseHtml = getBaseEmailHtml(title, subtitle, greeting, '');
+
+  const detailsBlock = `
+    <div style="margin: 12px 0 0 0; font-size: 12px; color: #999999;">
+      ${createdAt ? escapeHtml(createdAt) : ''}
+    </div>
+
+    ${applicantSummaryHtml}
+
+    <div style="margin-top: 12px;">
+      <div style="font-size: 15px; font-weight: 600; margin: 18px 0 8px; color: #1A1A1A;">
+        Application details
+      </div>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+        <thead>
+          <tr>
+            <th style="text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #999999; padding: 6px 12px; border-bottom: 1px solid rgba(0,0,0,0.08);">
+              Field
+            </th>
+            <th style="text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #999999; padding: 6px 12px; border-bottom: 1px solid rgba(0,0,0,0.08);">
+              Value
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+      ${adminLinkHtml}
+    </div>
+  `;
+
+  // Inject our details block just before the support section in the base template
+  const html = baseHtml.replace(
+    '<div class="support-section">',
+    `${detailsBlock}<div class="support-section">`
+  );
+
+  return {
+    from: '"Andiamo Events" <contact@andiamoevents.com>',
+    to: adminEmail,
+    subject,
+    html,
+  };
+}
+
 function escapeHtml(s) {
   if (typeof s !== 'string') return '';
   return s
@@ -239,6 +400,21 @@ async function getCareerSettingsEnabled(supabase) {
     .maybeSingle();
   const content = data?.content || {};
   return content.enabled !== false;
+}
+
+async function getCareerSettings(db) {
+  const { data } = await db
+    .from('site_content')
+    .select('content')
+    .eq('key', CAREER_SETTINGS_KEY)
+    .maybeSingle();
+  const content = data?.content || {};
+  return {
+    enabled: content.enabled !== false,
+    admin_notification_emails: Array.isArray(content.admin_notification_emails)
+      ? content.admin_notification_emails
+      : [],
+  };
 }
 
 async function getCareerCityOptions(supabase) {
@@ -436,7 +612,13 @@ function registerCareerRoutes(app, deps) {
   });
 
   // —— Public: submit application —————————————————————————————————————————
-  app.post('/api/career-application', careerApplicationLimiter, async (req, res) => {
+  // For local development, disable rate limiting to make testing easier.
+  const careerApplicationLimiterMaybe = (req, res, next) => {
+    if (isLocalHostRequest(req)) return next();
+    return careerApplicationLimiter(req, res, next);
+  };
+
+  app.post('/api/career-application', careerApplicationLimiterMaybe, async (req, res) => {
     try {
       if (!db || !supabase) return res.status(500).json({ error: 'Not configured' });
       const { domainId, domainSlug, recaptchaToken, ...rawFormData } = req.body || {};
@@ -545,6 +727,67 @@ function registerCareerRoutes(app, deps) {
         transporter.sendMail(mailOpts).catch((err) => console.error('Career confirmation email failed:', err));
       }
 
+      // Notify admins about the new application
+      if (getEmailTransporter) {
+        try {
+          const settings = await getCareerSettings(db);
+          const adminEmails = (settings.admin_notification_emails || []).filter(
+            (e) => typeof e === 'string' && e.includes('@')
+          );
+          if (adminEmails.length > 0) {
+            const transporter = getEmailTransporter();
+            const createdAt = new Date().toISOString();
+            const applicantName =
+              formData.full_name || formData.name || formData.FullName || undefined;
+            const applicantEmail =
+              formData.email || formData.email_address || formData.Email || undefined;
+            const applicantPhone =
+              formData.phone ||
+              formData.phone_number ||
+              formData.Phone ||
+              formData.PhoneNumber ||
+              undefined;
+            const applicantCity = formData.city || formData.City || undefined;
+
+            const fieldsForEmail = (fieldList || []).map((f) => ({
+              label: f.label || f.field_key,
+              value: formData[f.field_key],
+            }));
+
+            const origin =
+              (req.headers && (req.headers.origin || req.headers.referer)) ||
+              process.env.PUBLIC_DASHBOARD_URL ||
+              '';
+            const baseUrl = String(origin || '').split('/').slice(0, 3).join('/');
+            const adminUrl = baseUrl
+              ? `${baseUrl}/admin?tab=careers&applicationId=${inserted.id}`
+              : undefined;
+
+            for (const adminEmail of adminEmails) {
+              const mailOpts = buildCareerAdminNotificationEmail({
+                domainName: domain.name,
+                applicationId: inserted.id,
+                createdAt,
+                adminEmail,
+                applicantSummary: {
+                  name: applicantName,
+                  email: applicantEmail,
+                  phone: applicantPhone,
+                  city: applicantCity,
+                },
+                fields: fieldsForEmail,
+                adminApplicationUrl: adminUrl,
+              });
+              transporter
+                .sendMail(mailOpts)
+                .catch((err) => console.error('Career admin notification email failed:', err));
+            }
+          }
+        } catch (err) {
+          console.error('Career admin notification processing failed:', err);
+        }
+      }
+
       res.status(201).json({ id: inserted.id, success: true });
     } catch (e) {
       console.error('POST /api/career-application', e);
@@ -601,9 +844,9 @@ function registerCareerRoutes(app, deps) {
   // —— Admin: settings ————————————————————————————————————————————————————
   app.get('/api/admin/careers/settings', requireAdminAuth, async (req, res) => {
     try {
-      if (!supabase) return res.status(500).json({ error: 'Not configured' });
-      const enabled = await getCareerSettingsEnabled(supabase);
-      res.json({ settings: { enabled } });
+      if (!db) return res.status(500).json({ error: 'Not configured' });
+      const settings = await getCareerSettings(db);
+      res.json({ settings });
     } catch (e) {
       console.error('GET /api/admin/careers/settings', e);
       res.status(500).json({ error: e.message || 'Server error' });
@@ -613,10 +856,30 @@ function registerCareerRoutes(app, deps) {
   app.put('/api/admin/careers/settings', requireAdminAuth, async (req, res) => {
     try {
       if (!db) return res.status(500).json({ error: 'Not configured' });
-      const { enabled } = req.body;
+      const { enabled, admin_notification_emails } = req.body || {};
       if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
-      await db.from('site_content').upsert({ key: CAREER_SETTINGS_KEY, content: { enabled }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
-      res.json({ settings: { enabled } });
+      const normalizedEmails = Array.isArray(admin_notification_emails)
+        ? admin_notification_emails
+            .map((e) => (typeof e === 'string' ? e.trim().toLowerCase() : ''))
+            .filter((e) => e)
+        : [];
+      await db.from('site_content').upsert(
+        {
+          key: CAREER_SETTINGS_KEY,
+          content: {
+            enabled,
+            admin_notification_emails: normalizedEmails,
+          },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'key' }
+      );
+      res.json({
+        settings: {
+          enabled,
+          admin_notification_emails: normalizedEmails,
+        },
+      });
     } catch (e) {
       console.error('PUT /api/admin/careers/settings', e);
       res.status(500).json({ error: e.message || 'Server error' });

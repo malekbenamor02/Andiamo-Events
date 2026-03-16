@@ -187,4 +187,6 @@ export interface CareerDomainWithCount extends CareerDomain {
 
 export interface CareerSettings {
   enabled: boolean;
+  /** Admin email addresses to notify on new career application submissions. */
+  admin_notification_emails?: string[];
 }

@@ -162,15 +162,27 @@ export async function fetchCareerSettings(): Promise<CareerSettings> {
   const url = `${base()}${API_ROUTES.CAREERS_ADMIN_SETTINGS}`;
   const res = await fetch(url, { credentials: 'include' });
   const data = await handleApiResponse(res);
-  return data.settings ?? { enabled: true };
+  const settings = data.settings ?? { enabled: true };
+  return {
+    enabled: settings.enabled !== false,
+    admin_notification_emails: Array.isArray(settings.admin_notification_emails)
+      ? settings.admin_notification_emails
+      : [],
+  };
 }
 
-export async function updateCareerSettings(enabled: boolean): Promise<void> {
+export async function updateCareerSettings(
+  enabled: boolean,
+  adminNotificationEmails?: string[]
+): Promise<void> {
   await apiFetch(API_ROUTES.CAREERS_ADMIN_SETTINGS, {
     method: 'PUT',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify({
+      enabled,
+      admin_notification_emails: adminNotificationEmails,
+    }),
   });
 }
 
