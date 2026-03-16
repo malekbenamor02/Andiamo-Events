@@ -6,6 +6,40 @@ const ExcelJS = require('exceljs');
 
 const CAREER_SETTINGS_KEY = 'career_applications_settings';
 
+function isLocalHostRequest(req) {
+  try {
+    const headers = (req && req.headers) || {};
+
+    // 1) Check Host header (when API itself is running on localhost)
+    const hostHeader = headers['x-forwarded-host'] || headers.host || '';
+    const host = String(hostHeader).toLowerCase();
+    const hostLooksLocal =
+      host &&
+      (host.startsWith('localhost') ||
+        host.startsWith('127.0.0.1') ||
+        host.endsWith('.local'));
+
+    if (hostLooksLocal) return true;
+
+    // 2) If API is on production but frontend is localhost,
+    //    Origin / Referer will still contain localhost.
+    const origin = String(headers.origin || '').toLowerCase();
+    const referer = String(headers.referer || '').toLowerCase();
+    const fromLocalFrontend = (value) =>
+      value &&
+      (value.startsWith('http://localhost') ||
+        value.startsWith('https://localhost') ||
+        value.includes('127.0.0.1') ||
+        value.endsWith('.local/'));
+
+    if (fromLocalFrontend(origin) || fromLocalFrontend(referer)) return true;
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 // Same template structure and CSS as QR/ticket and ambassador emails in server.cjs (buildTicketEmailHtml / buildOrderConfirmationEmailHtml)
 function getBaseEmailHtml(title, subtitle, greeting, message) {
   const supportUrl = process.env.VITE_API_URL || process.env.API_URL || 'https://www.andiamoevents.com';
@@ -356,10 +390,10 @@ function registerCareerRoutes(app, deps) {
   // —— Public: list open domains —————————————————————————————————————————
   app.get('/api/careers/domains', async (req, res) => {
     try {
-      if (!supabase) return res.status(500).json({ error: 'Not configured' });
+      if (!db) return res.status(500).json({ error: 'Not configured' });
       const enabled = await getCareerSettingsEnabled(supabase);
-      if (!enabled) return res.json({ domains: [] });
-      const { data: domains, error } = await supabase
+      if (!enabled && !isLocalHostRequest(req)) return res.json({ domains: [] });
+      const { data: domains, error } = await db
         .from('career_domains')
         .select('id, name, slug, description, benefits, job_type, salary, job_details')
         .eq('applications_open', true)
@@ -375,21 +409,20 @@ function registerCareerRoutes(app, deps) {
   // —— Public: get domain by slug with fields —————————————————————————————
   app.get('/api/careers/domains/:slug', async (req, res) => {
     try {
-      if (!supabase) return res.status(500).json({ error: 'Not configured' });
+      if (!db || !supabase) return res.status(500).json({ error: 'Not configured' });
       const enabled = await getCareerSettingsEnabled(supabase);
-      if (!enabled) return res.status(404).json({ error: 'Not found' });
-      const { data: domain, error: domainError } = await supabase
+      if (!enabled && !isLocalHostRequest(req)) return res.status(404).json({ error: 'Not found' });
+      const { data: domain, error: domainError } = await db
         .from('career_domains')
         .select('id, name, slug, description, benefits, job_type, salary, job_details, document_upload_enabled')
         .eq('slug', req.params.slug)
         .eq('applications_open', true)
         .maybeSingle();
       if (domainError || !domain) return res.status(404).json({ error: 'Not found' });
-      const { data: fields, error: fieldsError } = await supabase
+      const { data: fields, error: fieldsError } = await db
         .from('career_application_fields')
         .select('id, field_key, label, field_type, required, sort_order, options, validation, archived_at')
         .eq('career_domain_id', domain.id)
-        .is('archived_at', null)
         .order('sort_order', { ascending: true });
       if (fieldsError) throw fieldsError;
       const [cityData, genderData] = await Promise.all([getCareerCityOptions(supabase), getCareerGenderOptions(supabase)]);
@@ -426,26 +459,27 @@ function registerCareerRoutes(app, deps) {
       }
 
       const enabled = await getCareerSettingsEnabled(supabase);
-      if (!enabled) return res.status(400).json({ error: 'Career applications are currently closed' });
+      if (!enabled && !isLocalHostRequest(req)) {
+        return res.status(400).json({ error: 'Career applications are currently closed' });
+      }
 
       let domain;
       if (domainId) {
-        const { data: d, error: e } = await supabase.from('career_domains').select('*').eq('id', domainId).eq('applications_open', true).maybeSingle();
+        const { data: d, error: e } = await db.from('career_domains').select('*').eq('id', domainId).eq('applications_open', true).maybeSingle();
         if (e || !d) return res.status(400).json({ error: 'Invalid or closed domain' });
         domain = d;
       } else if (domainSlug) {
-        const { data: d, error: e } = await supabase.from('career_domains').select('*').eq('slug', domainSlug).eq('applications_open', true).maybeSingle();
+        const { data: d, error: e } = await db.from('career_domains').select('*').eq('slug', domainSlug).eq('applications_open', true).maybeSingle();
         if (e || !d) return res.status(400).json({ error: 'Invalid or closed domain' });
         domain = d;
       } else {
         return res.status(400).json({ error: 'domainId or domainSlug is required' });
       }
 
-      const { data: fields, error: fieldsErr } = await supabase
+      const { data: fields, error: fieldsErr } = await db
         .from('career_application_fields')
         .select('id, field_key, label, field_type, required, sort_order, options, validation, archived_at')
         .eq('career_domain_id', domain.id)
-        .is('archived_at', null)
         .order('sort_order', { ascending: true });
       if (fieldsErr) throw fieldsErr;
       const [cityData, genderData] = await Promise.all([getCareerCityOptions(supabase), getCareerGenderOptions(supabase)]);

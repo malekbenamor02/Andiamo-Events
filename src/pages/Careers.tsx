@@ -311,6 +311,18 @@ export default function Careers({ language }: CareersProps) {
       e.preventDefault();
       if (!domain || submitting || submitted) return;
 
+      if (!fields || fields.length === 0) {
+        toast({
+          title: language === "fr" ? "Formulaire indisponible" : "Form unavailable",
+          description:
+            language === "fr"
+              ? "Le formulaire de candidature pour ce poste n'est pas encore configuré."
+              : "The application form for this position has not been configured yet.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Validate email fields (format)
       const invalidEmailField = fields.find((f) => {
         if (f.field_type !== "email") return false;
