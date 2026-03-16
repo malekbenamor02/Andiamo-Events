@@ -1800,7 +1800,10 @@ export function CareerTab({ language }: CareerTabProps) {
                         draggable
                         onDragStart={() => setDraggedFieldId(f.id)}
                         onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => handleFieldDrop(f.id)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          handleFieldDrop(f.id);
+                        }}
                         onDragEnd={() => setDraggedFieldId(null)}
                       >
                         <TableCell className="p-1 align-middle">
