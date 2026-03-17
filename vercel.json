@@ -120,6 +120,14 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/events",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/events/:id",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin-skip-ambassador-confirmation",
       "destination": "/api/misc.js"
     },

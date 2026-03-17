@@ -18,6 +18,8 @@ export const API_ROUTES = {
   ADMIN_LOGIN: '/api/admin-login',
   ADMIN_LOGOUT: '/api/admin-logout',
   VERIFY_ADMIN: '/api/verify-admin',
+  ADMIN_EVENTS: '/api/admin/events',
+  ADMIN_EVENT: (id: string) => `/api/admin/events/${id}`,
   
   // Application Management
   ADMIN_UPDATE_APPLICATION: '/api/admin-update-application',

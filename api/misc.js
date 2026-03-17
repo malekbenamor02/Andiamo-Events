@@ -1709,6 +1709,121 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         });
       }
     }
+
+    // ============================================
+    // Admin Events CRUD (cookie-admin-auth + service role)
+    // POST   /api/admin/events       - create event
+    // PATCH  /api/admin/events/:id   - update event
+    // DELETE /api/admin/events/:id   - delete event
+    // ============================================
+    if ((path === '/api/admin/events' && method === 'POST') || (path.startsWith('/api/admin/events/') && (method === 'PATCH' || method === 'DELETE'))) {
+      const authResult = await verifyAdminAuth(req);
+      if (!authResult.valid) {
+        return res.status(authResult.statusCode || 401).json({
+          error: authResult.error,
+          reason: authResult.reason || 'Authentication failed',
+          valid: false
+        });
+      }
+
+      if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        return res.status(500).json({ error: 'Supabase service role not configured' });
+      }
+
+      const { createClient } = await import('@supabase/supabase-js');
+      const dbClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+      if (path === '/api/admin/events' && method === 'POST') {
+        const bodyData = await parseBody(req);
+        const payload = bodyData?.event ?? bodyData;
+
+        if (!payload || typeof payload !== 'object') {
+          return res.status(400).json({ error: 'Missing event payload' });
+        }
+        if (!payload.name || !String(payload.name).trim()) {
+          return res.status(400).json({ error: 'Validation error', details: 'name is required' });
+        }
+
+        const insertData = {
+          name: payload.name,
+          date: payload.date ?? null,
+          venue: payload.venue ?? null,
+          city: payload.city ?? null,
+          description: payload.description ?? null,
+          poster_url: payload.poster_url ?? null,
+          ticket_link: payload.ticket_link ?? null,
+          whatsapp_link: payload.whatsapp_link ?? null,
+          featured: !!payload.featured,
+          event_type: payload.event_type || 'upcoming',
+          gallery_images: payload.gallery_images ?? [],
+          gallery_videos: payload.gallery_videos ?? [],
+        };
+
+        const { data, error } = await dbClient
+          .from('events')
+          .insert(insertData)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Error creating event:', error);
+          return res.status(400).json({ error: 'Failed to create event', details: error.message, code: error.code });
+        }
+        return res.status(200).json({ success: true, data });
+      }
+
+      // /api/admin/events/:id
+      const pathParts = path.split('/');
+      const eventId = pathParts[pathParts.length - 1];
+      if (!eventId) return res.status(400).json({ error: 'Event ID is required' });
+
+      if (method === 'PATCH') {
+        const bodyData = await parseBody(req);
+        const payload = bodyData?.event ?? bodyData;
+
+        if (!payload || typeof payload !== 'object') {
+          return res.status(400).json({ error: 'Missing event payload' });
+        }
+
+        const updateData = {
+          name: payload.name,
+          date: payload.date ?? null,
+          venue: payload.venue ?? null,
+          city: payload.city ?? null,
+          description: payload.description ?? null,
+          poster_url: payload.poster_url ?? null,
+          ticket_link: payload.ticket_link ?? null,
+          whatsapp_link: payload.whatsapp_link ?? null,
+          featured: !!payload.featured,
+          event_type: payload.event_type || 'upcoming',
+          gallery_images: payload.gallery_images ?? [],
+          gallery_videos: payload.gallery_videos ?? [],
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data, error } = await dbClient
+          .from('events')
+          .update(updateData)
+          .eq('id', eventId)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Error updating event:', error);
+          return res.status(400).json({ error: 'Failed to update event', details: error.message, code: error.code });
+        }
+        return res.status(200).json({ success: true, data });
+      }
+
+      if (method === 'DELETE') {
+        const { error } = await dbClient.from('events').delete().eq('id', eventId);
+        if (error) {
+          console.error('Error deleting event:', error);
+          return res.status(400).json({ error: 'Failed to delete event', details: error.message, code: error.code });
+        }
+        return res.status(200).json({ success: true });
+      }
+    }
     
     // ============================================
     // /api/admin/passes/:eventId (GET)

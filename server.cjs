@@ -5874,6 +5874,113 @@ app.get('/api/admin/passes/:eventId', requireAdminAuth, async (req, res) => {
   }
 });
 
+// Admin Events CRUD (cookie-admin-auth + service role)
+app.post('/api/admin/events', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabaseService) {
+      return res.status(500).json({ error: 'Supabase service client not configured' });
+    }
+
+    const payload = req.body?.event ?? req.body;
+    if (!payload || typeof payload !== 'object') {
+      return res.status(400).json({ error: 'Missing event payload' });
+    }
+    if (!payload.name || !String(payload.name).trim()) {
+      return res.status(400).json({ error: 'Validation error', details: 'name is required' });
+    }
+
+    const insertData = {
+      name: payload.name,
+      date: payload.date ?? null,
+      venue: payload.venue ?? null,
+      city: payload.city ?? null,
+      description: payload.description ?? null,
+      poster_url: payload.poster_url ?? null,
+      ticket_link: payload.ticket_link ?? null,
+      whatsapp_link: payload.whatsapp_link ?? null,
+      featured: !!payload.featured,
+      event_type: payload.event_type || 'upcoming',
+      gallery_images: payload.gallery_images ?? [],
+      gallery_videos: payload.gallery_videos ?? [],
+    };
+
+    const { data, error } = await supabaseService
+      .from('events')
+      .insert(insertData)
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ error: 'Failed to create event', details: error.message, code: error.code });
+    }
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('Error in POST /api/admin/events:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
+app.patch('/api/admin/events/:id', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabaseService) {
+      return res.status(500).json({ error: 'Supabase service client not configured' });
+    }
+    const eventId = req.params.id;
+    const payload = req.body?.event ?? req.body;
+    if (!payload || typeof payload !== 'object') {
+      return res.status(400).json({ error: 'Missing event payload' });
+    }
+
+    const updateData = {
+      name: payload.name,
+      date: payload.date ?? null,
+      venue: payload.venue ?? null,
+      city: payload.city ?? null,
+      description: payload.description ?? null,
+      poster_url: payload.poster_url ?? null,
+      ticket_link: payload.ticket_link ?? null,
+      whatsapp_link: payload.whatsapp_link ?? null,
+      featured: !!payload.featured,
+      event_type: payload.event_type || 'upcoming',
+      gallery_images: payload.gallery_images ?? [],
+      gallery_videos: payload.gallery_videos ?? [],
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabaseService
+      .from('events')
+      .update(updateData)
+      .eq('id', eventId)
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ error: 'Failed to update event', details: error.message, code: error.code });
+    }
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('Error in PATCH /api/admin/events/:id:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
+app.delete('/api/admin/events/:id', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabaseService) {
+      return res.status(500).json({ error: 'Supabase service client not configured' });
+    }
+    const eventId = req.params.id;
+    const { error } = await supabaseService.from('events').delete().eq('id', eventId);
+    if (error) {
+      return res.status(400).json({ error: 'Failed to delete event', details: error.message, code: error.code });
+    }
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error in DELETE /api/admin/events/:id:', error);
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
 // POST /api/admin/passes/:id/stock - Update pass stock (max_quantity)
 app.post('/api/admin/passes/:id/stock', requireAdminAuth, async (req, res) => {
   try {

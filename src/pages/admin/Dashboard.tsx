@@ -8326,59 +8326,41 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
       }
 
+      const eventPayload = {
+        name: event.name,
+        date: eventDate,
+        venue: event.venue,
+        city: event.city,
+        description: event.description,
+        poster_url: posterUrl,
+        ticket_link: event.ticket_link,
+        whatsapp_link: event.instagram_link, // Database column is still whatsapp_link, but we use instagram_link in UI
+        featured: event.featured,
+        event_type: event.event_type || 'upcoming',
+        gallery_images: finalGalleryImages,
+        gallery_videos: finalGalleryVideos
+      };
+
       if (event.id) {
-        // Update existing event
-        const { error } = await supabase
-          .from('events')
-          .update({
-            name: event.name,
-            date: eventDate,
-            venue: event.venue,
-            city: event.city,
-            description: event.description,
-            poster_url: posterUrl,
-            ticket_link: event.ticket_link,
-            whatsapp_link: event.instagram_link, // Database column is still whatsapp_link, but we use instagram_link in UI
-            featured: event.featured,
-            event_type: event.event_type || 'upcoming',
-            gallery_images: finalGalleryImages,
-            gallery_videos: finalGalleryVideos,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', event.id);
-
-        if (error) throw error;
-
-        // Pass management is now handled separately via Pass Stock Management dialog
-        // Passes are no longer saved from the event edit dialog
+        const r = await apiFetch(API_ROUTES.ADMIN_EVENT(event.id), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: eventPayload })
+        });
+        const result = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(result?.details || result?.error || 'Failed to update event');
+        newEventData = result?.data || null;
+        eventId = event.id;
       } else {
-        // Create new event
-        const { data: insertedEventData, error } = await supabase
-          .from('events')
-          .insert({
-            name: event.name,
-            date: eventDate,
-            venue: event.venue,
-            city: event.city,
-            description: event.description,
-            poster_url: posterUrl,
-            ticket_link: event.ticket_link,
-            whatsapp_link: event.instagram_link, // Database column is still whatsapp_link, but we use instagram_link in UI
-            featured: event.featured,
-            event_type: event.event_type || 'upcoming',
-            gallery_images: finalGalleryImages,
-            gallery_videos: finalGalleryVideos
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        newEventData = insertedEventData; // Assign to outer scope variable
-        eventId = newEventData.id;
-
-        // Pass management is now handled separately via Pass Stock Management dialog
-        // Admins should create passes using the "Pass Stock" button after creating the event
+        const r = await apiFetch(API_ROUTES.ADMIN_EVENTS, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: eventPayload })
+        });
+        const result = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(result?.details || result?.error || 'Failed to create event');
+        newEventData = result?.data || null;
+        eventId = newEventData?.id;
       }
 
       // At this point, the event is successfully saved to the database
@@ -8408,8 +8390,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       } else {
         // For new events, use the data returned from database and add gallery
         const newEvent: Event = {
-          ...newEventData,
-          instagram_link: newEventData.whatsapp_link || event.instagram_link, // Map from database whatsapp_link to UI instagram_link
+          ...(newEventData || {}),
+          instagram_link: newEventData?.whatsapp_link || event.instagram_link, // Map from database whatsapp_link to UI instagram_link
           passes: [], // Passes will be created via Pass Stock Management dialog
           gallery_images: finalGalleryImages,
           gallery_videos: finalGalleryVideos,
@@ -8446,7 +8428,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error saving event:', error, error?.message, error?.details);
       toast({
         title: t.error,
-        description: language === 'en' ? "Failed to save event" : "Ã‰chec de l'enregistrement",
+        description: (error as any)?.message || (language === 'en' ? "Failed to save event" : "Échec de l'enregistrement"),
         variant: "destructive",
       });
     } finally {
@@ -9088,49 +9070,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (!eventToDelete) return;
 
     try {
-      const { data, error } = await supabase
-        .from('events')
-        .delete()
-        .eq('id', eventToDelete.id)
-        .select();
-
-      if (error) {
-        console.error('Delete error:', error);
-        throw error;
+      const r = await apiFetch(API_ROUTES.ADMIN_EVENT(eventToDelete.id), { method: 'DELETE' });
+      const result = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        throw new Error(result?.details || result?.error || 'Failed to delete event');
       }
 
       // Update local state immediately for instant UI feedback
       setEvents(prev => prev.filter(e => e.id !== eventToDelete.id));
 
-      // Verify deletion by checking if the event still exists
-      const { data: verifyData, error: verifyError } = await supabase
-        .from('events')
-        .select('id')
-        .eq('id', eventToDelete.id)
-        .single();
-
-      if (verifyError && verifyError.code === 'PGRST116') {
-        // Event was successfully deleted (not found)
-        // Invalidate events cache so frontend shows updated data
-        invalidateEvents();
-        
-        toast({
-          title: language === 'en' ? "Event deleted" : "Ã‰vÃ©nement supprimÃ©",
-          description: language === 'en' ? "Event deleted successfully" : "Ã‰vÃ©nement supprimÃ© avec succÃ¨s",
-        });
-      } else if (verifyData) {
-        // Event still exists - deletion failed, revert UI
-        setEvents(prev => [...prev, eventToDelete].sort((a, b) => 
-          new Date(b.date).getTime() - new Date(a.date).getTime()
-        ));
-        console.error('Event still exists after deletion attempt');
-        toast({
-          title: t.error,
-          description: language === 'en' ? "Event deletion failed - please check RLS policies" : "Ã‰chec de la suppression - vÃ©rifiez les politiques RLS",
-          variant: "destructive",
-        });
-        return; // Don't continue if deletion failed
-      }
+      // Invalidate events cache so frontend shows updated data
+      invalidateEvents();
+      
+      toast({
+        title: language === 'en' ? "Event deleted" : "Événement supprimé",
+        description: language === 'en' ? "Event deleted successfully" : "Événement supprimé avec succès",
+      });
 
       // Refresh all data to ensure consistency
       await fetchAllData();
@@ -9139,7 +9094,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       console.error('Error deleting event:', error);
       toast({
         title: t.error,
-        description: language === 'en' ? `Failed to delete event: ${error.message}` : `Ã‰chec de la suppression: ${error.message}`,
+        description: (error as any)?.message || (language === 'en' ? 'Failed to delete event' : 'Échec de la suppression'),
         variant: "destructive",
       });
     } finally {
