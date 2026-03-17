@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { generateSlug } from "@/lib/utils";
 import { getOptimizedImageUrl } from "@/lib/image-utils";
 import TypewriterText from "./TypewriterText";
+import { useFeaturedEvents, type Event } from "@/hooks/useEvents";
 
 interface HeroSectionProps {
   language: 'en' | 'fr';
@@ -22,14 +23,6 @@ interface HeroSlide {
   src: string;
   alt?: string;
   poster?: string;
-}
-
-interface Event {
-  id: string;
-  name: string;
-  date: string;
-  event_type?: 'upcoming' | 'gallery';
-  event_status?: 'active' | 'cancelled' | 'completed';
 }
 
 // Video slide component with lazy loading
@@ -128,7 +121,11 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
   const [heroContent, setHeroContent] = useState<any>({});
   const [isPageInteractive, setIsPageInteractive] = useState(false);
   const [loadedMedia, setLoadedMedia] = useState<Set<number>>(new Set());
-  const [nextEvent, setNextEvent] = useState<Event | null>(null);
+  const { data: featuredEvents = [] } = useFeaturedEvents();
+  const nextEvent = useMemo<Event | null>(
+    () => (featuredEvents.length > 0 ? featuredEvents[0] : null),
+    [featuredEvents]
+  );
   const navigate = useNavigate();
   const transitionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -165,76 +162,12 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
     setIsPageInteractive(true);
   }, []);
 
-  // Fetch next upcoming event for CTA button
-  useEffect(() => {
-    const fetchNextEvent = async () => {
-      try {
-        const now = new Date().toISOString();
-        
-        // Check if we're on localhost (for testing) or production
-        const isLocalhost = typeof window !== 'undefined' && (
-          window.location.hostname === 'localhost' ||
-          window.location.hostname === '127.0.0.1' ||
-          window.location.hostname.startsWith('192.168.') ||
-          window.location.hostname.startsWith('10.0.') ||
-          window.location.hostname.startsWith('172.')
-        );
-        
-        // Get all events and filter in JavaScript for more flexibility
-        const { data, error } = await supabase
-          .from('events')
-          .select('id, name, date, event_type, event_status, is_test, slug')
-          .order('date', { ascending: true });
-
-        if (error) {
-          console.error('❌ Error fetching events:', error);
-          return;
-        }
-
-        // Filter out test events if on production (not localhost)
-        const filteredData = isLocalhost 
-          ? data 
-          : (data || []).filter((event: any) => !event.is_test);
-
-
-        if (filteredData && filteredData.length > 0) {
-          // Filter for future events (date >= now), not cancelled, not completed
-          const futureEvents = filteredData.filter((event: any) => {
-            const eventDate = new Date(event.date);
-            const isFuture = eventDate >= new Date(now);
-            const notCancelled = event.event_status !== 'cancelled' && (!event.event_status || event.event_status !== 'cancelled');
-            const notCompleted = event.event_status !== 'completed';
-            return isFuture && notCancelled && notCompleted;
-          });
-
-
-          if (futureEvents.length > 0) {
-            // Prefer event_type = 'upcoming', otherwise take the first one
-            const upcomingEvent = futureEvents.find((e: any) => e.event_type === 'upcoming') || futureEvents[0];
-            
-            setNextEvent(upcomingEvent as any);
-          } else {
-            setNextEvent(null);
-          }
-        } else {
-          setNextEvent(null);
-        }
-      } catch (error) {
-        console.error('❌ Error fetching next event:', error);
-        setNextEvent(null);
-      }
-    };
-
-    fetchNextEvent();
-  }, []);
-
   const defaultContent = {
     en: {
       title: "Live the Night with Andiamo",
       subtitle: "",
       description: "Join thousands of party-goers across Tunisia for unforgettable nights filled with energy, music, and memories that last forever.",
       cta: "Join the Movement",
-      watchVideo: "Watch Highlights",
       joinNextEvent: "Join Next Event"
     },
     fr: {
@@ -242,7 +175,6 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
       subtitle: "",
       description: "Rejoignez des milliers de fêtards à travers la Tunisie pour des nuits inoubliables remplies d'énergie, de musique et de souvenirs qui durent pour toujours.",
       cta: "Rejoignez le Mouvement",
-      watchVideo: "Voir les Highlights",
       joinNextEvent: "Rejoindre le Prochain Événement"
     }
   };
@@ -434,43 +366,38 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
             {content?.description || defaultContent[language].description}
           </p> */}
 
-          <div className="flex justify-center items-center mt-8 animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
-            <Button
-              variant="default"
-              size="lg"
-              className="text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 hover:scale-110 active:scale-95 transition-all duration-300 relative overflow-hidden group font-normal"
-              style={{
-                backgroundColor: '#E21836',
-                color: '#FFFFFF',
-                boxShadow: '0 0 30px rgba(226, 24, 54, 0.6)',
-                fontWeight: 400
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#FF3B5C';
-                e.currentTarget.style.boxShadow = '0 0 30px rgba(226, 24, 54, 0.6)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#E21836';
-                e.currentTarget.style.boxShadow = '0 0 30px rgba(226, 24, 54, 0.6)';
-              }}
-              onClick={() => {
-                if (nextEvent) {
+          {nextEvent && (
+            <div className="flex justify-center items-center mt-8 animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
+              <Button
+                variant="default"
+                size="lg"
+                className="text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 hover:scale-110 active:scale-95 transition-all duration-300 relative overflow-hidden group font-normal"
+                style={{
+                  backgroundColor: '#E21836',
+                  color: '#FFFFFF',
+                  boxShadow: '0 0 30px rgba(226, 24, 54, 0.6)',
+                  fontWeight: 400
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#FF3B5C';
+                  e.currentTarget.style.boxShadow = '0 0 30px rgba(226, 24, 54, 0.6)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#E21836';
+                  e.currentTarget.style.boxShadow = '0 0 30px rgba(226, 24, 54, 0.6)';
+                }}
+                onClick={() => {
                   const slug = nextEvent.slug || generateSlug(nextEvent.name);
                   navigate(`/${slug}`);
-                } else {
-                  navigate('/events');
-                }
-              }}
-            >
-              <span className="relative z-10 flex items-center">
-                <Calendar className="w-5 h-5 mr-2 transition-transform duration-300 group-hover:scale-110" />
-                {nextEvent 
-                  ? (language === 'en' ? 'Book Now' : 'Réserver un Pass')
-                  : (content?.watchVideo || defaultContent[language].watchVideo)
-                }
-              </span>
-            </Button>
-          </div>
+                }}
+              >
+                <span className="relative z-10 flex items-center">
+                  <Calendar className="w-5 h-5 mr-2 transition-transform duration-300 group-hover:scale-110" />
+                  {language === 'en' ? 'Book Now' : 'Réserver un Pass'}
+                </span>
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -144,15 +144,11 @@ export const useFeaturedEvents = () => {
         ? data 
         : (data || []).filter((event: any) => !event.is_test);
 
-      // Only future events, not completed (for home "featured" / book now)
-      const now = new Date();
-      const futureNotCompleted = (filteredData || []).filter((e: any) => {
-        const eventDate = new Date(e.date);
-        return eventDate >= now && e.event_status !== 'completed';
-      });
+      // Only events that are not completed (for home "featured" / book now)
+      const notCompleted = (filteredData || []).filter((e: any) => e.event_status !== 'completed');
 
       // Map database whatsapp_link to instagram_link for UI
-      const mappedEvents = futureNotCompleted.map((e: any) => ({
+      const mappedEvents = notCompleted.map((e: any) => ({
         ...e,
         instagram_link: e.whatsapp_link
       }));
