@@ -169,9 +169,6 @@ const Index = ({ language }: IndexProps) => {
         className={`transition-opacity duration-500 ease-out ${
           heroMediaLoaded ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
-        style={{
-          visibility: heroMediaLoaded ? 'visible' : 'hidden',
-        }}
       >
         {/* Hero Section with Scroll Animation - positioned behind navbar */}
         <div 

@@ -30,6 +30,26 @@ const VideoSlide = ({ slide, isActive, isPageInteractive, onLoaded }: { slide: H
   const videoRef = useRef<HTMLVideoElement>(null);
   const hasNotified = useRef(false);
 
+  const attemptPlay = async (reason: string) => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (!isActive) return;
+
+    // Required for mobile autoplay policies
+    video.muted = true;
+    video.volume = 0;
+    video.playsInline = true;
+    video.setAttribute("playsinline", "true");
+    video.setAttribute("webkit-playsinline", "true");
+
+    // Avoid throwing before metadata is present
+    try {
+      await video.play();
+    } catch (err) {
+      console.warn(`Video autoplay prevented (${reason}):`, err);
+    }
+  };
+
   // Load video immediately for loading screen tracking
   useEffect(() => {
     if (videoRef.current) {
@@ -48,12 +68,57 @@ const VideoSlide = ({ slide, isActive, isPageInteractive, onLoaded }: { slide: H
   // Try to play when active and page is interactive
   useEffect(() => {
     if (videoRef.current && isActive && isPageInteractive) {
-      const video = videoRef.current;
-      video.play().catch((err) => {
-        console.warn('Video autoplay prevented:', err);
-      });
+      attemptPlay("active+interactive");
     }
   }, [isActive, isPageInteractive]);
+
+  // Retry autoplay when browser restores page / tab becomes visible (common mobile case)
+  useEffect(() => {
+    if (!isActive) return;
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        attemptPlay("visibilitychange");
+      }
+    };
+
+    const onPageShow = () => {
+      attemptPlay("pageshow");
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pageshow", onPageShow);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, [isActive]);
+
+  // One-time retry on first user interaction (tap/scroll) to satisfy strict mobile policies
+  useEffect(() => {
+    if (!isActive) return;
+
+    let done = false;
+    const tryOnce = () => {
+      if (done) return;
+      done = true;
+      attemptPlay("first-user-interaction");
+      window.removeEventListener("touchstart", tryOnce, true);
+      window.removeEventListener("click", tryOnce, true);
+      window.removeEventListener("scroll", tryOnce, true);
+    };
+
+    window.addEventListener("touchstart", tryOnce, true);
+    window.addEventListener("click", tryOnce, true);
+    window.addEventListener("scroll", tryOnce, true);
+
+    return () => {
+      window.removeEventListener("touchstart", tryOnce, true);
+      window.removeEventListener("click", tryOnce, true);
+      window.removeEventListener("scroll", tryOnce, true);
+    };
+  }, [isActive]);
 
   return (
     <video
@@ -76,6 +141,8 @@ const VideoSlide = ({ slide, isActive, isPageInteractive, onLoaded }: { slide: H
         const video = e.currentTarget;
         video.muted = true;
         video.volume = 0;
+        video.setAttribute("playsinline", "true");
+        video.setAttribute("webkit-playsinline", "true");
         // Notify that first frame is ready (loadeddata fires when first frame can be displayed)
         // This is what we want - don't wait for full video download
         if (!hasNotified.current) {
@@ -84,9 +151,7 @@ const VideoSlide = ({ slide, isActive, isPageInteractive, onLoaded }: { slide: H
         }
         // Force play to ensure autoplay works (only if active)
         if (isActive) {
-          video.play().catch((err) => {
-            console.warn('Video autoplay prevented:', err);
-          });
+          attemptPlay("loadeddata");
         }
       }}
       onCanPlay={(e) => {
@@ -95,6 +160,9 @@ const VideoSlide = ({ slide, isActive, isPageInteractive, onLoaded }: { slide: H
         if (!hasNotified.current) {
           hasNotified.current = true;
           onLoaded?.();
+        }
+        if (isActive) {
+          attemptPlay("canplay");
         }
       }}
       onPlay={(e) => {
