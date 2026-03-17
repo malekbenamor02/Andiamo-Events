@@ -119,6 +119,15 @@ export const useFeaturedEvents = () => {
   return useQuery<Event[]>({
     queryKey: ['events', 'featured'],
     queryFn: async () => {
+      // Check if we're on localhost (for testing) or production
+      const isLocalhost = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.0.') ||
+        window.location.hostname.startsWith('172.')
+      );
+
       const { data, error } = await supabase
         .from('events')
         .select('*')
@@ -130,8 +139,13 @@ export const useFeaturedEvents = () => {
         throw error;
       }
 
+      // Filter out test events if on production (not localhost)
+      const filteredData = isLocalhost 
+        ? data 
+        : (data || []).filter((event: any) => !event.is_test);
+
       // Only events that are not completed (for home "featured" / book now)
-      const notCompleted = (data || []).filter((e: any) => e.event_status !== 'completed');
+      const notCompleted = (filteredData || []).filter((e: any) => e.event_status !== 'completed');
 
       // Map database whatsapp_link to instagram_link for UI
       const mappedEvents = notCompleted.map((e: any) => ({
