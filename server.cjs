@@ -6243,9 +6243,8 @@ app.get('/api/ambassadors/active', async (req, res) => {
       .eq('status', 'approved')
       .eq('city', normalizedCity);
 
-    // For Sousse: ignore ville filter, show all ambassadors in Sousse
-    // For other cities: filter by ville if provided
-    if (normalizedVille && normalizedCity !== 'Sousse') {
+    // Filter by ville when provided (same behavior for Tunis, Sousse, etc.)
+    if (normalizedVille) {
       query = query.eq('ville', normalizedVille);
     }
     

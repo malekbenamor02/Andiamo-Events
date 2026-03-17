@@ -1385,9 +1385,8 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           .eq('status', 'approved')
           .eq('city', normalizedCity);
 
-        // For Sousse: ignore ville filter, show all ambassadors in Sousse
-        // For other cities: filter by ville if provided
-        if (normalizedVille && normalizedCity !== 'Sousse') {
+        // Filter by ville when provided (same behavior for Tunis, Sousse, etc.)
+        if (normalizedVille) {
           query = query.eq('ville', normalizedVille);
         }
         
