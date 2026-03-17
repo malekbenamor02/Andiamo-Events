@@ -35,7 +35,7 @@ export function PerformanceTab({ language, t, performance }: PerformanceTabProps
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
       <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent hover:from-emerald-500/15 hover:via-emerald-500/10 transition-all duration-300 shadow-lg shadow-emerald-500/10 hover:shadow-xl hover:shadow-emerald-500/20 hover:scale-[1.02]">
         <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-emerald-500/10 transition-colors" />
         <CardHeader className="pb-3">
@@ -148,49 +148,6 @@ export function PerformanceTab({ language, t, performance }: PerformanceTabProps
             <span className="text-xs font-medium">
               {language === "en" ? "All time" : "Tout le temps"}
             </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="group relative overflow-hidden border-0 bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 hover:from-primary/25 hover:via-primary/15 transition-all duration-300 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 hover:scale-[1.02]">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-primary/15 transition-colors" />
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-3 text-sm sm:text-base font-semibold text-muted-foreground">
-            <div className="p-2 rounded-lg bg-primary/30 group-hover:bg-primary/40 transition-colors">
-              <DollarSign className="w-4 h-4 text-primary" />
-            </div>
-            {t.commissionEarned}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-primary via-primary/90 to-primary/80 bg-clip-text text-transparent mb-2">
-            {(performance.commission || 0).toLocaleString("en-US", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
-          </p>
-          <p className="text-xs sm:text-sm text-muted-foreground/80 font-medium">
-            {language === "en"
-              ? `${performance.totalPassesSold || 0} ${(performance.totalPassesSold || 0) === 1 ? "pass sold" : "passes sold"}`
-              : `${performance.totalPassesSold || 0} ${(performance.totalPassesSold || 0) === 1 ? "pass vendu" : "passes vendus"}`}
-          </p>
-          <div className="mt-3 flex flex-col gap-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground/70">
-                {language === "en" ? "Base (passes 8+)" : "Base (passes 8+)"}:
-              </span>
-              <span className="font-semibold text-primary">
-                {(performance.baseCommission || 0).toFixed(0)} DT
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground/70">
-                {language === "en" ? "Bonuses" : "Bonus"}:
-              </span>
-              <span className="font-semibold text-primary">
-                +{(performance.totalBonuses || 0).toFixed(0)} DT
-              </span>
-            </div>
           </div>
         </CardContent>
       </Card>
