@@ -79,6 +79,18 @@ export function OnlineOrderDetailsDialog({
 }: OnlineOrderDetailsDialogProps) {
   const { toast } = useToast();
 
+  const getActionCodeDescription = (paymentConfirmResponse: unknown): string | null => {
+    const obj = paymentConfirmResponse as any;
+    const actionCodeDescription =
+      obj?.actionCodeDescription ??
+      obj?.action_code_description ??
+      obj?.actionCodeDescriptio ??
+      obj?.action_code_desc;
+    return typeof actionCodeDescription === "string" && actionCodeDescription.trim().length > 0
+      ? actionCodeDescription
+      : null;
+  };
+
   // Safely parse fee breakdown, preferring dedicated columns and falling back to notes JSON.
   let paymentFees: { fee_rate?: number; fee_amount?: number; subtotal?: number; total_with_fees?: number } | null = null;
   try {
@@ -187,7 +199,19 @@ export function OnlineOrderDetailsDialog({
                             />
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>{order.payment_status || "PENDING_PAYMENT"}</p>
+                            {order.payment_status === "FAILED" ? (
+                              (() => {
+                                const msg = getActionCodeDescription(order.payment_confirm_response);
+                                return (
+                                  <div className="space-y-1">
+                                    <p>{order.payment_status || "FAILED"}</p>
+                                    {msg ? <p className="text-xs text-muted-foreground">{msg}</p> : null}
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <p>{order.payment_status || "PENDING_PAYMENT"}</p>
+                            )}
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>

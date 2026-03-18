@@ -430,7 +430,25 @@ export function OnlineOrdersTab({
                                     <div className={cn("w-3 h-3 rounded-full cursor-help", getStatusColor())} />
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p className="text-xs">{statusMap[status] ?? status}</p>
+                                    {status === "FAILED" ? (
+                                      (() => {
+                                        const paymentConfirm = (order as any)?.payment_confirm_response;
+                                        const actionCodeDescription =
+                                          paymentConfirm?.actionCodeDescription ??
+                                          paymentConfirm?.action_code_description ??
+                                          null;
+                                        return (
+                                          <div className="space-y-1">
+                                            <p className="text-xs">{statusMap[status] ?? status}</p>
+                                            {typeof actionCodeDescription === "string" && actionCodeDescription.trim().length > 0 ? (
+                                              <p className="text-xs text-muted-foreground">{actionCodeDescription}</p>
+                                            ) : null}
+                                          </div>
+                                        );
+                                      })()
+                                    ) : (
+                                      <p className="text-xs">{statusMap[status] ?? status}</p>
+                                    )}
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
