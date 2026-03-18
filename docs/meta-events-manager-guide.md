@@ -15,7 +15,7 @@ The Andiamo Events app sends the following events to the Meta Pixel (Pixel ID is
 | **PassSelect** | User adds a pass to the selection (quantity 0 → >0). |
 | **OrderSubmitOnline** | Order created successfully with online payment (before redirect to payment). |
 | **OrderSubmitAmbassador** | Order created successfully with ambassador cash payment. |
-| **Purchase** | Standard Meta event fired for online orders (value, currency, content_ids). |
+| **Purchase** | Standard Meta event fired for completed orders (online or ambassador-cash; value, currency, content_ids). |
 | **AmbassadorApplicationVisit** | User visits the ambassador application page (when applications are open). |
 | **AmbassadorApplicationSubmitSuccess** | User submits the ambassador application successfully. |
 
@@ -39,7 +39,7 @@ Using these in Events Manager and Ads Manager gives you better **optimization** 
    - **Navigate** a few routes → you should see **PageView** for each.
    - **Open a pass purchase page** (e.g. `/event/{slug}` or pass-purchase with `eventId`) → **PassPurchaseVisit**.
    - **Add a pass** (quantity 0 → 1) → **PassSelect**.
-   - **Complete an order** (online or ambassador) → **OrderSubmitOnline** or **OrderSubmitAmbassador**, and for online also **Purchase**.
+  - **Complete an order** (online or ambassador) → **OrderSubmitOnline** or **OrderSubmitAmbassador**, and also **Purchase**.
    - **Open the ambassador application page** → **AmbassadorApplicationVisit**.
    - **Submit the ambassador application successfully** → **AmbassadorApplicationSubmitSuccess**.
 4. In Test Events, confirm:
@@ -185,5 +185,5 @@ Custom audiences based on Pixel events let you **remarket** to people who did (o
 ## 9. What else can add value
 
 - **Aggregated Event Measurement (AEM):** On iOS, Meta may limit which events are available. In Events Manager you can set **event priority** so the most important events (e.g. Purchase, OrderSubmitOnline) are prioritized when limits apply.
-- **Standard events:** The app already sends the standard **Purchase** event for online orders (value, currency, content_ids). Other standard events (e.g. ViewContent, AddToCart) could be added in the future if you want more funnel steps in Meta’s standard reporting.
+- **Standard events:** The app sends the standard **Purchase** event for completed orders (online and ambassador-cash) (value, currency, content_ids). Other standard events (e.g. ViewContent, AddToCart) could be added in the future if you want more funnel steps in Meta’s standard reporting.
 - **Conversions API (CAPI):** Sending the same events from your server (in addition to the Pixel) can improve event match quality and resilience to browser blocking. This is a technical follow-up; see your technical docs or roadmap if you decide to implement it.

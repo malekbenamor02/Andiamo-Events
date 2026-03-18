@@ -87,7 +87,7 @@ Below are the core events, with:
 
 - **Meta event name:**
   - `OrderSubmitOnline` (custom event)  
-  - Optionally also map it to standard Meta `Purchase` with `fbq('track', 'Purchase', ...)` for maximum optimization.
+  - Also map it to standard Meta `Purchase` with `fbq('track', 'Purchase', ...)` for maximum optimization.
 
 - **Parameters (example):**
   - `order_id` – internal order ID.
@@ -121,6 +121,7 @@ Below are the core events, with:
 
 - **Meta event name:**
   - `OrderSubmitAmbassador` (custom event).
+  - For ambassador-cash orders, we also fire the standard Meta `Purchase` event.
 
 - **Parameters (example):**
   - `order_id`

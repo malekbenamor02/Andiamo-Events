@@ -809,6 +809,14 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         };
         trackEvent('order_submit_ambassador', ambassadorParams);
         trackMetaEvent('OrderSubmitAmbassador', ambassadorParams);
+        // Fire Meta's standard Purchase event too (now for ambassador-cash orders, not only online).
+        trackMetaPurchase({
+          value: totalPrice,
+          currency: 'TND',
+          content_ids: selectedPassesArray.map((p) => p.passId),
+          content_type: 'product',
+          num_items: totalQuantity,
+        });
 
         toast({
           title: t[language].success,
