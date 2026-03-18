@@ -64,7 +64,7 @@ export interface OnlineOrderDetailsDialogProps {
     total_with_fees?: number | null;
   } | null;
   language: "en" | "fr";
-  onUpdateStatus: (orderId: string, newStatus: "PENDING_PAYMENT" | "PAID" | "FAILED" | "REFUNDED") => void | Promise<void>;
+  onUpdateStatus: (orderId: string, newStatus: "PENDING_PAYMENT" | "PAID" | "FAILED" | "REFUNDED" | "EXPIRED") => void | Promise<void>;
   /** Optional: resend ticket email (only shown for paid orders when provided) */
   onResendTicket?: (orderId: string) => void | Promise<void>;
 }
@@ -180,6 +180,7 @@ export function OnlineOrderDetailsDialog({
                               className={cn(
                                 "w-3 h-3 rounded-full cursor-help",
                                 order.payment_status === "PAID" ? "bg-green-500" :
+                                order.payment_status === "EXPIRED" ? "bg-blue-500" :
                                 order.payment_status === "FAILED" || order.payment_status === "REFUNDED" ? "bg-red-500" :
                                 "bg-yellow-500"
                               )}
@@ -193,11 +194,13 @@ export function OnlineOrderDetailsDialog({
                       <Badge
                         variant={
                           order.payment_status === "PAID" ? "default" :
+                          order.payment_status === "EXPIRED" ? "default" :
                           order.payment_status === "FAILED" || order.payment_status === "REFUNDED" ? "destructive" :
                           "outline"
                         }
                         className={
                           order.payment_status === "PAID" ? "bg-green-500 text-white border-green-600" :
+                          order.payment_status === "EXPIRED" ? "bg-blue-500 text-white border-blue-600" :
                           order.payment_status === "FAILED" || order.payment_status === "REFUNDED" ? "bg-red-500 text-white border-red-600" :
                           ""
                         }

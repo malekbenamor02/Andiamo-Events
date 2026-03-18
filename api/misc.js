@@ -4117,7 +4117,7 @@ Billets envoyés par email. We Create Memories`;
 
     // ============================================
     // /api/auto-fail-pending-online-orders (GET/POST) - Cron endpoint for online payments
-    // Marks long-pending online orders as FAILED and releases stock.
+    // Marks long-pending online orders as EXPIRED and releases stock.
     // ============================================
     if (path === '/api/auto-fail-pending-online-orders' && (method === 'GET' || method === 'POST')) {
       try {
@@ -4201,10 +4201,10 @@ Billets envoyés par email. We Create Memories`;
             const { error: updateError } = await supabase
               .from('orders')
               .update({
-                status: 'FAILED',
-                payment_status: 'FAILED',
+                status: 'EXPIRED',
+                payment_status: 'EXPIRED',
                 stock_released: true,
-                cancellation_reason: 'Auto-failed after 30 minutes without payment confirmation',
+                cancellation_reason: 'Auto-expired after 30 minutes without payment confirmation',
                 cancelled_by: 'system',
                 cancelled_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
@@ -4213,7 +4213,7 @@ Billets envoyés par email. We Create Memories`;
               .eq('status', 'PENDING_ONLINE');
 
             if (updateError) {
-              console.error('❌ Failed to mark pending online order as FAILED:', {
+              console.error('❌ Failed to mark pending online order as EXPIRED:', {
                 orderId: ord.id,
                 error: updateError.message || updateError,
               });
@@ -4232,8 +4232,8 @@ Billets envoyés par email. We Create Memories`;
           failed_order_ids: failedOrderIds,
           message:
             failedOrderIds.length > 0
-              ? `Auto-failed ${failedOrderIds.length} pending online order(s) after 30 minutes without payment confirmation.`
-              : 'No pending online orders were auto-failed (all updates failed).',
+              ? `Auto-expired ${failedOrderIds.length} pending online order(s) after 30 minutes without payment confirmation.`
+              : 'No pending online orders were auto-expired (all updates failed).',
           timestamp: new Date().toISOString()
         });
       } catch (error) {

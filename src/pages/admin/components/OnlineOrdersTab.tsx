@@ -165,6 +165,7 @@ export function OnlineOrdersTab({
                     </SelectItem>
                     <SelectItem value="PAID">{language === "en" ? "Paid" : "Payé"}</SelectItem>
                     <SelectItem value="FAILED">{language === "en" ? "Failed" : "Échoué"}</SelectItem>
+                    <SelectItem value="EXPIRED">{language === "en" ? "Expired" : "Expiré"}</SelectItem>
                     <SelectItem value="REFUNDED">{language === "en" ? "Refunded" : "Remboursé"}</SelectItem>
                   </SelectContent>
                 </Select>
@@ -335,11 +336,13 @@ export function OnlineOrdersTab({
                         PENDING_PAYMENT: language === "en" ? "Pending Payment" : "Paiement en Attente",
                         PAID: language === "en" ? "Paid" : "Payé",
                         FAILED: language === "en" ? "Failed" : "Échoué",
+                        EXPIRED: language === "en" ? "Expired" : "Expiré",
                         REFUNDED: language === "en" ? "Refunded" : "Remboursé",
                       };
                       const status = order.payment_status ?? "PENDING_PAYMENT";
                       const getStatusColor = () => {
                         if (status === "PAID") return "bg-green-500";
+                        if (status === "EXPIRED") return "bg-blue-500";
                         if (status === "FAILED" || status === "REFUNDED") return "bg-red-500";
                         if (status === "PENDING_PAYMENT") return "bg-yellow-500";
                         return "bg-gray-500";

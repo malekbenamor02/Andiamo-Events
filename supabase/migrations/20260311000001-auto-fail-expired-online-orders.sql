@@ -29,11 +29,11 @@ BEGIN
         PERFORM release_order_stock_internal(expired_order.id);
       END IF;
 
-      -- Always mark as FAILED so order never stays pending
+      -- Always mark as EXPIRED so order never stays pending
       UPDATE public.orders
       SET
-        status = 'FAILED',
-        payment_status = 'FAILED',
+        status = 'EXPIRED',
+        payment_status = 'EXPIRED',
         updated_at = NOW()
       WHERE id = expired_order.id
         AND status = 'PENDING_ONLINE';
@@ -45,7 +45,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.auto_fail_expired_pending_online_orders() IS
-  'Fails PENDING_ONLINE orders older than 30 minutes, releases stock, sets payment_status=FAILED. Run via cron every 5 min.';
+  'Fails PENDING_ONLINE orders older than 30 minutes, releases stock, sets status/payment_status=EXPIRED. Run via cron every 5 min.';
 
 GRANT EXECUTE ON FUNCTION public.auto_fail_expired_pending_online_orders() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.auto_fail_expired_pending_online_orders() TO service_role;

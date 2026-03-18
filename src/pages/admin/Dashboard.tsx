@@ -3773,7 +3773,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   };
 
   // Update online order payment status
-  const updateOnlineOrderStatus = async (orderId: string, newStatus: 'PENDING_PAYMENT' | 'PAID' | 'FAILED' | 'REFUNDED') => {
+  const updateOnlineOrderStatus = async (orderId: string, newStatus: 'PENDING_PAYMENT' | 'PAID' | 'FAILED' | 'REFUNDED' | 'EXPIRED') => {
     try {
       const { error } = await (supabase as any)
         .from('orders')
@@ -9729,6 +9729,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         bgColor: 'rgba(255, 201, 60, 0.15)',
         textColor: '#FFC93C',
         label: language === 'en' ? 'Fraud Flagged' : 'SignalÃ© comme Fraude'
+      },
+      'EXPIRED': {
+        color: '#2563EB',
+        bgColor: 'rgba(37, 99, 235, 0.15)',
+        textColor: '#2563EB',
+        label: language === 'en' ? 'Expired' : 'Expiré'
       },
       
       // Info statuses - Cyan
