@@ -370,6 +370,12 @@ export function OnlineOrdersTab({
                           };
 
                           const status = order.payment_status ?? "PENDING_PAYMENT";
+                          const paymentConfirm = (order as any)?.payment_confirm_response;
+                          const actionCodeDescription =
+                            paymentConfirm?.actionCodeDescription ??
+                            paymentConfirm?.action_code_description ??
+                            null;
+
                           const getStatusColor = () => {
                             if (status === "PAID") return "bg-green-500";
                             if (status === "EXPIRED") return "bg-blue-500";
