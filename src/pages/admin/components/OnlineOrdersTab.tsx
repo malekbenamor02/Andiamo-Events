@@ -474,7 +474,14 @@ export function OnlineOrdersTab({
                                       <div className={cn("w-3 h-3 rounded-full cursor-help", getStatusColor())} />
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p className="text-xs">{statusMap[status] ?? status}</p>
+                                      <div className="space-y-1">
+                                        <p className="text-xs">{statusMap[status] ?? status}</p>
+                                        {status === "FAILED" &&
+                                        typeof actionCodeDescription === "string" &&
+                                        actionCodeDescription.trim().length > 0 ? (
+                                          <p className="text-xs text-muted-foreground">{actionCodeDescription}</p>
+                                        ) : null}
+                                      </div>
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
