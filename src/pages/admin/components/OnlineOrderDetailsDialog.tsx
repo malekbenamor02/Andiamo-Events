@@ -179,7 +179,7 @@ export function OnlineOrderDetailsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-full max-w-[100vw] left-0 translate-x-0 p-3 sm:p-6 sm:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
+        className="w-full max-w-[100vw] left-0 translate-x-0 p-3 sm:p-6 sm:left-1/2 sm:translate-x-[-50%] sm:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
