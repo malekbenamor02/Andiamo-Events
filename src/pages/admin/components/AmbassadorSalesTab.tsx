@@ -244,8 +244,13 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                 <CardTitle>
                   {p.language === "en" ? "COD Ambassador Orders" : "Commandes COD Ambassadeur"}
                 </CardTitle>
-                <div className="flex gap-2">
-                  <Button onClick={p.onExportExcel} variant="outline" size="sm">
+                    <div className="flex gap-2 flex-col sm:flex-row items-stretch sm:items-center w-auto sm:w-auto">
+                      <Button
+                        onClick={p.onExportExcel}
+                        variant="outline"
+                        size="sm"
+                        className="w-full sm:w-auto"
+                      >
                     <Download className="w-4 h-4 mr-2" />
                     {p.language === "en" ? "Export Excel" : "Exporter Excel"}
                   </Button>
@@ -253,6 +258,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                     onClick={() => p.onRefresh(p.orderFilters.status || undefined)}
                     variant="outline"
                     size="sm"
+                        className="w-full sm:w-auto"
                   >
                     <RefreshCw className="w-4 h-4 mr-2" />
                     {p.language === "en" ? "Refresh" : "Actualiser"}

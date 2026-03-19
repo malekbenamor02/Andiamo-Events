@@ -10551,7 +10551,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           <Button
             variant="ghost"
             size="sm"
-            className="shrink-0 flex items-center gap-2 -ml-1 min-w-0"
+            className="shrink-0 flex items-center gap-2 ml-0 min-w-0 whitespace-nowrap"
             onClick={handleLogout}
             aria-label={language === 'en' ? 'Logout' : 'Déconnexion'}
           >
