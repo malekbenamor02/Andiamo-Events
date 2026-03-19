@@ -10551,7 +10551,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           <Button
             variant="ghost"
             size="sm"
-            className="shrink-0 flex items-center gap-2 ml-0 min-w-0 whitespace-nowrap"
+            className="hidden"
             onClick={handleLogout}
             aria-label={language === 'en' ? 'Logout' : 'Déconnexion'}
           >
@@ -11820,6 +11820,22 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         </div>
       </div>
       {/* Custom Delete Confirmation Dialog for Ambassador */}
+      {isMobile && (
+        <div
+          className="fixed left-0 right-0 z-[55] px-3"
+          style={{ bottom: 64 }}
+          aria-hidden={false}
+        >
+          <Button
+            variant="outline"
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 bg-transparent border-border/40 hover:bg-destructive hover:text-destructive-foreground"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>{t.logout}</span>
+          </Button>
+        </div>
+      )}
       <Dialog open={!!ambassadorToDelete} onOpenChange={open => { if (!open) setAmbassadorToDelete(null); }}>
         <DialogContent>
           <DialogHeader>
