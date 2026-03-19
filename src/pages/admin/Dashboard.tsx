@@ -10516,6 +10516,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Mobile bottom nav: prefetch data when switching to tabs that rely on it
   const handleBottomNavSelect = (tab: string) => {
+    if (tab === "logout") {
+      handleLogout();
+      return;
+    }
     if (!isTabAllowedOnMobile(tab)) return;
     if (tab === "online-orders" && onlineOrders.length === 0) fetchOnlineOrders();
     if (tab === "ambassador-sales" && codAmbassadorOrders.length === 0) fetchAmbassadorSalesData();
@@ -10538,7 +10542,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     { key: "pos", label: "Point de Vente", icon: Store },
     { key: "tickets", label: language === "en" ? "Reports" : "Rapports", icon: DollarSign },
     ...(currentAdminRole === "super_admin" ? [{ key: "settings", label: t.settings, icon: Settings }] : []),
-  ].filter((tab) => isTabAllowedOnMobile(tab.key));
+  ]
+    .filter((tab) => isTabAllowedOnMobile(tab.key))
+    // Logout should be visible to all admins on mobile.
+    .concat([{ key: "logout", label: t.logout, icon: LogOut }]);
 
   return (
     <div className={cn("min-h-screen min-w-0", isMobile ? "pt-14 pb-24" : "pt-16")} style={{ backgroundColor: '#1A1A1A' }}>
