@@ -1050,7 +1050,7 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     }
     
     
-    // Generate JWT (1 hour fixed session - expiration encoded in token)
+    // Generate JWT (5 hour fixed session - expiration encoded in token)
     // The session countdown starts from login and continues regardless of user activity
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
@@ -1062,15 +1062,15 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     
     let token;
     try {
-      // 1 hour expiration - encoded in JWT, cannot be extended
-      token = jwt.sign({ id: admin.id, email: admin.email, role: admin.role }, jwtSecret || 'fallback-secret-dev-only', { expiresIn: '1h' });
+      // 5 hour expiration - encoded in JWT, cannot be extended
+      token = jwt.sign({ id: admin.id, email: admin.email, role: admin.role }, jwtSecret || 'fallback-secret-dev-only', { expiresIn: '5h' });
     } catch (jwtError) {
       console.error('JWT signing error:', jwtError);
       return res.status(500).json({ error: 'Server error', details: 'Failed to generate token' });
     }
     
     // Determine cookie settings based on environment
-    // IMPORTANT: The cookie maxAge matches the JWT expiration (1 hour)
+    // IMPORTANT: The cookie maxAge matches the JWT expiration (5 hours)
     // This ensures the cookie expires at the same time as the JWT
     // The session timer starts at login and continues regardless of:
     // - Page refreshes
@@ -1084,7 +1084,7 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
       secure: isProduction, // Use secure cookies in production (HTTPS)
       sameSite: 'lax', // More permissive for cross-site requests
       path: '/', // Ensure cookie is available for all paths
-      maxAge: 60 * 60 * 1000 // 1 hour (matches JWT expiration) - fixed expiration, cannot be extended
+      maxAge: 5 * 60 * 60 * 1000 // 5 hours (matches JWT expiration) - fixed expiration, cannot be extended
     };
     
     // Only set domain in production or if explicitly configured

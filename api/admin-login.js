@@ -111,14 +111,14 @@ export default async (req, res) => {
       }
     }
     
-    // STRICT: Generate JWT with fixed 1-hour expiration
+    // STRICT: Generate JWT with fixed 5-hour expiration
     // The 'exp' field in the token is immutable and cannot be changed
-    // This ensures the session always ends exactly 1 hour after login
+    // This ensures the session always ends exactly 5 hours after login
     // No refresh, no extension, no reset - only logout or expiration
     const token = jwt.default.sign(
       { id: admin.id, email: admin.email, role: admin.role },
       jwtSecret,
-      { expiresIn: '1h' } // Fixed 1-hour expiration - immutable 'exp' field
+      { expiresIn: '5h' } // Fixed 5-hour expiration - immutable 'exp' field
     );
     
     // Set cookie
@@ -126,7 +126,7 @@ export default async (req, res) => {
       `adminToken=${token}`,
       'HttpOnly',
       'Path=/',
-      `Max-Age=${3600}`,
+      `Max-Age=${18000}`,
       isProduction ? 'Secure' : '',
       'SameSite=Lax'
     ].filter(Boolean);
