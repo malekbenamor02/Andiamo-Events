@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +75,8 @@ export function OverviewTab({
   setActiveTab,
   getStatusBadge,
 }: OverviewTabProps) {
+  const isMobile = useIsMobile();
+
   return (
     <div className="space-y-6">
       {/* Welcome Header */}
@@ -86,8 +89,8 @@ export function OverviewTab({
           }}
         >
           <CardContent className="p-8">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-              <div className="space-y-2">
+            <div className="flex flex-col md:flex-row items-center md:items-center justify-between gap-6">
+              <div className="space-y-2 text-center md:text-left">
                 <h2 className="text-3xl font-heading font-bold" style={{ color: "#E21836" }}>
                   {language === "en" ? "Welcome Back!" : "Bon Retour !"}
                 </h2>
@@ -97,8 +100,9 @@ export function OverviewTab({
                     : "Voici ce qui se passe avec vos événements aujourd'hui"}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="text-right">
+              {/* Responsive KPI grid: keeps alignment consistent and avoids divider/wrapping issues */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-start gap-x-10 gap-y-3">
+                <div className="text-center">
                   <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
                     {language === "en" ? "Total Revenue" : "Revenus Totaux"}
                   </p>
@@ -106,8 +110,8 @@ export function OverviewTab({
                     {displayStats.totalRevenue.toLocaleString()} TND
                   </p>
                 </div>
-                <div className="h-12 w-px" style={{ backgroundColor: "#2A2A2A" }} />
-                <div className="text-right">
+
+                <div className="text-center">
                   <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
                     {language === "en" ? "Paid Revenue" : "Revenus Payés"}
                   </p>
@@ -115,8 +119,8 @@ export function OverviewTab({
                     {displayStats.paidRevenue.toLocaleString()} TND
                   </p>
                 </div>
-                <div className="h-12 w-px" style={{ backgroundColor: "#2A2A2A" }} />
-                <div className="text-right">
+
+                <div className="text-center">
                   <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
                     {language === "en" ? "Pending Revenue" : "Revenus en Attente"}
                   </p>
@@ -124,8 +128,8 @@ export function OverviewTab({
                     {displayStats.pendingRevenue.toLocaleString()} TND
                   </p>
                 </div>
-                <div className="h-12 w-px" style={{ backgroundColor: "#2A2A2A" }} />
-                <div className="text-right">
+
+                <div className="text-center">
                   <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
                     {language === "en" ? "Sold Tickets" : "Billets Vendus"}
                   </p>
@@ -553,56 +557,62 @@ export function OverviewTab({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button
-              onClick={() => setActiveTab("events")}
-              className="w-full justify-start font-heading"
-              style={{ backgroundColor: "#E21836", color: "#FFFFFF", border: "none" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "#C4162F";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "#E21836";
-              }}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              {language === "en" ? "Create New Event" : "Créer un Nouvel Événement"}
-            </Button>
-            <Button
-              onClick={() => setActiveTab("applications")}
-              className="w-full justify-start font-heading"
-              style={{ backgroundColor: "#1F1F1F", color: "#FFFFFF", borderColor: "#2A2A2A" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "#252525";
-                e.currentTarget.style.borderColor = "#3A3A3A";
-                e.currentTarget.style.color = "#E21836";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "#1F1F1F";
-                e.currentTarget.style.borderColor = "#2A2A2A";
-                e.currentTarget.style.color = "#FFFFFF";
-              }}
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              {language === "en" ? "Review Applications" : "Examiner les Candidatures"}
-            </Button>
-            <Button
-              onClick={() => setActiveTab("ambassadors")}
-              className="w-full justify-start font-heading"
-              style={{ backgroundColor: "#1F1F1F", color: "#FFFFFF", borderColor: "#2A2A2A" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "#252525";
-                e.currentTarget.style.borderColor = "#3A3A3A";
-                e.currentTarget.style.color = "#E21836";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "#1F1F1F";
-                e.currentTarget.style.borderColor = "#2A2A2A";
-                e.currentTarget.style.color = "#FFFFFF";
-              }}
-            >
-              <Users className="w-4 h-4 mr-2" />
-              {language === "en" ? "Manage Ambassadors" : "Gérer les Ambassadeurs"}
-            </Button>
+            {!isMobile && (
+              <Button
+                onClick={() => setActiveTab("events")}
+                className="w-full justify-start font-heading"
+                style={{ backgroundColor: "#E21836", color: "#FFFFFF", border: "none" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#C4162F";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "#E21836";
+                }}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {language === "en" ? "Create New Event" : "Créer un Nouvel Événement"}
+              </Button>
+            )}
+            {!isMobile && (
+              <Button
+                onClick={() => setActiveTab("applications")}
+                className="w-full justify-start font-heading"
+                style={{ backgroundColor: "#1F1F1F", color: "#FFFFFF", borderColor: "#2A2A2A" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#252525";
+                  e.currentTarget.style.borderColor = "#3A3A3A";
+                  e.currentTarget.style.color = "#E21836";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "#1F1F1F";
+                  e.currentTarget.style.borderColor = "#2A2A2A";
+                  e.currentTarget.style.color = "#FFFFFF";
+                }}
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {language === "en" ? "Review Applications" : "Examiner les Candidatures"}
+              </Button>
+            )}
+            {!isMobile && (
+              <Button
+                onClick={() => setActiveTab("ambassadors")}
+                className="w-full justify-start font-heading"
+                style={{ backgroundColor: "#1F1F1F", color: "#FFFFFF", borderColor: "#2A2A2A" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#252525";
+                  e.currentTarget.style.borderColor = "#3A3A3A";
+                  e.currentTarget.style.color = "#E21836";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "#1F1F1F";
+                  e.currentTarget.style.borderColor = "#2A2A2A";
+                  e.currentTarget.style.color = "#FFFFFF";
+                }}
+              >
+                <Users className="w-4 h-4 mr-2" />
+                {language === "en" ? "Manage Ambassadors" : "Gérer les Ambassadeurs"}
+              </Button>
+            )}
             <Button
               onClick={() => setActiveTab("tickets")}
               className="w-full justify-start font-heading"
@@ -633,9 +643,11 @@ export function OverviewTab({
                   {language === "en" ? "Upcoming Events" : "Événements à Venir"}
                 </span>
               </div>
-              <Button onClick={() => setActiveTab("events")} variant="ghost" size="sm" className="font-heading">
-                {language === "en" ? "View All" : "Voir Tout"}
-              </Button>
+              {!isMobile && (
+                <Button onClick={() => setActiveTab("events")} variant="ghost" size="sm" className="font-heading">
+                  {language === "en" ? "View All" : "Voir Tout"}
+                </Button>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -647,10 +659,10 @@ export function OverviewTab({
                 .map((event, index) => (
                   <div
                     key={event.id}
-                    className={`p-4 bg-muted/50 rounded-lg border border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-md cursor-pointer group animate-in slide-in-from-left-4 fade-in duration-500 ${
+                    className={`p-4 bg-muted/50 rounded-lg border border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-md ${isMobile ? "" : "cursor-pointer"} group animate-in slide-in-from-left-4 fade-in duration-500 ${
                       index === 0 ? "delay-1200" : index === 1 ? "delay-1300" : "delay-1400"
                     }`}
-                    onClick={() => setActiveTab("events")}
+                    onClick={isMobile ? undefined : () => setActiveTab("events")}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 space-y-1">
@@ -694,9 +706,11 @@ export function OverviewTab({
                 {language === "en" ? "Recent Activity" : "Activité Récente"}
               </span>
             </div>
-            <Button onClick={() => setActiveTab("applications")} variant="ghost" size="sm" className="font-heading">
-              {language === "en" ? "View All" : "Voir Tout"}
-            </Button>
+            {!isMobile && (
+              <Button onClick={() => setActiveTab("applications")} variant="ghost" size="sm" className="font-heading">
+                {language === "en" ? "View All" : "Voir Tout"}
+              </Button>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -743,14 +757,16 @@ export function OverviewTab({
                 </div>
                 <div className="flex items-center gap-3">
                   {getStatusBadge(app.status)}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setActiveTab("applications")}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity font-heading"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </Button>
+                  {!isMobile && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setActiveTab("applications")}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity font-heading"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}

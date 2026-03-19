@@ -541,49 +541,245 @@ export function PosTab({ language, selectedEventId }: PosTabProps) {
               ) : orders.length === 0 ? (
                 <p className="text-[#B0B0B0]">{t.noOrders}</p>
               ) : (
-                <Table>
-                  <TableHeader><TableRow className="border-[#2A2A2A]">
-                    <TableHead className="text-[#B0B0B0]">#</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.customer}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.total}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.status}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.outlet}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.actions}</TableHead>
-                  </TableRow></TableHeader>
-                  <TableBody>
-                    {orders.map(o => (
-                      <TableRow key={o.id} className="border-[#2A2A2A]">
-                        <TableCell className="text-white">{o.order_number ?? o.id.slice(0, 8)}</TableCell>
-                        <TableCell className="text-[#B0B0B0]">{o.user_name} — {o.user_phone}</TableCell>
-                        <TableCell className="text-[#B0B0B0]">{o.total_price} DT</TableCell>
-                        <TableCell>
-                          {(() => {
-                            const s = o.status;
-                            const conf = s === "PAID" ? { dot: "bg-[#10B981]", label: language === "en" ? "Paid" : "Payé" } : s === "PENDING_ADMIN_APPROVAL" ? { dot: "bg-[#F59E0B]", label: language === "en" ? "Pending" : "En attente" } : s === "REJECTED" ? { dot: "bg-[#EF4444]", label: language === "en" ? "Rejected" : "Rejeté" } : s === "REMOVED_BY_ADMIN" ? { dot: "bg-[#EF4444]", label: language === "en" ? "Removed" : "Supprimé" } : { dot: "bg-[#888]", label: s };
-                            return <span className="inline-flex items-center gap-1.5" title={s}><span className={`w-2 h-2 rounded-full shrink-0 ${conf.dot}`} /><span className="text-[#B0B0B0]">{conf.label}</span></span>;
-                          })()}
-                        </TableCell>
-                        <TableCell className="text-[#B0B0B0]">{(o.pos_outlets as { name?: string })?.name || "—"}</TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm" className="mr-1" onClick={() => { setSelectedOrder(o); setOrderDetailEmail(o.user_email || ""); }}><Eye className="w-4 h-4" /></Button>
-                          {o.status === "PENDING_ADMIN_APPROVAL" && (
-                            <>
-                              <Button variant="ghost" size="sm" className="text-[#10B981] mr-1" onClick={() => onApprove(o)} disabled={orderActionLoading?.orderId === o.id && orderActionLoading?.action === "approve"}>
-                                {orderActionLoading?.orderId === o.id && orderActionLoading?.action === "approve" ? <Loader size="sm" className="mr-1 shrink-0" /> : null}{t.approve}
+                <>
+                  {/* Desktop: keep original table view */}
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-[#2A2A2A]">
+                          <TableHead className="text-[#B0B0B0]">#</TableHead>
+                          <TableHead className="text-[#B0B0B0]">{t.customer}</TableHead>
+                          <TableHead className="text-[#B0B0B0]">{t.total}</TableHead>
+                          <TableHead className="text-[#B0B0B0]">{t.status}</TableHead>
+                          <TableHead className="text-[#B0B0B0]">{t.outlet}</TableHead>
+                          <TableHead className="text-[#B0B0B0]">{t.actions}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {orders.map((o) => (
+                          <TableRow key={o.id} className="border-[#2A2A2A]">
+                            <TableCell className="text-white">{o.order_number ?? o.id.slice(0, 8)}</TableCell>
+                            <TableCell className="text-[#B0B0B0]">
+                              {o.user_name} — {o.user_phone}
+                            </TableCell>
+                            <TableCell className="text-[#B0B0B0]">{o.total_price} DT</TableCell>
+                            <TableCell>
+                              {(() => {
+                                const s = o.status;
+                                const conf =
+                                  s === "PAID"
+                                    ? { dot: "bg-[#10B981]", label: language === "en" ? "Paid" : "Payé" }
+                                    : s === "PENDING_ADMIN_APPROVAL"
+                                      ? { dot: "bg-[#F59E0B]", label: language === "en" ? "Pending" : "En attente" }
+                                      : s === "REJECTED"
+                                        ? { dot: "bg-[#EF4444]", label: language === "en" ? "Rejected" : "Rejeté" }
+                                        : s === "REMOVED_BY_ADMIN"
+                                          ? { dot: "bg-[#EF4444]", label: language === "en" ? "Removed" : "Supprimé" }
+                                          : { dot: "bg-[#888]", label: s };
+
+                                return (
+                                  <span className="inline-flex items-center gap-1.5" title={s}>
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${conf.dot}`} />
+                                    <span className="text-[#B0B0B0]">{conf.label}</span>
+                                  </span>
+                                );
+                              })()}
+                            </TableCell>
+                            <TableCell className="text-[#B0B0B0]">{(o.pos_outlets as { name?: string })?.name || "—"}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="mr-1"
+                                onClick={() => {
+                                  setSelectedOrder(o);
+                                  setOrderDetailEmail(o.user_email || "");
+                                }}
+                              >
+                                <Eye className="w-4 h-4" />
                               </Button>
-                              <Button variant="ghost" size="sm" className="text-[#F59E0B] mr-1" onClick={() => onReject(o)} disabled={orderActionLoading?.orderId === o.id && orderActionLoading?.action === "reject"}>{t.reject}</Button>
-                            </>
-                          )}
-                          {(o.status === "PENDING_ADMIN_APPROVAL" || o.status === "PAID") && (
-                            <Button variant="ghost" size="sm" className="text-[#EF4444]" onClick={() => onRemove(o)} disabled={orderActionLoading?.orderId === o.id && orderActionLoading?.action === "remove"}>
-                              {orderActionLoading?.orderId === o.id && orderActionLoading?.action === "remove" ? <Loader size="sm" className="mr-1 shrink-0" /> : null}{t.remove}
+
+                              {o.status === "PENDING_ADMIN_APPROVAL" && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-[#10B981] mr-1"
+                                    onClick={() => onApprove(o)}
+                                    disabled={
+                                      orderActionLoading?.orderId === o.id && orderActionLoading?.action === "approve"
+                                    }
+                                  >
+                                    {orderActionLoading?.orderId === o.id &&
+                                    orderActionLoading?.action === "approve" ? (
+                                      <Loader size="sm" className="mr-1 shrink-0" />
+                                    ) : null}
+                                    {t.approve}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-[#F59E0B] mr-1"
+                                    onClick={() => onReject(o)}
+                                    disabled={
+                                      orderActionLoading?.orderId === o.id && orderActionLoading?.action === "reject"
+                                    }
+                                  >
+                                    {t.reject}
+                                  </Button>
+                                </>
+                              )}
+
+                              {(o.status === "PENDING_ADMIN_APPROVAL" || o.status === "PAID") && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-[#EF4444]"
+                                  onClick={() => onRemove(o)}
+                                  disabled={
+                                    orderActionLoading?.orderId === o.id && orderActionLoading?.action === "remove"
+                                  }
+                                >
+                                  {orderActionLoading?.orderId === o.id &&
+                                  orderActionLoading?.action === "remove" ? (
+                                    <Loader size="sm" className="mr-1 shrink-0" />
+                                  ) : null}
+                                  {t.remove}
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Mobile: cards view */}
+                  <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {orders.map((o) => {
+                    const s = o.status;
+                    const conf =
+                      s === "PAID"
+                        ? { dot: "bg-[#10B981]", label: language === "en" ? "Paid" : "Payé" }
+                        : s === "PENDING_ADMIN_APPROVAL"
+                          ? { dot: "bg-[#F59E0B]", label: language === "en" ? "Pending" : "En attente" }
+                          : s === "REJECTED"
+                            ? { dot: "bg-[#EF4444]", label: language === "en" ? "Rejected" : "Rejeté" }
+                            : s === "REMOVED_BY_ADMIN"
+                              ? { dot: "bg-[#EF4444]", label: language === "en" ? "Removed" : "Supprimé" }
+                              : { dot: "bg-[#888]", label: s };
+
+                    return (
+                      <Card key={o.id} className="bg-[#1F1F1F] border-[#2A2A2A]">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs" style={{ color: "#B0B0B0" }}>
+                                #{o.order_number ?? o.id.slice(0, 8)}
+                              </p>
+                              <p className="text-sm font-semibold" style={{ color: "#FFFFFF" }}>
+                                {o.user_name} <span className="font-normal" style={{ color: "#B0B0B0" }}>— {o.user_phone}</span>
+                              </p>
+                            </div>
+
+                            <span
+                              className="inline-flex items-center gap-1.5"
+                              title={s}
+                            >
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${conf.dot}`} />
+                              <span className="text-[#B0B0B0]">{conf.label}</span>
+                            </span>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <p className="text-xs" style={{ color: "#B0B0B0" }}>
+                                {t.total}
+                              </p>
+                              <p className="text-sm font-semibold" style={{ color: "#B0B0B0" }}>
+                                {o.total_price} DT
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs" style={{ color: "#B0B0B0" }}>
+                                {t.outlet}
+                              </p>
+                              <p className="text-sm font-semibold" style={{ color: "#B0B0B0" }}>
+                                {(o.pos_outlets as { name?: string })?.name || "—"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap gap-2 items-center justify-end">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedOrder(o);
+                                setOrderDetailEmail(o.user_email || "");
+                              }}
+                            >
+                              <Eye className="w-4 h-4" />
                             </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+
+                            {o.status === "PENDING_ADMIN_APPROVAL" && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-[#10B981]"
+                                  onClick={() => onApprove(o)}
+                                  disabled={
+                                    orderActionLoading?.orderId === o.id &&
+                                    orderActionLoading?.action === "approve"
+                                  }
+                                >
+                                  {orderActionLoading?.orderId === o.id &&
+                                  orderActionLoading?.action === "approve" ? (
+                                    <Loader size="sm" className="mr-1 shrink-0" />
+                                  ) : null}
+                                  {t.approve}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-[#F59E0B]"
+                                  onClick={() => onReject(o)}
+                                  disabled={
+                                    orderActionLoading?.orderId === o.id &&
+                                    orderActionLoading?.action === "reject"
+                                  }
+                                >
+                                  {t.reject}
+                                </Button>
+                              </>
+                            )}
+
+                            {(o.status === "PENDING_ADMIN_APPROVAL" || o.status === "PAID") && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-[#EF4444]"
+                                onClick={() => onRemove(o)}
+                                disabled={
+                                  orderActionLoading?.orderId === o.id &&
+                                  orderActionLoading?.action === "remove"
+                                }
+                              >
+                                {orderActionLoading?.orderId === o.id &&
+                                orderActionLoading?.action === "remove" ? (
+                                  <Loader size="sm" className="mr-1 shrink-0" />
+                                ) : null}
+                                {t.remove}
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+                </>
               )}
             </CardContent>
           </Card>

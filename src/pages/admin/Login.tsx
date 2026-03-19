@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +25,6 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
-  const isMobile = useIsMobile();
   
   // Get reCAPTCHA site key from environment
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
@@ -314,42 +312,6 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       setLoading(false);
     }
   };
-
-  if (isMobile) {
-    return (
-      <div className="min-h-screen bg-gradient-dark flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardHeader className="text-center space-y-2">
-            <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center bg-primary/10">
-              <Settings className="w-6 h-6 text-primary" />
-            </div>
-            <CardTitle className="text-lg font-semibold">
-              {language === 'en' ? 'Admin dashboard not available on mobile' : "Tableau de bord admin indisponible sur mobile"}
-            </CardTitle>
-            <CardDescription className="text-sm">
-              {language === 'en'
-                ? 'For security and best experience, the admin dashboard can only be accessed from a desktop browser.'
-                : "Pour des raisons de sécurité et de confort, le tableau de bord admin est accessible uniquement depuis un ordinateur."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                {language === 'en'
-                  ? 'Please open this page on a desktop device to log in as admin.'
-                  : "Merci d’ouvrir cette page sur un ordinateur pour vous connecter en tant qu’admin."}
-              </AlertDescription>
-            </Alert>
-            <Button variant="ghost" className="w-full" onClick={() => navigate('/')}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              {language === 'en' ? 'Back to home' : "Retour à l'accueil"}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-dark flex items-center justify-center p-4 relative overflow-hidden">

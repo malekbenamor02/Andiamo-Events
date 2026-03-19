@@ -262,117 +262,108 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
             </CardHeader>
             <CardContent>
               {/* Filters */}
-              <div className="flex items-end gap-4 mb-4 pb-4 border-b">
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 flex-1">
-                  <div>
-                    <Label className="text-xs mb-2">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4 pb-4 border-b items-end">
+                <div>
+                  <Label className="text-xs mb-2">
                       {p.language === "en" ? "Order ID" : "ID Commande"}
-                    </Label>
-                    <Input
-                      placeholder={p.language === "en" ? "Order ID (e.g., C29CA564)" : "ID Commande (ex: C29CA564)"}
-                      value={p.orderFilters.orderId}
-                      onChange={(e) =>
-                        p.setOrderFilters({ ...p.orderFilters, orderId: e.target.value })
-                      }
-                      className="h-8 text-xs font-mono"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs mb-2">{p.language === "en" ? "Status" : "Statut"}</Label>
-                    <Select
-                      value={p.orderFilters.status || undefined}
-                      onValueChange={(value) => {
-                        const newStatus = value === "all" || value === "" ? "" : value;
-                        p.setOrderFilters({ ...p.orderFilters, status: newStatus });
-                        p.onRefresh(newStatus || undefined);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder={p.language === "en" ? "All Statuses" : "Tous les Statuts"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="PENDING_CASH">
-                          {p.language === "en" ? "Pending Cash" : "En Attente Espèces"}
-                        </SelectItem>
-                        <SelectItem value="PENDING_ADMIN_APPROVAL">
-                          {p.language === "en" ? "Pending Approval" : "En Attente d'Approbation"}
-                        </SelectItem>
-                        <SelectItem value="PAID">{p.language === "en" ? "Paid" : "Payé"}</SelectItem>
-                        <SelectItem value="REJECTED">{p.language === "en" ? "Rejected" : "Rejeté"}</SelectItem>
-                        <SelectItem value="CANCELLED">{p.language === "en" ? "Cancelled" : "Annulé"}</SelectItem>
-                        <SelectItem value="REMOVED_BY_ADMIN">
-                          {p.language === "en" ? "Removed by Admin" : "Retiré par l'administrateur"}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs mb-2">{p.language === "en" ? "Phone" : "Téléphone"}</Label>
-                    <Input
-                      placeholder={p.language === "en" ? "Search by phone..." : "Rechercher par téléphone..."}
-                      value={p.orderFilters.phone}
-                      onChange={(e) =>
-                        p.setOrderFilters({ ...p.orderFilters, phone: e.target.value })
-                      }
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs mb-2">
-                      {p.language === "en" ? "Ambassador" : "Ambassadeur"}
-                    </Label>
-                    <Select
-                      value={p.orderFilters.ambassador || undefined}
-                      onValueChange={(value) =>
-                        p.setOrderFilters({ ...p.orderFilters, ambassador: value })
-                      }
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder={p.language === "en" ? "All Ambassadors" : "Tous les Ambassadeurs"} />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
-                        {p.filterOptions.ambassadors.map((ambassador) => (
-                          <SelectItem key={ambassador} value={ambassador}>
-                            {ambassador}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs mb-2">
-                      {p.language === "en" ? "Pass Type" : "Type de Pass"}
-                    </Label>
-                    <Select
-                      value={p.orderFilters.passType || undefined}
-                      onValueChange={(value) =>
-                        p.setOrderFilters({
-                          ...p.orderFilters,
-                          passType: value === "all" ? "" : value,
-                        })
-                      }
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder={p.language === "en" ? "All Pass Types" : "Tous les Types"} />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
-                        <SelectItem value="all">
-                          {p.language === "en" ? "All Pass Types" : "Tous les Types"}
-                        </SelectItem>
-                        {p.filterOptions.passTypes.map((passType) => (
-                          <SelectItem key={passType} value={passType}>
-                            {passType}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {p.orderFilters.passType && (
-                      <div className="mt-1 text-xs text-primary font-semibold">
-                        {p.language === "en" ? "Total:" : "Total:"} {p.selectedPassTypeTotal}
-                      </div>
-                    )}
-                  </div>
+                  </Label>
+                  <Input
+                    placeholder={p.language === "en" ? "Order ID (e.g., C29CA564)" : "ID Commande (ex: C29CA564)"}
+                    value={p.orderFilters.orderId}
+                    onChange={(e) => p.setOrderFilters({ ...p.orderFilters, orderId: e.target.value })}
+                    className="h-8 text-xs font-mono"
+                  />
                 </div>
+
+                <div>
+                  <Label className="text-xs mb-2">{p.language === "en" ? "Status" : "Statut"}</Label>
+                  <Select
+                    value={p.orderFilters.status || undefined}
+                    onValueChange={(value) => {
+                      const newStatus = value === "all" || value === "" ? "" : value;
+                      p.setOrderFilters({ ...p.orderFilters, status: newStatus });
+                      p.onRefresh(newStatus || undefined);
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder={p.language === "en" ? "All Statuses" : "Tous les Statuts"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PENDING_CASH">
+                        {p.language === "en" ? "Pending Cash" : "En Attente Espèces"}
+                      </SelectItem>
+                      <SelectItem value="PENDING_ADMIN_APPROVAL">
+                        {p.language === "en" ? "Pending Approval" : "En Attente d'Approbation"}
+                      </SelectItem>
+                      <SelectItem value="PAID">{p.language === "en" ? "Paid" : "Payé"}</SelectItem>
+                      <SelectItem value="REJECTED">{p.language === "en" ? "Rejected" : "Rejeté"}</SelectItem>
+                      <SelectItem value="CANCELLED">{p.language === "en" ? "Cancelled" : "Annulé"}</SelectItem>
+                      <SelectItem value="REMOVED_BY_ADMIN">
+                        {p.language === "en" ? "Removed by Admin" : "Retiré par l'administrateur"}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-xs mb-2">{p.language === "en" ? "Phone" : "Téléphone"}</Label>
+                  <Input
+                    placeholder={p.language === "en" ? "Search by phone..." : "Rechercher par téléphone..."}
+                    value={p.orderFilters.phone}
+                    onChange={(e) => p.setOrderFilters({ ...p.orderFilters, phone: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-xs mb-2">{p.language === "en" ? "Ambassador" : "Ambassadeur"}</Label>
+                  <Select
+                    value={p.orderFilters.ambassador || undefined}
+                    onValueChange={(value) => p.setOrderFilters({ ...p.orderFilters, ambassador: value })}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder={p.language === "en" ? "All Ambassadors" : "Tous les Ambassadeurs"} />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
+                      {p.filterOptions.ambassadors.map((ambassador) => (
+                        <SelectItem key={ambassador} value={ambassador}>
+                          {ambassador}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-xs mb-2">{p.language === "en" ? "Pass Type" : "Type de Pass"}</Label>
+                  <Select
+                    value={p.orderFilters.passType || undefined}
+                    onValueChange={(value) =>
+                      p.setOrderFilters({
+                        ...p.orderFilters,
+                        passType: value === "all" ? "" : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder={p.language === "en" ? "All Pass Types" : "Tous les Types"} />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[200px]" side="bottom" avoidCollisions={false}>
+                      <SelectItem value="all">{p.language === "en" ? "All Pass Types" : "Tous les Types"}</SelectItem>
+                      {p.filterOptions.passTypes.map((passType) => (
+                        <SelectItem key={passType} value={passType}>
+                          {passType}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {p.orderFilters.passType && (
+                    <div className="mt-1 text-xs text-primary font-semibold">
+                      {p.language === "en" ? "Total:" : "Total:"} {p.selectedPassTypeTotal}
+                    </div>
+                  )}
+                </div>
+
                 <Button
                   variant="outline"
                   size="sm"
@@ -388,7 +379,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                     });
                     p.onRefresh();
                   }}
-                  className="h-8 text-xs"
+                  className="h-8 text-xs w-full md:w-auto self-end justify-self-end"
                 >
                   <X className="w-4 h-4 mr-2" />
                   {p.language === "en" ? "Clear All" : "Tout Effacer"}
@@ -403,116 +394,241 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                   </p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <Table className="text-xs">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="py-2 whitespace-nowrap text-center">
-                          {p.language === "en" ? "Pass Types" : "Types de Pass"}
-                        </TableHead>
-                        <TableHead className="py-2 whitespace-nowrap text-center">
-                          {p.language === "en" ? "Client Name" : "Nom Client"}
-                        </TableHead>
-                        <TableHead className="py-2 whitespace-nowrap text-center">
-                          {p.language === "en" ? "Phone" : "Téléphone"}
-                        </TableHead>
-                        <TableHead className="py-2 whitespace-nowrap text-center">
-                          {p.language === "en" ? "Email" : "Email"}
-                        </TableHead>
-                        <TableHead className="py-2 whitespace-nowrap text-center">
-                          {p.language === "en" ? "Total Price" : "Prix Total"}
-                        </TableHead>
-                        <TableHead className="py-2 whitespace-nowrap text-center">
-                          {p.language === "en" ? "Ambassador" : "Ambassadeur"}
-                        </TableHead>
-                        <TableHead className="py-2 whitespace-nowrap text-center w-16">
-                          {p.language === "en" ? "Status" : "Statut"}
-                        </TableHead>
-                        <TableHead className="py-2 whitespace-nowrap text-center">
-                          {p.language === "en" ? "Expires At" : "Expire Le"}
-                        </TableHead>
-                        <TableHead className="py-2 whitespace-nowrap text-center">
-                          {p.language === "en" ? "Created" : "Créé"}
-                        </TableHead>
-                        <TableHead className="py-2 whitespace-nowrap text-center">
-                          {p.language === "en" ? "Actions" : "Actions"}
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {p.filteredCodOrders.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
-                            {p.language === "en"
-                              ? "No COD ambassador orders found"
-                              : "Aucune commande COD ambassadeur trouvée"}
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        p.filteredCodOrders.map((order) => {
-                          const passes = order.passes || [];
-                          return (
-                            <TableRow key={order.id} className="text-xs">
-                              <TableCell className="py-2 text-center">
-                                {passes.length > 0 ? (
-                                  <div className="flex flex-col items-center gap-1">
-                                    {passes.map((px: { pass_type?: string; passName?: string; quantity?: number }, idx: number) => (
-                                      <div
-                                        key={idx}
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-muted/30 text-xs"
-                                      >
-                                        <span className="font-medium">{px.pass_type || px.passName}</span>
-                                        <span className="text-muted-foreground">×{px.quantity}</span>
+                <>
+                  {/* Desktop: keep original table view */}
+                  <div className="hidden md:block">
+                    <div className="overflow-x-auto">
+                      <Table className="text-xs">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="py-2 whitespace-nowrap text-center">
+                              {p.language === "en" ? "Pass Types" : "Types de Pass"}
+                            </TableHead>
+                            <TableHead className="py-2 whitespace-nowrap text-center">
+                              {p.language === "en" ? "Client Name" : "Nom Client"}
+                            </TableHead>
+                            <TableHead className="py-2 whitespace-nowrap text-center">
+                              {p.language === "en" ? "Phone" : "Téléphone"}
+                            </TableHead>
+                            <TableHead className="py-2 whitespace-nowrap text-center">
+                              {p.language === "en" ? "Email" : "Email"}
+                            </TableHead>
+                            <TableHead className="py-2 whitespace-nowrap text-center">
+                              {p.language === "en" ? "Total Price" : "Prix Total"}
+                            </TableHead>
+                            <TableHead className="py-2 whitespace-nowrap text-center">
+                              {p.language === "en" ? "Ambassador" : "Ambassadeur"}
+                            </TableHead>
+                            <TableHead className="py-2 whitespace-nowrap text-center w-16">
+                              {p.language === "en" ? "Status" : "Statut"}
+                            </TableHead>
+                            <TableHead className="py-2 whitespace-nowrap text-center">
+                              {p.language === "en" ? "Expires At" : "Expire Le"}
+                            </TableHead>
+                            <TableHead className="py-2 whitespace-nowrap text-center">
+                              {p.language === "en" ? "Created" : "Créé"}
+                            </TableHead>
+                            <TableHead className="py-2 whitespace-nowrap text-center">
+                              {p.language === "en" ? "Actions" : "Actions"}
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {p.filteredCodOrders.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                                {p.language === "en"
+                                  ? "No COD ambassador orders found"
+                                  : "Aucune commande COD ambassadeur trouvée"}
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            p.filteredCodOrders.map((order) => {
+                              const passes = order.passes || [];
+                              const createdText = (() => {
+                                const d = new Date(order.created_at);
+                                const day = String(d.getDate()).padStart(2, "0");
+                                const month = String(d.getMonth() + 1).padStart(2, "0");
+                                return `${day}/${month}/${d.getFullYear()}`;
+                              })();
+
+                              return (
+                                <TableRow key={order.id} className="text-xs">
+                                  <TableCell className="py-2 text-center">
+                                    {passes.length > 0 ? (
+                                      <div className="flex flex-col items-center gap-1">
+                                        {passes.map(
+                                          (px: { pass_type?: string; passName?: string; quantity?: number }, idx: number) => (
+                                            <div
+                                              key={idx}
+                                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-muted/30 text-xs"
+                                            >
+                                              <span className="font-medium">{px.pass_type || px.passName}</span>
+                                              <span className="text-muted-foreground">×{px.quantity}</span>
+                                            </div>
+                                          ),
+                                        )}
                                       </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-xs">{order.pass_type || "N/A"}</span>
-                                )}
-                              </TableCell>
-                              <TableCell className="py-2 text-center">{order.user_name || "N/A"}</TableCell>
-                              <TableCell className="py-2 text-center">{order.user_phone || "N/A"}</TableCell>
-                              <TableCell className="py-2 text-center text-xs">
-                                {order.user_email ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCopyEmail(order.user_email!)}
-                                    className="hover:text-primary hover:underline cursor-pointer"
-                                    title={
-                                      p.language === "en"
-                                        ? "Click to copy email"
-                                        : "Cliquer pour copier l'email"
-                                    }
-                                  >
-                                    {maskEmail(order.user_email)}
-                                  </button>
-                                ) : (
-                                  "N/A"
-                                )}
-                              </TableCell>
-                              <TableCell className="py-2 text-center text-xs font-semibold">
-                                {order.total_price
-                                  ? `${parseFloat(String(order.total_price)).toFixed(2)} TND`
-                                  : "N/A"}
-                              </TableCell>
-                              <TableCell className="py-2 text-center whitespace-nowrap">
-                                {order.ambassador_id ? (
-                                  <div className="flex flex-col items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => p.onViewAmbassador(order.ambassador_id!)}
-                                      className="text-primary hover:underline cursor-pointer text-xs text-left"
+                                    ) : (
+                                      <span className="text-xs">{order.pass_type || "N/A"}</span>
+                                    )}
+                                  </TableCell>
+
+                                  <TableCell className="py-2 text-center">{order.user_name || "N/A"}</TableCell>
+                                  <TableCell className="py-2 text-center">{order.user_phone || "N/A"}</TableCell>
+
+                                  <TableCell className="py-2 text-center text-xs">
+                                    {order.user_email ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyEmail(order.user_email!)}
+                                        className="hover:text-primary hover:underline cursor-pointer"
+                                        title={
+                                          p.language === "en"
+                                            ? "Click to copy email"
+                                            : "Cliquer pour copier l'email"
+                                        }
+                                      >
+                                        {maskEmail(order.user_email)}
+                                      </button>
+                                    ) : (
+                                      "N/A"
+                                    )}
+                                  </TableCell>
+
+                                  <TableCell className="py-2 text-center text-xs font-semibold">
+                                    {order.total_price ? `${parseFloat(String(order.total_price)).toFixed(2)} TND` : "N/A"}
+                                  </TableCell>
+
+                                  <TableCell className="py-2 text-center whitespace-nowrap">
+                                    {order.ambassador_id ? (
+                                      <div className="flex flex-col items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => p.onViewAmbassador(order.ambassador_id!)}
+                                          className="text-primary hover:underline cursor-pointer text-xs text-left"
+                                        >
+                                          {order.ambassador_name ?? "—"}
+                                        </button>
+                                        {getAmbassadorStatusBadge(order.ambassador_status)}
+                                      </div>
+                                    ) : (
+                                      <span className="text-muted-foreground text-xs">N/A</span>
+                                    )}
+                                  </TableCell>
+
+                                  <TableCell className="py-2 text-center">
+                                    <div className="flex justify-center items-center gap-2">
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <div
+                                              className={`w-3 h-3 rounded-full cursor-help ${getStatusColor(order.status)}`}
+                                            />
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="text-xs">{getStatusLabel(order.status)}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    </div>
+                                  </TableCell>
+
+                                  <TableCell className="py-2 text-center whitespace-nowrap text-xs">
+                                    {order.status === "REJECTED" && order.rejected_at ? (
+                                      <div className="flex flex-col items-center gap-1">
+                                        <Badge variant="destructive" className="text-xs px-1 py-0">
+                                          {p.language === "en" ? "Rejected" : "Rejeté"}
+                                        </Badge>
+                                        {order.expires_at && (
+                                          <span className="text-xs text-muted-foreground">
+                                            {new Date(order.expires_at).toLocaleString(
+                                              p.language === "en" ? "en-US" : "fr-FR",
+                                              { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" },
+                                            )}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : order.expires_at && order.status === "PENDING_CASH" ? (
+                                      <div className="flex flex-col items-center gap-1">
+                                        <span
+                                          className={cn(
+                                            "text-xs",
+                                            new Date(order.expires_at) <= new Date()
+                                              ? "text-red-500 font-semibold"
+                                              : new Date(order.expires_at).getTime() - new Date().getTime() <
+                                                  2 * 60 * 60 * 1000
+                                                ? "text-orange-500 font-semibold"
+                                                : "text-yellow-500",
+                                          )}
+                                        >
+                                          {new Date(order.expires_at).toLocaleString(
+                                            p.language === "en" ? "en-US" : "fr-FR",
+                                            { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" },
+                                          )}
+                                        </span>
+                                        {new Date(order.expires_at) <= new Date() && (
+                                          <Badge variant="destructive" className="text-xs px-1 py-0">
+                                            {p.language === "en" ? "Expired" : "Expiré"}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-muted-foreground text-xs">-</span>
+                                    )}
+                                  </TableCell>
+
+                                  <TableCell className="py-2 text-center whitespace-nowrap text-xs">{createdText}</TableCell>
+
+                                  <TableCell className="py-2 text-center">
+                                    <Button
+                                      size="sm"
+                                      variant="default"
+                                      className="bg-black hover:bg-gray-800 text-white border-none text-xs px-2 py-1 h-auto"
+                                      onClick={() => p.onViewOrder(order)}
+                                      title={
+                                        p.language === "en"
+                                          ? "View order details and manage actions"
+                                          : "Voir les détails de la commande et gérer les actions"
+                                      }
                                     >
-                                      {order.ambassador_name ?? "—"}
-                                    </button>
-                                    {getAmbassadorStatusBadge(order.ambassador_status)}
-                                  </div>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">N/A</span>
-                                )}
-                              </TableCell>
-                              <TableCell className="py-2 text-center">
-                                <div className="flex justify-center items-center gap-2">
+                                      <Eye className="w-3 h-3 mr-1 text-white" />
+                                      {p.language === "en" ? "View" : "Voir"}
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+
+                  {/* Mobile: cards view */}
+                  <div className="md:hidden space-y-4">
+                  {p.filteredCodOrders.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground font-heading">
+                      {p.language === "en"
+                        ? "No COD ambassador orders found"
+                        : "Aucune commande COD ambassadeur trouvée"}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {p.filteredCodOrders.map((order) => {
+                        const passes = order.passes || [];
+                        const createdText = (() => {
+                          const d = new Date(order.created_at);
+                          const day = String(d.getDate()).padStart(2, "0");
+                          const month = String(d.getMonth() + 1).padStart(2, "0");
+                          return `${day}/${month}/${d.getFullYear()}`;
+                        })();
+
+                        return (
+                          <Card key={order.id} className="relative">
+                            <CardContent className="p-4">
+                              <div className="flex items-start justify-end gap-3">
+                                <div className="flex items-center gap-2">
                                   <TooltipProvider>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
@@ -525,60 +641,163 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
+                                  <span className="text-xs" style={{ color: "#B0B0B0" }}>
+                                    {getStatusLabel(order.status)}
+                                  </span>
                                 </div>
-                              </TableCell>
-                              <TableCell className="py-2 text-center whitespace-nowrap text-xs">
-                                {order.status === "REJECTED" && order.rejected_at ? (
-                                  <div className="flex flex-col items-center gap-1">
-                                    <Badge variant="destructive" className="text-xs px-1 py-0">
-                                      {p.language === "en" ? "Rejected" : "Rejeté"}
-                                    </Badge>
-                                    {order.expires_at && (
-                                      <span className="text-xs text-muted-foreground">
+                              </div>
+
+                              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                  <div>
+                                    <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
+                                      {p.language === "en" ? "Pass Types" : "Types de Pass"}
+                                    </p>
+                                    <div className="mt-1 flex flex-wrap gap-2">
+                                      {passes.length > 0 ? (
+                                        passes.map((px: { pass_type?: string; passName?: string; quantity?: number }, idx: number) => (
+                                          <div
+                                            key={idx}
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-muted/30 text-xs"
+                                          >
+                                            <span className="font-medium">{px.pass_type || px.passName}</span>
+                                            <span className="text-muted-foreground">×{px.quantity}</span>
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <span className="text-xs text-muted-foreground">{order.pass_type || "N/A"}</span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
+                                      {p.language === "en" ? "Total Price" : "Prix Total"}
+                                    </p>
+                                    <p className="text-sm font-heading font-semibold" style={{ color: "#FFFFFF" }}>
+                                      {order.total_price ? `${parseFloat(String(order.total_price)).toFixed(2)} TND` : "N/A"}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <div>
+                                    <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
+                                      {p.language === "en" ? "Client" : "Client"}
+                                    </p>
+                                    <p className="text-sm font-heading font-semibold" style={{ color: "#FFFFFF" }}>
+                                      {order.user_name || "N/A"}
+                                    </p>
+                                    <p className="text-xs" style={{ color: "#B0B0B0" }}>
+                                      {order.user_phone || "N/A"}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
+                                      {p.language === "en" ? "Email" : "Email"}
+                                    </p>
+                                    {order.user_email ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyEmail(order.user_email!)}
+                                        className="text-xs hover:text-primary hover:underline cursor-pointer"
+                                        title={
+                                          p.language === "en"
+                                            ? "Click to copy email"
+                                            : "Cliquer pour copier l'email"
+                                        }
+                                      >
+                                        {maskEmail(order.user_email)}
+                                      </button>
+                                    ) : (
+                                      <span className="text-xs" style={{ color: "#B0B0B0" }}>
+                                        N/A
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
+                                      {p.language === "en" ? "Ambassador" : "Ambassadeur"}
+                                    </p>
+                                    {order.ambassador_id ? (
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <button
+                                          type="button"
+                                          onClick={() => p.onViewAmbassador(order.ambassador_id!)}
+                                          className="text-primary hover:underline cursor-pointer text-xs text-left"
+                                        >
+                                          {order.ambassador_name ?? "—"}
+                                        </button>
+                                        {getAmbassadorStatusBadge(order.ambassador_status)}
+                                      </div>
+                                    ) : (
+                                      <span className="text-xs" style={{ color: "#B0B0B0" }}>
+                                        N/A
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                  <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
+                                    {p.language === "en" ? "Expires At" : "Expire Le"}
+                                  </p>
+                                  {order.status === "REJECTED" && order.rejected_at ? (
+                                    <div className="flex flex-col gap-1">
+                                      <Badge variant="destructive" className="text-xs px-1 py-0 w-fit">
+                                        {p.language === "en" ? "Rejected" : "Rejeté"}
+                                      </Badge>
+                                      {order.expires_at && (
+                                        <span className="text-xs text-muted-foreground">
+                                          {new Date(order.expires_at).toLocaleString(
+                                            p.language === "en" ? "en-US" : "fr-FR",
+                                            { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
+                                          )}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ) : order.expires_at && order.status === "PENDING_CASH" ? (
+                                    <div className="flex flex-col gap-1">
+                                      <span
+                                        className={cn(
+                                          "text-xs",
+                                          new Date(order.expires_at) <= new Date()
+                                            ? "text-red-500 font-semibold"
+                                            : new Date(order.expires_at).getTime() - new Date().getTime() <
+                                                2 * 60 * 60 * 1000
+                                              ? "text-orange-500 font-semibold"
+                                              : "text-yellow-500"
+                                        )}
+                                      >
                                         {new Date(order.expires_at).toLocaleString(
                                           p.language === "en" ? "en-US" : "fr-FR",
                                           { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
                                         )}
                                       </span>
-                                    )}
-                                  </div>
-                                ) : order.expires_at && order.status === "PENDING_CASH" ? (
-                                  <div className="flex flex-col items-center gap-1">
-                                    <span
-                                      className={cn(
-                                        "text-xs",
-                                        new Date(order.expires_at) <= new Date()
-                                          ? "text-red-500 font-semibold"
-                                          : new Date(order.expires_at).getTime() - new Date().getTime() <
-                                              2 * 60 * 60 * 1000
-                                            ? "text-orange-500 font-semibold"
-                                            : "text-yellow-500"
+                                      {new Date(order.expires_at) <= new Date() && (
+                                        <Badge variant="destructive" className="text-xs px-1 py-0 w-fit">
+                                          {p.language === "en" ? "Expired" : "Expiré"}
+                                        </Badge>
                                       )}
-                                    >
-                                      {new Date(order.expires_at).toLocaleString(
-                                        p.language === "en" ? "en-US" : "fr-FR",
-                                        { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
-                                      )}
-                                    </span>
-                                    {new Date(order.expires_at) <= new Date() && (
-                                      <Badge variant="destructive" className="text-xs px-1 py-0">
-                                        {p.language === "en" ? "Expired" : "Expiré"}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">-</span>
-                                )}
-                              </TableCell>
-                              <TableCell className="py-2 text-center whitespace-nowrap text-xs">
-                                {(() => {
-                                  const d = new Date(order.created_at);
-                                  const day = String(d.getDate()).padStart(2, "0");
-                                  const month = String(d.getMonth() + 1).padStart(2, "0");
-                                  return `${day}/${month}/${d.getFullYear()}`;
-                                })()}
-                              </TableCell>
-                              <TableCell className="py-2 text-center">
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">-</span>
+                                  )}
+                                </div>
+
+                                <div className="space-y-1">
+                                  <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
+                                    {p.language === "en" ? "Created" : "Créé"}
+                                  </p>
+                                  <span className="text-xs text-muted-foreground">{createdText}</span>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 flex items-center justify-end">
                                 <Button
                                   size="sm"
                                   variant="default"
@@ -593,14 +812,15 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                   <Eye className="w-3 h-3 mr-1 text-white" />
                                   {p.language === "en" ? "View" : "Voir"}
                                 </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
+                </>
               )}
             </CardContent>
           </Card>

@@ -91,7 +91,7 @@ import {
   Lightbulb,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import bcrypt from 'bcryptjs';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -171,6 +171,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // All hooks must be called before any conditional returns (Rules of Hooks)
   const isMobile = useIsMobile();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const invalidateEvents = useInvalidateEvents();
   const invalidateSiteContent = useInvalidateSiteContent();
@@ -5979,6 +5980,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  const cameFromLogin =
+    (location.state as { fromLogin?: boolean } | undefined)?.fromLogin === true;
+
+  const suppress401Until = useMemo(
+    // On some mobile webviews, the httpOnly cookie becomes available to subsequent requests
+    // slightly after navigation completes. Allow a longer warm-up window.
+    () => (cameFromLogin ? Date.now() + 8000 : 0),
+    [cameFromLogin],
+  );
+
   // Fetch current admin role and verify token validity
   // This ensures the 1-hour session is enforced - token expiration is checked periodically
   useEffect(() => {
@@ -6021,9 +6032,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 // Only update if we don't have one yet or if it's different (shouldn't happen)
                 return prev || expiration;
               });
-              // Calculate remaining time from expiration timestamp
-              const remaining = Math.max(0, Math.floor((expiration - Date.now()) / 1000));
-              setSessionTimeLeft(remaining);
+              // Use server-provided remaining seconds if available.
+              // This avoids issues when the device clock differs from the server clock.
+              const remainingFromServer =
+                typeof (data as any).sessionTimeRemaining === "number"
+                  ? (data as any).sessionTimeRemaining
+                  : null;
+              const fallbackRemaining =
+                Math.max(0, Math.floor((expiration - Date.now()) / 1000));
+
+                const expirationLooksLikeSeconds = typeof expiration === "number" && expiration < 1e12;
+              setSessionTimeLeft(
+                remainingFromServer !== null ? remainingFromServer : fallbackRemaining,
+              );
+            } else {
+              // sessionExpiresAt missing; keep session timer at 0
             }
             
             // Show alert if role is not super_admin but user expects it
@@ -6041,7 +6064,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             if (isTokenExpired || response.status === 401) {
               // Actual token expiration - redirect to login
               console.warn('Admin session expired - redirecting to login');
-              window.location.href = '/admin/login';
+              const now = Date.now();
+              const willSuppress = suppress401Until && now < suppress401Until;
+
+              if (willSuppress) {
+                console.warn('Suppressing redirect after fresh login (warmup window)');
+              } else {
+                window.location.href = '/admin/login';
+              }
             } else {
               // Server error or invalid admin - log but don't redirect
               console.warn('Admin verification failed (non-expiration):', errorReason);
@@ -6062,7 +6092,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               if (isTokenExpired) {
                 // Actual token expiration - redirect
                 console.warn('Admin session expired (401) - redirecting to login');
-                window.location.href = '/admin/login';
+                const now = Date.now();
+                const willSuppress = suppress401Until && now < suppress401Until;
+
+                if (willSuppress) {
+                  console.warn('Suppressing redirect after fresh login (warmup window)');
+                } else {
+                  window.location.href = '/admin/login';
+                }
               } else {
                 // 401 but not expiration (e.g., invalid token format) - retry once
                 if (retryCount < MAX_RETRIES && !isRetry) {
@@ -6076,7 +6113,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             } catch (parseError) {
               // Can't parse error - assume it's expiration for security
               console.warn('Admin session expired (401, unparseable) - redirecting to login');
-              window.location.href = '/admin/login';
+              const now = Date.now();
+              const willSuppress = suppress401Until && now < suppress401Until;
+
+              if (willSuppress) {
+                console.warn('Suppressing redirect after fresh login (warmup window)');
+              } else {
+                window.location.href = '/admin/login';
+              }
             }
           } else if (response.status === 429) {
             // Rate limited - don't logout, just log and retry later
@@ -6116,7 +6160,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     
     // Fetch immediately on mount to get the correct session expiration from JWT
     // STRICT: This gets the immutable 'exp' field from the token - never resets
-    fetchCurrentAdminRole();
+    let initialFetchTimeout: ReturnType<typeof setTimeout> | undefined;
+    if (cameFromLogin) {
+      // Give the server time to set/refresh the httpOnly cookie on fast mobile navigations.
+      initialFetchTimeout = setTimeout(() => fetchCurrentAdminRole(), 1200);
+    } else {
+      fetchCurrentAdminRole();
+    }
     
     // Verify token periodically to catch expiration
     // STRICT: This only checks expiration - it NEVER extends or resets the timer
@@ -6127,8 +6177,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       fetchCurrentAdminRole();
     }, 15 * 60 * 1000); // Every 15 minutes
     
-    return () => clearInterval(interval);
-  }, [navigate]);
+    return () => {
+      clearInterval(interval);
+      if (initialFetchTimeout) clearTimeout(initialFetchTimeout);
+    };
+  }, [navigate, cameFromLogin, suppress401Until]);
 
   // Fetch all admins (only for super_admin)
   const fetchAdmins = async () => {
@@ -10329,35 +10382,44 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       return;
     }
 
+    let didExpire = false;
     const timer = setInterval(() => {
-      // Calculate remaining time from the immutable expiration timestamp
-      // STRICT: This is based on JWT 'exp' - never changes until re-login
-      const remaining = Math.max(0, Math.floor((sessionExpiresAt - Date.now()) / 1000));
-      setSessionTimeLeft(remaining);
-      
-      if (remaining <= 0) {
-        // Session expired - JWT 'exp' has passed
-        // Clear timer and redirect to login
-        clearInterval(timer);
-        toast({
-          title: language === 'en' ? "Session Expired" : "Session expirÃ©e",
-          description: language === 'en' 
-            ? "Your session has expired. Please login again."
-            : "Votre session a expirÃ©. Veuillez vous reconnecter.",
-          variant: "destructive",
-        });
-        // Use window.location for hard redirect (clears all state)
-        window.location.href = '/admin/login';
-      }
+      // Decrement locally based on the server-provided remaining seconds.
+      // This avoids issues when the device clock differs from the server clock.
+      setSessionTimeLeft((prev) => {
+        const next = Math.max(0, prev - 1);
+        if (next <= 0 && !didExpire) {
+          // During the post-login warmup window on mobile, temporarily avoid forcing a redirect.
+          if (suppress401Until && Date.now() < suppress401Until) {
+            return prev;
+          }
+          didExpire = true;
+          clearInterval(timer);
+
+          toast({
+            title: language === 'en' ? "Session Expired" : "Session expirÃ©e",
+            description: language === 'en' 
+              ? "Your session has expired. Please login again."
+              : "Votre session a expirÃ©. Veuillez vous reconnecter.",
+            variant: "destructive",
+          });
+          // Use window.location for hard redirect (clears all state)
+          window.location.href = '/admin/login';
+        }
+        return next;
+      });
     }, 1000); // Update every second
 
     return () => clearInterval(timer);
-  }, [sessionExpiresAt, toast, language]);
+  }, [sessionExpiresAt, toast, language, suppress401Until]);
 
   // Add JWT expiration handling
   useEffect(() => {
     const handleApiError = (response: Response) => {
       if (response.status === 401) {
+        if (suppress401Until && Date.now() < suppress401Until) {
+          return true; // Don't redirect yet
+        }
         // Token expired - redirect to login
         toast({
           title: language === 'en' ? "Session Expired" : "Session expirÃ©e",
@@ -10377,6 +10439,35 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     window.fetch = async (...args) => {
       const response = await originalFetch(...args);
       if (response.status === 401) {
+        const now = Date.now();
+        const willSuppress = !!(suppress401Until && now < suppress401Until);
+
+        // During warm-up, avoid user-facing "Not authenticated" toasts by rewriting
+        // suppressed 401 responses into a benign 200 with empty list payloads.
+        if (willSuppress) {
+          const reqUrlForRewrite =
+            typeof args[0] === "string"
+              ? args[0]
+              : (args[0] as any)?.url
+                ? String((args[0] as any).url)
+                : "unknown";
+
+          // Do not rewrite verify-admin: we need real 401s so the session timer
+          // can be initialized via retries when the cookie becomes available.
+          const isVerifyAdmin = reqUrlForRewrite.includes("/api/verify-admin");
+          if (!isVerifyAdmin) {
+            return new Response(
+              JSON.stringify({
+                success: false,
+                valid: false,
+                error: "Warm-up 401 suppressed",
+                data: [],
+                count: 0,
+              }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            );
+          }
+        }
         handleApiError(response);
       }
       return response;
@@ -10385,20 +10476,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     return () => {
       window.fetch = originalFetch;
     };
-  }, [navigate, toast, language]);
+  }, [navigate, toast, language, suppress401Until]);
 
   // Mobile nav drawer open state (must be before any conditional return to satisfy Rules of Hooks)
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Desktop: sidebar nav hidden when cursor not on it; slides in from left on hover
   const [sidebarNavVisible, setSidebarNavVisible] = useState(false);
 
-  // Allowed tabs on mobile: Overview, Events, Ambassadors, Applications, Online orders, Ambassador sales, POS, Official invitations (super_admin), Reports
+  // Allowed tabs on mobile: overview, ambassador-sales, online-orders, pos, reports (and settings for super_admin)
   const mobileAllowedTabs = useMemo(() => {
-    const base = ["overview", "events", "ambassadors", "applications", "careers", "online-orders", "ambassador-sales", "pos"];
-    if (currentAdminRole === "super_admin") {
-      return [...base, "official-invitations", "tickets"];
-    }
-    return [...base, "tickets"];
+    const base = ["overview", "ambassador-sales", "online-orders", "pos", "tickets"];
+    if (currentAdminRole === "super_admin") return [...base, "settings"];
+    return base;
   }, [currentAdminRole]);
 
   // On mobile, if current tab is not allowed, switch to first allowed tab
@@ -10417,37 +10506,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     );
   }
 
-  // Mobile: dashboard disabled – only desktop is allowed
-  if (isMobile) {
-    return (
-      <div className="min-h-screen min-w-0 flex items-center justify-center px-4" style={{ backgroundColor: '#1A1A1A' }}>
-        <div className="max-w-md w-full">
-          <div className="rounded-xl border px-6 py-8 space-y-4 text-center" style={{ borderColor: '#2A2A2A', background: '#121212' }}>
-            <div className="mx-auto w-12 h-12 rounded-full flex items-center justify-center bg-primary/10 mb-2">
-              <Settings className="w-6 h-6 text-primary" />
-            </div>
-            <h1 className="text-xl font-semibold" style={{ color: '#FFFFFF' }}>
-              {language === 'en' ? 'Admin dashboard is desktop only' : 'Le tableau de bord admin est réservé au desktop'}
-            </h1>
-            <p className="text-sm" style={{ color: '#B8B8B8' }}>
-              {language === 'en'
-                ? 'For security reasons and to provide the best experience, the admin interface is only accessible on desktop devices.'
-                : "Pour des raisons de sécurité et de confort, l’interface admin est accessible uniquement depuis un ordinateur."}
-            </p>
-            <Button
-              variant="outline"
-              className="mt-2"
-              onClick={() => { window.location.href = '/'; }}
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              {language === 'en' ? 'Back to website' : 'Retour au site'}
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const isTabAllowedOnMobile = (tab: string) => mobileAllowedTabs.includes(tab);
 
   const handleMobileNavSelect = (tab: string) => {
@@ -10456,9 +10514,35 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     setMobileNavOpen(false);
   };
 
+  // Mobile bottom nav: prefetch data when switching to tabs that rely on it
+  const handleBottomNavSelect = (tab: string) => {
+    if (!isTabAllowedOnMobile(tab)) return;
+    if (tab === "online-orders" && onlineOrders.length === 0) fetchOnlineOrders();
+    if (tab === "ambassador-sales" && codAmbassadorOrders.length === 0) fetchAmbassadorSalesData();
+    setActiveTab(tab);
+    setMobileNavOpen(false);
+  };
+
+  const mobileBottomTabs = [
+    { key: "overview", label: t.overview, icon: BarChart3 },
+    {
+      key: "ambassador-sales",
+      label: language === "en" ? "Ambassador Sales" : "Ventes Ambassadeurs",
+      icon: Package,
+    },
+    {
+      key: "online-orders",
+      label: language === "en" ? "Online Orders" : "Commandes en Ligne",
+      icon: CreditCard,
+    },
+    { key: "pos", label: "Point de Vente", icon: Store },
+    { key: "tickets", label: language === "en" ? "Reports" : "Rapports", icon: DollarSign },
+    ...(currentAdminRole === "super_admin" ? [{ key: "settings", label: t.settings, icon: Settings }] : []),
+  ].filter((tab) => isTabAllowedOnMobile(tab.key));
+
   return (
-    <div className={cn("min-h-screen min-w-0", isMobile ? "pt-14" : "pt-16")} style={{ backgroundColor: '#1A1A1A' }}>
-      {/* Mobile top bar with menu */}
+    <div className={cn("min-h-screen min-w-0", isMobile ? "pt-14 pb-24" : "pt-16")} style={{ backgroundColor: '#1A1A1A' }}>
+      {/* Mobile top bar */}
       {isMobile && (
         <header
           className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between gap-2 px-3 sm:px-4 h-14 border-b shrink-0"
@@ -10468,46 +10552,85 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             variant="ghost"
             size="sm"
             className="shrink-0 flex items-center gap-2 -ml-1 min-w-0"
-            onClick={() => setMobileNavOpen(true)}
-            aria-label={language === 'en' ? 'Open menu to switch tabs' : 'Ouvrir le menu pour changer d\'onglet'}
+            onClick={handleLogout}
+            aria-label={language === 'en' ? 'Logout' : 'Déconnexion'}
           >
-            <Menu className="w-6 h-6 shrink-0" style={{ color: '#E21836' }} />
+            <LogOut className="w-5 h-5 shrink-0" style={{ color: '#E21836' }} />
             <span className="text-sm font-medium" style={{ color: '#E21836' }}>
-              {language === 'en' ? 'Menu' : 'Menu'}
+              {language === 'en' ? 'Logout' : 'Déconnexion'}
             </span>
           </Button>
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen(true)}
+          <div
             className="flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-2"
-            aria-label={language === 'en' ? 'Tap to change tab' : 'Appuyer pour changer d\'onglet'}
           >
             <span className="text-xs font-medium truncate w-full text-center" style={{ color: '#B8B8B8' }}>
               {language === 'en' ? 'Current:' : 'Actuel :'}
             </span>
             <span className="text-base font-semibold truncate w-full text-center" style={{ color: '#E21836' }}>
               {activeTab === "overview" && t.overview}
-              {activeTab === "events" && t.events}
-              {activeTab === "ambassadors" && t.ambassadors}
-              {activeTab === "applications" && t.applications}
-              {activeTab === "careers" && (language === 'en' ? 'Careers' : 'Carrières')}
               {activeTab === "online-orders" && (language === 'en' ? 'Online Orders' : 'Commandes en Ligne')}
               {activeTab === "ambassador-sales" && (language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs')}
               {activeTab === "pos" && (language === 'en' ? 'Point de Vente' : 'Point de Vente')}
-              {activeTab === "official-invitations" && (language === 'en' ? 'Official Invitations' : 'Invitations Officielles')}
               {activeTab === "tickets" && (language === 'en' ? 'Reports' : 'Rapports')}
-              {activeTab === "marketing" && (language === 'en' ? 'SMS - E-mail' : 'SMS - E-mail')}
-              {activeTab === "contact" && (language === 'en' ? 'Contact Messages' : 'Messages de Contact')}
-              {activeTab === "suggestions" && (language === 'en' ? 'Suggestions' : 'Suggestions')}
               {activeTab === "settings" && t.settings}
-              {!["overview","events","ambassadors","applications","careers","online-orders","ambassador-sales","pos","official-invitations","tickets","marketing","contact","suggestions","settings"].includes(activeTab) && t.title}
             </span>
-          </button>
+          </div>
           <div className="flex items-center gap-1.5 shrink-0 text-xs font-medium" style={{ color: '#B8B8B8' }}>
             <Clock className="w-3.5 h-3.5" style={{ color: '#E21836' }} />
             <span>{Math.floor(sessionTimeLeft / 3600)}h {Math.floor((sessionTimeLeft % 3600) / 60)}m</span>
           </div>
         </header>
+      )}
+
+      {isMobile && (
+        <nav
+          className="fixed bottom-0 left-0 right-0 z-40 border-t backdrop-blur-md"
+          style={{
+            background: 'rgba(26, 26, 26, 0.55)',
+            borderColor: 'rgba(255, 255, 255, 0.08)',
+          }}
+          aria-label={language === 'en' ? 'Dashboard navigation' : 'Navigation du tableau de bord'}
+        >
+          <div className="px-2 py-1.5 flex items-center gap-1 overflow-x-auto">
+            {mobileBottomTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => handleBottomNavSelect(tab.key)}
+                  className="shrink-0 relative flex flex-col items-center justify-center gap-1 px-2.5 py-2 rounded-xl transition-all duration-200 overflow-hidden"
+                  style={{
+                    color: isActive ? '#E21836' : '#B0B0B0',
+                    background: isActive ? 'rgba(226, 24, 54, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                    border: isActive ? '1px solid rgba(226, 24, 54, 0.45)' : '1px solid rgba(255, 255, 255, 0.07)',
+                    boxShadow: isActive
+                      ? '0 10px 24px rgba(226, 24, 54, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.10)'
+                      : 'inset 0 1px 0 rgba(255, 255, 255, 0.06)',
+                  }}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  {/* Liquid glass highlight blob */}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200"
+                    style={{
+                      opacity: isActive ? 1 : 0,
+                      background:
+                        'radial-gradient(60% 90% at 30% 20%, rgba(255,255,255,0.22), rgba(255,255,255,0) 55%), radial-gradient(80% 120% at 80% 0%, rgba(226,24,54,0.35), rgba(226,24,54,0) 60%)',
+                      filter: 'blur(10px)',
+                    }}
+                  />
+                  <Icon className="w-5 h-5" />
+                  <span className="text-[10px] font-medium text-center leading-none">
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
       )}
 
       {/* Mobile nav Sheet */}
@@ -10611,6 +10734,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 >
                   <Store className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Point de Vente' : 'Point de Vente'}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("settings") && currentAdminRole === 'super_admin' && (
+                <button
+                  onClick={() => handleMobileNavSelect("settings")}
+                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "settings" && "shadow-lg")}
+                  style={{ color: activeTab === "settings" ? '#E21836' : '#B0B0B0', background: activeTab === "settings" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <Settings className="w-4 h-4 shrink-0" />
+                  <span>{t.settings}</span>
                 </button>
               )}
               {isTabAllowedOnMobile("official-invitations") && currentAdminRole === 'super_admin' && (
@@ -11083,8 +11216,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               </div>
               
               {/* Event Selector + Notification Center */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
-                <div className="flex flex-1 items-center gap-2 sm:gap-4 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0 w-full">
+                {/* First row: Filter by Event + (optional) Reload Data */}
+                <div className="flex flex-1 items-center gap-1 sm:gap-4 min-w-0">
                   <Label
                     htmlFor="event-selector"
                     className="text-sm font-medium shrink-0"
@@ -11102,7 +11236,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   >
                     <SelectTrigger
                       id="event-selector"
-                      className="w-full sm:w-[300px] min-w-0"
+                      className="w-[170px] sm:w-[300px] min-w-0"
                       style={{
                         background: "#1F1F1F",
                         borderColor: "#2A2A2A",
@@ -11147,7 +11281,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         fetchOnlineOrders();
                         fetchPosOrdersForOverview();
                       }}
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-2 whitespace-nowrap shrink-0"
                     >
                       <RefreshCw className="w-4 h-4" />
                       {language === "en"
@@ -11157,8 +11291,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2">
+                {/* Second row (mobile): Sound + Notifications */}
+                <div className="flex w-full sm:w-auto items-center justify-end gap-1">
+                  <div className="flex items-center gap-1">
                     <Label
                       htmlFor="sound-toggle"
                       className="text-xs font-medium"
@@ -11286,7 +11421,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               className="space-y-6 min-w-0 [&>[data-state=active]]:animate-in [&>[data-state=active]]:fade-in-50 [&>[data-state=active]]:duration-300"
             >
               {/* Tabs Content - separated from navigation; smooth transition when switching tabs */}
-              <TabsContent value="overview" className="space-y-6 mt-20 sm:mt-0 data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:duration-300">
+              <TabsContent value="overview" className="space-y-6 mt-8 sm:mt-0 data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:duration-300">
                 <OverviewTab
                   language={language}
                   t={t}

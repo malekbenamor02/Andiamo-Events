@@ -3,7 +3,7 @@
  * Extracted from Dashboard.tsx for maintainability.
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import Loader from "@/components/ui/Loader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -63,6 +63,32 @@ export function OrderDetailsDialog({
   orderFilters,
 }: OrderDetailsDialogProps) {
   const { toast } = useToast();
+  const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    // Only start close gesture near the left edge (prevents accidental closes while scrolling).
+    if (t.clientX > 40) return;
+    touchStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const dt = Date.now() - start.t;
+
+    // Left-to-right swipe to close (ignore mostly-vertical swipes / too-slow gestures).
+    if (dx < 90) return;
+    if (Math.abs(dy) > 60) return;
+    if (dt > 900) return;
+
+    onOpenChange(false);
+  };
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [editingEmailValue, setEditingEmailValue] = useState("");
   const [updatingEmail, setUpdatingEmail] = useState(false);
@@ -89,22 +115,26 @@ export function OrderDetailsDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className="w-full max-w-[100vw] left-0 translate-x-0 p-3 sm:p-6 sm:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
           <DialogHeader>
             <DialogTitle>{language === 'en' ? 'Order Details' : 'DÃ©tails de la Commande'}</DialogTitle>
           </DialogHeader>
           {order && (
-            <div className="space-y-6">
+            <div className="space-y-3 sm:space-y-6 w-full break-words">
               {/* Order Summary Card */}
               <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
+                <CardHeader className="pb-2 sm:pb-3">
+                  <CardTitle className="text-base sm:text-lg flex items-center gap-2">
                     <Package className="w-5 h-5 text-primary" />
                     {language === 'en' ? 'Order Summary' : 'RÃ©sumÃ© de la Commande'}
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <CardContent className="p-4 pt-0 sm:p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
                         <FileText className="w-3 h-3" />
@@ -190,7 +220,7 @@ export function OrderDetailsDialog({
                         <Ticket className="w-3 h-3" />
                         {language === 'en' ? 'Pass Details' : 'DÃ©tails du Pass'}
                       </Label>
-                      {(() => {
+                  {(() => {
                         let allPasses: any[] = [];
                         try {
                           if (order.notes) {
@@ -211,51 +241,107 @@ export function OrderDetailsDialog({
                           }, 0);
 
                           return (
-                            <div className="space-y-2">
-                              <Table>
-                                <TableHeader>
-                                  <TableRow>
-                                    <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
-                                    <TableHead>{language === 'en' ? 'Quantity' : 'QuantitÃ©'}</TableHead>
-                                    <TableHead>{language === 'en' ? 'Unit Price' : 'Prix Unitaire'}</TableHead>
-                                    <TableHead>{language === 'en' ? 'Subtotal' : 'Sous-total'}</TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {allPasses.map((pass: any, index: number) => {
-                                    const passLabel =
-                                      pass.name ||
-                                      pass.passName ||
-                                      pass.label ||
-                                      pass.pass_type ||
-                                      pass.passType ||
-                                      pass.type ||
-                                      'N/A';
-                                    return (
-                                      <TableRow key={index}>
-                                        <TableCell>
-                                          <Badge variant={pass.passType === 'vip' ? 'default' : 'secondary'}>
-                                            {String(passLabel).toUpperCase()}
-                                          </Badge>
-                                        </TableCell>
-                                        <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
-                                        <TableCell>{pass.price?.toFixed(2) || '0.00'} TND</TableCell>
-                                        <TableCell className="font-semibold">
-                                          {((pass.price || 0) * (pass.quantity || 0)).toFixed(2)} TND
-                                        </TableCell>
-                                      </TableRow>
-                                    );
-                                  })}
-                                  <TableRow className="font-bold border-t-2">
-                                    <TableCell colSpan={3} className="text-right">
-                                      {language === 'en' ? 'Total' : 'Total'}
-                                    </TableCell>
-                                    <TableCell className="text-lg">
-                                      {calculatedTotal.toFixed(2)} TND
-                                    </TableCell>
-                                  </TableRow>
-                                </TableBody>
-                              </Table>
+                            <div className="space-y-3">
+                              {/* Desktop keeps table formatting */}
+                              <div className="hidden md:block">
+                                <Table className="w-full table-fixed">
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
+                                      <TableHead>{language === 'en' ? 'Quantity' : 'QuantitÃ©'}</TableHead>
+                                      <TableHead>{language === 'en' ? 'Unit Price' : 'Prix Unitaire'}</TableHead>
+                                      <TableHead>{language === 'en' ? 'Subtotal' : 'Sous-total'}</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {allPasses.map((pass: any, index: number) => {
+                                      const passLabel =
+                                        pass.name ||
+                                        pass.passName ||
+                                        pass.label ||
+                                        pass.pass_type ||
+                                        pass.passType ||
+                                        pass.type ||
+                                        'N/A';
+                                      return (
+                                        <TableRow key={index}>
+                                          <TableCell>
+                                            <Badge variant={pass.passType === 'vip' ? 'default' : 'secondary'}>
+                                              {String(passLabel).toUpperCase()}
+                                            </Badge>
+                                          </TableCell>
+                                          <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
+                                          <TableCell>{pass.price?.toFixed(2) || '0.00'} TND</TableCell>
+                                          <TableCell className="font-semibold">
+                                            {((pass.price || 0) * (pass.quantity || 0)).toFixed(2)} TND
+                                          </TableCell>
+                                        </TableRow>
+                                      );
+                                    })}
+                                    <TableRow className="font-bold border-t-2">
+                                      <TableCell colSpan={3} className="text-right">
+                                        {language === 'en' ? 'Total' : 'Total'}
+                                      </TableCell>
+                                      <TableCell className="text-lg">
+                                        {calculatedTotal.toFixed(2)} TND
+                                      </TableCell>
+                                    </TableRow>
+                                  </TableBody>
+                                </Table>
+                              </div>
+
+                              {/* Mobile: stacked cards for better readability */}
+                              <div className="md:hidden space-y-2">
+                                {allPasses.map((pass: any, index: number) => {
+                                  const passLabel =
+                                    pass.name ||
+                                    pass.passName ||
+                                    pass.label ||
+                                    pass.pass_type ||
+                                    pass.passType ||
+                                    pass.type ||
+                                    'N/A';
+                                  const qty = pass.quantity || 0;
+                                  const unit = pass.price || 0;
+                                  const subtotal = (unit * qty) as number;
+
+                                  return (
+                                    <div
+                                      key={index}
+                                      className="rounded-lg border border-border/60 bg-muted/30 p-2"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <Badge variant={pass.passType === 'vip' ? 'default' : 'secondary'}>
+                                          {String(passLabel).toUpperCase()}
+                                        </Badge>
+                                        <span className="text-xs text-muted-foreground">{subtotal.toFixed(2)} TND</span>
+                                      </div>
+
+                                      <div className="mt-2 grid grid-cols-2 gap-2">
+                                        <div className="space-y-1">
+                                          <Label className="text-[11px] text-muted-foreground">
+                                            {language === 'en' ? 'Quantity' : 'QuantitÃ©'}
+                                          </Label>
+                                          <p className="font-semibold">{qty}</p>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[11px] text-muted-foreground">
+                                            {language === 'en' ? 'Unit Price' : 'Prix Unitaire'}
+                                          </Label>
+                                          <p className="font-semibold">{unit.toFixed(2)} TND</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+
+                                <div className="pt-2 border-t border-border">
+                                  <div className="text-xs sm:text-sm font-semibold text-muted-foreground">
+                                    {language === 'en' ? 'Total' : 'Total'}
+                                  </div>
+                                  <div className="text-base sm:text-lg font-semibold">{calculatedTotal.toFixed(2)} TND</div>
+                                </div>
+                              </div>
                             </div>
                           );
                         }
@@ -292,27 +378,27 @@ export function OrderDetailsDialog({
 
               {/* Customer Information */}
               <Card className="bg-muted/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
+                <CardHeader className="pb-2 sm:pb-3">
+                  <CardTitle className="text-base sm:text-lg flex items-center gap-2">
                     <User className="w-5 h-5 text-primary" />
                     {language === 'en' ? 'Customer Information' : 'Informations Client'}
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <CardContent className="p-4 pt-0 sm:p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
                         <User className="w-3 h-3" />
                         {language === 'en' ? 'Name' : 'Nom'}
                       </Label>
-                      <p className="font-semibold text-base">{order.user_name || order.customer_name || 'N/A'}</p>
+                      <p className="font-semibold text-sm sm:text-base">{order.user_name || order.customer_name || 'N/A'}</p>
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
                         <Phone className="w-3 h-3" />
                         {language === 'en' ? 'Phone' : 'TÃ©lÃ©phone'}
                       </Label>
-                      <p className="text-base">{order.user_phone || order.phone || 'N/A'}</p>
+                      <p className="text-sm sm:text-base">{order.user_phone || order.phone || 'N/A'}</p>
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
@@ -840,30 +926,30 @@ export function OrderDetailsDialog({
                                   </div>
                                   {log.details && typeof log.details === 'object' && (
                                     <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                                      {log.details.old_status && log.details.new_status && (
-                                        <p>
-                                          {language === 'en' ? 'Status' : 'Statut'}: 
-                                          <span className="ml-1 font-medium">{log.details.old_status}</span>
+                                  {log.details.old_status && log.details.new_status && (
+                                        <p className="break-words whitespace-normal">
+                                          {language === 'en' ? 'Status' : 'Statut'}:
+                                          <span className="ml-1 font-medium break-all">{log.details.old_status}</span>
                                           <span className="mx-1">â†’</span>
-                                          <span className="font-medium">{log.details.new_status}</span>
+                                          <span className="font-medium break-all">{log.details.new_status}</span>
                                         </p>
                                       )}
                                       {log.details.reason && (
-                                        <p className="italic">
+                                        <p className="italic break-words whitespace-normal">
                                           {language === 'en' ? 'Reason' : 'Raison'}: {log.details.reason}
                                         </p>
                                       )}
                                       {log.details.email_sent !== undefined && (
-                                        <p>
-                                          {language === 'en' ? 'Email' : 'Email'}: 
+                                        <p className="break-words whitespace-normal">
+                                          {language === 'en' ? 'Email' : 'Email'}:
                                           <span className={`ml-1 ${log.details.email_sent ? 'text-green-500' : 'text-red-500'}`}>
                                             {log.details.email_sent ? (language === 'en' ? 'Sent' : 'EnvoyÃ©') : (language === 'en' ? 'Failed' : 'Ã‰chouÃ©')}
                                           </span>
                                         </p>
                                       )}
                                       {log.details.sms_sent !== undefined && (
-                                        <p>
-                                          {language === 'en' ? 'SMS' : 'SMS'}: 
+                                        <p className="break-words whitespace-normal">
+                                          {language === 'en' ? 'SMS' : 'SMS'}:
                                           <span className={`ml-1 ${log.details.sms_sent ? 'text-green-500' : 'text-red-500'}`}>
                                             {log.details.sms_sent ? (language === 'en' ? 'Sent' : 'EnvoyÃ©') : (language === 'en' ? 'Failed' : 'Ã‰chouÃ©')}
                                           </span>

@@ -3,7 +3,7 @@
  * Extracted from Dashboard.tsx for maintainability.
  */
 
-import React from "react";
+import React, { useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -78,6 +78,32 @@ export function OnlineOrderDetailsDialog({
   onResendTicket,
 }: OnlineOrderDetailsDialogProps) {
   const { toast } = useToast();
+  const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    // Only start close gesture near the left edge (prevents accidental closes while scrolling).
+    if (t.clientX > 40) return;
+    touchStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const dt = Date.now() - start.t;
+
+    // Left-to-right swipe to close (ignore mostly-vertical swipes / too-slow gestures).
+    if (dx < 90) return;
+    if (Math.abs(dy) > 60) return;
+    if (dt > 900) return;
+
+    onOpenChange(false);
+  };
 
   const getActionCodeDescription = (paymentConfirmResponse: unknown): string | null => {
     const obj = paymentConfirmResponse as any;
@@ -152,14 +178,18 @@ export function OnlineOrderDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className="w-full max-w-[100vw] left-0 translate-x-0 p-3 sm:p-6 sm:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <DialogHeader>
           <DialogTitle>
             {language === "en" ? "Online Order Details" : "Détails de la Commande en Ligne"}
           </DialogTitle>
         </DialogHeader>
         {order && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6 w-full break-words">
             {/* Order Summary Card */}
             <Card className="bg-muted/30">
               <CardHeader className="pb-3">
@@ -380,60 +410,136 @@ export function OnlineOrderDetailsDialog({
                     const passName = (p: { passType?: string; pass_type?: string }) => p.pass_type ?? p.passType ?? "STANDARD";
 
                     return (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{language === "en" ? "Pass Type" : "Type Pass"}</TableHead>
-                            <TableHead>{language === "en" ? "Quantity" : "Quantité"}</TableHead>
-                            <TableHead>{language === "en" ? "Unit Price" : "Prix Unitaire"}</TableHead>
-                            <TableHead>{language === "en" ? "Subtotal" : "Sous-total"}</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {allPasses.map((pass: { passType?: string; pass_type?: string; quantity?: number; price?: number }, index: number) => (
-                            <TableRow key={index}>
-                              <TableCell>
-                                <Badge variant={passName(pass).toLowerCase() === "vip" ? "default" : "secondary"}>
-                                  {passName(pass).toUpperCase()}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
-                              <TableCell>{pass.price?.toFixed(2) || "0.00"} TND</TableCell>
-                              <TableCell className="font-semibold">
-                                {((pass.quantity || 0) * (pass.price || 0)).toFixed(2)} TND
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          <TableRow className="font-bold border-t-2">
-                            <TableCell colSpan={3} className="text-right">
+                      <div className="w-full">
+                        {/* Desktop: keep table */}
+                        <div className="hidden md:block">
+                          <Table className="w-full table-fixed">
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>{language === "en" ? "Pass Type" : "Type Pass"}</TableHead>
+                                <TableHead>{language === "en" ? "Quantity" : "Quantité"}</TableHead>
+                                <TableHead>{language === "en" ? "Unit Price" : "Prix Unitaire"}</TableHead>
+                                <TableHead>{language === "en" ? "Subtotal" : "Sous-total"}</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {allPasses.map((pass: { passType?: string; pass_type?: string; quantity?: number; price?: number }, index: number) => (
+                                <TableRow key={index}>
+                                  <TableCell>
+                                    <Badge variant={passName(pass).toLowerCase() === "vip" ? "default" : "secondary"}>
+                                      {passName(pass).toUpperCase()}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="font-semibold">{pass.quantity || 0}</TableCell>
+                                  <TableCell>{pass.price?.toFixed(2) || "0.00"} TND</TableCell>
+                                  <TableCell className="font-semibold">
+                                    {((pass.quantity || 0) * (pass.price || 0)).toFixed(2)} TND
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                              <TableRow className="font-bold border-t-2">
+                                <TableCell colSpan={3} className="text-right">
+                                  {language === "en" ? "Subtotal (without fees)" : "Sous-total (hors frais)"}
+                                </TableCell>
+                                <TableCell className="text-lg">
+                                  {calculatedTotal.toFixed(2)} TND
+                                </TableCell>
+                              </TableRow>
+                              {paymentFees?.fee_amount != null && (
+                                <TableRow>
+                                  <TableCell colSpan={3} className="text-right text-sm">
+                                    {language === "en" ? "Fees" : "Frais"}
+                                  </TableCell>
+                                  <TableCell className="text-sm font-semibold">
+                                    {paymentFees.fee_amount.toFixed(2)} TND
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                              {paymentFees?.total_with_fees != null && (
+                                <TableRow>
+                                  <TableCell colSpan={3} className="text-right text-sm">
+                                    {language === "en" ? "Total (incl. fees)" : "Total (frais inclus)"}
+                                  </TableCell>
+                                  <TableCell className="text-sm font-semibold">
+                                    {paymentFees.total_with_fees.toFixed(2)} TND
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </TableBody>
+                          </Table>
+                        </div>
+
+                        {/* Mobile: stacked cards */}
+                        <div className="md:hidden space-y-2">
+                          {allPasses.map((pass: { passType?: string; pass_type?: string; quantity?: number; price?: number }, index: number) => {
+                            const qty = pass.quantity || 0;
+                            const unit = pass.price || 0;
+                            const subtotal = qty * unit;
+                            const label = passName(pass).toUpperCase();
+
+                            return (
+                              <div
+                                key={index}
+                                className="rounded-lg border border-border/60 bg-muted/30 p-3"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <Badge variant={passName(pass).toLowerCase() === "vip" ? "default" : "secondary"}>
+                                    {label}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground">{subtotal.toFixed(2)} TND</span>
+                                </div>
+
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <Label className="text-[11px] text-muted-foreground">
+                                      {language === "en" ? "Quantity" : "Quantité"}
+                                    </Label>
+                                    <p className="font-semibold">{qty}</p>
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <Label className="text-[11px] text-muted-foreground">
+                                      {language === "en" ? "Unit Price" : "Prix Unitaire"}
+                                    </Label>
+                                    <p className="font-semibold">{unit.toFixed(2)} TND</p>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          <div className="pt-2 border-t border-border">
+                            <div className="text-sm font-semibold text-muted-foreground">
                               {language === "en" ? "Subtotal (without fees)" : "Sous-total (hors frais)"}
-                            </TableCell>
-                            <TableCell className="text-lg">
+                            </div>
+                            <div className="text-base font-semibold">
                               {calculatedTotal.toFixed(2)} TND
-                            </TableCell>
-                          </TableRow>
+                            </div>
+                          </div>
+
                           {paymentFees?.fee_amount != null && (
-                            <TableRow>
-                              <TableCell colSpan={3} className="text-right text-sm">
+                            <div className="space-y-0.5">
+                              <div className="text-sm text-muted-foreground">
                                 {language === "en" ? "Fees" : "Frais"}
-                              </TableCell>
-                              <TableCell className="text-sm font-semibold">
+                              </div>
+                              <div className="text-sm font-semibold">
                                 {paymentFees.fee_amount.toFixed(2)} TND
-                              </TableCell>
-                            </TableRow>
+                              </div>
+                            </div>
                           )}
+
                           {paymentFees?.total_with_fees != null && (
-                            <TableRow>
-                              <TableCell colSpan={3} className="text-right text-sm">
+                            <div className="space-y-0.5">
+                              <div className="text-sm text-muted-foreground">
                                 {language === "en" ? "Total (incl. fees)" : "Total (frais inclus)"}
-                              </TableCell>
-                              <TableCell className="text-sm font-semibold">
+                              </div>
+                              <div className="text-sm font-semibold">
                                 {paymentFees.total_with_fees.toFixed(2)} TND
-                              </TableCell>
-                            </TableRow>
+                              </div>
+                            </div>
                           )}
-                        </TableBody>
-                      </Table>
+                        </div>
+                      </div>
                     );
                   } else {
                     return (
@@ -498,7 +604,10 @@ export function OnlineOrderDetailsDialog({
                             label={language === "en" ? "Payment Response Data" : "Données de Réponse"}
                           />
                         </div>
-                        <pre className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-auto max-h-40">
+                        <pre
+                          className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-x-auto overflow-y-auto max-h-40 whitespace-pre-wrap break-all w-full"
+                          style={{ WebkitOverflowScrolling: "touch" }}
+                        >
                           {JSON.stringify(order.payment_response_data, null, 2)}
                         </pre>
                       </div>
@@ -529,7 +638,10 @@ export function OnlineOrderDetailsDialog({
                         label={language === "en" ? "Payment Logs" : "Journaux de Paiement"}
                       />
                     </div>
-                    <pre className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-auto max-h-40">
+                    <pre
+                      className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-x-auto overflow-y-auto max-h-40 whitespace-pre-wrap break-all w-full"
+                      style={{ WebkitOverflowScrolling: "touch" }}
+                    >
                       {JSON.stringify(order.payment_confirm_response, null, 2)}
                     </pre>
                   </div>

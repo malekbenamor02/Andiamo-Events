@@ -1081,11 +1081,17 @@ app.post('/api/admin-login', authLimiter, async (req, res) => {
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
       httpOnly: true, // Prevents JavaScript access - security feature
-      secure: isProduction, // Use secure cookies in production (HTTPS)
+      // Use secure cookies only when the request is actually secure (or forwarded as such).
+      // This prevents "secure" cookies from not being stored/sent when the app runs over HTTP on LAN/mobile.
+      secure:
+        isProduction &&
+        (req.secure ||
+          (req.headers["x-forwarded-proto"] || "").toString().includes("https")),
       sameSite: 'lax', // More permissive for cross-site requests
       path: '/', // Ensure cookie is available for all paths
       maxAge: 5 * 60 * 60 * 1000 // 5 hours (matches JWT expiration) - fixed expiration, cannot be extended
     };
+
     
     // Only set domain in production or if explicitly configured
     // Don't set domain for localhost - it breaks cookie setting
