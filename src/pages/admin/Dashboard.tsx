@@ -10598,7 +10598,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           }}
           aria-label={language === 'en' ? 'Dashboard navigation' : 'Navigation du tableau de bord'}
         >
-          <div className="px-2 py-1.5 flex items-center gap-1 overflow-x-auto">
+          <div className="px-2 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-hide">
             {mobileBottomTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.key;
