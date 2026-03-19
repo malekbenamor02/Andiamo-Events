@@ -10746,6 +10746,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   <span>{t.settings}</span>
                 </button>
               )}
+              {currentAdminRole === 'super_admin' && isTabAllowedOnMobile("settings") && (
+                <div className="px-2 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>{t.logout}</span>
+                  </Button>
+                </div>
+              )}
               {isTabAllowedOnMobile("official-invitations") && currentAdminRole === 'super_admin' && (
                 <button
                   onClick={() => handleMobileNavSelect("official-invitations")}
@@ -10768,12 +10780,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
             </div>
           </nav>
-          <div className="p-4 border-t" style={{ borderColor: '#2A2A2A' }}>
-            <Button variant="outline" onClick={handleLogout} className="w-full flex items-center gap-2">
-              <LogOut className="w-4 h-4" />
-              <span>{t.logout}</span>
-            </Button>
-          </div>
+          {currentAdminRole !== 'super_admin' && (
+            <div className="p-4 border-t" style={{ borderColor: '#2A2A2A' }}>
+              <Button variant="outline" onClick={handleLogout} className="w-full flex items-center gap-2">
+                <LogOut className="w-4 h-4" />
+                <span>{t.logout}</span>
+              </Button>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
 
@@ -11820,22 +11834,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         </div>
       </div>
       {/* Custom Delete Confirmation Dialog for Ambassador */}
-      {isMobile && (
-        <div
-          className="fixed left-0 right-0 z-[55] px-3"
-          style={{ bottom: 64 }}
-          aria-hidden={false}
-        >
-          <Button
-            variant="outline"
-            onClick={handleLogout}
-            className="w-full flex items-center gap-2 bg-transparent border-border/40 hover:bg-destructive hover:text-destructive-foreground"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>{t.logout}</span>
-          </Button>
-        </div>
-      )}
       <Dialog open={!!ambassadorToDelete} onOpenChange={open => { if (!open) setAmbassadorToDelete(null); }}>
         <DialogContent>
           <DialogHeader>
