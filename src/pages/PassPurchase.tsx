@@ -1148,8 +1148,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                               </div>
                             ) : (
                               <div className="flex items-center justify-center py-2">
-                                <span className="shrink-0 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-red-600 text-white rounded shadow-sm border border-red-700/90 inline-flex items-center gap-1">
-                                  <Lock className="w-2.5 h-2.5 shrink-0" />
+                                <span className="shrink-0 whitespace-nowrap px-2.5 py-1 text-xs font-bold uppercase tracking-wide bg-red-600 text-white rounded-md shadow-sm border border-red-700/90 inline-flex items-center gap-1.5">
+                                  <Lock className="w-3 h-3 shrink-0" />
                                   {language === 'en' ? 'SOLD OUT' : 'ÉPUISÉ'}
                                 </span>
                               </div>
