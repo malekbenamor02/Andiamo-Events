@@ -24,7 +24,8 @@ import { CustomerInfo, SelectedPass, Ambassador } from '@/types/orders';
 import { createOrder } from '@/lib/orders/orderService';
 import { PageMeta } from '@/components/PageMeta';
 import { trackEvent } from '@/lib/ga';
-import { trackMetaEvent, trackMetaPurchase } from '@/lib/meta';
+import { trackMetaEvent, trackMetaViewContent, trackMetaInitiateCheckout } from '@/lib/meta';
+import { createMetaEventId, getMetaAttributionContext } from '@/lib/metaAttribution';
 
 interface EventPass {
   id: string;
@@ -216,6 +217,11 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         event_name: event.name,
         language,
         page_path: page_path ?? undefined,
+      });
+      trackMetaViewContent({
+        content_type: 'product_group',
+        content_ids: [event.id],
+        content_name: event.name,
       });
     }
   }, [event?.id, purchaseBlockedReason, language, event?.name]);
@@ -703,6 +709,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     }
 
     try {
+      const metaEventId = createMetaEventId('purchase');
+      const metaAttribution = getMetaAttributionContext();
+      trackMetaInitiateCheckout({
+        value: totalPrice,
+        currency: 'TND',
+        num_items: totalQuantity,
+        content_ids: selectedPassesArray.map((p) => p.passId),
+        content_type: 'product',
+      });
+
       const idempotencyKey = crypto.randomUUID();
       let recaptchaToken: string | null = null;
       try {
@@ -743,6 +759,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         eventId: event?.id || eventId || undefined,
         recaptchaToken: recaptchaToken ?? undefined,
         idempotencyKey,
+        metaEventId,
+        metaFbp: metaAttribution.fbp,
+        metaFbc: metaAttribution.fbc,
+        metaEventSourceUrl: metaAttribution.eventSourceUrl,
       });
 
       // Handle redirect based on payment method
@@ -766,16 +786,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         };
         trackEvent('order_submit_online', onlineParams);
         trackMetaEvent('OrderSubmitOnline', onlineParams);
-        trackMetaPurchase({
-          value: totalPrice,
-          currency: 'TND',
-          content_ids: selectedPassesArray.map((p) => p.passId),
-          content_type: 'product',
-          num_items: totalQuantity,
-        });
 
         // Redirect to payment processing (ClicToPay flow)
-        navigate(`/payment-processing?orderId=${order.id}&init=1`, { replace: true });
+        const passIds = selectedPassesArray.map((p) => p.passId).join(',');
+        const redirectUrl =
+          `/payment-processing?orderId=${order.id}` +
+          `&init=1&meta_event_id=${encodeURIComponent(metaEventId)}` +
+          `&value=${encodeURIComponent(String(totalPrice))}` +
+          `&qty=${encodeURIComponent(String(totalQuantity))}` +
+          `&pass_ids=${encodeURIComponent(passIds)}`;
+        navigate(redirectUrl, { replace: true });
       } else if (paymentMethod === PaymentMethod.EXTERNAL_APP) {
         const option = paymentOptions.find(o => o.option_type === 'external_app');
         if (option?.external_link) {
@@ -809,14 +829,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         };
         trackEvent('order_submit_ambassador', ambassadorParams);
         trackMetaEvent('OrderSubmitAmbassador', ambassadorParams);
-        // Fire Meta's standard Purchase event too (now for ambassador-cash orders, not only online).
-        trackMetaPurchase({
-          value: totalPrice,
-          currency: 'TND',
-          content_ids: selectedPassesArray.map((p) => p.passId),
-          content_type: 'product',
-          num_items: totalQuantity,
-        });
 
         toast({
           title: t[language].success,
@@ -1074,16 +1086,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                             }`}
                           >
                             <div>
-                              <div className="flex items-center justify-between mb-1">
+                              <div className="mb-1">
                                 <h3 className={`text-lg font-semibold ${isSoldOut ? 'text-muted-foreground' : ''}`}>
                                   {pass.name}
                                 </h3>
-                                {isSoldOut && (
-                                  <span className="px-3 py-1.5 text-sm font-bold uppercase bg-red-600 text-white rounded-md shadow-lg border-2 border-red-700 flex items-center gap-1.5">
-                                    <Lock className="w-3.5 h-3.5" />
-                                    {language === 'en' ? 'SOLD OUT' : 'ÉPUISÉ'}
-                                  </span>
-                                )}
                               </div>
                               <p className={`text-2xl font-bold ${isSoldOut ? 'text-muted-foreground' : 'text-primary'}`}>
                                 {pass.price} TND
@@ -1142,8 +1148,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                               </div>
                             ) : (
                               <div className="flex items-center justify-center py-2">
-                                <span className="text-sm font-medium text-muted-foreground uppercase">
-                                  {language === 'en' ? 'Unavailable' : 'Indisponible'}
+                                <span className="shrink-0 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-red-600 text-white rounded shadow-sm border border-red-700/90 inline-flex items-center gap-1">
+                                  <Lock className="w-2.5 h-2.5 shrink-0" />
+                                  {language === 'en' ? 'SOLD OUT' : 'ÉPUISÉ'}
                                 </span>
                               </div>
                             )}
