@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/auto-fail-pending-online-orders",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

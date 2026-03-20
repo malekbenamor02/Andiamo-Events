@@ -4157,7 +4157,12 @@ Billets envoyés par email. We Create Memories`;
           process.env.SUPABASE_SERVICE_ROLE_KEY
         );
 
-        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+        const expireMinutesRaw = process.env.PENDING_ONLINE_EXPIRE_MINUTES;
+        const expireMinutes =
+          expireMinutesRaw != null && expireMinutesRaw !== ''
+            ? Math.max(1, parseInt(String(expireMinutesRaw), 10) || 17)
+            : 17;
+        const cutoffIso = new Date(Date.now() - expireMinutes * 60 * 1000).toISOString();
 
         // Find online orders stuck in pending payment beyond the timeout window
         const { data: pendingOrders, error: pendingError } = await supabase
@@ -4166,7 +4171,7 @@ Billets envoyés par email. We Create Memories`;
           .eq('source', 'platform_online')
           .eq('payment_status', 'PENDING_PAYMENT')
           .eq('status', 'PENDING_ONLINE')
-          .lte('created_at', thirtyMinutesAgo)
+          .lte('created_at', cutoffIso)
           .is('stock_released', false);
 
         if (pendingError) {
@@ -4204,7 +4209,7 @@ Billets envoyés par email. We Create Memories`;
                 status: 'EXPIRED',
                 payment_status: 'EXPIRED',
                 stock_released: true,
-                cancellation_reason: 'Auto-expired after 30 minutes without payment confirmation',
+                cancellation_reason: `Auto-expired after ${expireMinutes} minutes without payment confirmation`,
                 cancelled_by: 'system',
                 cancelled_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
@@ -4232,7 +4237,7 @@ Billets envoyés par email. We Create Memories`;
           failed_order_ids: failedOrderIds,
           message:
             failedOrderIds.length > 0
-              ? `Auto-expired ${failedOrderIds.length} pending online order(s) after 30 minutes without payment confirmation.`
+              ? `Auto-expired ${failedOrderIds.length} pending online order(s) after ${expireMinutes} minutes without payment confirmation.`
               : 'No pending online orders were auto-expired (all updates failed).',
           timestamp: new Date().toISOString()
         });
