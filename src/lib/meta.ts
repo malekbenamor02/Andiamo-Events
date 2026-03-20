@@ -90,6 +90,58 @@ export function trackMetaEvent(name: string, params?: Record<string, unknown>): 
 /**
  * Track standard Meta Purchase event (for value optimization; use alongside OrderSubmitOnline custom event).
  */
+interface MetaStandardOptions {
+  eventId?: string;
+}
+
+type MetaStandardParams = Record<string, unknown>;
+
+function trackStandardEvent(
+  name: string,
+  params?: MetaStandardParams,
+  options: MetaStandardOptions = {}
+): void {
+  if (typeof window === 'undefined' || !window.fbq || !META_PIXEL_ID || !isInitialized) {
+    return;
+  }
+  if (options.eventId) {
+    window.fbq('track', name, params || {}, { eventID: options.eventId });
+    return;
+  }
+  window.fbq('track', name, params || {});
+}
+
+/**
+ * Standard ViewContent for product/content detail pages.
+ */
+export function trackMetaViewContent(params?: MetaStandardParams): void {
+  trackStandardEvent('ViewContent', params);
+}
+
+/**
+ * Standard AddToCart for intent signals.
+ */
+export function trackMetaAddToCart(params?: MetaStandardParams): void {
+  trackStandardEvent('AddToCart', params);
+}
+
+/**
+ * Standard InitiateCheckout for mid-funnel optimization.
+ */
+export function trackMetaInitiateCheckout(params?: MetaStandardParams): void {
+  trackStandardEvent('InitiateCheckout', params);
+}
+
+/**
+ * Standard Lead for lead-generation outcomes.
+ */
+export function trackMetaLead(params?: MetaStandardParams, options: MetaStandardOptions = {}): void {
+  trackStandardEvent('Lead', params, options);
+}
+
+/**
+ * Track standard Meta Purchase event (for value optimization; use alongside custom order events).
+ */
 export function trackMetaPurchase(params: {
   value: number;
   currency: string;
@@ -98,9 +150,6 @@ export function trackMetaPurchase(params: {
   content_name?: string;
   num_items?: number;
   [key: string]: unknown;
-}): void {
-  if (typeof window === 'undefined' || !window.fbq || !META_PIXEL_ID || !isInitialized) {
-    return;
-  }
-  window.fbq('track', 'Purchase', params);
+}, options: MetaStandardOptions = {}): void {
+  trackStandardEvent('Purchase', params, options);
 }
