@@ -127,6 +127,11 @@ export interface CreateOrderData {
   recaptchaToken?: string;
   /** Idempotency key for duplicate submit prevention; same key returns existing order */
   idempotencyKey?: string;
+  /** Meta CAPI dedup/attribution context */
+  metaEventId?: string;
+  metaFbp?: string;
+  metaFbc?: string;
+  metaEventSourceUrl?: string;
 }
 
 /**

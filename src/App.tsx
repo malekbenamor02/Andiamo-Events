@@ -23,7 +23,11 @@ function lazyWithChunkRecovery<T extends React.ComponentType<unknown>>(
       const msg = err instanceof Error ? err.message : String(err);
       const isChunkError =
         /Loading chunk \d+ failed|ChunkLoadError|MIME type|text\/html.*JavaScript/i.test(msg);
-      if (isChunkError && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+      const isNetworkLike =
+        /failed to fetch|network error|networkerror|load failed|dynamically imported module|importing a module script failed/i.test(
+          msg
+        );
+      if ((isChunkError || isNetworkLike) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
         sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
         window.location.reload();
         return new Promise(() => {});
@@ -132,8 +136,9 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
           </>
         )}
       <MaintenanceMode language={language}>
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen bg-background flex flex-col">
           {!isScanner && !isPos && <Navigation language={language} toggleLanguage={toggleLanguage} />}
+          <ErrorBoundary embedded language={language}>
           <Suspense fallback={<LoadingScreen />}>
             <Routes>
               <Route path="/scanner/*" element={<ScannerApp language={language} />} />
@@ -177,6 +182,7 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
+          </ErrorBoundary>
           {!isScanner && !isPos && <Footer language={language} />}
         </div>
       </MaintenanceMode>
@@ -197,21 +203,19 @@ const App = () => {
   };
 
   return (
-    <ErrorBoundary>
-      <HelmetProvider>
-        <QueryClientProvider client={queryClient}>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <Analytics />
-            {!isInAppBrowser && <SpeedInsights />}
-            <BrowserRouter>
-              <AppContent language={language} toggleLanguage={toggleLanguage} />
-            </BrowserRouter>
-          </TooltipProvider>
-        </QueryClientProvider>
-      </HelmetProvider>
-    </ErrorBoundary>
+    <HelmetProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <Analytics />
+          {!isInAppBrowser && <SpeedInsights />}
+          <BrowserRouter>
+            <AppContent language={language} toggleLanguage={toggleLanguage} />
+          </BrowserRouter>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </HelmetProvider>
   );
 };
 

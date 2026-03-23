@@ -75,3 +75,24 @@ export function formatDateTimeLong(
   const pattern = locale === 'fr' ? "EEEE d MMMM yyyy 'à' HH:mm" : "EEEE, d MMMM yyyy 'at' HH:mm";
   return format(d, pattern, { locale: loc });
 }
+
+/** Hours after event start when pass purchase / Book Now closes (client + listings). */
+export const PASS_PURCHASE_GRACE_HOURS = 2;
+export const PASS_PURCHASE_GRACE_MS = PASS_PURCHASE_GRACE_HOURS * 60 * 60 * 1000;
+
+/**
+ * True when pass purchase should be closed: event start + grace has passed, or status is completed.
+ */
+export function isPassPurchaseWindowClosed(
+  eventDate: string | Date | number,
+  eventStatus?: string | null,
+  now: Date = new Date()
+): boolean {
+  if (eventStatus === 'completed') return true;
+  const start =
+    typeof eventDate === 'string' || typeof eventDate === 'number'
+      ? new Date(eventDate)
+      : eventDate;
+  if (isNaN(start.getTime())) return false;
+  return now.getTime() >= start.getTime() + PASS_PURCHASE_GRACE_MS;
+}

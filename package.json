@@ -12,7 +12,8 @@
     "server": "node server.cjs",
     "dev:full": "concurrently \"npm run dev\" \"npm run server\"",
     "security:check": "node scripts/check-security-config.js",
-    "security:setup": "node scripts/setup-security.js"
+    "security:setup": "node scripts/setup-security.js",
+    "invite:qr": "node scripts/create-invitation-qr-tickets.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

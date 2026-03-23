@@ -1,9 +1,16 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { WifiOff } from 'lucide-react';
 import { logger } from '@/lib/logger';
+import { humanizeAppError } from '@/lib/network-error-message';
+import { Button } from '@/components/ui/button';
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  /** When true, only the main area is replaced (use inside layout that already has nav + footer). */
+  embedded?: boolean;
+  language?: 'en' | 'fr';
 }
 
 interface State {
@@ -35,29 +42,55 @@ class ErrorBoundary extends Component<Props, State> {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
   }
 
+  private handleReload = () => {
+    this.setState({ hasError: false, error: null });
+    window.location.reload();
+  };
+
   public render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
         return this.props.fallback;
       }
 
+      const lang = this.props.language ?? 'en';
+      const { title, detail } = humanizeAppError(this.state.error?.message, lang);
+      const reloadLabel = lang === 'en' ? 'Reload page' : 'Recharger la page';
+      const homeLabel = lang === 'en' ? 'Back to home' : "Retour à l'accueil";
+
+      const body = (
+        <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card/80 backdrop-blur-sm p-8 shadow-lg text-center space-y-5">
+          <div className="flex justify-center">
+            <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+              <WifiOff className="h-7 w-7" aria-hidden />
+            </span>
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold text-foreground font-heading tracking-tight">{title}</h1>
+            <p className="text-sm text-muted-foreground leading-relaxed">{detail}</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Button type="button" onClick={this.handleReload} className="w-full sm:w-auto">
+              {reloadLabel}
+            </Button>
+            <Button type="button" variant="outline" asChild className="w-full sm:w-auto">
+              <Link to="/">{homeLabel}</Link>
+            </Button>
+          </div>
+        </div>
+      );
+
+      if (this.props.embedded) {
+        return (
+          <main className="flex-1 flex flex-col items-center justify-center px-4 py-16 w-full min-h-[50vh]">
+            {body}
+          </main>
+        );
+      }
+
       return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4">
-          <div className="text-center space-y-4">
-            <h1 className="text-4xl font-bold text-red-500">Something went wrong</h1>
-            <p className="text-muted-foreground">
-              {this.state.error?.message || 'An unexpected error occurred'}
-            </p>
-            <button
-              onClick={() => {
-                this.setState({ hasError: false, error: null });
-                window.location.reload();
-              }}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-            >
-              Reload Page
-            </button>
-          </div>
+          {body}
         </div>
       );
     }

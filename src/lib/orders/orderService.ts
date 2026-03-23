@@ -14,7 +14,19 @@ import { getApiBaseUrl } from '@/lib/api-routes';
  * CRITICAL: Routes to server-side endpoint for stock validation and atomic reservation
  */
 export async function createOrder(data: CreateOrderData): Promise<Order> {
-  const { customerInfo, passes, paymentMethod, ambassadorId, eventId, recaptchaToken, idempotencyKey } = data;
+  const {
+    customerInfo,
+    passes,
+    paymentMethod,
+    ambassadorId,
+    eventId,
+    recaptchaToken,
+    idempotencyKey,
+    metaEventId,
+    metaFbp,
+    metaFbc,
+    metaEventSourceUrl
+  } = data;
   
   // Validate required fields
   if (!customerInfo || !passes || !paymentMethod) {
@@ -42,7 +54,11 @@ export async function createOrder(data: CreateOrderData): Promise<Order> {
       ambassadorId,
       eventId,
       recaptchaToken: recaptchaToken ?? undefined,
-      idempotencyKey: idempotencyKey ?? undefined
+      idempotencyKey: idempotencyKey ?? undefined,
+      metaEventId: metaEventId ?? undefined,
+      metaFbp: metaFbp ?? undefined,
+      metaFbc: metaFbc ?? undefined,
+      metaEventSourceUrl: metaEventSourceUrl ?? undefined
     })
   });
 

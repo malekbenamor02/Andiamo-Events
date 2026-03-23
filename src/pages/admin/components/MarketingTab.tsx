@@ -13,9 +13,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { PhoneCall, Mail, CreditCard, Download, Upload, Send, RefreshCw, FileText, Info, Phone, CheckCircle, XCircle, Clock } from "lucide-react";
+import { PhoneCall, Mail, CreditCard, Download, Upload, Send, RefreshCw, FileText, Info, Phone, CheckCircle, XCircle, Clock, Pencil, BarChart2, Pause } from "lucide-react";
 import { BulkSmsSelector } from "@/components/admin/BulkSmsSelector";
-import { BulkEmailSelector } from "@/components/admin/BulkEmailSelector";
+import { EmailCampaignEditor } from "@/components/admin/marketing/EmailCampaignEditor";
+import { EmailCampaignLauncher } from "@/components/admin/marketing/EmailCampaignLauncher";
+import { EmailCampaignStats } from "@/components/admin/marketing/EmailCampaignStats";
 import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
 import type { MarketingCampaign } from "@/types/bulk-sms";
 
@@ -70,14 +72,27 @@ export function MarketingTab(p: MarketingTabProps) {
   const [sendingOneBatchId, setSendingOneBatchId] = useState<string | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
   const cancelResumeRef = useRef(false);
+  const [emailEditorOpen, setEmailEditorOpen] = useState(false);
+  const [emailEditorCampaignId, setEmailEditorCampaignId] = useState<string | null>(null);
+  const [launchDraftId, setLaunchDraftId] = useState<string | null>(null);
+  const [statsCampaignId, setStatsCampaignId] = useState<string | null>(null);
+  const campaignsFetchGenRef = useRef(0);
 
   const fetchCampaigns = useCallback(async () => {
+    const gen = ++campaignsFetchGenRef.current;
+    const url = buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGNS);
+    if (!url) return;
     try {
-      const res = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGNS), { credentials: "include" });
+      const res = await fetch(url, {
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" }
+      });
       const data = await res.json();
+      if (gen !== campaignsFetchGenRef.current) return;
       if (data.success && Array.isArray(data.data)) setCampaigns(data.data);
     } catch {
-      setCampaigns([]);
+      if (gen === campaignsFetchGenRef.current) setCampaigns([]);
     }
   }, []);
 
@@ -85,33 +100,71 @@ export function MarketingTab(p: MarketingTabProps) {
     fetchCampaigns();
   }, [fetchCampaigns]);
 
-  const handleSendOneBatch = async (campaignId: string) => {
+  useEffect(() => {
+    if (p.marketingSubTab === "email") fetchCampaigns();
+  }, [p.marketingSubTab, fetchCampaigns]);
+
+  const pauseCampaign = async (campaignId: string) => {
+    try {
+      await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN(campaignId)), {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "paused" }),
+      });
+      await fetchCampaigns();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const resumeEmailScheduling = async (campaignId: string) => {
+    try {
+      await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN(campaignId)), {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "scheduled" }),
+      });
+      await fetchCampaigns();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  /** SMS campaigns only — email sending is driven by server cron + daily cap. */
+  const handleSendOneBatchSms = async (campaignId: string) => {
     if (sendingOneBatchId || resumingId) return;
     setSendingOneBatchId(campaignId);
     try {
-      const res = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN_SEND_BATCH(campaignId)), {
+      await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN_SEND_BATCH(campaignId)), {
         method: "POST",
         credentials: "include",
       });
       await fetchCampaigns();
-      if (res.status === 429 && p.language === "en") {
-        alert("Daily email limit (300/day). Resume tomorrow.");
-      } else if (res.status === 429) {
-        alert("Limite 300 emails/jour. Reprenez demain.");
-      }
     } finally {
       setSendingOneBatchId(null);
     }
   };
 
-  const handleResumeAuto = async (c: MarketingCampaign) => {
-    if ((c.counts?.pending ?? 0) <= 0 || resumingId || sendingOneBatchId) return;
+  const handleResumeAutoSms = async (c: MarketingCampaign) => {
+    if (c.type !== "sms" || (c.counts?.pending ?? 0) <= 0 || resumingId || sendingOneBatchId) return;
     cancelResumeRef.current = false;
     setResumingId(c.id);
-    const batchDelayMs = c.batch_delay_minutes != null && c.batch_delay_minutes >= 0
-      ? Math.round(c.batch_delay_minutes * 60 * 1000)
-      : 2 * 60 * 1000;
+    const batchDelayMs =
+      c.batch_delay_minutes != null && c.batch_delay_minutes >= 0
+        ? Math.round(c.batch_delay_minutes * 60 * 1000)
+        : 2 * 60 * 1000;
     try {
+      if (c.status === "paused") {
+        await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN(c.id)), {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "sending" as const }),
+        });
+        await fetchCampaigns();
+      }
       for (;;) {
         if (cancelResumeRef.current) break;
         const res = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN_SEND_BATCH(c.id)), {
@@ -120,14 +173,6 @@ export function MarketingTab(p: MarketingTabProps) {
         });
         const data = await res.json();
         await fetchCampaigns();
-        if (res.status === 429 && c.type === "email") {
-          if (p.language === "en") {
-            alert("Daily email limit reached. Resume tomorrow from here.");
-          } else {
-            alert("Limite quotidienne atteinte. Reprenez demain.");
-          }
-          break;
-        }
         if (!data.success) break;
         const remaining = data.data?.remaining ?? 0;
         if (remaining <= 0) break;
@@ -156,8 +201,8 @@ export function MarketingTab(p: MarketingTabProps) {
                       </CardTitle>
                       <CardDescription>
                         {p.language === "en"
-                          ? "Sent / failed / remaining for every campaign. New sends start automatically when you start a campaign."
-                          : "Envoyés / échoués / restants pour chaque campagne."}
+                          ? "Sent / failed / remaining. Email sends run on your Supabase schedule (marketing-email-tick), up to the per-day cap (UTC), then continue the next day. Pause / Resume scheduling for email."
+                          : "Envoyés / échoués / restants. Les emails partent via le job Supabase (marketing-email-tick), plafond/jour UTC. Pause / Reprendre l’envoi planifié pour l’email."}
                       </CardDescription>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => fetchCampaigns()}>
@@ -188,13 +233,35 @@ export function MarketingTab(p: MarketingTabProps) {
                         <tbody>
                           {campaigns.map((c) => {
                             const pending = c.counts?.pending ?? 0;
-                            const canResume = pending > 0 && (c.status === "sending" || c.status === "paused");
+                            const canResume =
+                              pending > 0 &&
+                              (c.status === "sending" || c.status === "scheduled" || c.status === "paused");
+                            const canResumeSms = canResume && c.type === "sms";
+                            const emailPausedResume =
+                              c.type === "email" && c.status === "paused" && pending > 0;
+                            const canPause =
+                              c.type === "email" &&
+                              pending > 0 &&
+                              (c.status === "sending" || c.status === "scheduled");
                             return (
                               <tr key={c.id} className="border-b border-border/60">
                                 <td className="py-2 pr-2 whitespace-nowrap">{fmtDate(c.created_at)}</td>
                                 <td className="py-2 pr-2 uppercase">{c.type}</td>
-                                <td className="py-2 pr-2 max-w-[200px] truncate" title={c.type === "email" ? (c.subject || "") : (c.body ? c.body.slice(0, 80) + (c.body.length > 80 ? "…" : "") : (c.name || ""))}>
-                                  {c.type === "email" ? (c.subject || "—") : (c.name || (c.body ? (c.body.length > 50 ? c.body.slice(0, 50) + "…" : c.body) : "SMS"))}
+                                <td
+                                  className="py-2 pr-2 max-w-[200px] truncate"
+                                  title={
+                                    c.type === "email"
+                                      ? [c.name?.trim(), c.subject].filter(Boolean).join(" — ") || ""
+                                      : c.body
+                                        ? c.body.slice(0, 80) + (c.body.length > 80 ? "…" : "")
+                                        : c.name || ""
+                                  }
+                                >
+                                  {c.type === "email"
+                                    ? (c.name?.trim()
+                                        ? `${c.name.trim()} · ${c.subject || "—"}`
+                                        : c.subject || "—")
+                                    : c.name || (c.body ? (c.body.length > 50 ? c.body.slice(0, 50) + "…" : c.body) : "SMS")}
                                 </td>
                                 <td className="py-2 pr-2">{c.status}</td>
                                 <td className="py-2 pr-1">{c.counts?.sent ?? 0}</td>
@@ -202,45 +269,102 @@ export function MarketingTab(p: MarketingTabProps) {
                                 <td className="py-2 pr-1">{pending}</td>
                                 <td className="py-2 pr-2">{c.counts?.total ?? 0}</td>
                                 <td className="py-2">
-                                  {canResume && (
-                                    <div className="flex flex-wrap gap-1">
+                                  <div className="flex flex-wrap gap-1">
+                                    {c.type === "email" && c.status === "draft" && (
                                       <Button
                                         size="sm"
-                                        variant="secondary"
-                                        disabled={!!resumingId || !!sendingOneBatchId}
-                                        onClick={() => handleResumeAuto(c)}
+                                        variant="outline"
+                                        onClick={() => {
+                                          setEmailEditorCampaignId(c.id);
+                                          setEmailEditorOpen(true);
+                                        }}
                                       >
-                                        {resumingId === c.id ? (
-                                          <><Loader size="sm" className="mr-1" />{p.language === "en" ? "Auto…" : "Auto…"}</>
-                                        ) : (
-                                          p.language === "en" ? "Resume auto" : "Reprendre auto"
-                                        )}
+                                        <Pencil className="w-3 h-3 mr-1" />
+                                        {p.language === "en" ? "Edit" : "Modifier"}
                                       </Button>
+                                    )}
+                                    {c.type === "email" && (c.counts?.total ?? 0) > 0 && c.status !== "draft" && (
+                                      <Button
+                                        size="sm"
+                                        variant={statsCampaignId === c.id ? "secondary" : "ghost"}
+                                        onClick={() =>
+                                          setStatsCampaignId((id) => (id === c.id ? null : c.id))
+                                        }
+                                      >
+                                        <BarChart2 className="w-3 h-3 mr-1" />
+                                        {p.language === "en" ? "Stats" : "Stats"}
+                                      </Button>
+                                    )}
+                                    {canPause && (
                                       <Button
                                         size="sm"
                                         variant="outline"
                                         disabled={!!resumingId || !!sendingOneBatchId}
-                                        onClick={() => handleSendOneBatch(c.id)}
+                                        onClick={() => pauseCampaign(c.id)}
                                       >
-                                        {sendingOneBatchId === c.id ? (
-                                          <Loader size="sm" />
-                                        ) : (
-                                          p.language === "en" ? "Send next group" : "Envoyer le groupe suivant"
-                                        )}
+                                        <Pause className="w-3 h-3 mr-1" />
+                                        {p.language === "en" ? "Pause" : "Pause"}
                                       </Button>
-                                      {resumingId === c.id && (
-                                        <Button size="sm" variant="ghost" onClick={() => { cancelResumeRef.current = true; }}>
-                                          {p.language === "en" ? "Stop" : "Arrêt"}
+                                    )}
+                                    {emailPausedResume && (
+                                      <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        disabled={!!resumingId || !!sendingOneBatchId}
+                                        onClick={() => resumeEmailScheduling(c.id)}
+                                      >
+                                        {p.language === "en" ? "Resume scheduling" : "Reprendre l’envoi planifié"}
+                                      </Button>
+                                    )}
+                                    {canResumeSms && (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="secondary"
+                                          disabled={!!resumingId || !!sendingOneBatchId}
+                                          onClick={() => handleResumeAutoSms(c)}
+                                        >
+                                          {resumingId === c.id ? (
+                                            <><Loader size="sm" className="mr-1" />{p.language === "en" ? "Auto…" : "Auto…"}</>
+                                          ) : (
+                                            p.language === "en" ? "Resume auto" : "Reprendre auto"
+                                          )}
                                         </Button>
-                                      )}
-                                    </div>
-                                  )}
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={!!resumingId || !!sendingOneBatchId}
+                                          onClick={() => handleSendOneBatchSms(c.id)}
+                                        >
+                                          {sendingOneBatchId === c.id ? (
+                                            <Loader size="sm" />
+                                          ) : (
+                                            p.language === "en" ? "Send next group" : "Envoyer le groupe suivant"
+                                          )}
+                                        </Button>
+                                        {resumingId === c.id && (
+                                          <Button size="sm" variant="ghost" onClick={() => { cancelResumeRef.current = true; }}>
+                                            {p.language === "en" ? "Stop" : "Arrêt"}
+                                          </Button>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             );
                           })}
                         </tbody>
                       </table>
+                    )}
+                    {statsCampaignId && (
+                      <div className="mt-4 px-2">
+                        <EmailCampaignStats
+                          language={p.language}
+                          campaignId={statsCampaignId}
+                          onClose={() => setStatsCampaignId(null)}
+                        />
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -775,6 +899,41 @@ export function MarketingTab(p: MarketingTabProps) {
 
                   {/* Email Marketing Tab */}
                   <TabsContent value="email" className="space-y-6">
+                <div className="px-2 flex flex-wrap gap-2">
+                  <Button
+                    className="btn-gradient"
+                    onClick={() => {
+                      setEmailEditorCampaignId(null);
+                      setEmailEditorOpen(true);
+                    }}
+                  >
+                    {p.language === "en" ? "New email campaign" : "Nouvelle campagne email"}
+                  </Button>
+                </div>
+                {emailEditorOpen && (
+                  <div className="px-2">
+                    <EmailCampaignEditor
+                      language={p.language}
+                      campaignId={emailEditorCampaignId}
+                      onClose={() => setEmailEditorOpen(false)}
+                      onSaved={() => {
+                        fetchCampaigns();
+                      }}
+                    />
+                  </div>
+                )}
+                <div className="px-2">
+                  <EmailCampaignLauncher
+                    language={p.language}
+                    campaigns={campaigns}
+                    selectedDraftId={launchDraftId}
+                    onSelectDraft={setLaunchDraftId}
+                    onLaunchComplete={() => {
+                      fetchCampaigns();
+                      setLaunchDraftId(null);
+                    }}
+                  />
+                </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full px-2">
                   {/* Email Subscribers Card */}
                   <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400">
@@ -916,15 +1075,6 @@ export function MarketingTab(p: MarketingTabProps) {
                         </div>
                       </CardContent>
                     </Card>
-                  </div>
-
-                  {/* Bulk Email Selector: sources, filters, preview, compose, Start campaign */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600 lg:col-span-2">
-                    <BulkEmailSelector
-                      language={p.language}
-                      onCampaignCreated={() => fetchCampaigns()}
-                      onCampaignProgress={fetchCampaigns}
-                    />
                   </div>
                 </div>
                   </TabsContent>

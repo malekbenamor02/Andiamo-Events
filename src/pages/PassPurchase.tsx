@@ -9,7 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { getApiBaseUrl, API_ROUTES } from '@/lib/api-routes';
-import { formatDateDMY } from '@/lib/date-utils';
+import { formatDateDMY, isPassPurchaseWindowClosed } from '@/lib/date-utils';
 
 // New unified order system components
 import { CustomerInfoForm } from '@/components/orders/CustomerInfoForm';
@@ -395,11 +395,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         return;
       }
 
-      // Block pass purchase for past or completed events
-      const eventDate = new Date(event.date);
+      // Block pass purchase 2h after event start (or when completed)
       const now = new Date();
-      if (eventDate < now || event.event_status === 'completed') {
-        setPurchaseBlockedReason(eventDate < now ? 'past' : 'completed');
+      if (isPassPurchaseWindowClosed(event.date, event.event_status, now)) {
+        setPurchaseBlockedReason(
+          event.event_status === 'completed' ? 'completed' : 'past'
+        );
         setEvent({ ...event, passes: [] });
         setLoading(false);
         toast({
@@ -1148,8 +1149,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                               </div>
                             ) : (
                               <div className="flex items-center justify-center py-2">
-                                <span className="shrink-0 whitespace-nowrap px-2.5 py-1 text-xs font-bold uppercase tracking-wide bg-red-600 text-white rounded-md shadow-sm border border-red-700/90 inline-flex items-center gap-1.5">
-                                  <Lock className="w-3 h-3 shrink-0" />
+                                <span className="shrink-0 whitespace-nowrap px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-red-600 text-white rounded shadow-sm border border-red-700/90 inline-flex items-center gap-1">
+                                  <Lock className="w-2.5 h-2.5 shrink-0" />
                                   {language === 'en' ? 'SOLD OUT' : 'ÉPUISÉ'}
                                 </span>
                               </div>

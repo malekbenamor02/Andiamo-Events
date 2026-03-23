@@ -180,12 +180,16 @@ export interface MarketingCampaign {
   name: string | null;
   subject: string | null;
   body: string;
-  status: string;
+  status: 'draft' | 'scheduled' | 'sending' | 'paused' | 'completed' | string;
   batch_size: number;
   period: string;
   created_at: string;
   delay_minutes?: number | null;
   batch_delay_minutes?: number | null;
+  header_image_url?: string | null;
+  daily_email_cap?: number | null;
+  cta_url?: string | null;
+  cta_label?: string | null;
   counts?: { total: number; sent: number; failed: number; pending: number };
 }
 

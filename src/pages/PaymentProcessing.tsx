@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import Loader from '@/components/ui/Loader';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { getApiBaseUrl } from '@/lib/api-routes';
+import { trackMetaPurchase } from '@/lib/meta';
+import { createMetaEventId } from '@/lib/metaAttribution';
 
 interface PaymentProcessingProps {
   language?: 'en' | 'fr';
@@ -21,6 +23,13 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
   const orderId = searchParams.get('orderId') || searchParams.get('order_id');
   const isReturn = searchParams.get('return') === '1';
   const isInit = searchParams.get('init') === '1';
+  const metaEventId = searchParams.get('meta_event_id') || undefined;
+  const passIds = (searchParams.get('pass_ids') || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const checkoutValue = Number(searchParams.get('value') || '0');
+  const checkoutQty = Number(searchParams.get('qty') || '0');
 
   // Success/failure is determined only by the backend (ClicToPay getOrderStatus). Frontend does not trust URL params.
 
@@ -29,11 +38,15 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
   const [confirmResult, setConfirmResult] = useState<{
     success?: boolean;
     orderId?: string;
+    status?: string;
+    message?: string;
     ticketsGenerated?: boolean;
     ticketsCount?: number;
     emailSent?: boolean;
+    smsSent?: boolean;
     alreadyPaid?: boolean;
   } | null>(null);
+  const [purchaseTracked, setPurchaseTracked] = useState(false);
 
   const t = language === 'en' ? {
     title: 'Processing payment',
@@ -128,6 +141,24 @@ export default function PaymentProcessing({ language = 'en' }: PaymentProcessing
       setError(t.genericError);
     }
   }, [orderId, isReturn, isInit]);
+
+  useEffect(() => {
+    if (state !== 'success' || purchaseTracked) return;
+    if (!confirmResult?.alreadyPaid && !(confirmResult?.success && confirmResult?.status === 'PAID')) return;
+
+    const value = Number.isFinite(checkoutValue) && checkoutValue > 0 ? checkoutValue : 0;
+    trackMetaPurchase(
+      {
+        value,
+        currency: 'TND',
+        content_ids: passIds.length ? passIds : undefined,
+        content_type: 'product',
+        num_items: Number.isFinite(checkoutQty) && checkoutQty > 0 ? checkoutQty : undefined,
+      },
+      { eventId: metaEventId || createMetaEventId('purchase_confirmed') }
+    );
+    setPurchaseTracked(true);
+  }, [state, purchaseTracked, confirmResult, checkoutValue, checkoutQty, passIds, metaEventId]);
 
   return (
     <div className="min-h-screen bg-gradient-dark flex items-center justify-center px-4 py-16">

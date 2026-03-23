@@ -679,8 +679,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     };
 
     return {
-      ambassadors: Array.from(ambassadors).sort(),
-      passTypes: Array.from(passTypes).sort(),
+      // Use localeCompare for consistent alphabetical ordering (case/accents-insensitive)
+      ambassadors: Array.from(ambassadors).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
+      // Keep pass types alphabetical as well
+      passTypes: Array.from(passTypes).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
       cities: CITIES,
       getAllVilles,
     };
@@ -10497,6 +10499,21 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [isMobile, activeTab, mobileAllowedTabs]);
 
+  useEffect(() => {
+    const scrollToTop = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    scrollToTop();
+    const t = window.setTimeout(scrollToTop, 0);
+    const raf = requestAnimationFrame(scrollToTop);
+    return () => {
+      window.clearTimeout(t);
+      cancelAnimationFrame(raf);
+    };
+  }, [activeTab]);
+
   if (loading) {
     return (
       <LoadingScreen 
@@ -10548,7 +10565,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     .concat([{ key: "logout", label: t.logout, icon: LogOut }]);
 
   return (
-    <div className={cn("min-h-screen min-w-0", isMobile ? "pt-14 pb-24" : "pt-16")} style={{ backgroundColor: '#1A1A1A' }}>
+    <div
+      className={cn(
+        "min-h-screen min-w-0",
+        // Site Navigation is fixed h-16 (z-50); offset so content is not hidden underneath.
+        isMobile ? "pt-14 pb-24" : "pt-20",
+      )}
+      style={{ backgroundColor: '#1A1A1A' }}
+    >
       {/* Mobile top bar */}
       {isMobile && (
         <header

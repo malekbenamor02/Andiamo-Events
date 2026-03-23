@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import LoadingScreen from "@/components/ui/LoadingScreen";
 import { generateSlug } from "@/lib/utils";
-import { formatDateTimeLong, formatDateShortDMY } from "@/lib/date-utils";
+import { formatDateTimeLong, formatDateShortDMY, isPassPurchaseWindowClosed } from "@/lib/date-utils";
 import { Card } from "@/components/ui/card";
 import { ExpandableText } from "@/components/ui/expandable-text";
 import { Helmet } from "react-helmet-async";
@@ -171,12 +171,10 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
   const eventImage = event.poster_url?.startsWith("http") ? event.poster_url : event.poster_url ? `${SITE_URL}${event.poster_url}` : undefined;
   const startDateIso = event.date?.includes("T") ? event.date : event.date ? `${event.date}T20:00:00` : "";
 
-  // Past or completed events: no Book Now, no pass purchase
+  // After grace from start or completed: no Book Now, no pass purchase
   const isEventPastOrCompleted = useMemo(() => {
     if (!event?.date) return false;
-    const eventDate = new Date(event.date);
-    const now = new Date();
-    return eventDate < now || event.event_status === 'completed';
+    return isPassPurchaseWindowClosed(event.date, event.event_status);
   }, [event?.date, event?.event_status]);
 
   return (

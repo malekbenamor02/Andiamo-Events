@@ -13,11 +13,14 @@ The Andiamo Events app sends the following events to the Meta Pixel (Pixel ID is
 | **PageView** | On every route change (SPA navigation). |
 | **PassPurchaseVisit** | User lands on the pass purchase page for an event (purchase allowed). |
 | **PassSelect** | User adds a pass to the selection (quantity 0 → >0). |
+| **ViewContent** | Pass purchase page is loaded for a valid event. |
+| **InitiateCheckout** | Checkout submit starts with valid selected passes. |
 | **OrderSubmitOnline** | Order created successfully with online payment (before redirect to payment). |
 | **OrderSubmitAmbassador** | Order created successfully with ambassador cash payment. |
 | **Purchase** | Standard Meta event fired for completed orders (online or ambassador-cash; value, currency, content_ids). |
 | **AmbassadorApplicationVisit** | User visits the ambassador application page (when applications are open). |
 | **AmbassadorApplicationSubmitSuccess** | User submits the ambassador application successfully. |
+| **Lead** | Standard lead event sent on ambassador application success. |
 
 Using these in Events Manager and Ads Manager gives you better **optimization** (Meta can optimize for your real conversions), **remarketing** (target or exclude specific funnel steps), and **reporting** (funnel and value in one place).
 
@@ -157,7 +160,7 @@ Custom audiences based on Pixel events let you **remarket** to people who did (o
 ### Practical tips
 
 - The app already sends key parameters (event_id, event_name, value, currency, items). Keep them in place.
-- If many users block scripts or use strict privacy settings, consider **Conversions API (CAPI)** later to send events server-side and improve match quality.
+- The app also supports **Conversions API (CAPI)** for server-side `Purchase` if environment variables are configured.
 
 ---
 
@@ -185,5 +188,5 @@ Custom audiences based on Pixel events let you **remarket** to people who did (o
 ## 9. What else can add value
 
 - **Aggregated Event Measurement (AEM):** On iOS, Meta may limit which events are available. In Events Manager you can set **event priority** so the most important events (e.g. Purchase, OrderSubmitOnline) are prioritized when limits apply.
-- **Standard events:** The app sends the standard **Purchase** event for completed orders (online and ambassador-cash) (value, currency, content_ids). Other standard events (e.g. ViewContent, AddToCart) could be added in the future if you want more funnel steps in Meta’s standard reporting.
-- **Conversions API (CAPI):** Sending the same events from your server (in addition to the Pixel) can improve event match quality and resilience to browser blocking. This is a technical follow-up; see your technical docs or roadmap if you decide to implement it.
+- **Standard events:** The app sends `ViewContent`, `InitiateCheckout`, `Lead`, and `Purchase`, in addition to custom events.
+- **Conversions API (CAPI):** The app can send server-side `Purchase` with dedup (`event_id`) when CAPI env vars are set.

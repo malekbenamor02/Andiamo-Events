@@ -132,8 +132,16 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
-            <Link to="/" className="flex items-center focus:outline-none" aria-label="Go to home">
-              <img src="/logo.svg" alt="Andiamo Events Logo" className="logo" />
+            <Link
+              to="/"
+              className="flex h-full items-center shrink-0 focus:outline-none"
+              aria-label="Go to home"
+            >
+              <img
+                src="/logo.svg"
+                alt="Andiamo Events Logo"
+                className="block h-7 w-36 shrink-0 object-contain object-left sm:h-8 sm:w-40"
+              />
             </Link>
 
             {/* Desktop Navigation */}

@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import LoadingScreen from "@/components/ui/LoadingScreen";
+import { PageFetchError } from "@/components/ui/PageFetchError";
 import { PageMeta } from "@/components/PageMeta";
 import { PAGE_DESCRIPTIONS } from "@/lib/seo";
 import { JsonLdWebPage, JsonLdBreadcrumb, JsonLdItemList } from "@/components/JsonLd";
 import { generateSlug } from "@/lib/utils";
-import { formatDateTimeLong } from "@/lib/date-utils";
+import { formatDateTimeLong, isPassPurchaseWindowClosed } from "@/lib/date-utils";
 import { getOptimizedImageUrl } from "@/lib/image-utils";
 import { useEvents, type Event } from "@/hooks/useEvents";
 
@@ -150,14 +151,11 @@ const Events = ({ language }: EventsProps) => {
   }, [galleryEventsInData]);
 
   const upcomingEvents = events.filter(event => {
-    const eventDate = new Date(event.date);
-    const now = new Date();
-    // Show as upcoming only if date is in the future, not cancelled, not completed
+    // Upcoming until pass-purchase window ends (event start + grace), not cancelled
     return (
-      eventDate >= now &&
+      !isPassPurchaseWindowClosed(event.date, event.event_status) &&
       (event.event_type === 'upcoming' || !event.event_type) &&
-      event.event_status !== 'cancelled' &&
-      event.event_status !== 'completed'
+      event.event_status !== 'cancelled'
     );
   });
 
@@ -167,11 +165,10 @@ const Events = ({ language }: EventsProps) => {
       return event.event_status !== 'cancelled';
     }
     // Also show past upcoming events in gallery (date passed or completed) — manual move to gallery added later
-    const eventDate = new Date(event.date);
-    const now = new Date();
-    const isPastOrCompleted =
-      eventDate < now ||
-      event.event_status === 'completed';
+    const isPastOrCompleted = isPassPurchaseWindowClosed(
+      event.date,
+      event.event_status
+    );
     const wasUpcoming = event.event_type === 'upcoming' || !event.event_type;
     if (wasUpcoming && isPastOrCompleted && event.event_status !== 'cancelled') {
       return true;
@@ -454,10 +451,12 @@ const Events = ({ language }: EventsProps) => {
         hasImages: !!(e.gallery_images && e.gallery_images.length > 0),
         hasVideos: !!(e.gallery_videos && e.gallery_videos.length > 0)
       }));
-      const now = new Date();
-        const upcomingCount = events.filter(e => {
-          const eventDate = new Date(e.date);
-          return eventDate >= now && (e.event_type === 'upcoming' || !e.event_type) && e.event_status !== 'cancelled' && e.event_status !== 'completed';
+      const upcomingCount = events.filter(e => {
+          return (
+            !isPassPurchaseWindowClosed(e.date, e.event_status) &&
+            (e.event_type === 'upcoming' || !e.event_type) &&
+            e.event_status !== 'cancelled'
+          );
         }).length;
     }
   }, [events, loading]);
@@ -478,6 +477,10 @@ const Events = ({ language }: EventsProps) => {
         text={content[language].title ? `Loading ${content[language].title.toLowerCase()}...` : "Loading events..."}
       />
     );
+  }
+
+  if (eventsError) {
+    return <PageFetchError language={language} error={eventsError} queryKey={["events"]} />;
   }
 
   return (

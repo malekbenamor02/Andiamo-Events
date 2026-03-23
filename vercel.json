@@ -360,15 +360,23 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/marketing/cron/email-campaigns",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/marketing/campaigns",
       "destination": "/api/misc.js"
     },
     {
-      "source": "/api/marketing/campaigns/:id",
+      "source": "/api/marketing/campaigns/:id/launch",
       "destination": "/api/misc.js"
     },
     {
       "source": "/api/marketing/campaigns/:id/send-batch",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/marketing/campaigns/:id",
       "destination": "/api/misc.js"
     },
     {

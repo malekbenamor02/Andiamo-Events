@@ -3,7 +3,7 @@
  * Select sources (orders, newsletter, ambassadors, applications, aio), filters, preview (deduplicated), then compose subject + body and Start campaign.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -15,7 +15,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Loader from '@/components/ui/Loader';
-import { Mail, Send, RefreshCw, Filter, AlertCircle, Info } from 'lucide-react';
+import { Mail, Send, RefreshCw, Filter, AlertCircle, Info, ImagePlus, X } from 'lucide-react';
+import { uploadImage } from '@/lib/upload';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
 import { useToast } from '@/hooks/use-toast';
@@ -54,9 +55,18 @@ interface BulkEmailSelectorProps {
   language: 'en' | 'fr';
   onCampaignCreated?: (campaignId: string, totalRecipients: number, firstBatchSent: number, remaining: number) => void;
   onCampaignProgress?: () => void;
+  /** When set, only audience + daily cap; POST /launch for this draft (cron sends). */
+  launchOnlyCampaignId?: string | null;
+  onLaunchComplete?: () => void;
 }
 
-export function BulkEmailSelector({ language, onCampaignCreated, onCampaignProgress }: BulkEmailSelectorProps) {
+export function BulkEmailSelector({
+  language,
+  onCampaignCreated,
+  onCampaignProgress,
+  launchOnlyCampaignId = null,
+  onLaunchComplete
+}: BulkEmailSelectorProps) {
   const { toast } = useToast();
 
   const [selectedSources, setSelectedSources] = useState<EmailSourceSelection>({
@@ -76,13 +86,17 @@ export function BulkEmailSelector({ language, onCampaignCreated, onCampaignProgr
 
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
-  const [batchSize, setBatchSize] = useState(300);
+  const [batchSize, setBatchSize] = useState(150);
+  const [emailsPerDay, setEmailsPerDay] = useState(150);
   const [delayBetweenEmailsMin, setDelayBetweenEmailsMin] = useState('0.5');
+  const [ctaUrl, setCtaUrl] = useState('');
+  const [ctaLabel, setCtaLabel] = useState('');
   const [delayBetweenBatchesMin, setDelayBetweenBatchesMin] = useState('2');
   const [startingCampaign, setStartingCampaign] = useState(false);
-  const cancelAutoSendRef = useRef(false);
   const [recipientMode, setRecipientMode] = useState<'sources' | 'custom'>('sources');
   const [customRecipientsRaw, setCustomRecipientsRaw] = useState('');
+  const [headerImageUrl, setHeaderImageUrl] = useState('');
+  const [uploadingHeaderImage, setUploadingHeaderImage] = useState(false);
 
   useEffect(() => {
     fetchEmailCounts();
@@ -189,22 +203,39 @@ export function BulkEmailSelector({ language, onCampaignCreated, onCampaignProgr
       }
     }
 
-    cancelAutoSendRef.current = false;
     setStartingCampaign(true);
     const delayEmailsMin = Math.max(0, parseFloat(String(delayBetweenEmailsMin).replace(',', '.')) || 0);
     const delayBatchesMin = Math.max(0, parseFloat(String(delayBetweenBatchesMin).replace(',', '.')) || 0);
+    const dailyCap = Math.min(10000, Math.max(1, emailsPerDay || 150));
+    const batchSz = Math.min(10000, Math.max(1, batchSize || 150));
     try {
+      const imagePayload =
+        headerImageUrl.trim() !== '' ? { header_image_url: headerImageUrl.trim() } : {};
+      const ctaPayload =
+        ctaUrl.trim() !== ''
+          ? {
+              cta_url: ctaUrl.trim(),
+              cta_label: (ctaLabel.trim() || (language === 'en' ? 'Book now' : 'Réserver')).slice(0, 120)
+            }
+          : {};
+      const emailExtras = {
+        ...imagePayload,
+        ...ctaPayload,
+        daily_email_cap: dailyCap
+      };
+
       const createPayload =
         recipientMode === 'custom'
           ? {
               type: 'email' as const,
               subject: emailSubject.trim(),
               body: emailBody.trim(),
-              batch_size: Math.min(batchSize, 300),
+              batch_size: batchSz,
               period: 'day',
               recipients: parseEmailList(customRecipientsRaw),
               delay_minutes: delayEmailsMin,
-              batch_delay_minutes: delayBatchesMin
+              batch_delay_minutes: delayBatchesMin,
+              ...emailExtras
             }
           : (() => {
               const sourcesConfig: Record<string, { enabled: boolean; filters: unknown }> = {};
@@ -215,12 +246,13 @@ export function BulkEmailSelector({ language, onCampaignCreated, onCampaignProgr
                 type: 'email' as const,
                 subject: emailSubject.trim(),
                 body: emailBody.trim(),
-                batch_size: Math.min(batchSize, 300),
+                batch_size: batchSz,
                 period: 'day',
                 sources: sourcesConfig,
                 filters: sourceFilters,
                 delay_minutes: delayEmailsMin,
-                batch_delay_minutes: delayBatchesMin
+                batch_delay_minutes: delayBatchesMin,
+                ...emailExtras
               };
             })();
 
@@ -238,60 +270,99 @@ export function BulkEmailSelector({ language, onCampaignCreated, onCampaignProgr
 
       const campaignId = createData.data.campaign_id;
       const totalRecipients = createData.data.total_recipients || 0;
-      let totalSent = 0;
-      let remaining = totalRecipients;
 
-      for (;;) {
-        if (cancelAutoSendRef.current) {
-          toast({
-            title: language === 'en' ? 'Stopped' : 'Arrêté',
-            description: language === 'en' ? 'Auto-send cancelled after the last batch.' : 'Envoi auto annulé après le dernier lot.',
-            variant: 'default'
-          });
-          break;
-        }
-        const batchRes = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN_SEND_BATCH(campaignId)), {
-          method: 'POST',
-          credentials: 'include'
-        });
-        const batchData = await batchRes.json();
-        onCampaignProgress?.();
+      toast({
+        title: language === 'en' ? 'Campaign scheduled' : 'Campagne planifiée',
+        description:
+          language === 'en'
+            ? `${totalRecipients} recipients queued. Sending runs on your Supabase cron (marketing-email-tick), up to your daily cap (UTC), then continues the next day. Track progress in Campaign results.`
+            : `${totalRecipients} destinataires en file. Envoi via le cron Supabase (marketing-email-tick), plafond journalier UTC, puis le lendemain. Suivez l’avancement dans Résultats des campagnes.`,
+        variant: 'default'
+      });
 
-        if (batchRes.status === 429) {
-          toast({
-            title: language === 'en' ? 'Daily limit reached' : 'Limite quotidienne atteinte',
-            description: batchData.error || (language === 'en' ? '300 emails/day max. Resume from Campaign results tomorrow.' : '300 emails/jour max. Reprenez depuis Résultats demain.'),
-            variant: 'default'
-          });
-          break;
-        }
-        if (!batchData.success) {
-          throw new Error(batchData.error || 'Failed to send this group');
-        }
-        const sent = batchData.data?.sent ?? 0;
-        totalSent += sent;
-        remaining = batchData.data?.remaining ?? 0;
-        if (remaining <= 0) {
-          toast({
-            title: language === 'en' ? 'Campaign complete' : 'Campagne terminée',
-            description: language === 'en'
-              ? `Sent: ${totalSent}. Failed counted in results.`
-              : `Envoyés : ${totalSent}. Voir les échecs dans les résultats.`,
-            variant: 'default'
-          });
-          break;
-        }
-        await new Promise((r) => setTimeout(r, delayBatchesMin * 60 * 1000));
-      }
-
-      onCampaignCreated?.(campaignId, totalRecipients, totalSent, remaining);
+      onCampaignCreated?.(campaignId, totalRecipients, 0, totalRecipients);
       setEmailSubject('');
       setEmailBody('');
+      setHeaderImageUrl('');
+      setCtaUrl('');
+      setCtaLabel('');
       if (recipientMode === 'custom') setCustomRecipientsRaw('');
     } catch (e: unknown) {
       toast({
         title: language === 'en' ? 'Error' : 'Erreur',
         description: (e as Error).message || (language === 'en' ? 'Failed to start campaign' : 'Échec du démarrage de la campagne'),
+        variant: 'destructive'
+      });
+    } finally {
+      setStartingCampaign(false);
+    }
+  };
+
+  const handleLaunchDraft = async () => {
+    if (!launchOnlyCampaignId) return;
+    if (recipientMode === 'sources') {
+      if (!hasSelectedEmailSource(selectedSources)) {
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description: language === 'en' ? 'Select at least one source' : 'Sélectionnez au moins une source',
+          variant: 'destructive'
+        });
+        return;
+      }
+      if (previewEmails.length === 0) {
+        toast({
+          title: language === 'en' ? 'No recipients' : 'Aucun destinataire',
+          description: language === 'en' ? 'No email addresses found with selected filters' : 'Aucune adresse avec les filtres sélectionnés',
+          variant: 'destructive'
+        });
+        return;
+      }
+    } else {
+      const customList = parseEmailList(customRecipientsRaw);
+      if (customList.length === 0) {
+        toast({
+          title: language === 'en' ? 'No recipients' : 'Aucun destinataire',
+          description: language === 'en' ? 'Paste at least one valid email' : 'Collez au moins une adresse valide',
+          variant: 'destructive'
+        });
+        return;
+      }
+    }
+    setStartingCampaign(true);
+    const dailyCap = Math.min(10000, Math.max(1, emailsPerDay || 150));
+    try {
+      const payload =
+        recipientMode === 'custom'
+          ? { recipients: parseEmailList(customRecipientsRaw), daily_email_cap: dailyCap }
+          : (() => {
+              const sourcesConfig: Record<string, { enabled: boolean; filters: unknown }> = {};
+              (Object.keys(selectedSources) as (keyof EmailSourceSelection)[]).forEach((key) => {
+                sourcesConfig[key] = { enabled: selectedSources[key], filters: sourceFilters[key] };
+              });
+              return { sources: sourcesConfig, filters: sourceFilters, daily_email_cap: dailyCap };
+            })();
+      const res = await fetch(buildFullApiUrl(API_ROUTES.MARKETING_CAMPAIGN_LAUNCH(launchOnlyCampaignId)), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Launch failed');
+      }
+      toast({
+        title: language === 'en' ? 'Launched' : 'Lancé',
+        description:
+          language === 'en'
+            ? `Scheduled: ${data.data?.total_recipients ?? ''} recipients. Cron will send in batches.`
+            : `Planifié : ${data.data?.total_recipients ?? ''} destinataires. Le cron enverra par lots.`
+      });
+      onLaunchComplete?.();
+    } catch (e: unknown) {
+      toast({
+        title: language === 'en' ? 'Error' : 'Erreur',
+        description: (e as Error).message,
         variant: 'destructive'
       });
     } finally {
@@ -330,18 +401,30 @@ export function BulkEmailSelector({ language, onCampaignCreated, onCampaignProgr
         preview: 'Preview',
         subject: 'Subject',
         body: 'Body',
-        batchSize: 'Max emails per send (then pause)',
-delayEmails: 'Pause between each email (min)',
-    delayBatches: 'Pause before next group (min)',
-        cancelAuto: 'Stop auto-send',
-        startCampaign: 'Start campaign (auto-send all)',
-        starting: 'Sending…',
+        batchSize: 'Max emails per HTTP batch',
+        emailsPerDay: 'Max emails per day (this campaign, UTC)',
+        emailsPerDayHint: 'Stops sending until the next UTC day after this many successful sends.',
+        delayEmails: 'Pause between each email (minutes)',
+        delayEmailsHint: 'Default 0.5 = 30 seconds between messages.',
+        delayBatches: 'Used for SMS-style flows; email uses server cron between batches.',
+        ctaUrl: 'Book now link (optional)',
+        ctaLabel: 'Button label',
+        ctaHint: 'https://… — button appears under your message text.',
+        startCampaign: 'Schedule campaign (server sends all)',
+        starting: 'Scheduling…',
         noSources: 'No sources selected',
         noEmails: 'No email addresses found',
         total: 'Total',
         unique: 'Unique',
         duplicates: 'Duplicates',
-        refresh: 'Refresh'
+        refresh: 'Refresh',
+        campaignImage: 'Image in email (optional)',
+        campaignImageHint: 'Shown above your message. JPG, PNG, or WebP — max ~5 MB.',
+        removeCampaignImage: 'Remove',
+        uploadingImage: 'Uploading…',
+        launchTitle: 'Launch saved campaign',
+        launchDescription: 'Choose recipients and max emails per day (UTC). Sending runs via scheduled cron.',
+        launchButton: 'Schedule sends'
       }
     : {
         title: 'Sélection Email en Masse',
@@ -355,18 +438,30 @@ delayEmails: 'Pause between each email (min)',
         preview: 'Aperçu',
         subject: 'Sujet',
         body: 'Corps',
-        batchSize: 'Max emails par envoi (puis pause)',
-        delayEmails: 'Pause entre chaque email (min)',
-        delayBatches: 'Pause avant le prochain groupe (min)',
-        cancelAuto: 'Arrêter l\'envoi auto',
-        startCampaign: 'Démarrer (envoi auto complet)',
-        starting: 'Envoi…',
+        batchSize: 'Max emails par requête',
+        emailsPerDay: 'Max emails par jour (cette campagne, UTC)',
+        emailsPerDayHint: 'L\'envoi reprend le jour UTC suivant après ce nombre d\'envois réussis.',
+        delayEmails: 'Pause entre chaque email (minutes)',
+        delayEmailsHint: 'Par défaut 0,5 = 30 secondes entre chaque message.',
+        delayBatches: 'Pour le SMS ; les emails passent par le cron serveur.',
+        ctaUrl: 'Lien « Réserver » (optionnel)',
+        ctaLabel: 'Texte du bouton',
+        ctaHint: 'https://… — le bouton s\'affiche sous le corps du message.',
+        startCampaign: 'Planifier (envoi serveur)',
+        starting: 'Planification…',
         noSources: 'Aucune source sélectionnée',
         noEmails: 'Aucune adresse email trouvée',
         total: 'Total',
         unique: 'Uniques',
         duplicates: 'Doublons',
-        refresh: 'Actualiser'
+        refresh: 'Actualiser',
+        campaignImage: 'Image dans l\'email (optionnel)',
+        campaignImageHint: 'Affichée au-dessus du texte. JPG, PNG ou WebP — env. 5 Mo max.',
+        removeCampaignImage: 'Retirer',
+        uploadingImage: 'Téléversement…',
+        launchTitle: 'Lancer la campagne enregistrée',
+        launchDescription: 'Destinataires et max emails/jour (UTC). L’envoi se fait via le cron planifié.',
+        launchButton: 'Planifier les envois'
       };
 
   return (
@@ -375,9 +470,9 @@ delayEmails: 'Pause between each email (min)',
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Mail className="w-5 h-5 text-primary" />
-            {t.title}
+            {launchOnlyCampaignId ? t.launchTitle : t.title}
           </CardTitle>
-          <CardDescription>{t.description}</CardDescription>
+          <CardDescription>{launchOnlyCampaignId ? t.launchDescription : t.description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <Tabs value={recipientMode} onValueChange={(v) => setRecipientMode(v as 'sources' | 'custom')}>
@@ -616,6 +711,8 @@ delayEmails: 'Pause between each email (min)',
             </TabsContent>
           </Tabs>
 
+          {!launchOnlyCampaignId && (
+            <>
           <Separator />
 
           <div className="space-y-4">
@@ -625,6 +722,63 @@ delayEmails: 'Pause between each email (min)',
               onChange={e => setEmailSubject(e.target.value)}
               placeholder={language === 'en' ? 'Email subject' : 'Sujet de l\'email'}
             />
+            <div className="space-y-2">
+              <Label className="text-base font-semibold flex items-center gap-2">
+                <ImagePlus className="w-4 h-4" />
+                {t.campaignImage}
+              </Label>
+              <p className="text-sm text-muted-foreground">{t.campaignImageHint}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  disabled={uploadingHeaderImage}
+                  className="max-w-xs cursor-pointer"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                      toast({
+                        title: language === 'en' ? 'File too large' : 'Fichier trop volumineux',
+                        description: language === 'en' ? 'Use an image under 5 MB.' : 'Utilisez une image de moins de 5 Mo.',
+                        variant: 'destructive'
+                      });
+                      return;
+                    }
+                    setUploadingHeaderImage(true);
+                    const result = await uploadImage(file, 'campaign-email');
+                    setUploadingHeaderImage(false);
+                    if (result.error || !result.url) {
+                      toast({
+                        title: language === 'en' ? 'Upload failed' : 'Échec du téléversement',
+                        description: result.error || (language === 'en' ? 'Could not upload image.' : 'Impossible de téléverser l\'image.'),
+                        variant: 'destructive'
+                      });
+                      return;
+                    }
+                    setHeaderImageUrl(result.url);
+                  }}
+                />
+                {headerImageUrl ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setHeaderImageUrl('')}>
+                    <X className="w-4 h-4 mr-1" />
+                    {t.removeCampaignImage}
+                  </Button>
+                ) : null}
+                {uploadingHeaderImage ? (
+                  <span className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader size="sm" />
+                    {t.uploadingImage}
+                  </span>
+                ) : null}
+              </div>
+              {headerImageUrl ? (
+                <div className="rounded-lg border border-border overflow-hidden bg-muted/30 max-w-md">
+                  <img src={headerImageUrl} alt="" className="w-full max-h-48 object-contain" />
+                </div>
+              ) : null}
+            </div>
             <Label className="text-base font-semibold">{t.body}</Label>
             <Textarea
               value={emailBody}
@@ -632,28 +786,65 @@ delayEmails: 'Pause between each email (min)',
               placeholder={language === 'en' ? 'Email body (plain text or HTML)' : 'Corps de l\'email'}
               className="min-h-[150px]"
             />
+            <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-4">
+              <Label className="text-base font-semibold">{t.ctaUrl}</Label>
+              <p className="text-sm text-muted-foreground">{t.ctaHint}</p>
+              <Input
+                type="url"
+                value={ctaUrl}
+                onChange={e => setCtaUrl(e.target.value)}
+                placeholder="https://www.andiamoevents.com/..."
+                className="font-mono text-sm"
+              />
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">{t.ctaLabel}</Label>
+                <Input
+                  value={ctaLabel}
+                  onChange={e => setCtaLabel(e.target.value)}
+                  placeholder={language === 'en' ? 'Book now' : 'Réserver'}
+                  disabled={!ctaUrl.trim()}
+                />
+              </div>
+            </div>
             <div className="flex flex-wrap items-center gap-4">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.emailsPerDay}</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={emailsPerDay}
+                    onChange={e => setEmailsPerDay(Math.min(10000, Math.max(1, parseInt(e.target.value, 10) || 150)))}
+                    className="w-24"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground max-w-xs">{t.emailsPerDayHint}</p>
+              </div>
               <div className="flex items-center gap-2">
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.batchSize}</Label>
                 <Input
                   type="number"
                   min={1}
-                  max={300}
+                  max={10000}
                   value={batchSize}
-                  onChange={e => setBatchSize(Math.min(300, Math.max(1, parseInt(e.target.value, 10) || 300)))}
+                  onChange={e => setBatchSize(Math.min(10000, Math.max(1, parseInt(e.target.value, 10) || 150)))}
                   className="w-24"
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.delayEmails}</Label>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0.5"
-                  value={delayBetweenEmailsMin}
-                  onChange={e => setDelayBetweenEmailsMin(e.target.value.replace(/[^\d.,]/g, ''))}
-                  className="w-24"
-                />
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.delayEmails}</Label>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0.5"
+                    value={delayBetweenEmailsMin}
+                    onChange={e => setDelayBetweenEmailsMin(e.target.value.replace(/[^\d.,]/g, ''))}
+                    className="w-24"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground max-w-[14rem]">{t.delayEmailsHint}</p>
               </div>
               <div className="flex items-center gap-2">
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.delayBatches}</Label>
@@ -688,12 +879,54 @@ delayEmails: 'Pause between each email (min)',
                 <><Send className="w-5 h-5 mr-2" />{t.startCampaign} ({recipientMode === 'custom' ? parseEmailList(customRecipientsRaw).length : previewEmails.length} {language === 'en' ? 'recipients' : 'destinataires'})</>
               )}
             </Button>
-            {startingCampaign && (
-              <Button type="button" variant="outline" onClick={() => { cancelAutoSendRef.current = true; }}>
-                {t.cancelAuto}
-              </Button>
-            )}
           </div>
+            </>
+          )}
+
+          {launchOnlyCampaignId && (
+            <>
+              <Separator />
+              <div className="space-y-4">
+                <div className="flex flex-col gap-1 max-w-sm">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.emailsPerDay}</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={10000}
+                      value={emailsPerDay}
+                      onChange={(e) => setEmailsPerDay(Math.min(10000, Math.max(1, parseInt(e.target.value, 10) || 150)))}
+                      className="w-24"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t.emailsPerDayHint}</p>
+                </div>
+                <Button
+                  onClick={handleLaunchDraft}
+                  disabled={
+                    startingCampaign ||
+                    (recipientMode === 'sources' &&
+                      (!hasSelectedEmailSource(selectedSources) || previewEmails.length === 0)) ||
+                    (recipientMode === 'custom' && parseEmailList(customRecipientsRaw).length === 0)
+                  }
+                  size="lg"
+                  className="w-full sm:w-auto"
+                >
+                  {startingCampaign ? (
+                    <>
+                      <Loader size="sm" className="mr-2" />
+                      …
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-5 h-5 mr-2" />
+                      {t.launchButton}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

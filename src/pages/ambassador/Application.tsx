@@ -18,7 +18,8 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { PageMeta } from '@/components/PageMeta';
 import { PAGE_DESCRIPTIONS } from '@/lib/seo';
-import { trackMetaEvent } from '@/lib/meta';
+import { trackMetaEvent, trackMetaLead } from '@/lib/meta';
+import { createMetaEventId } from '@/lib/metaAttribution';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
 interface ApplicationProps {
@@ -501,6 +502,12 @@ const Application = ({ language }: ApplicationProps) => {
           city: sanitizedCity,
           ville: villeValue ?? undefined,
         });
+        trackMetaLead({
+          content_name: 'Ambassador Application',
+          status: 'submitted',
+          city: sanitizedCity,
+          ville: villeValue ?? undefined,
+        }, { eventId: createMetaEventId('lead') });
 
         logFormSubmission('Ambassador Application', true, {
           fullName: sanitizedFullName,

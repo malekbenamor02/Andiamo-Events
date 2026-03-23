@@ -1,6 +1,8 @@
+// Global styles must load before App so a failed import still gets theme fonts/colors.
+import './index.css'
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
-import './index.css'
+import { humanizeAppError } from './lib/network-error-message'
 import { initSentry, Sentry } from './lib/sentry'
 import { initClarity } from './lib/clarity'
 import { initGA } from './lib/ga'
@@ -362,15 +364,73 @@ setupErrorHandlers();
 const root = document.getElementById("root")!;
 createRoot(root).render(
   <Sentry.ErrorBoundary
-    fallback={({ error, resetError }) => (
-      <div style={{ padding: 24, textAlign: 'center', fontFamily: 'Montserrat' }}>
-        <h2>Something went wrong</h2>
-        <p>We've been notified and are looking into it.</p>
-        <button onClick={resetError} style={{ marginTop: 16, padding: '8px 16px', cursor: 'pointer' }}>
-          Try again
-        </button>
-      </div>
-    )}
+    fallback={({ error, resetError }) => {
+      const { title, detail } = humanizeAppError(
+        error instanceof Error ? error.message : String(error ?? ''),
+        'en'
+      );
+      return (
+        <div
+          className="min-h-screen bg-background text-foreground flex flex-col font-sans antialiased"
+          style={{ fontFamily: 'Montserrat, system-ui, sans-serif' }}
+        >
+          <header className="shrink-0 border-b border-border px-4 py-3 flex flex-wrap items-center gap-4 sm:gap-8">
+            <a href="/" className="text-lg font-bold text-primary hover:opacity-90">
+              Andiamo Events
+            </a>
+            <nav className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+              <a href="/events" className="hover:text-foreground transition-colors">
+                Events
+              </a>
+              <a href="/about" className="hover:text-foreground transition-colors">
+                About
+              </a>
+              <a href="/contact" className="hover:text-foreground transition-colors">
+                Contact
+              </a>
+            </nav>
+          </header>
+          <main className="flex-1 flex flex-col items-center justify-center p-6">
+            <div className="max-w-md w-full text-center space-y-4 rounded-xl border border-border bg-card/80 p-8 shadow-lg">
+              <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+              <p className="text-sm text-muted-foreground leading-relaxed">{detail}</p>
+              <p className="text-xs text-muted-foreground">
+                We&apos;ve been notified and are looking into it.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={resetError}
+                  className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 text-sm font-medium"
+                >
+                  Try again
+                </button>
+                <a
+                  href="/"
+                  className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted/50 inline-flex items-center justify-center"
+                >
+                  Back to home
+                </a>
+              </div>
+            </div>
+          </main>
+          <footer className="shrink-0 border-t border-border px-4 py-6 text-center text-xs text-muted-foreground space-x-2">
+            <a href="/terms" className="hover:text-foreground transition-colors">
+              Terms
+            </a>
+            <span aria-hidden>·</span>
+            <a
+              href="https://www.instagram.com/andiamo_events"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-foreground transition-colors"
+            >
+              Instagram
+            </a>
+          </footer>
+        </div>
+      );
+    }}
     onError={(error) => Sentry.captureException(error)}
   >
     <App />

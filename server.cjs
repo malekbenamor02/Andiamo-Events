@@ -4456,8 +4456,12 @@ async function forwardToMisc(req, res) {
 
 app.get('/api/admin/email-addresses/counts', requireAdminAuth, (req, res) => forwardToMisc(req, res));
 app.get('/api/admin/email-addresses/sources', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.get('/api/marketing/cron/email-campaigns', (req, res) => forwardToMisc(req, res));
+app.post('/api/marketing/cron/email-campaigns', (req, res) => forwardToMisc(req, res));
+app.post('/api/marketing/campaigns/:id/launch', requireAdminAuth, (req, res) => forwardToMisc(req, res));
 app.post('/api/marketing/campaigns', requireAdminAuth, (req, res) => forwardToMisc(req, res));
 app.get('/api/marketing/campaigns', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.get('/api/marketing/campaigns/:id', requireAdminAuth, (req, res) => forwardToMisc(req, res));
 app.post('/api/marketing/campaigns/:id/send-batch', requireAdminAuth, (req, res) => forwardToMisc(req, res));
 app.patch('/api/marketing/campaigns/:id', requireAdminAuth, (req, res) => forwardToMisc(req, res));
 

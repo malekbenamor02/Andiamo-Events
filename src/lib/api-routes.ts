@@ -48,7 +48,9 @@ export const API_ROUTES = {
   // Marketing campaigns (bulk email/SMS in batches)
   MARKETING_CAMPAIGNS: '/api/marketing/campaigns',
   MARKETING_CAMPAIGN: (id: string) => `/api/marketing/campaigns/${id}`,
+  MARKETING_CAMPAIGN_LAUNCH: (id: string) => `/api/marketing/campaigns/${id}/launch`,
   MARKETING_CAMPAIGN_SEND_BATCH: (id: string) => `/api/marketing/campaigns/${id}/send-batch`,
+  MARKETING_CRON_EMAIL_CAMPAIGNS: '/api/marketing/cron/email-campaigns',
   
   // Phone Subscription
   PHONE_SUBSCRIBE: '/api/phone-subscribe',
