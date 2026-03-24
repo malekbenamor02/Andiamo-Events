@@ -3821,6 +3821,38 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  // Update online order customer email
+  const updateOnlineOrderEmail = async (orderId: string, newEmail: string) => {
+    const normalizedEmail = newEmail.trim();
+    if (!normalizedEmail) {
+      throw new Error(language === 'en' ? 'Email cannot be empty' : "L'email ne peut pas etre vide");
+    }
+
+    const { error } = await (supabase as any)
+      .from('orders')
+      .update({ user_email: normalizedEmail, updated_at: new Date().toISOString() })
+      .eq('id', orderId)
+      .eq('source', 'platform_online');
+
+    if (error) {
+      throw error;
+    }
+
+    setOnlineOrders((prev) =>
+      prev.map((order: any) =>
+        order.id === orderId
+          ? { ...order, user_email: normalizedEmail, email: normalizedEmail, updated_at: new Date().toISOString() }
+          : order
+      )
+    );
+
+    setSelectedOnlineOrder((prev: any) =>
+      prev && prev.id === orderId
+        ? { ...prev, user_email: normalizedEmail, email: normalizedEmail, updated_at: new Date().toISOString() }
+        : prev
+    );
+  };
+
   // Fetch about images
   const fetchAboutImages = async () => {
     try {
@@ -11948,6 +11980,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         order={selectedOnlineOrder}
         language={language}
         onUpdateStatus={updateOnlineOrderStatus}
+        onUpdateEmail={updateOnlineOrderEmail}
         onResendTicket={handleResendTicketEmail}
       />
 

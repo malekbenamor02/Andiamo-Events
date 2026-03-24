@@ -3,12 +3,13 @@
  * Extracted from Dashboard.tsx for maintainability.
  */
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -29,6 +30,9 @@ import {
   ArrowDown,
   Send,
   Copy,
+  Edit,
+  Save,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -65,6 +69,7 @@ export interface OnlineOrderDetailsDialogProps {
   } | null;
   language: "en" | "fr";
   onUpdateStatus: (orderId: string, newStatus: "PENDING_PAYMENT" | "PAID" | "FAILED" | "REFUNDED" | "EXPIRED") => void | Promise<void>;
+  onUpdateEmail: (orderId: string, newEmail: string) => void | Promise<void>;
   /** Optional: resend ticket email (only shown for paid orders when provided) */
   onResendTicket?: (orderId: string) => void | Promise<void>;
 }
@@ -75,10 +80,14 @@ export function OnlineOrderDetailsDialog({
   order,
   language,
   onUpdateStatus,
+  onUpdateEmail,
   onResendTicket,
 }: OnlineOrderDetailsDialogProps) {
   const { toast } = useToast();
   const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [editingEmailValue, setEditingEmailValue] = useState("");
+  const [updatingEmail, setUpdatingEmail] = useState(false);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length !== 1) return;
@@ -349,7 +358,96 @@ export function OnlineOrderDetailsDialog({
                       <Mail className="w-3 h-3" />
                       {language === "en" ? "Email" : "Email"}
                     </Label>
-                    <p className="text-base break-all">{order.user_email || order.email || "N/A"}</p>
+                    {isEditingEmail ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="email"
+                          value={editingEmailValue}
+                          onChange={(e) => setEditingEmailValue(e.target.value)}
+                          className="flex-1 text-base"
+                          placeholder={language === "en" ? "Enter email address" : "Entrez l'adresse email"}
+                          disabled={updatingEmail}
+                        />
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={async () => {
+                            const nextEmail = editingEmailValue.trim();
+                            if (!nextEmail) {
+                              toast({
+                                title: language === "en" ? "Error" : "Erreur",
+                                description: language === "en" ? "Email cannot be empty" : "L'email ne peut pas etre vide",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+
+                            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                            if (!emailRegex.test(nextEmail)) {
+                              toast({
+                                title: language === "en" ? "Error" : "Erreur",
+                                description: language === "en" ? "Invalid email format" : "Format d'email invalide",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+
+                            setUpdatingEmail(true);
+                            try {
+                              await onUpdateEmail(order.id, nextEmail);
+                              toast({
+                                title: language === "en" ? "Success" : "Succes",
+                                description: language === "en" ? "Email updated successfully" : "Email mis a jour avec succes",
+                                variant: "default",
+                              });
+                              setIsEditingEmail(false);
+                              setEditingEmailValue("");
+                            } catch (error: any) {
+                              console.error("Error updating email:", error);
+                              toast({
+                                title: language === "en" ? "Error" : "Erreur",
+                                description: error?.message || (language === "en" ? "Failed to update email" : "Echec de la mise a jour de l'email"),
+                                variant: "destructive",
+                              });
+                            } finally {
+                              setUpdatingEmail(false);
+                            }
+                          }}
+                          disabled={updatingEmail}
+                        >
+                          <Save className="w-4 h-4 mr-1" />
+                          {language === "en" ? "Save" : "Enregistrer"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setIsEditingEmail(false);
+                            setEditingEmailValue("");
+                          }}
+                          disabled={updatingEmail}
+                        >
+                          <X className="w-4 h-4 mr-1" />
+                          {language === "en" ? "Cancel" : "Annuler"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <p className="text-base break-all flex-1">{order.user_email || order.email || "N/A"}</p>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditingEmailValue(order.user_email || order.email || "");
+                            setIsEditingEmail(true);
+                          }}
+                          className="h-8 w-8 p-0"
+                          title={language === "en" ? "Edit email" : "Modifier l'email"}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground flex items-center gap-1">
