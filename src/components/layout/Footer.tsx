@@ -167,29 +167,29 @@ const Footer = ({ language }: FooterProps) => {
 
   return (
     <footer className="bg-gradient-dark border-t border-border/20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-10 lg:gap-10 lg:items-start">
           {/* Brand */}
           <div className="min-w-0">
             <RouterLink
               to="/"
-              className="inline-flex mb-4 w-full max-w-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-sm"
+              className="inline-flex mb-4 w-full max-w-md justify-center sm:justify-start focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-sm"
             >
               <img
                 src="/logo.svg"
                 alt="Andiamo Events Logo"
-                className="h-auto w-full max-w-[min(100%,280px)] max-h-32 sm:max-h-36 object-contain object-left"
+                className="h-auto w-full max-w-[min(100%,260px)] sm:max-w-[min(100%,280px)] max-h-28 sm:max-h-36 object-contain object-center sm:object-left"
               />
             </RouterLink>
-            <p className="text-muted-foreground mb-6 max-w-md">
+            <p className="text-muted-foreground mb-6 max-w-md text-sm sm:text-base text-center sm:text-left">
               {language === "en"
                 ? "Creating innovative and inspiring event experiences in Tunisia. We create memories."
                 : "Nous créons des expériences événementielles innovantes et inspirantes en Tunisie. Nous créons des souvenirs."}
             </p>
 
             {/* Newsletter */}
-            <div className="space-y-4 max-w-lg">
-              <h4 className="font-semibold text-primary">
+            <div className="space-y-4 max-w-lg rounded-xl border border-border/20 bg-background/20 p-4 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0">
+              <h4 className="font-semibold text-primary text-center sm:text-left">
                 {newsletterContent?.title || content[language].newsletter}
               </h4>
               <form
@@ -201,10 +201,10 @@ const Footer = ({ language }: FooterProps) => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={language === "en" ? "your@email.com" : "vous@email.com"}
-                  className="flex-1 min-h-10"
+                  className="flex-1 min-h-11 sm:min-h-10 text-sm"
                   required
                 />
-                <Button type="submit" disabled={isLoading} className="btn-gradient shrink-0 min-h-10">
+                <Button type="submit" disabled={isLoading} className="btn-gradient shrink-0 min-h-11 sm:min-h-10">
                   {isLoading ? content[language].subscribing : content[language].subscribe}
                 </Button>
               </form>
@@ -212,15 +212,15 @@ const Footer = ({ language }: FooterProps) => {
           </div>
 
           {/* Quick Links and Contact side by side (moderate gap); social under Contact */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 lg:gap-8 xl:gap-10 items-start w-full sm:w-max min-w-0 shrink-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8 lg:gap-8 xl:gap-10 items-start w-full sm:w-max min-w-0 shrink-0">
             <div className="min-w-0">
               <h4 className="font-semibold text-primary mb-3">{content[language].links}</h4>
-              <ul className="space-y-2">
+              <ul className="grid grid-cols-2 gap-2 sm:block sm:space-y-2">
                 {quickLinks[language].map((link) => (
                   <li key={link.href}>
                     <RouterLink
                       to={link.href}
-                      className="text-muted-foreground hover:text-primary transition-colors"
+                      className="text-muted-foreground hover:text-primary transition-colors block rounded-lg border border-border/20 bg-background/20 px-3 py-2 text-sm sm:text-base sm:bg-transparent sm:border-0 sm:p-0"
                     >
                       {link.name}
                     </RouterLink>
@@ -229,7 +229,7 @@ const Footer = ({ language }: FooterProps) => {
               </ul>
             </div>
 
-            <div className="min-w-0 pt-6 border-t border-border/20 sm:pt-0 sm:border-t-0">
+            <div className="min-w-0 pt-6 border-t border-border/20 rounded-xl sm:rounded-none sm:pt-0 sm:border-t-0 sm:border-0 bg-background/20 sm:bg-transparent p-4 sm:p-0">
               <h4 className="font-semibold text-primary mb-3">{content[language].contact}</h4>
               <div className="space-y-3">
                 <span className="flex items-center gap-2 text-muted-foreground">
@@ -271,7 +271,7 @@ const Footer = ({ language }: FooterProps) => {
                     href={socialLinks?.instagram || "https://www.instagram.com/andiamo.events/"}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-muted-foreground hover:text-primary transition-colors p-1 -m-1 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                    className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-md border border-border/20 bg-background/20 sm:bg-transparent sm:border-0 sm:p-1 sm:-m-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                     aria-label="Instagram"
                   >
                     <Instagram className="w-5 h-5" />
@@ -280,7 +280,7 @@ const Footer = ({ language }: FooterProps) => {
                     href={socialLinks?.tiktok || "https://www.tiktok.com/@andiamo_events"}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-muted-foreground hover:text-primary transition-colors p-1 -m-1 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                    className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-md border border-border/20 bg-background/20 sm:bg-transparent sm:border-0 sm:p-1 sm:-m-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                     aria-label="TikTok"
                   >
                     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -292,7 +292,7 @@ const Footer = ({ language }: FooterProps) => {
                       href={socialLinks.whatsapp}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-muted-foreground hover:text-primary transition-colors p-1 -m-1 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                      className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-md border border-border/20 bg-background/20 sm:bg-transparent sm:border-0 sm:p-1 sm:-m-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                       aria-label="WhatsApp"
                     >
                       <MessageCircle className="w-5 h-5" />
@@ -303,7 +303,7 @@ const Footer = ({ language }: FooterProps) => {
                       href={socialLinks.facebook}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-muted-foreground hover:text-primary transition-colors p-1 -m-1 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                      className="text-muted-foreground hover:text-primary transition-colors p-2 rounded-md border border-border/20 bg-background/20 sm:bg-transparent sm:border-0 sm:p-1 sm:-m-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                       aria-label="Facebook"
                     >
                       <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
