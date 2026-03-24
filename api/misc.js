@@ -477,14 +477,17 @@ function buildCampaignEmailPlainText(subject, body, recipientDisplay = 'Subscrib
     lines.push(`${safeCtaLabel}: ${safeCtaUrl}`, '');
   }
   lines.push(
-    'Need help? support@andiamoevents.com',
+    'Need assistance? Contact@andiamoevents.com — Instagram @andiamo.events — 28070128',
     'https://www.andiamoevents.com/contact',
+    '',
+    'We Create Memories',
     '',
     'Best regards,',
     'The Andiamo Events Team',
     '',
     '—',
-    'Reply to this email or contact support@andiamoevents.com to unsubscribe from these updates.'
+    "You're receiving this email from Andiamo Events. To stop these updates, reply or email support@andiamoevents.com.",
+    'Developed by Malek Ben Amor — https://www.instagram.com/malekbenamor.dev/ — https://malekbenamor.dev/'
   );
   return lines.join('\n');
 }
@@ -493,7 +496,6 @@ function buildCampaignEmailPlainText(subject, body, recipientDisplay = 'Subscrib
 function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', headerImageUrl = null, ctaUrl = null, ctaLabel = null) {
   const content = String(body || '').replace(/\n/g, '<br>');
   const emailSubject = subject || 'Newsletter Update';
-  const supportUrl = 'https://www.andiamoevents.com/contact';
   const safeHeaderUrl = normalizeMarketingHeaderImageUrl(headerImageUrl);
   const headerImageBlock = safeHeaderUrl
     ? `<div class="campaign-header-image" style="text-align:center;margin:0 0 28px;">
@@ -503,7 +505,15 @@ function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', 
   const safeCtaUrl = normalizeMarketingHeaderImageUrl(ctaUrl);
   const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'Book now') : '';
   const ctaBlock = safeCtaUrl
-    ? `<p class="cta-line" style="margin:24px 0;font-size:16px;line-height:1.6;"><a href="${escapeHtmlAttr(safeCtaUrl)}" style="color:#E21836;font-weight:600;text-decoration:underline;">${escapeHtmlAttr(safeCtaLabel)}</a></p>`
+    ? `<div style="text-align:center;margin:28px 0 8px;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;border-collapse:separate;">
+    <tr>
+      <td style="border-radius:10px;background-color:#E21836;mso-padding-alt:14px 32px;">
+        <a href="${escapeHtmlAttr(safeCtaUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:16px;font-weight:600;line-height:1.25;color:#ffffff !important;text-decoration:none;border-radius:10px;mso-line-height-rule:exactly;">${escapeHtmlAttr(safeCtaLabel)}</a>
+      </td>
+    </tr>
+  </table>
+</div>`
     : '';
   return `<!DOCTYPE html>
 <html>
@@ -522,9 +532,17 @@ function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', 
     .greeting { font-size: 16px; color: #1A1A1A; margin: 0 0 20px 0; line-height: 1.7; }
     .greeting strong { color: #E21836; font-weight: 600; }
     .message-content { font-size: 16px; color: #333; margin-bottom: 20px; line-height: 1.7; }
-    .support-text { font-size: 14px; color: #555; line-height: 1.6; margin: 28px 0 0 0; }
-    .signature { font-size: 15px; color: #444; line-height: 1.7; margin-top: 28px; }
-    .footer { margin-top: 32px; padding: 20px 20px 24px; text-align: left; border-top: 1px solid #eee; font-size: 12px; color: #777; line-height: 1.5; }
+    .support-section { background: #E8E8E8; border-left: 3px solid rgba(226,24,54,0.3); padding: 20px 25px; margin: 28px 0; border-radius: 4px; }
+    .support-text { font-size: 14px; color: #666666; line-height: 1.7; margin: 0; }
+    .support-email { color: #E21836 !important; text-decoration: none; font-weight: 500; }
+    .closing-section { text-align: center; margin: 36px 0 0; padding-top: 28px; border-top: 1px solid #eee; }
+    .slogan { font-size: 22px; font-style: italic; color: #E21836; font-weight: 300; margin: 0 0 20px 0; }
+    .signature { font-size: 16px; color: #666666; line-height: 1.7; margin: 0; }
+    .footer { margin-top: 50px; padding: 40px 20px 30px; text-align: center; border-top: 1px solid rgba(0,0,0,0.1); }
+    .footer-text { font-size: 12px; color: #999999; margin-bottom: 20px; line-height: 1.6; }
+    .footer-links { margin: 15px auto 0; text-align: center; }
+    .footer-link { color: #999999; text-decoration: none; font-size: 13px; margin: 0 8px; }
+    .footer-link:hover { color: #E21836 !important; }
     @media only screen and (max-width: 600px) { .content-card { margin: 0 12px 20px; padding: 28px 20px; } }
   </style>
 </head>
@@ -539,11 +557,22 @@ function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', 
       ${headerImageBlock}
       <div class="message-content">${content}</div>
       ${ctaBlock}
-      <p class="support-text">Need help? Email <a href="mailto:support@andiamoevents.com">support@andiamoevents.com</a> or visit our <a href="${supportUrl}">contact page</a>.</p>
-      <p class="signature">Best regards,<br>The Andiamo Events Team</p>
+      <div class="support-section">
+        <p class="support-text">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a> or in our Instagram page <a href="https://www.instagram.com/andiamo.events/" target="_blank" rel="noopener noreferrer" class="support-email">@andiamo.events</a> or contact with <a href="tel:28070128" class="support-email">28070128</a>.</p>
+      </div>
+      <div class="closing-section">
+        <p class="slogan">We Create Memories</p>
+        <p class="signature">Best regards,<br>The Andiamo Events Team</p>
+      </div>
     </div>
     <div class="footer">
-      Reply to this message or contact support@andiamoevents.com if you no longer want these updates.
+      <p class="footer-text">You&apos;re receiving this email from Andiamo Events.<br />To stop these updates, reply to this message or email <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>.</p>
+      <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+      <div class="footer-links">
+        <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link">Instagram</a>
+        <span style="color: #999999;">&bull;</span>
+        <a href="https://malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link">Website</a>
+      </div>
     </div>
   </div>
 </body>
@@ -621,6 +650,14 @@ function marketingDefaultDelayMinutesBetweenEmails() {
 function marketingDefaultBatchDelayMinutes() {
   const v = parseFloat(process.env.MARKETING_DEFAULT_BATCH_DELAY_MINUTES || '2');
   return Number.isFinite(v) && v >= 0 ? v : 2;
+}
+
+/** Pause between recipients in processMarketingCampaignSendBatch (cron + manual send-batch). */
+function marketingInterEmailDelayMs(campaign, skipInterEmailDelay) {
+  if (campaign.type === 'email' && skipInterEmailDelay) return 0;
+  if (campaign.delay_minutes != null) return Math.max(0, Math.round(Number(campaign.delay_minutes) * 60 * 1000));
+  if (campaign.type === 'email') return Math.round(marketingDefaultDelayMinutesBetweenEmails() * 60 * 1000);
+  return 1000;
 }
 
 /** Resolve email recipients from source toggles + filters (same rules as POST /marketing/campaigns). */
@@ -737,11 +774,22 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
       .lte('sent_at', dayEnd);
     cap = Math.min(cap, Math.max(0, dailyCap - (sentToday || 0)));
     if (cap <= 0) {
+      const { count: pendingTotal } = await dbClient
+        .from('marketing_campaign_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', campaignId)
+        .eq('status', 'pending');
       return {
         ok: false,
         statusCode: 429,
-        error: `Daily limit for this campaign reached (${dailyCap} per UTC day). Try again tomorrow.`,
-        data: { sent: 0, failed: 0, remaining: null, campaign_status: campaign.status, daily_email_cap: dailyCap }
+        error: `Daily limit reached for this campaign (${dailyCap} sends per UTC day). Remaining recipients stay pending; the next cron runs after midnight UTC will continue automatically.`,
+        data: {
+          sent: 0,
+          failed: 0,
+          remaining: pendingTotal ?? 0,
+          campaign_status: campaign.status,
+          daily_email_cap: dailyCap
+        }
       };
     }
   }
@@ -777,8 +825,11 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
   const maxDurationMs = Math.min(Number(process.env.MARKETING_SEND_BATCH_MAX_MS) || 50000, 55000);
   const deadline = Date.now() + maxDurationMs;
 
-  for (const rec of pending) {
+  const interDelayMs = marketingInterEmailDelayMs(campaign, skipInterEmailDelay);
+
+  for (let i = 0; i < pending.length; i++) {
     if (Date.now() >= deadline) break;
+    const rec = pending[i];
     try {
       if (campaign.type === 'email') {
         const nodemailer = await import('nodemailer');
@@ -853,15 +904,9 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
       await dbClient.from('marketing_campaign_recipients').update({ status: 'failed', error_message: err.message || 'Unknown error', sent_at: now }).eq('id', rec.id);
       failCount++;
     }
-    const delayMs =
-      campaign.type === 'email' && skipInterEmailDelay
-        ? 0
-        : campaign.delay_minutes != null
-          ? Math.round(campaign.delay_minutes * 60 * 1000)
-          : campaign.type === 'email'
-            ? 30000
-            : 1000;
-    if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
+    const delayMs = interDelayMs;
+    const isLastInThisBatch = i === pending.length - 1;
+    if (delayMs > 0 && !isLastInThisBatch) await new Promise(r => setTimeout(r, delayMs));
   }
 
   const { data: remainingRecs } = await dbClient.from('marketing_campaign_recipients').select('id').eq('campaign_id', campaignId).eq('status', 'pending');
@@ -7812,9 +7857,7 @@ Billets envoyés par email. We Create Memories`;
             .eq('campaign_id', row.id)
             .eq('status', 'pending');
           if (!count || count === 0) continue;
-          const out = await processMarketingCampaignSendBatch(dbClient, row.id, {
-            skipInterEmailDelay: true
-          });
+          const out = await processMarketingCampaignSendBatch(dbClient, row.id);
           results.push({ campaign_id: row.id, ...out });
         }
 

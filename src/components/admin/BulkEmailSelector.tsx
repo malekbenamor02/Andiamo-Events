@@ -355,8 +355,8 @@ export function BulkEmailSelector({
         title: language === 'en' ? 'Launched' : 'Lancé',
         description:
           language === 'en'
-            ? `Scheduled: ${data.data?.total_recipients ?? ''} recipients. Cron will send in batches.`
-            : `Planifié : ${data.data?.total_recipients ?? ''} destinataires. Le cron enverra par lots.`
+            ? `Scheduled: ${data.data?.total_recipients ?? ''} recipients. Sends automatically on each cron run, with a delay between each email, respecting your daily cap (continues next UTC day if needed).`
+            : `Planifié : ${data.data?.total_recipients ?? ''} destinataires. Envoi automatique à chaque cron, avec délai entre chaque email et respect du plafond journalier (reprise le jour UTC suivant si besoin).`
       });
       onLaunchComplete?.();
     } catch (e: unknown) {

@@ -899,6 +899,68 @@ export function MarketingTab(p: MarketingTabProps) {
 
                   {/* Email Marketing Tab */}
                   <TabsContent value="email" className="space-y-6">
+                <div className="px-2">
+                  <Card className="border-muted bg-muted/20">
+                    <CardHeader className="py-3 pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        {p.language === "en" ? "Email sending — delays & limits" : "Envoi email — délais et plafonds"}
+                      </CardTitle>
+                      <CardDescription className="text-xs leading-relaxed space-y-2">
+                        {p.language === "en" ? (
+                          <>
+                            <ul className="list-disc pl-4 space-y-1.5 text-foreground/85">
+                              <li>
+                                <strong>Between cron runs</strong> — set only in Supabase (Edge Function{" "}
+                                <code className="text-[11px]">marketing-email-tick</code> → Schedules). The app does not store this interval.
+                              </li>
+                              <li>
+                                <strong>Per cron tick</strong> — up to the campaign&apos;s batch size (default env{" "}
+                                <code className="text-[11px]">MARKETING_CRON_BATCH_SIZE</code>, e.g. 25), capped by remaining daily quota and a server time budget (
+                                <code className="text-[11px]">MARKETING_SEND_BATCH_MAX_MS</code>, default 50&nbsp;000&nbsp;ms, max 55&nbsp;000&nbsp;ms).
+                              </li>
+                              <li>
+                                <strong>Between each email</strong> — scheduled sends use the campaign&apos;s <code className="text-[11px]">delay_minutes</code> (set at launch from{" "}
+                                <code className="text-[11px]">MARKETING_DEFAULT_DELAY_MINUTES_BETWEEN_EMAILS</code>) after each send until the tick&apos;s time budget ends; the next cron run continues the queue.
+                              </li>
+                              <li>
+                                <strong>Daily cap</strong> — campaign <code className="text-[11px]">daily_email_cap</code> (UTC day). When the cap is reached, sending pauses with recipients still pending; after midnight UTC, cron resumes until the list is complete or the cap applies again.
+                              </li>
+                              <li>
+                                <strong>SMS-style batch gap</strong> — <code className="text-[11px]">batch_delay_minutes</code> /{" "}
+                                <code className="text-[11px]">MARKETING_DEFAULT_BATCH_DELAY_MINUTES</code> applies to SMS flows; it is not the gap between email cron ticks.
+                              </li>
+                            </ul>
+                          </>
+                        ) : (
+                          <>
+                            <ul className="list-disc pl-4 space-y-1.5 text-foreground/85">
+                              <li>
+                                <strong>Entre deux exécutions cron</strong> — réglé uniquement dans Supabase (fonction Edge{" "}
+                                <code className="text-[11px]">marketing-email-tick</code> → Schedules). L&apos;appli ne stocke pas cet intervalle.
+                              </li>
+                              <li>
+                                <strong>À chaque tick</strong> — jusqu&apos;à la taille de lot de la campagne (défaut env{" "}
+                                <code className="text-[11px]">MARKETING_CRON_BATCH_SIZE</code>, ex. 25), limité par le quota journalier restant et un budget temps serveur (
+                                <code className="text-[11px]">MARKETING_SEND_BATCH_MAX_MS</code>, défaut 50&nbsp;000&nbsp;ms, plafond 55&nbsp;000&nbsp;ms).
+                              </li>
+                              <li>
+                                <strong>Entre chaque email</strong> — l&apos;envoi planifié utilise <code className="text-[11px]">delay_minutes</code> (défini au lancement via{" "}
+                                <code className="text-[11px]">MARKETING_DEFAULT_DELAY_MINUTES_BETWEEN_EMAILS</code>) après chaque envoi, jusqu&apos;à la fin du budget temps du tick ; le prochain cron reprend la file.
+                              </li>
+                              <li>
+                                <strong>Plafond journalier</strong> — <code className="text-[11px]">daily_email_cap</code> (jour UTC). Au plafond, l&apos;envoi s&apos;arrête, les destinataires restent en attente ; après minuit UTC, le cron reprend jusqu&apos;à épuisement de la liste ou nouveau plafond.
+                              </li>
+                              <li>
+                                <strong>Écart entre lots (style SMS)</strong> — <code className="text-[11px]">batch_delay_minutes</code> /{" "}
+                                <code className="text-[11px]">MARKETING_DEFAULT_BATCH_DELAY_MINUTES</code> concerne surtout les flux SMS ; ce n&apos;est pas l&apos;intervalle entre ticks email.
+                              </li>
+                            </ul>
+                          </>
+                        )}
+                      </CardDescription>
+                    </CardHeader>
+                  </Card>
+                </div>
                 <div className="px-2 flex flex-wrap gap-2">
                   <Button
                     className="btn-gradient"

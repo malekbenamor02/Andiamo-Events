@@ -155,6 +155,7 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
       }
       onSaved(data.data.campaign_id);
       toast({ title: t.saved, description: language === 'en' ? 'Draft created.' : 'Brouillon créé.' });
+      onClose();
     } catch (e: unknown) {
       toast({
         title: t.error,

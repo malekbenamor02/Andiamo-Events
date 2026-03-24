@@ -37,7 +37,6 @@ export function EmailCampaignPreview({
 }: EmailCampaignPreviewProps) {
   const emailSubject = subject.trim() || 'Newsletter Update';
   const content = body.replace(/\n/g, '<br>');
-  const supportUrl = 'https://www.andiamoevents.com/contact';
   const showCta = Boolean(ctaUrl?.trim());
   const btnText = (ctaLabel || 'Book now').trim() || 'Book now';
   const hasHeader = Boolean(headerImageUrl?.trim());
@@ -90,36 +89,82 @@ export function EmailCampaignPreview({
             dangerouslySetInnerHTML={{ __html: content || '&nbsp;' }}
           />
           {showCta ? (
-            <p className="my-6 text-base leading-relaxed">
+            <div className="my-7 flex justify-center">
               <a
                 href={ctaUrl!.trim()}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[#E21836] font-semibold underline"
+                className="inline-block rounded-[10px] bg-[#E21836] px-8 py-3.5 text-center text-base font-semibold text-white no-underline shadow-sm transition-opacity hover:opacity-[0.92]"
               >
                 {esc(btnText)}
               </a>
-            </p>
+            </div>
           ) : null}
-          <p className="text-sm text-[#555] leading-relaxed mt-7">
-            Need help? Email{' '}
-            <a href="mailto:support@andiamoevents.com" className="text-[#E21836] underline">
+          <div className="mt-7 rounded border-l-[3px] border-[rgba(226,24,54,0.3)] bg-[#E8E8E8] px-6 py-5">
+            <p className="text-sm text-[#666666] leading-relaxed m-0">
+              Need assistance? Contact us at{' '}
+              <a href="mailto:Contact@andiamoevents.com" className="text-[#E21836] font-medium no-underline">
+                Contact@andiamoevents.com
+              </a>{' '}
+              or in our Instagram page{' '}
+              <a
+                href="https://www.instagram.com/andiamo.events/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[#E21836] font-medium no-underline"
+              >
+                @andiamo.events
+              </a>{' '}
+              or contact with{' '}
+              <a href="tel:28070128" className="text-[#E21836] font-medium no-underline">
+                28070128
+              </a>
+              .
+            </p>
+          </div>
+          <div className="mt-9 pt-7 border-t border-[#eee] text-center">
+            <p className="text-[22px] italic text-[#E21836] font-light mb-5">We Create Memories</p>
+            <p className="text-base text-[#666666] leading-relaxed m-0">
+              Best regards,
+              <br />
+              The Andiamo Events Team
+            </p>
+          </div>
+        </div>
+        <div className="mt-10 mb-8 px-5 pt-10 text-center text-xs text-[#999999] leading-relaxed border-t border-black/10">
+          <p className="mb-5">
+            You&apos;re receiving this email from Andiamo Events.
+            <br />
+            To stop these updates, reply to this message or email{' '}
+            <a href="mailto:support@andiamoevents.com" className="text-[#E21836] font-medium no-underline">
               support@andiamoevents.com
-            </a>{' '}
-            or visit our{' '}
-            <a href={supportUrl} className="text-[#E21836] underline">
-              contact page
             </a>
             .
           </p>
-          <p className="text-[15px] text-[#444] leading-relaxed mt-7">
-            Best regards,
-            <br />
-            The Andiamo Events Team
+          <p className="mb-5">
+            Developed by <span className="text-[#E21836]">Malek Ben Amor</span>
           </p>
-        </div>
-        <div className="mt-6 mb-8 px-5 text-left text-xs text-[#777] leading-relaxed border-t border-[#eee] pt-5">
-          Reply to this message or contact support@andiamoevents.com if you no longer want these updates.
+          <div className="flex flex-wrap items-center justify-center gap-2 text-[13px] text-[#999999]">
+            <a
+              href="https://www.instagram.com/malekbenamor.dev/"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[#999999] hover:text-[#E21836] no-underline"
+            >
+              Instagram
+            </a>
+            <span className="text-[#999999]" aria-hidden>
+              &bull;
+            </span>
+            <a
+              href="https://malekbenamor.dev/"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[#999999] hover:text-[#E21836] no-underline"
+            >
+              Website
+            </a>
+          </div>
         </div>
       </div>
     </div>
