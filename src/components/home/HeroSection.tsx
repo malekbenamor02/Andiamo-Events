@@ -360,7 +360,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
           return (
             <div
               key={index}
-              className={`absolute inset-0 transition-opacity duration-[2s] ease-in-out ${
+              className={`absolute inset-0 transition-opacity [transition-duration:2s] ease-in-out ${
                 isActive ? "opacity-100 z-10" : "opacity-0 z-0"
               }`}
             >

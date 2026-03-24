@@ -24,7 +24,6 @@ export interface EmailCampaignPreviewProps {
   headerImageUrl?: string;
   ctaUrl?: string;
   ctaLabel?: string;
-  sampleName?: string;
 }
 
 export function EmailCampaignPreview({
@@ -32,8 +31,7 @@ export function EmailCampaignPreview({
   body,
   headerImageUrl,
   ctaUrl,
-  ctaLabel,
-  sampleName = 'Foulen Ben Foulen'
+  ctaLabel
 }: EmailCampaignPreviewProps) {
   const emailSubject = subject.trim() || 'Newsletter Update';
   const content = body.replace(/\n/g, '<br>');
@@ -45,13 +43,10 @@ export function EmailCampaignPreview({
     <div className="rounded-lg border border-border overflow-hidden bg-white text-[#1A1A1A] max-h-[min(70vh,640px)] overflow-y-auto min-w-0">
       <div className="max-w-[600px] w-full min-w-0 mx-auto bg-white">
         <div className="mx-4 sm:mx-5 mb-6 rounded-lg px-6 sm:px-7 py-9 border border-[#e8e8e8] min-w-0">
-          <div className="mb-7 pb-5 border-b border-[#eee]">
+          <div className="mb-7 pb-5 border-b border-[#eee] text-center">
             <p className="text-[22px] font-semibold text-[#1A1A1A] mb-2">Andiamo Events</p>
             <p className="text-[15px] text-[#555]">{emailSubject}</p>
           </div>
-          <p className="text-base mb-5 leading-relaxed text-[#1A1A1A]">
-            Dear <strong className="text-[#E21836] font-semibold">{esc(sampleName)}</strong>,
-          </p>
           {hasHeader ? (
             <div className="flex justify-center mb-7 min-w-0">
               <img

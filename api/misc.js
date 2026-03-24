@@ -465,14 +465,7 @@ function buildCampaignEmailPlainText(subject, body, recipientDisplay = 'Subscrib
   const emailSubject = subject || 'Newsletter Update';
   const safeCtaUrl = normalizeMarketingHeaderImageUrl(ctaUrl);
   const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'Book now') : '';
-  const lines = [
-    emailSubject,
-    '',
-    `Dear ${String(recipientDisplay).replace(/\s+/g, ' ').trim() || 'Subscriber'},`,
-    '',
-    String(body || '').trim(),
-    ''
-  ];
+  const lines = [emailSubject, '', String(body || '').trim(), ''];
   if (safeCtaUrl) {
     lines.push(`${safeCtaLabel}: ${safeCtaUrl}`, '');
   }
@@ -526,11 +519,9 @@ function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', 
     a { color: #E21836; text-decoration: underline; }
     .email-wrapper { max-width: 600px; margin: 0 auto; background: #FFFFFF; }
     .content-card { margin: 0 20px 30px; padding: 36px 28px; border: 1px solid #e8e8e8; border-radius: 8px; }
-    .title-section { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
-    .title { font-size: 22px; font-weight: 600; color: #1A1A1A; margin: 0 0 8px 0; }
-    .subtitle { font-size: 15px; color: #555; margin: 0; font-weight: 400; }
-    .greeting { font-size: 16px; color: #1A1A1A; margin: 0 0 20px 0; line-height: 1.7; }
-    .greeting strong { color: #E21836; font-weight: 600; }
+    .title-section { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid #eee; text-align: center; }
+    .title { font-size: 22px; font-weight: 600; color: #1A1A1A; margin: 0 0 8px 0; text-align: center; }
+    .subtitle { font-size: 15px; color: #555; margin: 0; font-weight: 400; text-align: center; }
     .message-content { font-size: 16px; color: #333; margin-bottom: 20px; line-height: 1.7; }
     .support-section { background: #E8E8E8; border-left: 3px solid rgba(226,24,54,0.3); padding: 20px 25px; margin: 28px 0; border-radius: 4px; }
     .support-text { font-size: 14px; color: #666666; line-height: 1.7; margin: 0; }
@@ -553,7 +544,6 @@ function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', 
         <p class="title">Andiamo Events</p>
         <p class="subtitle">${emailSubject.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
       </div>
-      <p class="greeting">Dear <strong>${String(recipientDisplay).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</strong>,</p>
       ${headerImageBlock}
       <div class="message-content">${content}</div>
       ${ctaBlock}

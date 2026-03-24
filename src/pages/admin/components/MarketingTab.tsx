@@ -13,11 +13,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { PhoneCall, Mail, CreditCard, Download, Upload, Send, RefreshCw, FileText, Info, Phone, CheckCircle, XCircle, Clock, Pencil, BarChart2, Pause } from "lucide-react";
+import { PhoneCall, Mail, CreditCard, Download, Upload, Send, RefreshCw, FileText, Info, Phone, CheckCircle, XCircle, Clock, Pencil, Pause } from "lucide-react";
 import { BulkSmsSelector } from "@/components/admin/BulkSmsSelector";
 import { EmailCampaignEditor } from "@/components/admin/marketing/EmailCampaignEditor";
 import { EmailCampaignLauncher } from "@/components/admin/marketing/EmailCampaignLauncher";
-import { EmailCampaignStats } from "@/components/admin/marketing/EmailCampaignStats";
 import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
 import type { MarketingCampaign } from "@/types/bulk-sms";
 
@@ -75,8 +74,9 @@ export function MarketingTab(p: MarketingTabProps) {
   const [emailEditorOpen, setEmailEditorOpen] = useState(false);
   const [emailEditorCampaignId, setEmailEditorCampaignId] = useState<string | null>(null);
   const [launchDraftId, setLaunchDraftId] = useState<string | null>(null);
-  const [statsCampaignId, setStatsCampaignId] = useState<string | null>(null);
   const campaignsFetchGenRef = useRef(0);
+
+  const CAMPAIGN_TABLE_POLL_MS = 4000;
 
   const fetchCampaigns = useCallback(async () => {
     const gen = ++campaignsFetchGenRef.current;
@@ -201,8 +201,8 @@ export function MarketingTab(p: MarketingTabProps) {
                       </CardTitle>
                       <CardDescription>
                         {p.language === "en"
-                          ? "Sent / failed / remaining. Email sends run on your Supabase schedule (marketing-email-tick), up to the per-day cap (UTC), then continue the next day. Pause / Resume scheduling for email."
-                          : "Envoyés / échoués / restants. Les emails partent via le job Supabase (marketing-email-tick), plafond/jour UTC. Pause / Reprendre l’envoi planifié pour l’email."}
+                          ? "OK / Fail / Pending / Total. Rows refresh automatically while an email send is in progress."
+                          : "OK / échecs / en attente / total. Actualisation automatique pendant un envoi email en cours."}
                       </CardDescription>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => fetchCampaigns()}>
@@ -283,18 +283,6 @@ export function MarketingTab(p: MarketingTabProps) {
                                         {p.language === "en" ? "Edit" : "Modifier"}
                                       </Button>
                                     )}
-                                    {c.type === "email" && (c.counts?.total ?? 0) > 0 && c.status !== "draft" && (
-                                      <Button
-                                        size="sm"
-                                        variant={statsCampaignId === c.id ? "secondary" : "ghost"}
-                                        onClick={() =>
-                                          setStatsCampaignId((id) => (id === c.id ? null : c.id))
-                                        }
-                                      >
-                                        <BarChart2 className="w-3 h-3 mr-1" />
-                                        {p.language === "en" ? "Stats" : "Stats"}
-                                      </Button>
-                                    )}
                                     {canPause && (
                                       <Button
                                         size="sm"
@@ -356,15 +344,6 @@ export function MarketingTab(p: MarketingTabProps) {
                           })}
                         </tbody>
                       </table>
-                    )}
-                    {statsCampaignId && (
-                      <div className="mt-4 px-2">
-                        <EmailCampaignStats
-                          language={p.language}
-                          campaignId={statsCampaignId}
-                          onClose={() => setStatsCampaignId(null)}
-                        />
-                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -899,68 +878,6 @@ export function MarketingTab(p: MarketingTabProps) {
 
                   {/* Email Marketing Tab */}
                   <TabsContent value="email" className="space-y-6">
-                <div className="px-2">
-                  <Card className="border-muted bg-muted/20">
-                    <CardHeader className="py-3 pb-2">
-                      <CardTitle className="text-sm font-medium">
-                        {p.language === "en" ? "Email sending — delays & limits" : "Envoi email — délais et plafonds"}
-                      </CardTitle>
-                      <CardDescription className="text-xs leading-relaxed space-y-2">
-                        {p.language === "en" ? (
-                          <>
-                            <ul className="list-disc pl-4 space-y-1.5 text-foreground/85">
-                              <li>
-                                <strong>Between cron runs</strong> — set only in Supabase (Edge Function{" "}
-                                <code className="text-[11px]">marketing-email-tick</code> → Schedules). The app does not store this interval.
-                              </li>
-                              <li>
-                                <strong>Per cron tick</strong> — up to the campaign&apos;s batch size (default env{" "}
-                                <code className="text-[11px]">MARKETING_CRON_BATCH_SIZE</code>, e.g. 25), capped by remaining daily quota and a server time budget (
-                                <code className="text-[11px]">MARKETING_SEND_BATCH_MAX_MS</code>, default 50&nbsp;000&nbsp;ms, max 55&nbsp;000&nbsp;ms).
-                              </li>
-                              <li>
-                                <strong>Between each email</strong> — scheduled sends use the campaign&apos;s <code className="text-[11px]">delay_minutes</code> (set at launch from{" "}
-                                <code className="text-[11px]">MARKETING_DEFAULT_DELAY_MINUTES_BETWEEN_EMAILS</code>) after each send until the tick&apos;s time budget ends; the next cron run continues the queue.
-                              </li>
-                              <li>
-                                <strong>Daily cap</strong> — campaign <code className="text-[11px]">daily_email_cap</code> (UTC day). When the cap is reached, sending pauses with recipients still pending; after midnight UTC, cron resumes until the list is complete or the cap applies again.
-                              </li>
-                              <li>
-                                <strong>SMS-style batch gap</strong> — <code className="text-[11px]">batch_delay_minutes</code> /{" "}
-                                <code className="text-[11px]">MARKETING_DEFAULT_BATCH_DELAY_MINUTES</code> applies to SMS flows; it is not the gap between email cron ticks.
-                              </li>
-                            </ul>
-                          </>
-                        ) : (
-                          <>
-                            <ul className="list-disc pl-4 space-y-1.5 text-foreground/85">
-                              <li>
-                                <strong>Entre deux exécutions cron</strong> — réglé uniquement dans Supabase (fonction Edge{" "}
-                                <code className="text-[11px]">marketing-email-tick</code> → Schedules). L&apos;appli ne stocke pas cet intervalle.
-                              </li>
-                              <li>
-                                <strong>À chaque tick</strong> — jusqu&apos;à la taille de lot de la campagne (défaut env{" "}
-                                <code className="text-[11px]">MARKETING_CRON_BATCH_SIZE</code>, ex. 25), limité par le quota journalier restant et un budget temps serveur (
-                                <code className="text-[11px]">MARKETING_SEND_BATCH_MAX_MS</code>, défaut 50&nbsp;000&nbsp;ms, plafond 55&nbsp;000&nbsp;ms).
-                              </li>
-                              <li>
-                                <strong>Entre chaque email</strong> — l&apos;envoi planifié utilise <code className="text-[11px]">delay_minutes</code> (défini au lancement via{" "}
-                                <code className="text-[11px]">MARKETING_DEFAULT_DELAY_MINUTES_BETWEEN_EMAILS</code>) après chaque envoi, jusqu&apos;à la fin du budget temps du tick ; le prochain cron reprend la file.
-                              </li>
-                              <li>
-                                <strong>Plafond journalier</strong> — <code className="text-[11px]">daily_email_cap</code> (jour UTC). Au plafond, l&apos;envoi s&apos;arrête, les destinataires restent en attente ; après minuit UTC, le cron reprend jusqu&apos;à épuisement de la liste ou nouveau plafond.
-                              </li>
-                              <li>
-                                <strong>Écart entre lots (style SMS)</strong> — <code className="text-[11px]">batch_delay_minutes</code> /{" "}
-                                <code className="text-[11px]">MARKETING_DEFAULT_BATCH_DELAY_MINUTES</code> concerne surtout les flux SMS ; ce n&apos;est pas l&apos;intervalle entre ticks email.
-                              </li>
-                            </ul>
-                          </>
-                        )}
-                      </CardDescription>
-                    </CardHeader>
-                  </Card>
-                </div>
                 <div className="px-2 flex flex-wrap gap-2">
                   <Button
                     className="btn-gradient"
