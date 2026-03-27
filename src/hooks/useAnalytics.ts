@@ -7,7 +7,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Order, OrderPass } from '@/types/orders';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
-import { getOrderTicketsAndRevenue } from '@/lib/orders/orderRevenue';
+import { getOrderLineRevenue, getOrderTicketsAndRevenue, getOrderReportRevenue } from '@/lib/orders/orderRevenue';
+import { isPaidOnlineOrAmbassadorOrder } from '@/lib/orders/orderAnalytics';
 
 export type DateRange = 'ALL_TIME' | 'LAST_30_DAYS' | 'LAST_7_DAYS';
 
@@ -49,7 +50,8 @@ export interface AnalyticsData {
   
   // Sales channel breakdown
   channelBreakdown: {
-    online: number;
+    online: number; // Paid online, incl. fees
+    onlineSubtotal: number; // Same orders, pass line subtotal only (excl. fees)
     ambassadorCash: number;
     pos: number; // Point de vente (POS)
     manual: number;
@@ -171,7 +173,7 @@ async function fetchAnalyticsData(
   const dateFilter = customDateRange || getDateRangeFilter(dateRange);
   const { startDate, endDate } = dateFilter;
   // Build query - filter by event_id and date range if provided
-  // Include both PAID and COMPLETED so totals match Overview (which counts ambassador as PAID or COMPLETED)
+  // Paid online + ambassador cash only (matches Overview KPIs and Excel pass stock); PAID/COMPLETED status
   // Use a high limit so insights (best day, peak hour, etc.) are computed from real data, not a truncated set (Supabase default is 1000)
   let query = supabase
     .from('orders')
@@ -184,6 +186,7 @@ async function fetchAnalyticsData(
       )
     `, { count: 'exact' })
     .in('status', [OrderStatus.PAID, 'COMPLETED'])
+    .in('payment_method', [PaymentMethod.ONLINE, PaymentMethod.AMBASSADOR_CASH])
     .order('created_at', { ascending: false })
     .limit(10000);
   
@@ -205,7 +208,7 @@ async function fetchAnalyticsData(
     throw new Error(`Failed to fetch analytics data: ${error.message}`);
   }
   
-  const ordersList = (orders || []) as any[];
+  const ordersList = ((orders || []) as any[]).filter(isPaidOnlineOrAmbassadorOrder);
   
   // Fetch pending cash and approval orders for the new metrics
   let pendingOrdersQuery = supabase
@@ -269,6 +272,7 @@ async function fetchAnalyticsData(
   const passPerformanceMap = new Map<string, { tickets: number; revenue: number }>();
   const channelBreakdown = {
     online: 0,
+    onlineSubtotal: 0,
     ambassadorCash: 0,
     pos: 0, // Point de vente (POS)
     manual: 0,
@@ -289,7 +293,6 @@ async function fetchAnalyticsData(
   // Process each order
   ordersList.forEach((order: any) => {
     // Calculate revenue and tickets from order_passes
-    let orderRevenue = 0;
     let orderTickets = 0;
     
     if (order.order_passes && order.order_passes.length > 0) {
@@ -297,7 +300,6 @@ async function fetchAnalyticsData(
         const tickets = op.quantity || 0;
         const revenue = (op.price || 0) * tickets;
         orderTickets += tickets;
-        orderRevenue += revenue;
         
         // Track pass performance
         const passName = op.pass_type || 'Unknown';
@@ -310,33 +312,34 @@ async function fetchAnalyticsData(
     } else {
       const agg = getOrderTicketsAndRevenue(order);
       orderTickets = agg.tickets;
-      orderRevenue = agg.revenue;
       const passName = order.pass_type || 'Unknown';
       const existingPass = passPerformanceMap.get(passName) || { tickets: 0, revenue: 0 };
       passPerformanceMap.set(passName, {
         tickets: existingPass.tickets + orderTickets,
-        revenue: existingPass.revenue + orderRevenue
+        revenue: existingPass.revenue + agg.revenue
       });
     }
     
+    const reportRevenue = getOrderReportRevenue(order);
     totalTicketsSold += orderTickets;
-    totalRevenue += orderRevenue;
+    totalRevenue += reportRevenue;
     
     // Track sales channels (POS: payment_method 'pos' or source 'point_de_vente')
     if (order.payment_method === PaymentMethod.ONLINE) {
-      channelBreakdown.online += orderRevenue;
+      channelBreakdown.online += reportRevenue;
+      channelBreakdown.onlineSubtotal += getOrderLineRevenue(order);
     } else if (order.payment_method === PaymentMethod.AMBASSADOR_CASH) {
-      channelBreakdown.ambassadorCash += orderRevenue;
+      channelBreakdown.ambassadorCash += reportRevenue;
     } else if (order.payment_method === 'pos' || order.source === 'point_de_vente') {
-      channelBreakdown.pos += orderRevenue;
+      channelBreakdown.pos += reportRevenue;
     } else if (order.payment_method === PaymentMethod.EXTERNAL_APP) {
       // External app payments count as manual/admin sales
-      channelBreakdown.manual += orderRevenue;
+      channelBreakdown.manual += reportRevenue;
     } else {
       // Unclassified payment method
-      channelBreakdown.other += orderRevenue;
+      channelBreakdown.other += reportRevenue;
     }
-    channelBreakdown.total += orderRevenue;
+    channelBreakdown.total += reportRevenue;
     
     // Track ambassadors
     if (order.ambassador_id && order.ambassadors) {
@@ -352,7 +355,7 @@ async function fetchAnalyticsData(
       
       amb.paidOrdersCount += 1;
       amb.ticketsSold += orderTickets;
-      amb.revenue += orderRevenue;
+      amb.revenue += reportRevenue;
       
       ambassadorPerformanceMap.set(order.ambassador_id, amb);
     }
@@ -363,7 +366,7 @@ async function fetchAnalyticsData(
     const existing = salesByDate.get(dateKey) || { tickets: 0, revenue: 0 };
     salesByDate.set(dateKey, {
       tickets: existing.tickets + orderTickets,
-      revenue: existing.revenue + orderRevenue
+      revenue: existing.revenue + reportRevenue,
     });
     
     // Track by hour and day for insights

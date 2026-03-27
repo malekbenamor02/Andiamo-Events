@@ -7,7 +7,8 @@ import type { WorksheetProtection } from 'exceljs';
 import { supabase } from '@/integrations/supabase/client';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
 import { getDateRangeFilter, getDateRangeLabel, type DateRange } from '@/hooks/useAnalytics';
-import { getOrderLineRevenue, getOrderTicketsAndRevenue } from '@/lib/orders/orderRevenue';
+import { isPaidOnlineOrder, isPaidAmbassadorCashOrder, isPaidOnlineOrAmbassadorOrder } from '@/lib/orders/orderAnalytics';
+import { getOrderReportRevenue, getOrderTicketsAndRevenue } from '@/lib/orders/orderRevenue';
 
 /** PostgREST often returns HTTP 400 with message "Bad Request" while the real cause is in `details`. */
 function supabaseErrorMessage(err: { message?: string; details?: string; hint?: string }): string {
@@ -106,7 +107,7 @@ const COPY: Record<
     stockPaidOnlyNote:
       'No event filter: pass names from paid orders only, for the report date range. Totals are online + ambassador (excludes POS).',
     stockPaidOnlyNoteEvent:
-      'Same rules as Pass Stock Management: order_passes linked by pass id, statuses that count toward stock, not released. Total column is event_passes.sold_quantity (all time for this event).',
+      'Paid online and ambassador cash only (same as Overview / Reports). Quantities from order_passes by pass id. Total = Online + Ambassador for each pass.',
     stockStripOnline: 'Online passes (total qty)',
     stockStripAmbassador: 'Ambassador passes (total qty)',
     stockStripOther: 'Other channels (total qty)',
@@ -141,7 +142,7 @@ const COPY: Record<
     stockPaidOnlyNote:
       'Sans événement : noms issus des commandes payées, selon la période du rapport. Totaux = en ligne + ambassadeurs (hors POS).',
     stockPaidOnlyNoteEvent:
-      'Mêmes règles que la gestion de stock : order_passes par pass id, statuts comptés dans le stock, non libéré. Total = sold_quantity du pass (tout l’historique pour cet événement).',
+      'En ligne et ambassadeurs (espèces) payés uniquement (comme l’accueil / Rapports). Quantités via order_passes par pass. Total = En ligne + Ambassadeurs pour chaque pass.',
     stockStripOnline: 'Billets en ligne (qté totale)',
     stockStripAmbassador: 'Billets ambassadeurs (qté totale)',
     stockStripOther: 'Autres canaux (qté totale)',
@@ -162,7 +163,7 @@ const COL = {
     ville: 'Area',
     passes: 'Passes (detail)',
     tickets: 'Tickets',
-    lineRevenue: 'Revenue (line items)',
+    lineRevenue: 'Total without fees',
     totalPrice: 'Total price',
     paymentMethod: 'Payment method',
     source: 'Source',
@@ -184,7 +185,7 @@ const COL = {
     ville: 'Zone',
     passes: 'Billets (détail)',
     tickets: 'Quantité',
-    lineRevenue: 'Revenu (lignes)',
+    lineRevenue: 'Total hors frais',
     totalPrice: 'Prix total',
     paymentMethod: 'Moyen de paiement',
     source: 'Source',
@@ -250,6 +251,7 @@ async function fetchPaidOrdersForExport(eventId: string | null, dateRange: DateR
       { count: 'exact' }
     )
     .in('status', [OrderStatus.PAID, 'COMPLETED'])
+    .in('payment_method', [PaymentMethod.ONLINE, PaymentMethod.AMBASSADOR_CASH])
     .order('created_at', { ascending: false })
     .limit(15000);
 
@@ -267,7 +269,8 @@ async function fetchPaidOrdersForExport(eventId: string | null, dateRange: DateR
   if (error) {
     throw new Error(supabaseErrorMessage(error));
   }
-  return (data || []) as any[];
+  const rows = (data || []) as any[];
+  return rows.filter(isPaidOnlineOrAmbassadorOrder);
 }
 
 function splitOrders(orders: any[]) {
@@ -304,7 +307,7 @@ function ambassadorAggregateMap(ambassadorOrders: any[]): Map<string, Ambassador
     const name = o.ambassadors?.full_name || '—';
     const phone = o.ambassadors?.phone || '—';
     const tickets = getOrderTicketsAndRevenue(o).tickets;
-    const revenue = getOrderLineRevenue(o);
+    const revenue = getOrderReportRevenue(o);
     let cur = map.get(id);
     if (!cur) {
       cur = { name, phone, orders: 0, tickets: 0, revenue: 0, passesByType: new Map() };
@@ -460,20 +463,6 @@ function accumulatePassesSoldByType(orders: any[]): Map<string, number> {
   return m;
 }
 
-/** Same “counted toward stock” rules as GET /api/admin/passes/:eventId (api/misc.js). */
-const STOCK_COUNTED_ORDER_STATUSES = new Set([
-  'COMPLETED',
-  'PAID',
-  'MANUAL_COMPLETED',
-  'PENDING_CASH',
-  'PENDING_ONLINE',
-  'MANUAL_ACCEPTED',
-  'PENDING_ADMIN_APPROVAL',
-  'PENDING_AMBASSADOR_CONFIRMATION',
-]);
-
-const STOCK_PAYMENT_BUCKETS = new Set(['online', 'ambassador_cash', 'pos', 'external_app']);
-
 export type PassStockSheetRow = {
   name: string;
   online: number;
@@ -483,13 +472,13 @@ export type PassStockSheetRow = {
 };
 
 /**
- * One row per event_pass: canonical name, channel split via order_passes.pass_id,
- * total = sold_quantity (matches Pass Stock Management “Sold” column).
+ * One row per event_pass: paid online vs paid ambassador via order_passes.pass_id
+ * (same scope as Overview / Reports — excludes POS and non-paid stock states).
  */
 async function fetchPassStockBreakdownForEvent(eventId: string): Promise<PassStockSheetRow[]> {
   const { data: passes, error: pErr } = await supabase
     .from('event_passes')
-    .select('id, name, sold_quantity, release_version, is_primary, price')
+    .select('id, name, release_version, is_primary, price')
     .eq('event_id', eventId)
     .order('release_version', { ascending: false })
     .order('is_primary', { ascending: false })
@@ -499,7 +488,6 @@ async function fetchPassStockBreakdownForEvent(eventId: string): Promise<PassSto
   const list = (passes || []) as Array<{
     id: string;
     name: string;
-    sold_quantity?: number | null;
   }>;
   const passIds = list.map((p) => p.id).filter(Boolean);
   if (passIds.length === 0) return [];
@@ -519,9 +507,10 @@ async function fetchPassStockBreakdownForEvent(eventId: string): Promise<PassSto
     ),
   ];
 
-  const breakdown: Record<string, Record<string, number>> = {};
+  type Bucket = { online: number; ambassador: number };
+  const breakdown: Record<string, Bucket> = {};
   for (const p of list) {
-    breakdown[p.id] = {};
+    breakdown[p.id] = { online: 0, ambassador: 0 };
   }
 
   if (orderIds.length > 0) {
@@ -530,60 +519,42 @@ async function fetchPassStockBreakdownForEvent(eventId: string): Promise<PassSto
       const chunk = orderIds.slice(i, i + ORDERS_BY_ID_CHUNK);
       const { data: chunkRows, error: oErr } = await supabase
         .from('orders')
-        .select('id, payment_method, status, stock_released, event_id')
+        .select('id, payment_method, status, payment_status, event_id')
         .in('id', chunk);
       if (oErr) throw new Error(supabaseErrorMessage(oErr));
       if (chunkRows?.length) ordersRows.push(...chunkRows);
     }
 
-    const validOrderIds = new Set(
-      ordersRows
-        .filter(
-          (o: any) =>
-            o.stock_released === false &&
-            STOCK_COUNTED_ORDER_STATUSES.has(String(o.status)) &&
-            (o.event_id === eventId || o.event_id == null)
-        )
-        .map((o: any) => o.id)
-    );
-
-    const orderPaymentMap = new Map(
-      ordersRows
-        .filter((o: any) => validOrderIds.has(o.id))
-        .map((o: any) => [o.id, String(o.payment_method || '')])
-    );
+    const orderById = new Map(ordersRows.map((o: any) => [o.id, o]));
 
     for (const op of opRows) {
       const oid = op.order_id as string | undefined | null;
-      if (!oid || !validOrderIds.has(oid)) continue;
-      const pm = orderPaymentMap.get(oid);
-      if (!pm) continue;
+      if (!oid) continue;
+      const o = orderById.get(oid);
+      if (!o) continue;
+      if (!(o.event_id === eventId || o.event_id == null)) continue;
+      if (!isPaidOnlineOrder(o) && !isPaidAmbassadorCashOrder(o)) continue;
       const pid = op.pass_id as string;
       if (!breakdown[pid]) continue;
       const q = Number(op.quantity) || 0;
-      const row = breakdown[pid];
-      row[pm] = (row[pm] || 0) + q;
+      if (isPaidOnlineOrder(o)) {
+        breakdown[pid].online += q;
+      } else if (isPaidAmbassadorCashOrder(o)) {
+        breakdown[pid].ambassador += q;
+      }
     }
   }
 
   return list.map((p) => {
-    const by = breakdown[p.id] || {};
-    const online = by['online'] ?? 0;
-    const ambassador = by['ambassador_cash'] ?? 0;
-    const pos = by['pos'] ?? 0;
-    const external = by['external_app'] ?? 0;
-    let other = pos + external;
-    for (const [k, v] of Object.entries(by)) {
-      if (!STOCK_PAYMENT_BUCKETS.has(k)) {
-        other += v;
-      }
-    }
+    const b = breakdown[p.id] || { online: 0, ambassador: 0 };
+    const online = b.online;
+    const ambassador = b.ambassador;
     return {
       name: p.name,
       online,
       ambassador,
-      other,
-      total: Number(p.sold_quantity) || 0,
+      other: 0,
+      total: online + ambassador,
     };
   });
 }
@@ -712,7 +683,7 @@ function setColumnWidths(sheet: ExcelJS.Worksheet, widths: number[]) {
 /** Online paid orders: includes Order ID; no payment_status / transaction ref. */
 function orderRowOnline(order: any, lang: Lang): (string | number)[] {
   const tickets = getOrderTicketsAndRevenue(order).tickets;
-  const revenue = getOrderLineRevenue(order);
+  const revenue = getOrderTicketsAndRevenue(order).revenue;
   const evt = order.events;
   const eventLabel = evt?.name
     ? `${evt.name}${evt.date ? ` (${String(evt.date).slice(0, 10)})` : ''}`
@@ -742,7 +713,6 @@ function orderRowOnline(order: any, lang: Lang): (string | number)[] {
 /** Ambassador cash orders: no Order ID column; no payment_status / transaction ref. */
 function orderRowAmbassadorTable(order: any, lang: Lang): (string | number)[] {
   const tickets = getOrderTicketsAndRevenue(order).tickets;
-  const revenue = getOrderLineRevenue(order);
   const evt = order.events;
   const eventLabel = evt?.name
     ? `${evt.name}${evt.date ? ` (${String(evt.date).slice(0, 10)})` : ''}`
@@ -761,7 +731,6 @@ function orderRowAmbassadorTable(order: any, lang: Lang): (string | number)[] {
     eventLabel,
     formatPasses(order),
     tickets,
-    Math.round(revenue * 100) / 100,
     Number(order.total_price) || 0,
     order.payment_method ?? '—',
     order.source ?? '—',
@@ -810,7 +779,6 @@ function ambassadorOrderHeaders(lang: Lang): string[] {
     L.event,
     L.passes,
     L.tickets,
-    L.lineRevenue,
     L.totalPrice,
     L.paymentMethod,
     L.source,
@@ -848,17 +816,21 @@ function buildAmbassadorSummaryRows(
   return rows;
 }
 
+/**
+ * Strip totals must match summing the sheet rows: each row shows line revenue rounded to 2 decimals,
+ * so we accumulate per-order rounded cents — not round(sum of full-precision) once.
+ */
 function totalsLine(orders: any[]) {
   let tickets = 0;
-  let revenue = 0;
+  let revenueCents = 0;
   for (const o of orders) {
     tickets += getOrderTicketsAndRevenue(o).tickets;
-    revenue += getOrderLineRevenue(o);
+    revenueCents += Math.round(getOrderReportRevenue(o) * 100);
   }
   return {
     count: orders.length,
     tickets,
-    revenue: Math.round(revenue * 100) / 100,
+    revenue: revenueCents / 100,
   };
 }
 
@@ -1049,9 +1021,9 @@ export async function downloadReportsExcel(params: {
   r += 1;
 
   const hdr = ambassadorOrderHeaders(lang);
-  const revColAm = hdr.indexOf(COL[lang].lineRevenue);
+  const totColAm = hdr.indexOf(COL[lang].totalPrice);
   ambassador.forEach((order, i) => {
-    setDataRow(wsAm, r, orderRowAmbassadorTable(order, lang), i % 2 === 0, [revColAm, revColAm + 1, 0, 1]);
+    setDataRow(wsAm, r, orderRowAmbassadorTable(order, lang), i % 2 === 0, [0, 1, totColAm]);
     r += 1;
   });
 
@@ -1089,7 +1061,7 @@ export async function downloadReportsExcel(params: {
   }
   r += 1;
 
-  const ambOrderWidths = [20, 14, 10, 18, 12, 22, 14, 28, 14, 14, 36, 42, 10, 14, 12, 14, 16, 18, 32];
+  const ambOrderWidths = [20, 14, 10, 18, 12, 22, 14, 28, 14, 14, 36, 42, 10, 12, 14, 16, 18, 32];
   const ambWidths = [...ambOrderWidths];
   while (ambWidths.length < sumColCount) {
     ambWidths.push(12);

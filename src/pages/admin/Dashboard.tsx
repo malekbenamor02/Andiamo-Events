@@ -118,7 +118,7 @@ import { ScannersTab } from "@/components/admin/ScannersTab";
 import { PosTab } from "@/components/admin/PosTab";
 import { BulkSmsSelector } from "@/components/admin/BulkSmsSelector";
 import { getSourceDisplayName } from "@/lib/phone-numbers";
-import { getOrderLineRevenue, getOrderTicketsAndRevenue } from "@/lib/orders/orderRevenue";
+import { getOrderLineRevenue, getOrderReportRevenue, getOrderTicketsAndRevenue } from "@/lib/orders/orderRevenue";
 import type {
   AdminDashboardProps,
   AmbassadorApplication,
@@ -780,7 +780,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         o.payment_status === 'PAID' || o.status === 'PAID' || o.status === 'COMPLETED';
       const onlineRevenue = dayOnline
         .filter((o: any) => chartOnlinePaid(o))
-        .reduce((s: number, o: any) => s + getOrderLineRevenue(o), 0);
+        .reduce((s: number, o: any) => s + getOrderReportRevenue(o), 0);
       const eventsCount = events.filter((ev: { created_at?: string }) => format(new Date(ev.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
       out.push({
         name: dayLabel,
@@ -795,9 +795,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }, [applications, codAmbassadorOrders, onlineOrdersForChart, events]);
 
   const [loadingOrders, setLoadingOrders] = useState(false);
-
-  // POS orders for overview stats (by selected event)
-  const [posOrdersForOverview, setPosOrdersForOverview] = useState<any[]>([]);
 
   // Online Orders state
   const [onlineOrders, setOnlineOrders] = useState<any[]>([]);
@@ -815,7 +812,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     city: 'all',
   });
 
-  // Dashboard overview stats: all payment methods (POS, online, ambassador) for the selected event
+  // Dashboard overview stats: paid revenue + sold tickets for online + ambassador only (matches Reports / Excel pass totals)
   const dashboardOrderStats = useMemo(() => {
     const PAID_AMB = ['PAID', 'COMPLETED'];
     const PENDING_AMB = ['PENDING_CASH', 'PENDING_ADMIN_APPROVAL', 'PENDING_AMBASSADOR_CONFIRMATION', 'APPROVED'];
@@ -851,20 +848,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     // Online: align with Reports (line-item revenue + same “paid” rules as status / payment_status)
     const onlinePaid = onlineOrders.filter((o: any) => isOnlinePaid(o));
     const onlinePending = onlineOrders.filter((o: any) => isOnlinePendingRevenue(o));
-    const onlinePaidRevenue = onlinePaid.reduce((s, o) => s + getOrderLineRevenue(o), 0);
+    const onlinePaidRevenue = onlinePaid.reduce((s, o) => s + getOrderReportRevenue(o), 0);
     const onlinePendingRevenue = onlinePending.reduce((s, o) => s + getOrderLineRevenue(o), 0);
     const onlineSoldTickets = onlinePaid.reduce((s, o) => s + getOrderTicketsAndRevenue(o).tickets, 0);
 
-    // POS orders (filtered by selected event when fetched)
-    const posPaid = posOrdersForOverview.filter((o: any) => o.status === 'PAID');
-    const posPending = posOrdersForOverview.filter((o: any) => o.status === 'PENDING_ADMIN_APPROVAL');
-    const posPaidRevenue = posPaid.reduce((s, o) => s + getOrderLineRevenue(o), 0);
-    const posPendingRevenue = posPending.reduce((s, o) => s + getOrderLineRevenue(o), 0);
-    const posSoldTickets = posPaid.reduce((s, o) => s + getOrderTicketsAndRevenue(o).tickets, 0);
-
-    const paidRevenue = ambPaidRevenue + onlinePaidRevenue + posPaidRevenue;
-    const pendingRevenue = ambPendingRevenue + onlinePendingRevenue + posPendingRevenue;
-    const soldTickets = ambSoldTickets + onlineSoldTickets + posSoldTickets;
+    const paidRevenue = ambPaidRevenue + onlinePaidRevenue;
+    const pendingRevenue = ambPendingRevenue + onlinePendingRevenue;
+    const soldTickets = ambSoldTickets + onlineSoldTickets;
 
     return {
       totalRevenue: paidRevenue + pendingRevenue,
@@ -872,7 +862,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       pendingRevenue,
       soldTickets,
     };
-  }, [codAmbassadorOrders, onlineOrders, posOrdersForOverview]);
+  }, [codAmbassadorOrders, onlineOrders]);
 
   // Compteur (count-up) animation for welcome block metrics
   const [displayStats, setDisplayStats] = useState({ totalRevenue: 0, paidRevenue: 0, pendingRevenue: 0, soldTickets: 0 });
@@ -1967,27 +1957,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [events, selectedEventId]);
 
-  // Fetch POS orders for overview stats (by selected event)
-  const fetchPosOrdersForOverview = async () => {
-    if (!selectedEventId) {
-      setPosOrdersForOverview([]);
-      return;
-    }
-    try {
-      const apiBase = getApiBaseUrl();
-      const url = `${buildFullApiUrl(API_ROUTES.ADMIN_POS_ORDERS, apiBase)}?limit=1000&event_id=${encodeURIComponent(selectedEventId)}`;
-      const res = await fetch(url, { credentials: 'include' });
-      if (!res.ok) {
-        setPosOrdersForOverview([]);
-        return;
-      }
-      const data = await res.json();
-      setPosOrdersForOverview(Array.isArray(data) ? data : []);
-    } catch {
-      setPosOrdersForOverview([]);
-    }
-  };
-
   // Reload data when selected event changes
   useEffect(() => {
     // Skip reload on initial mount (when selectedEventId is being set for the first time)
@@ -1995,9 +1964,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     if (events.length > 0) {
       fetchAmbassadorSalesData();
       fetchOnlineOrders();
-      fetchPosOrdersForOverview();
-    } else if (!selectedEventId) {
-      setPosOrdersForOverview([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEventId]);
@@ -11381,7 +11347,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         fetchAllData();
                         fetchAmbassadorSalesData();
                         fetchOnlineOrders();
-                        fetchPosOrdersForOverview();
                       }}
                       className="flex items-center gap-2 whitespace-nowrap shrink-0"
                     >
