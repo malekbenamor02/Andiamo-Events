@@ -118,6 +118,7 @@ import { ScannersTab } from "@/components/admin/ScannersTab";
 import { PosTab } from "@/components/admin/PosTab";
 import { BulkSmsSelector } from "@/components/admin/BulkSmsSelector";
 import { getSourceDisplayName } from "@/lib/phone-numbers";
+import { getOrderLineRevenue, getOrderTicketsAndRevenue } from "@/lib/orders/orderRevenue";
 import type {
   AdminDashboardProps,
   AmbassadorApplication,
@@ -772,8 +773,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const approvedCount = applications.filter((a: { created_at?: string; status?: string }) => a.status === 'approved' && format(new Date(a.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
       const dayAmbassador = codAmbassadorOrders.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
       const dayOnline = onlineOrdersForChart.filter((o: { created_at?: string }) => format(new Date(o.created_at || 0), 'yyyy-MM-dd') === dateStr);
-      const ambassadorRevenue = dayAmbassador.reduce((s: number, o: { total_price?: number }) => s + (Number(o.total_price) || 0), 0);
-      const onlineRevenue = dayOnline.reduce((s: number, o: { total_price?: number; total?: number }) => s + (Number(o.total_price) ?? Number(o.total) ?? 0), 0);
+      const ambassadorRevenue = dayAmbassador
+        .filter((o: any) => ['PAID', 'COMPLETED'].includes(o.status))
+        .reduce((s: number, o: any) => s + getOrderLineRevenue(o), 0);
+      const chartOnlinePaid = (o: any) =>
+        o.payment_status === 'PAID' || o.status === 'PAID' || o.status === 'COMPLETED';
+      const onlineRevenue = dayOnline
+        .filter((o: any) => chartOnlinePaid(o))
+        .reduce((s: number, o: any) => s + getOrderLineRevenue(o), 0);
       const eventsCount = events.filter((ev: { created_at?: string }) => format(new Date(ev.created_at || 0), 'yyyy-MM-dd') === dateStr).length;
       out.push({
         name: dayLabel,
@@ -812,30 +819,48 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const dashboardOrderStats = useMemo(() => {
     const PAID_AMB = ['PAID', 'COMPLETED'];
     const PENDING_AMB = ['PENDING_CASH', 'PENDING_ADMIN_APPROVAL', 'PENDING_AMBASSADOR_CONFIRMATION', 'APPROVED'];
-    const ambTickets = (o: any) => (o.passes || []).reduce((s: number, p: any) => s + (p.quantity || 0), 0) || (o.quantity || 1);
+    const isOnlinePaid = (o: any) =>
+      o.payment_status === 'PAID' || o.status === 'PAID' || o.status === 'COMPLETED';
+    const isOnlinePendingRevenue = (o: any) => {
+      if (o.status === 'REMOVED_BY_ADMIN') return false;
+      if (isOnlinePaid(o)) return false;
+      const terminal = new Set([
+        'CANCELLED',
+        'CANCELLED_BY_ADMIN',
+        'CANCELLED_BY_AMBASSADOR',
+        'REJECTED',
+        'FAILED',
+      ]);
+      if (terminal.has(o.status)) return false;
+      if (o.payment_status === 'FAILED' || o.payment_status === 'REFUNDED') return false;
+      return (
+        o.status === 'PENDING_ONLINE' ||
+        o.status === 'REDIRECTED' ||
+        o.payment_status === 'PENDING_PAYMENT' ||
+        o.payment_status == null
+      );
+    };
 
-    // Ambassador orders (already filtered by selected event when fetched)
+    // Ambassador orders (already filtered by selected event when fetched) — paid = collected cash only
     const ambPaid = codAmbassadorOrders.filter((o: any) => PAID_AMB.includes(o.status));
     const ambPending = codAmbassadorOrders.filter((o: any) => PENDING_AMB.includes(o.status));
-    const ambPaidRevenue = ambPaid.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
-    const ambPendingRevenue = ambPending.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
-    const ambSoldTickets = ambPaid.reduce((s, o) => s + ambTickets(o), 0);
+    const ambPaidRevenue = ambPaid.reduce((s, o) => s + getOrderLineRevenue(o), 0);
+    const ambPendingRevenue = ambPending.reduce((s, o) => s + getOrderLineRevenue(o), 0);
+    const ambSoldTickets = ambPaid.reduce((s, o) => s + getOrderTicketsAndRevenue(o).tickets, 0);
 
-    // Online orders (already filtered by selected event when fetched): PAID vs PENDING_PAYMENT
-    const onlinePaid = onlineOrders.filter((o: any) => o.payment_status === 'PAID');
-    const onlinePending = onlineOrders.filter((o: any) => (o.payment_status === 'PENDING_PAYMENT' || o.payment_status == null) && o.status !== 'REMOVED_BY_ADMIN');
-    const onlineTickets = (o: any) => (o.order_passes || []).reduce((s: number, p: any) => s + (p.quantity || 0), 0);
-    const onlinePaidRevenue = onlinePaid.reduce((s, o) => s + (Number(o.total_price) ?? Number(o.total) ?? 0), 0);
-    const onlinePendingRevenue = onlinePending.reduce((s, o) => s + (Number(o.total_price) ?? Number(o.total) ?? 0), 0);
-    const onlineSoldTickets = onlinePaid.reduce((s, o) => s + onlineTickets(o), 0);
+    // Online: align with Reports (line-item revenue + same “paid” rules as status / payment_status)
+    const onlinePaid = onlineOrders.filter((o: any) => isOnlinePaid(o));
+    const onlinePending = onlineOrders.filter((o: any) => isOnlinePendingRevenue(o));
+    const onlinePaidRevenue = onlinePaid.reduce((s, o) => s + getOrderLineRevenue(o), 0);
+    const onlinePendingRevenue = onlinePending.reduce((s, o) => s + getOrderLineRevenue(o), 0);
+    const onlineSoldTickets = onlinePaid.reduce((s, o) => s + getOrderTicketsAndRevenue(o).tickets, 0);
 
     // POS orders (filtered by selected event when fetched)
     const posPaid = posOrdersForOverview.filter((o: any) => o.status === 'PAID');
     const posPending = posOrdersForOverview.filter((o: any) => o.status === 'PENDING_ADMIN_APPROVAL');
-    const posTickets = (o: any) => (o.order_passes || []).reduce((s: number, p: any) => s + (p.quantity || 0), 0) || (o.quantity || 0);
-    const posPaidRevenue = posPaid.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
-    const posPendingRevenue = posPending.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
-    const posSoldTickets = posPaid.reduce((s, o) => s + posTickets(o), 0);
+    const posPaidRevenue = posPaid.reduce((s, o) => s + getOrderLineRevenue(o), 0);
+    const posPendingRevenue = posPending.reduce((s, o) => s + getOrderLineRevenue(o), 0);
+    const posSoldTickets = posPaid.reduce((s, o) => s + getOrderTicketsAndRevenue(o).tickets, 0);
 
     const paidRevenue = ambPaidRevenue + onlinePaidRevenue + posPaidRevenue;
     const pendingRevenue = ambPendingRevenue + onlinePendingRevenue + posPendingRevenue;
@@ -6953,7 +6978,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         let chartQuery = (supabase as any)
           .from('orders')
-          .select('id, created_at, total_price, total')
+          .select('id, created_at, total_price, total, status, payment_status, order_passes (quantity, price)')
           .eq('source', 'platform_online')
           .gte('created_at', sevenDaysAgo.toISOString());
         
@@ -11733,7 +11758,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
               {/* Reports & Analytics Tab */}
               <TabsContent value="tickets" className="space-y-6">
-                <ReportsAnalytics language={language} dashboardSelectedEventId={selectedEventId || null} />
+                <ReportsAnalytics
+                  language={language}
+                  dashboardSelectedEventId={selectedEventId || null}
+                  adminRole={currentAdminRole}
+                />
               </TabsContent>
 
               {/* Online Orders Tab */}

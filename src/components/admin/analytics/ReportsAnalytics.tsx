@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { useAnalytics, DateRange } from '@/hooks/useAnalytics';
 import { useEvents } from '@/hooks/useEvents';
 import { KPICards } from './KPICards';
@@ -12,18 +13,24 @@ import { SalesOverTime } from './SalesOverTime';
 import { PassPerformance } from './PassPerformance';
 import { SalesChannelBreakdown } from './SalesChannelBreakdown';
 import { Insights } from './Insights';
-import { BarChart3 } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
 import { formatDateDMY } from '@/lib/date-utils';
+import { canDownloadReportsExcel, downloadReportsExcel } from '@/lib/analytics/reportsExcelExport';
+import { useToast } from '@/hooks/use-toast';
 
 interface ReportsAnalyticsProps {
   language?: 'en' | 'fr';
   /** When provided, syncs the event selector with the main Dashboard filter so both show the same event and consistent numbers. */
   dashboardSelectedEventId?: string | null;
+  /** Logged-in admin role from session; export is only for admin / super_admin. */
+  adminRole?: string | null;
 }
 
-export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId }: ReportsAnalyticsProps) {
+export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId, adminRole = null }: ReportsAnalyticsProps) {
   const [dateRange, setDateRange] = useState<DateRange>('ALL_TIME');
   const [animationKey, setAnimationKey] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const { toast } = useToast();
   const { data: events, isLoading: eventsLoading } = useEvents();
   const selectedEventId = dashboardSelectedEventId ?? null;
   const { data: analyticsData, isLoading: analyticsLoading, error: analyticsError } = useAnalytics(selectedEventId, dateRange);
@@ -36,6 +43,48 @@ export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId }: 
   const selectedEvent = selectedEventId 
     ? events?.find(e => e.id === selectedEventId)
     : null;
+
+  const canExportExcel = canDownloadReportsExcel(adminRole);
+
+  const handleExportExcel = async () => {
+    if (!canDownloadReportsExcel(adminRole)) {
+      toast({
+        variant: 'destructive',
+        title: language === 'fr' ? 'Accès refusé' : 'Access denied',
+        description:
+          language === 'fr'
+            ? 'Seuls les administrateurs peuvent exporter ce rapport.'
+            : 'Only administrators can export this report.',
+      });
+      return;
+    }
+    setExporting(true);
+    try {
+      await downloadReportsExcel({
+        eventId: selectedEventId,
+        eventName: selectedEvent?.name ?? null,
+        dateRange,
+        language: language === 'fr' ? 'fr' : 'en',
+        adminRole,
+      });
+      toast({
+        title: language === 'fr' ? 'Export réussi' : 'Export ready',
+        description:
+          language === 'fr'
+            ? 'Le fichier Excel (en ligne + ambassadeurs) a été téléchargé.'
+            : 'Excel file downloaded with Online payments and Ambassador sales sheets.',
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({
+        variant: 'destructive',
+        title: language === 'fr' ? 'Échec de l’export' : 'Export failed',
+        description: msg,
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6" key={animationKey}>
@@ -50,7 +99,7 @@ export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId }: 
               Comprehensive analytics dashboard • Real-time insights • Performance metrics
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Select
               value={dateRange}
               onValueChange={(v: DateRange) => setDateRange(v)}
@@ -64,6 +113,22 @@ export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId }: 
                 <SelectItem value="LAST_7_DAYS">Last 7 Days</SelectItem>
               </SelectContent>
             </Select>
+            {canExportExcel && (
+              <Button
+                type="button"
+                variant="outline"
+                className="font-heading gap-2 border-primary/40 bg-card hover:bg-primary/10"
+                disabled={exporting || analyticsLoading}
+                onClick={handleExportExcel}
+              >
+                {exporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 text-primary" />
+                )}
+                {language === 'fr' ? 'Exporter Excel' : 'Export Excel'}
+              </Button>
+            )}
           </div>
         </div>
 

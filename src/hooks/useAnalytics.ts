@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Order, OrderPass } from '@/types/orders';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
+import { getOrderTicketsAndRevenue } from '@/lib/orders/orderRevenue';
 
 export type DateRange = 'ALL_TIME' | 'LAST_30_DAYS' | 'LAST_7_DAYS';
 
@@ -79,7 +80,7 @@ export interface AnalyticsData {
   dateRangeLabel: string;
 }
 
-function getDateRangeFilter(dateRange: DateRange): { startDate: Date | null; endDate: Date | null } {
+export function getDateRangeFilter(dateRange: DateRange): { startDate: Date | null; endDate: Date | null } {
   const now = new Date();
   now.setHours(23, 59, 59, 999); // End of today
   
@@ -148,7 +149,7 @@ function getPreviousPeriodDateRange(dateRange: DateRange): { startDate: Date | n
   }
 }
 
-function getDateRangeLabel(dateRange: DateRange): string {
+export function getDateRangeLabel(dateRange: DateRange): string {
   switch (dateRange) {
     case 'LAST_7_DAYS':
       return 'Last 7 Days';
@@ -252,9 +253,9 @@ async function fetchAnalyticsData(
         orderRevenue += revenue;
       });
     } else {
-      // Fallback: use order quantity and total_price
-      orderTickets = order.quantity || 0;
-      orderRevenue = parseFloat(order.total_price) || 0;
+      const agg = getOrderTicketsAndRevenue(order);
+      orderTickets = agg.tickets;
+      orderRevenue = agg.revenue;
     }
     
     pendingCashAndApprovalPasses += orderTickets;
@@ -307,9 +308,15 @@ async function fetchAnalyticsData(
         });
       });
     } else {
-      // Fallback: use order quantity and total_price
-      orderTickets = order.quantity || 0;
-      orderRevenue = parseFloat(order.total_price) || 0;
+      const agg = getOrderTicketsAndRevenue(order);
+      orderTickets = agg.tickets;
+      orderRevenue = agg.revenue;
+      const passName = order.pass_type || 'Unknown';
+      const existingPass = passPerformanceMap.get(passName) || { tickets: 0, revenue: 0 };
+      passPerformanceMap.set(passName, {
+        tickets: existingPass.tickets + orderTickets,
+        revenue: existingPass.revenue + orderRevenue
+      });
     }
     
     totalTicketsSold += orderTickets;
