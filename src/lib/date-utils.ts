@@ -76,6 +76,47 @@ export function formatDateTimeLong(
   return format(d, pattern, { locale: loc });
 }
 
+/**
+ * Format an instant from the DB (ISO / timestamptz) for <input type="datetime-local">.
+ * Uses the user's local calendar clock so edits match what they see in the picker.
+ */
+export function toDatetimeLocalValue(date: Date | string | number): string {
+  const d =
+    typeof date === "string" || typeof date === "number" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
+/**
+ * Parse datetime-local value (with optional seconds) or a full ISO string → UTC ISO for the API.
+ */
+export function fromDatetimeLocalToIso(value: string): string | null {
+  const s = value.trim();
+  if (!s) return null;
+  const localMatch = s.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d{1,3})?$/
+  );
+  if (localMatch) {
+    const y = +localMatch[1];
+    const mo = +localMatch[2] - 1;
+    const day = +localMatch[3];
+    const h = +localMatch[4];
+    const min = +localMatch[5];
+    const sec = localMatch[6] ? +localMatch[6] : 0;
+    const d = new Date(y, mo, day, h, min, sec, 0);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString();
+  }
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 /** @deprecated Pass sales no longer use a time-based grace; kept for any legacy imports. */
 export const PASS_PURCHASE_GRACE_HOURS = 2;
 export const PASS_PURCHASE_GRACE_MS = PASS_PURCHASE_GRACE_HOURS * 60 * 60 * 1000;

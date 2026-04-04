@@ -101,6 +101,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
   formatDateDMY,
+  fromDatetimeLocalToIso,
   getDefaultAdminDashboardEventId,
   sortEventsForAdminDashboardSelector,
 } from "@/lib/date-utils";
@@ -8328,7 +8329,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
-  const handleSaveEvent = async (event: Event, uploadedFile?: File | null) => {
+  const handleSaveEvent = async (event: Event, uploadedFile?: File | null): Promise<boolean> => {
     try {
       // Validate Instagram link
       if (event.instagram_link && !isInstagramUrl(event.instagram_link)) {
@@ -8339,7 +8340,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             : "Veuillez entrer une URL Instagram valide (ex: https://www.instagram.com/username)",
           variant: "destructive",
         });
-        return;
+        return false;
       }
       const isCompleted = event.event_status === 'completed';
       const effectiveEventType = isCompleted ? 'gallery' : (event.event_type || 'upcoming');
@@ -8356,7 +8357,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               : "Impossible de passer en galerie avant la date de l'Ã©vÃ©nement, ou marquez l'Ã©vÃ©nement comme TerminÃ©.",
             variant: "destructive",
           });
-          return;
+          return false;
         }
       }
       // Pass management is now handled separately via Pass Stock Management dialog
@@ -8376,7 +8377,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             variant: "destructive",
           });
           setUploadingImage(false);
-          return;
+          return false;
         }
         
         posterUrl = uploadResult.url;
@@ -8411,7 +8412,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             variant: "destructive",
           });
           setUploadingGallery(false);
-          return;
+          return false;
         } finally {
           setUploadingGallery(false);
         }
@@ -8420,19 +8421,29 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       let eventId = event.id;
       let newEventData: any = null; // Declare outside if/else block for scope access
 
-      // Convert date from datetime-local format to ISO string if needed
-      let eventDate = event.date;
-      if (eventDate) {
-        // Check if date is in datetime-local format (YYYY-MM-DDTHH:mm) without timezone
-        // ISO format includes 'Z' or timezone offset (+/-HH:mm)
-        const isDatetimeLocal = eventDate.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
-        if (isDatetimeLocal) {
-          // Convert datetime-local to ISO by creating a Date object
-          const dateObj = new Date(eventDate);
-          if (!isNaN(dateObj.getTime())) {
-            eventDate = dateObj.toISOString();
-          }
-        }
+      const dateRaw = event.date?.trim() ?? "";
+      if (!dateRaw) {
+        toast({
+          title: t.error,
+          description:
+            language === "en"
+              ? "Event date is required."
+              : "La date de l'événement est requise.",
+          variant: "destructive",
+        });
+        return false;
+      }
+      const eventDate = fromDatetimeLocalToIso(dateRaw);
+      if (!eventDate) {
+        toast({
+          title: t.error,
+          description:
+            language === "en"
+              ? "Invalid event date. Use the date picker or correct the value."
+              : "Date d'événement invalide. Utilisez le sélecteur ou corrigez la valeur.",
+          variant: "destructive",
+        });
+        return false;
       }
 
       const rawStatus = event.event_status;
@@ -8489,12 +8500,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Update local state immediately for instant UI feedback
       if (event.id) {
         // Update existing event in the list
+        const persistedDate = newEventData?.date ?? eventDate;
         setEvents(prev => prev.map(e => 
           e.id === event.id
             ? { 
                 ...e, 
                 ...event, 
                 poster_url: posterUrl, 
+                date: persistedDate,
                 // Keep existing passes (not modified in edit dialog)
                 gallery_images: finalGalleryImages,
                 gallery_videos: finalGalleryVideos,
@@ -8544,6 +8557,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // Silently fail - the event is already saved and shown in UI
       }
 
+      return true;
     } catch (error) {
       console.error('Error saving event:', error, error?.message, error?.details);
       toast({
@@ -8551,6 +8565,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         description: (error as any)?.message || (language === 'en' ? "Failed to save event" : "Échec de l'enregistrement"),
         variant: "destructive",
       });
+      return false;
     } finally {
       setUploadingImage(false);
     }

@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import type { Event, EventPass } from "../types";
-import { formatDateDMY } from "@/lib/date-utils";
+import { formatDateDMY, toDatetimeLocalValue } from "@/lib/date-utils";
 
 export interface EventsTabProps {
   language: "en" | "fr";
@@ -39,7 +39,7 @@ export interface EventsTabProps {
   passValidationErrors: Record<string, string>;
   setPassValidationErrors: (v: Record<string, string>) => void;
   isInstagramUrl: (url: string) => boolean;
-  handleSaveEvent: (event: Event, uploadedFile?: File | null) => Promise<void>;
+  handleSaveEvent: (event: Event, uploadedFile?: File | null) => Promise<boolean>;
   handleGalleryFileSelect: (files: File[], type: 'images' | 'videos') => void;
   removeGalleryFile: (index: number, type: 'images' | 'videos') => void;
   removePendingGalleryFile: (index: number, type: 'images' | 'videos') => void;
@@ -89,7 +89,10 @@ export function EventsTab(p: EventsTabProps) {
                         {p.t.add}
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
+                    <DialogContent
+                      className="max-w-4xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300"
+                      translate="no"
+                    >
                       <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
                         <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
                           {p.editingEvent?.id ? 'Edit Event' : 'Add New Event'}
@@ -111,7 +114,11 @@ export function EventsTab(p: EventsTabProps) {
                             <Input
                               id="eventDate"
                               type="datetime-local"
-                              value={p.editingEvent?.date ? p.editingEvent.date.slice(0, 16) : ''}
+                              value={
+                                p.editingEvent?.date
+                                  ? toDatetimeLocalValue(p.editingEvent.date)
+                                  : ""
+                              }
                               onChange={(e) => p.setEditingEvent(prev => ({ ...prev, date: e.target.value }))}
                               className="transition-all duration-300 focus:scale-105"
                             />
@@ -490,8 +497,8 @@ export function EventsTab(p: EventsTabProps) {
                         </DialogClose>
                         <Button 
                           onClick={async () => {
+                            if (!p.editingEvent) return;
                             await p.handleSaveEvent(p.editingEvent, p.editingEvent._uploadFile);
-                            p.setIsEventDialogOpen(false);
                           }}
                           className="transform hover:scale-105 transition-all duration-300"
                         >
