@@ -1,16 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { 
   Calendar, 
   MapPin, 
   Users, 
-  Clock, 
-  Music,
-  Sparkles,
   ExternalLink,
-  Camera,
-  Ticket,
-  Info,
   ArrowLeft
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,12 +41,21 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
     const normalizedSlug = decodeURIComponent(eventSlug).toLowerCase().trim();
     
     return allEvents.find(e => {
-      const idMatch = normalizedSlug.startsWith('event-') && normalizedSlug === `event-${e.id}`;
+      const rawSlug = typeof e.slug === "string" ? e.slug.trim() : "";
+      const officialMatch =
+        rawSlug !== "" && rawSlug.toLowerCase() === normalizedSlug;
+      const idMatch =
+        normalizedSlug.startsWith("event-") && normalizedSlug === `event-${e.id}`;
       const eventSlugFromName = generateSlug(e.name).toLowerCase();
       const slugMatch = eventSlugFromName === normalizedSlug;
-      return idMatch || slugMatch;
+      return officialMatch || idMatch || slugMatch;
     }) || null;
   }, [eventSlug, allEvents]);
+
+  const isEventPastOrCompleted = useMemo(() => {
+    if (!event) return false;
+    return isPassPurchaseWindowClosed(event.date, event.event_status);
+  }, [event]);
   
   // Get related events (other upcoming events, excluding current)
   const relatedEvents = useMemo(() => {
@@ -69,18 +72,11 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
       upcomingEvent: "Upcoming Event",
       eventDate: "Event Date",
       location: "Location",
-      musicStyle: "Music Style",
       estimatedCrowd: "Estimated Crowd",
       eventDescription: "Event Description",
       tickets: "Tickets",
       bookNow: "Book Now",
-      viewOnInstagram: "View on Instagram",
       contactOrganizer: "Contact Organizer",
-      ageRestriction: "Age Restriction",
-      dressCode: "Dress Code",
-      specialNotes: "Special Notes",
-      eventInfo: "Event Information",
-      capacity: "Capacity",
       relatedEvents: "More Upcoming Events",
       backToEvents: "Back to Events",
       noEventFound: "Event not found",
@@ -88,7 +84,6 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
       showMore: "Read more",
       showLess: "Read less",
       cancelled: "Cancelled",
-      featured: "Featured",
       standard: "Standard",
       vip: "VIP"
     },
@@ -96,18 +91,11 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
       upcomingEvent: "Événement à Venir",
       eventDate: "Date de l'événement",
       location: "Lieu",
-      musicStyle: "Style de musique",
       estimatedCrowd: "Foule estimée",
       eventDescription: "Description de l'événement",
       tickets: "Billets",
       bookNow: "Réserver",
-      viewOnInstagram: "Voir sur Instagram",
       contactOrganizer: "Contacter l'organisateur",
-      ageRestriction: "Restriction d'âge",
-      dressCode: "Code vestimentaire",
-      specialNotes: "Notes spéciales",
-      eventInfo: "Informations sur l'événement",
-      capacity: "Capacité",
       relatedEvents: "Plus d'Événements à Venir",
       backToEvents: "Retour aux Événements",
       noEventFound: "Événement introuvable",
@@ -115,7 +103,6 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
       showMore: "Lire plus",
       showLess: "Lire moins",
       cancelled: "Annulé",
-      featured: "En Vedette",
       standard: "Standard",
       vip: "VIP"
     }
@@ -166,16 +153,15 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
     );
   }
 
-  const eventUrl = `event-${event.id}`;
-  const eventPath = `/event/${eventSlug}`;
+  if (event.event_type === "gallery" && eventSlug) {
+    const gallerySlug = (event.slug && event.slug.trim()) || generateSlug(event.name);
+    return <Navigate to={`/gallery/${encodeURIComponent(gallerySlug)}`} replace />;
+  }
+
+  const canonicalEventSlug = (event.slug && event.slug.trim()) || generateSlug(event.name);
+  const eventPath = `/event/${canonicalEventSlug}`;
   const eventImage = event.poster_url?.startsWith("http") ? event.poster_url : event.poster_url ? `${SITE_URL}${event.poster_url}` : undefined;
   const startDateIso = event.date?.includes("T") ? event.date : event.date ? `${event.date}T20:00:00` : "";
-
-  // After grace from start or completed: no Book Now, no pass purchase
-  const isEventPastOrCompleted = useMemo(() => {
-    if (!event?.date) return false;
-    return isPassPurchaseWindowClosed(event.date, event.event_status);
-  }, [event?.date, event?.event_status]);
 
   return (
     <main className="pt-16 min-h-screen bg-background animate-page-intro" id="main-content">
@@ -241,20 +227,10 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
                     {t.cancelled}
                   </Badge>
                 )}
-                {event.featured && (
-                  <Badge className="bg-gradient-to-r from-yellow-400 to-orange-500/80 backdrop-blur-sm animate-fade-in-up">
-                    ⭐ {t.featured}
-                  </Badge>
-                )}
               </div>
               <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-4 drop-shadow-2xl animate-fade-in-up uppercase" style={{ animationDelay: '0.4s' }}>
                 {event.name}
               </h1>
-              {event.event_category && (
-                <p className="text-xl md:text-2xl text-white/90 font-medium animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
-                  {event.event_category}
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -263,7 +239,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
       {/* Event Identity Block (Quick Info) */}
       <section className="py-12 bg-gradient-dark">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="flex items-start space-x-3 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
               <Calendar className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
               <div>
@@ -280,19 +256,11 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
               </div>
             </div>
             
-            <div className="flex items-start space-x-3 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
-              <Music className="w-5 h-5 text-cyan-400 mt-1 flex-shrink-0" />
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">{t.musicStyle}</p>
-                <p className="text-white font-semibold">{event.event_category || "Electronic"}</p>
-              </div>
-            </div>
-            
             {event.capacity && (
-              <div className="flex items-start space-x-3 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+              <div className="flex items-start space-x-3 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
                 <Users className="w-5 h-5 text-yellow-400 mt-1 flex-shrink-0" />
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">{t.capacity}</p>
+                  <p className="text-sm text-muted-foreground mb-1">{t.estimatedCrowd}</p>
                   <p className="text-white font-semibold">{event.capacity}+</p>
                 </div>
               </div>
@@ -318,7 +286,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
                     <ExpandableText
                       text={event.description}
                       maxLength={250}
-                      className="text-base md:text-lg text-foreground leading-relaxed whitespace-pre-wrap break-words"
+                      className="text-lg text-muted-foreground leading-relaxed whitespace-pre-wrap break-words"
                       showMoreText={t.showMore}
                       showLessText={t.showLess}
                     />
@@ -335,7 +303,9 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
         <section className="py-16 bg-gradient-dark">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <p className="text-muted-foreground text-lg">
-              {language === 'en' ? 'This event has passed. Pass purchase is no longer available.' : 'Cet événement est terminé. La réservation n\'est plus disponible.'}
+              {language === 'en'
+                ? 'Pass sales are closed for this event. Open the gallery from the Events page to see the recap.'
+                : 'La vente de passes est fermée pour cet événement. Ouvrez la galerie depuis la page Événements pour le récapitulatif.'}
             </p>
           </div>
         </section>
@@ -367,85 +337,19 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
         </section>
       ) : null}
 
-      {/* Event Information */}
-      {(event.age_restriction || event.dress_code || event.special_notes || event.organizer_contact) && (
-        <section className="py-16 bg-background">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-8 animate-fade-in-up">
-              <h2 className="text-3xl md:text-4xl font-bold text-gradient-neon mb-4 flex items-center justify-center gap-2">
-                <Info className="w-8 h-8" />
-                {t.eventInfo}
-              </h2>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {event.age_restriction && (
-                <Card className="p-6 border-primary/20 hover:border-primary/40 transition-all animate-fade-in-up">
-                  <div className="flex items-start space-x-3">
-                    <Users className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">{t.ageRestriction}</p>
-                      <p className="text-white font-semibold">{event.age_restriction}+</p>
-                    </div>
-                  </div>
-                </Card>
-              )}
-              
-              {event.dress_code && (
-                <Card className="p-6 border-primary/20 hover:border-primary/40 transition-all animate-fade-in-up">
-                  <div className="flex items-start space-x-3">
-                    <Sparkles className="w-5 h-5 text-pink-400 mt-1 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">{t.dressCode}</p>
-                      <p className="text-white font-semibold">{event.dress_code}</p>
-                    </div>
-                  </div>
-                </Card>
-              )}
-              
-              {event.special_notes && (
-                <Card className="p-6 border-primary/20 hover:border-primary/40 transition-all animate-fade-in-up md:col-span-2">
-                  <div className="flex items-start space-x-3">
-                    <Info className="w-5 h-5 text-cyan-400 mt-1 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">{t.specialNotes}</p>
-                      <p className="text-white font-semibold">{event.special_notes}</p>
-                    </div>
-                  </div>
-                </Card>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Social Links */}
-      {(event.instagram_link || event.whatsapp_link || event.organizer_contact) && (
+      {event.organizer_contact && (
         <section className="py-16 bg-gradient-dark">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up">
-              {event.instagram_link && (
-                <a
-                  href={event.instagram_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold border border-pink-500/50 text-pink-500/80 hover:border-pink-500/70 hover:text-pink-500/90 hover:bg-pink-500/5 transition-all duration-300"
-                >
-                  <Camera className="w-5 h-5 mr-2" />
-                  {t.viewOnInstagram}
-                </a>
-              )}
-              {event.organizer_contact && (
-                <a
-                  href={`https://wa.me/${event.organizer_contact.replace(/[^0-9]/g, '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold border border-green-500/50 text-green-500/80 hover:border-green-500/70 hover:text-green-500/90 hover:bg-green-500/5 transition-all duration-300"
-                >
-                  <ExternalLink className="w-5 h-5 mr-2" />
-                  {t.contactOrganizer}
-                </a>
-              )}
+              <a
+                href={`https://wa.me/${event.organizer_contact.replace(/[^0-9]/g, '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold border border-green-500/50 text-green-500/80 hover:border-green-500/70 hover:text-green-500/90 hover:bg-green-500/5 transition-all duration-300"
+              >
+                <ExternalLink className="w-5 h-5 mr-2" />
+                {t.contactOrganizer}
+              </a>
             </div>
           </div>
         </section>
@@ -463,13 +367,15 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {relatedEvents.map((relatedEvent, index) => {
-                const relatedEventUrl = `event-${relatedEvent.id}`;
+                const relatedPathSlug =
+                  (relatedEvent.slug && relatedEvent.slug.trim()) ||
+                  generateSlug(relatedEvent.name);
                 return (
                   <Card
                     key={relatedEvent.id}
                     className="overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-300 animate-fade-in-up"
                     style={{ animationDelay: `${0.2 + index * 0.1}s` }}
-                    onClick={() => navigate(`/event/${relatedEventUrl}`)}
+                    onClick={() => navigate(`/event/${relatedPathSlug}`)}
                   >
                     <div className="aspect-video relative">
                       <img

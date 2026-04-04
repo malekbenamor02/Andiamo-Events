@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Calendar, MapPin, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { generateSlug } from '@/lib/utils';
-import { formatDateTimeLong } from '@/lib/date-utils';
+import { formatDateTimeLong, isPassPurchaseWindowClosed } from '@/lib/date-utils';
 import { getOptimizedImageUrl } from '@/lib/image-utils';
 import { useFeaturedEvents, type Event } from '@/hooks/useEvents';
 
@@ -15,11 +15,12 @@ interface Event {
   venue: string;
   city: string;
   poster_url?: string;
-  featured?: boolean;
   instagram_link?: string; // Changed from whatsapp_link to instagram_link
   whatsapp_link?: string; // Keep for backward compatibility with database
   standard_price?: number;
   vip_price?: number;
+  slug?: string;
+  event_status?: string;
 }
 
 interface FeaturedEventsSectionProps {
@@ -68,11 +69,6 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                   width={400}
                   height={288}
                 />
-                {event.featured && (
-                  <span className="absolute top-4 left-4 bg-gradient-primary text-white px-3 py-1 rounded-full text-sm font-semibold">
-                    Featured
-                  </span>
-                )}
               </div>
               <div className="p-4">
                 <h3 className="text-xl font-bold text-primary mb-2">{event.name}</h3>
@@ -102,28 +98,32 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                   </div>
                 )}
                 <div className="mt-4">
-                  <Button
-                    onClick={() => {
-                      const slug = event.slug || generateSlug(event.name);
-                      navigate(`/${slug}`);
-                    }}
-                    className="btn-gradient w-full inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold text-white shadow-md shadow-primary/40 hover:shadow-lg hover:shadow-primary/50 hover:scale-[1.02] transition-all duration-300"
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    {language === 'en' ? 'Book Now' : 'Réserver'}
-                  </Button>
+                  {!isPassPurchaseWindowClosed(event.date, event.event_status) ? (
+                    <Button
+                      onClick={() => {
+                        const slug = event.slug || generateSlug(event.name);
+                        navigate(`/${slug}`);
+                      }}
+                      className="btn-gradient w-full inline-flex items-center justify-center px-4 py-2 rounded-lg font-semibold text-white shadow-md shadow-primary/40 hover:shadow-lg hover:shadow-primary/50 hover:scale-[1.02] transition-all duration-300"
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      {language === 'en' ? 'Book Now' : 'Réserver'}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        navigate(`/event/${event.slug || generateSlug(event.name)}`)
+                      }
+                      className="w-full"
+                    >
+                      {language === 'en' ? 'View event' : "Voir l'événement"}
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
           ))}
-        </div>
-        <div className="text-center mt-12">
-          <button
-            onClick={() => navigate('/events')}
-            className="bg-gradient-primary text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 hover:scale-105 hover:shadow-lg"
-          >
-            {language === 'en' ? 'View All Events' : 'Voir Tous les Événements'}
-          </button>
         </div>
       </div>
     </section>

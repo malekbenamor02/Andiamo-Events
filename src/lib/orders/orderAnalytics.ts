@@ -35,3 +35,13 @@ export function isPaidOnlineOrAmbassadorOrder(order: {
 }): boolean {
   return isPaidOnlineOrder(order) || isPaidAmbassadorCashOrder(order);
 }
+
+/** Paid POS / point de vente orders (same scope as Reports analytics & Excel export). */
+export function isPaidPosOrder(order: {
+  payment_method?: string | null;
+  source?: string | null;
+  status?: string | null;
+}): boolean {
+  if (order.status !== 'PAID' && order.status !== 'COMPLETED') return false;
+  return order.payment_method === 'pos' || order.source === 'point_de_vente';
+}

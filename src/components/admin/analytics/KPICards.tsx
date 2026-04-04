@@ -1,9 +1,9 @@
 /**
  * KPI Cards Component
- * Displays animated KPI metrics with count-up animations
+ * KPI metrics for Reports & Analytics
  */
 
-import { useEffect, useState } from 'react';
+import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { TrendingUp, TrendingDown, Ticket, DollarSign, ShoppingCart, Target, Calendar, Users, Info, Clock, Package } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -40,40 +40,9 @@ interface KPICardProps {
   icon: React.ReactNode;
   trend?: number | null;
   color: string;
-  delay: number;
 }
 
-function KPICard({ title, value, suffix = '', icon, trend, color, delay }: KPICardProps) {
-  const [displayValue, setDisplayValue] = useState(0);
-  const [isAnimating, setIsAnimating] = useState(false);
-
-  useEffect(() => {
-    setIsAnimating(true);
-    const duration = 1500;
-    const steps = 60;
-    const increment = value / steps;
-    let current = 0;
-    let step = 0;
-
-    const timer = setTimeout(() => {
-      const interval = setInterval(() => {
-        step++;
-        current = Math.min(value, increment * step);
-        setDisplayValue(Math.floor(current));
-
-        if (step >= steps) {
-          clearInterval(interval);
-          setDisplayValue(value);
-          setIsAnimating(false);
-        }
-      }, duration / steps);
-    }, delay);
-
-    return () => {
-      clearInterval(timer as any);
-    };
-  }, [value, delay]);
-
+function KPICard({ title, value, suffix = '', icon, trend, color }: KPICardProps) {
   const formatValue = (val: number) => {
     if (val >= 1000000) {
       return (val / 1000000).toFixed(1) + 'M';
@@ -125,7 +94,7 @@ function KPICard({ title, value, suffix = '', icon, trend, color, delay }: KPICa
             {typeof title === 'string' ? title : title}
           </div>
           <p className={`text-3xl font-heading font-bold ${color}`}>
-            {formatValue(displayValue)}{suffix}
+            {formatValue(value)}{suffix}
           </p>
         </div>
       </CardContent>
@@ -189,7 +158,6 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<Clock className="w-6 h-6 text-yellow-500" />}
         trend={null}
         color="text-yellow-500"
-        delay={100}
       />
       <KPICard
         title="Pending Cash & Approval Passes"
@@ -197,7 +165,6 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<Package className="w-6 h-6 text-amber-500" />}
         trend={null}
         color="text-amber-500"
-        delay={150}
       />
       <KPICard
         title="Pending Cash & Approval Revenue"
@@ -206,7 +173,6 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<DollarSign className="w-6 h-6 text-orange-600" />}
         trend={null}
         color="text-orange-600"
-        delay={200}
       />
       <KPICard
         title="Total Tickets Sold"
@@ -214,7 +180,6 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<Ticket className="w-6 h-6 text-green-500" />}
         trend={data.trends.tickets}
         color="text-green-500"
-        delay={250}
       />
       <KPICard
         title="Total Revenue"
@@ -223,7 +188,6 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<DollarSign className="w-6 h-6 text-orange-500" />}
         trend={data.trends.revenue}
         color="text-orange-500"
-        delay={300}
       />
       <KPICard
         title="Total Orders"
@@ -231,7 +195,6 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<ShoppingCart className="w-6 h-6 text-blue-500" />}
         trend={data.trends.orders}
         color="text-blue-500"
-        delay={350}
       />
       <TooltipProvider>
         <Tooltip>
@@ -249,7 +212,6 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
                 icon={<Target className="w-6 h-6 text-purple-500" />}
                 trend={data.trends.completionRate}
                 color="text-purple-500"
-                delay={400}
               />
             </div>
           </TooltipTrigger>
@@ -268,7 +230,6 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<Calendar className="w-6 h-6 text-cyan-500" />}
         trend={data.trends.avgTickets}
         color="text-cyan-500"
-        delay={450}
       />
       <KPICard
         title="Ambassadors Involved"
@@ -276,7 +237,6 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         icon={<Users className="w-6 h-6 text-pink-500" />}
         trend={data.trends.ambassadors}
         color="text-pink-500"
-        delay={500}
       />
     </div>
   );

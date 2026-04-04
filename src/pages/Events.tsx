@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, Users, Clock, DollarSign, Info, Image as ImageIcon, Maximize2, Minimize2, Volume2, VolumeX, Camera } from "lucide-react";
+import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, Users, Clock, DollarSign, Info, Image as ImageIcon, Maximize2, Minimize2, Volume2, VolumeX, Camera, Ticket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -75,13 +75,15 @@ const Events = ({ language }: EventsProps) => {
       organizerContact: "Organizer Contact",
       standard: "Standard",
       vip: "VIP",
-      featured: "Featured",
+      statusActive: "Active",
       cancelled: "Cancelled",
       completed: "Completed",
       gallery: "Gallery",
       details: "Details",
       viewFullscreen: "View Fullscreen",
-      exitFullscreen: "Exit Fullscreen"
+      exitFullscreen: "Exit Fullscreen",
+      passesHeading: "Passes",
+      primaryPass: "Featured"
     },
     fr: {
       title: "Événements",
@@ -109,13 +111,15 @@ const Events = ({ language }: EventsProps) => {
       organizerContact: "Contact Organisateur",
       standard: "Standard",
       vip: "VIP",
-      featured: "En Vedette",
+      statusActive: "Actif",
       cancelled: "Annulé",
       completed: "Terminé",
       gallery: "Galerie",
       details: "Détails",
       viewFullscreen: "Voir Plein Écran",
-      exitFullscreen: "Quitter Plein Écran"
+      exitFullscreen: "Quitter Plein Écran",
+      passesHeading: "Passes",
+      primaryPass: "À la une"
     }
   };
 
@@ -151,7 +155,6 @@ const Events = ({ language }: EventsProps) => {
   }, [galleryEventsInData]);
 
   const upcomingEvents = events.filter(event => {
-    // Upcoming until pass-purchase window ends (event start + grace), not cancelled
     return (
       !isPassPurchaseWindowClosed(event.date, event.event_status) &&
       (event.event_type === 'upcoming' || !event.event_type) &&
@@ -159,22 +162,17 @@ const Events = ({ language }: EventsProps) => {
     );
   });
 
-  const galleryEvents = events.filter(event => {
-    // Show events explicitly marked as gallery (not cancelled)
-    if (event.event_type === 'gallery') {
-      return event.event_status !== 'cancelled';
-    }
-    // Also show past upcoming events in gallery (date passed or completed) — manual move to gallery added later
-    const isPastOrCompleted = isPassPurchaseWindowClosed(
-      event.date,
-      event.event_status
-    );
-    const wasUpcoming = event.event_type === 'upcoming' || !event.event_type;
-    if (wasUpcoming && isPastOrCompleted && event.event_status !== 'cancelled') {
-      return true;
-    }
-    return false;
-  });
+  const galleryEvents = useMemo(() => {
+    return events
+      .filter((event) => {
+        if (event.event_status === "cancelled") return false;
+        return event.event_type === "gallery";
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+  }, [events]);
 
   const formatDate = (dateString: string) => {
     return formatDateTimeLong(dateString, language);
@@ -183,6 +181,12 @@ const Events = ({ language }: EventsProps) => {
   const formatPrice = (price?: number) => {
     if (!price) return null;
     return `${price} TND`;
+  };
+
+  const formatPassPrice = (price: number) => {
+    const n = Number(price);
+    if (!Number.isFinite(n)) return "0";
+    return Number.isInteger(n) ? String(n) : n.toFixed(2);
   };
 
   const openModal = (event: Event, cardElement?: HTMLElement) => {
@@ -500,12 +504,12 @@ const Events = ({ language }: EventsProps) => {
         <JsonLdItemList
           items={upcomingEvents.slice(0, 20).map((e) => ({
             name: e.name,
-            url: `/event/event-${e.id}`,
+            url: `/event/${e.slug || generateSlug(e.name)}`,
           }))}
         />
       )}
       {/* Header */}
-      <section className="py-20 bg-gradient-dark">
+      <section className="pt-16 pb-6 sm:pt-20 sm:pb-8 bg-gradient-dark">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-6xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-top-4 duration-1000 uppercase">
             {content[language].title}
@@ -518,9 +522,9 @@ const Events = ({ language }: EventsProps) => {
 
       {/* Upcoming Events Section - Only show if there are events */}
       {upcomingEvents.length > 0 && (
-        <section className="py-20">
+        <section className="pt-4 pb-16 md:pb-20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-12 animate-in slide-in-from-bottom-4 duration-700 delay-200">
+            <div className="text-center mb-8 md:mb-10 animate-in slide-in-from-bottom-4 duration-700 delay-200">
               <h2 className="text-3xl md:text-4xl font-bold text-gradient-neon mb-4 animate-in slide-in-from-left-4 duration-1000 uppercase">
                 {content[language].upcomingTitle}
               </h2>
@@ -528,7 +532,7 @@ const Events = ({ language }: EventsProps) => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 justify-items-center">
               {upcomingEvents.map((event, index) => {
-                const eventUrl = `event-${event.id}`;
+                const eventUrl = event.slug || generateSlug(event.name);
                 return (
                 <Card 
                   key={event.id} 
@@ -568,12 +572,6 @@ const Events = ({ language }: EventsProps) => {
                         </div>
                       </div>
                       
-                      {/* Featured Badge - Always visible */}
-                      {event.featured && (
-                        <Badge className="absolute top-4 left-4 bg-gradient-primary animate-in slide-in-from-top-4 duration-500 z-20">
-                          {content[language].featured}
-                        </Badge>
-                      )}
                     </div>
                   </div>
                   <CardHeader className="p-4 relative z-0">
@@ -587,17 +585,27 @@ const Events = ({ language }: EventsProps) => {
                         <MapPin className="w-4 h-4 mr-2 animate-pulse" />
                         <span>{event.venue}, {event.city}</span>
                       </div>
-                      {/* Display all passes */}
                       {event.passes && event.passes.length > 0 ? (
-                        <div className="flex flex-wrap items-center gap-2 text-sm mb-2 animate-in slide-in-from-left-4 duration-500 delay-500">
-                          {event.passes.map((pass, idx) => (
-                            <span 
-                              key={idx}
-                              className="font-semibold text-foreground"
-                            >
-                              {pass.name}: {pass.price} TND
-                            </span>
-                          ))}
+                        <div className="mt-1 space-y-1.5 animate-in slide-in-from-left-4 duration-500 delay-500">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary/80">
+                            {content[language].passesHeading}
+                          </p>
+                          <ul className="space-y-1.5">
+                            {event.passes.map((pass) => (
+                              <li
+                                key={pass.id ?? pass.name}
+                                className="flex items-center justify-between gap-2 rounded-lg border border-primary/20 bg-background/50 px-2.5 py-2 text-xs sm:text-sm"
+                              >
+                                <span className="flex items-center gap-2 min-w-0 text-foreground">
+                                  <Ticket className="w-3.5 h-3.5 text-primary shrink-0" aria-hidden />
+                                  <span className="font-medium leading-snug line-clamp-2">{pass.name}</span>
+                                </span>
+                                <span className="shrink-0 font-bold text-primary tabular-nums">
+                                  {formatPassPrice(pass.price)}&nbsp;TND
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
                         </div>
                       ) : null}
                     </div>
@@ -634,8 +642,7 @@ const Events = ({ language }: EventsProps) => {
                 const mediaCount = (event.gallery_images?.length || 0) + (event.gallery_videos?.length || 0);
                 const isAnimated = scrollAnimatedGalleryEvents.has(event.id) || animatedGalleryEvents.has(event.id);
                 
-                // Use event ID for all gallery events
-                const eventUrl = `event-${event.id}`;
+                const eventUrl = event.slug || generateSlug(event.name);
                 
                 return (
                   <div
@@ -678,13 +685,6 @@ const Events = ({ language }: EventsProps) => {
                           <Badge className="absolute top-4 left-4 bg-gradient-to-r from-primary to-accent text-white border-0 shadow-lg shadow-primary/50 z-30 backdrop-blur-sm">
                             <ImageIcon className="w-3 h-3 mr-1" />
                             {mediaCount} {mediaCount === 1 ? 'Media' : 'Media'}
-                          </Badge>
-                        )}
-                        
-                        {/* Featured Badge */}
-                        {event.featured && (
-                          <Badge className="absolute top-4 right-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0 shadow-lg shadow-yellow-500/50 z-30 backdrop-blur-sm">
-                            ⭐ Featured
                           </Badge>
                         )}
                         
@@ -917,11 +917,6 @@ const Events = ({ language }: EventsProps) => {
                   
                   {/* Badges */}
                   <div className="absolute top-4 left-4 flex gap-2 flex-wrap z-20">
-                    {selectedEvent.featured && (
-                      <Badge className="bg-gradient-to-r from-primary to-accent text-white border-0 shadow-lg backdrop-blur-sm">
-                        ⭐ {content[language].featured}
-                      </Badge>
-                    )}
                     {selectedEvent.event_status === 'cancelled' && (
                       <Badge className="bg-red-500 text-white border-0 shadow-lg backdrop-blur-sm">
                         ❌ {content[language].cancelled}
@@ -1034,23 +1029,31 @@ const Events = ({ language }: EventsProps) => {
                               : 'grid-cols-1 md:grid-cols-2'
                           }`}>
                             {/* Display all passes from event_passes table */}
-                            {selectedEvent.passes.map((pass, idx) => {
+                            {selectedEvent.passes.map((pass) => {
                               return (
-                                <div 
-                                  key={idx}
-                                  className="bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-6 text-center border border-border/20 transition-all duration-200 hover:border-primary/40"
+                                <div
+                                  key={pass.id ?? pass.name}
+                                  className="relative bg-background/80 backdrop-blur-sm rounded-xl p-4 md:p-5 text-left border border-border/20 transition-all duration-200 hover:border-primary/40 flex flex-col gap-2"
                                 >
-                                  <h4 className="font-semibold text-base md:text-lg mb-2 text-foreground">
-                                    {pass.name}
-                                  </h4>
-                                  <p className="text-2xl md:text-3xl font-bold text-gradient-to-r from-primary to-accent">
-                                    {pass.price} TND
+                                  {pass.is_primary ? (
+                                    <Badge variant="outline" className="absolute top-3 right-3 text-[10px] uppercase tracking-wide border-primary/40 text-primary">
+                                      {content[language].primaryPass}
+                                    </Badge>
+                                  ) : null}
+                                  <div className={`flex items-start gap-2 ${pass.is_primary ? "pr-14" : ""}`}>
+                                    <Ticket className="w-5 h-5 text-primary shrink-0 mt-0.5" aria-hidden />
+                                    <h4 className="font-semibold text-base md:text-lg text-foreground leading-snug">
+                                      {pass.name}
+                                    </h4>
+                                  </div>
+                                  <p className="text-2xl md:text-3xl font-bold text-gradient-to-r from-primary to-accent pl-7">
+                                    {formatPassPrice(pass.price)} TND
                                   </p>
-                                  {pass.description && (
-                                    <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
+                                  {pass.description ? (
+                                    <p className="text-xs text-muted-foreground pl-7 line-clamp-3">
                                       {pass.description}
                                     </p>
-                                  )}
+                                  ) : null}
                                 </div>
                               );
                             })}
@@ -1136,7 +1139,13 @@ const Events = ({ language }: EventsProps) => {
                           <div className="space-y-3 text-muted-foreground text-sm md:text-base">
                             <div className="flex items-center p-2 bg-background/50 rounded-lg">
                               <span className="w-2 h-2 bg-orange-400 rounded-full mr-3 flex-shrink-0"></span>
-                              <span>{selectedEvent.featured ? content[language].featured : 'Regular Event'}</span>
+                              <span>
+                                {selectedEvent.event_status === 'cancelled'
+                                  ? content[language].cancelled
+                                  : selectedEvent.event_status === 'completed'
+                                  ? content[language].completed
+                                  : content[language].statusActive}
+                              </span>
                             </div>
                             {selectedEvent.dress_code && (
                               <div className="flex items-center p-2 bg-background/50 rounded-lg">

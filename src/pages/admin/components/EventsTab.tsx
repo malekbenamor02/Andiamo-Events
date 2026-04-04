@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import FileUpload from "@/components/ui/file-upload";
-import { Plus, Edit, Trash2, Save, X, Image, Video, Upload, Package, Calendar as CalendarIcon, MapPin, DollarSign, Instagram, ImagePlus, RefreshCw, ArrowLeft, Loader2 } from "lucide-react";
+import { Plus, Edit, Trash2, Save, X, Image, Video, Upload, Package, Calendar as CalendarIcon, MapPin, DollarSign, Instagram, RefreshCw, ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { getApiBaseUrl } from "@/lib/api-routes";
@@ -75,7 +75,7 @@ export function EventsTab(p: EventsTabProps) {
                           p.setEditingEvent({
                             passes: [],
                             event_type: 'upcoming',
-                            featured: false
+                            event_status: 'active',
                           } as Event);
                           // Clear pending files and validation errors when opening dialog
                           p.setPendingGalleryImages([]);
@@ -176,9 +176,64 @@ export function EventsTab(p: EventsTabProps) {
                           )}
                         </div>
                         <div>
+                          <Label htmlFor="eventLifecycle">{p.t.eventStatus}</Label>
+                          <Select
+                            value={
+                              p.editingEvent?.event_status === "cancelled"
+                                ? "cancelled"
+                                : p.editingEvent?.event_status === "completed"
+                                  ? "completed"
+                                  : "active"
+                            }
+                            onValueChange={(value: "active" | "completed" | "cancelled") => {
+                              p.setEditingEvent((prev) => {
+                                if (!prev) return prev;
+                                if (value === "completed") {
+                                  return { ...prev, event_status: "completed", event_type: "gallery" };
+                                }
+                                if (value === "active") {
+                                  return {
+                                    ...prev,
+                                    event_status: "active",
+                                    event_type:
+                                      prev.event_type === "gallery"
+                                        ? "upcoming"
+                                        : prev.event_type || "upcoming",
+                                  };
+                                }
+                                return { ...prev, event_status: "cancelled" };
+                              });
+                            }}
+                          >
+                            <SelectTrigger id="eventLifecycle">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="active">{p.t.eventStatusActive}</SelectItem>
+                              <SelectItem value="completed">{p.t.eventStatusCompleted}</SelectItem>
+                              <SelectItem value="cancelled">{p.t.eventStatusCancelled}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {p.editingEvent?.event_status === "completed" && (
+                            <p className="text-sm text-muted-foreground mt-2">
+                              {p.t.eventStatusCompletedHint}
+                            </p>
+                          )}
+                        </div>
+                        <div>
                           <Label htmlFor="eventType">{p.t.eventType}</Label>
-                          <Select value={p.editingEvent?.event_type || 'upcoming'} onValueChange={(value: 'upcoming' | 'gallery') => p.setEditingEvent(prev => ({ ...prev, event_type: value }))}>
-                            <SelectTrigger>
+                          <Select
+                            value={
+                              p.editingEvent?.event_status === "completed"
+                                ? "gallery"
+                                : p.editingEvent?.event_type || "upcoming"
+                            }
+                            disabled={p.editingEvent?.event_status === "completed"}
+                            onValueChange={(value: "upcoming" | "gallery") =>
+                              p.setEditingEvent((prev) => (prev ? { ...prev, event_type: value } : prev))
+                            }
+                          >
+                            <SelectTrigger id="eventType">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -196,9 +251,28 @@ export function EventsTab(p: EventsTabProps) {
                             accept="image/*"
                           />
                         </div>
-                        {/* Gallery Images & Videos - Only show for Gallery Events */}
-                        {p.editingEvent?.event_type === 'gallery' && (
+                        {/* Gallery Images & Videos — gallery type or completed (recap) */}
+                        {(p.editingEvent?.event_type === "gallery" ||
+                          p.editingEvent?.event_status === "completed") && (
                           <div className="space-y-6 border-t pt-6">
+                            <div className="space-y-2">
+                              <Label htmlFor="gallery-credit">{p.t.galleryCredit}</Label>
+                              <Input
+                                id="gallery-credit"
+                                value={p.editingEvent?.gallery_credit ?? ""}
+                                onChange={(e) =>
+                                  p.setEditingEvent((prev) =>
+                                    prev ? { ...prev, gallery_credit: e.target.value } : prev
+                                  )
+                                }
+                                placeholder={
+                                  p.language === "en"
+                                    ? "e.g. Mouayed Chakir & Sirine Chamli"
+                                    : "ex. Mouayed Chakir & Sirine Chamli"
+                                }
+                              />
+                              <p className="text-sm text-muted-foreground">{p.t.galleryCreditHint}</p>
+                            </div>
                             {/* Gallery Images Section */}
                             <div className="space-y-4">
                               <div className="flex items-center justify-between">
@@ -1058,10 +1132,10 @@ export function EventsTab(p: EventsTabProps) {
                     <Card 
                       key={event.id}
                       className={`transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg ${
-                        p.animatedEvents.has(event.id) 
-                          ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
-                          : 'opacity-0 translate-y-8'
-                      } ${event.featured ? 'ring-2 ring-primary/20 shadow-lg' : ''}`}
+                        p.animatedEvents.has(event.id)
+                          ? "animate-in slide-in-from-bottom-4 fade-in duration-700"
+                          : "opacity-100"
+                      }`}
                     >
                       <CardContent className="p-6">
                         {event.poster_url && (
@@ -1071,11 +1145,6 @@ export function EventsTab(p: EventsTabProps) {
                               alt={event.name} 
                               className="w-full h-48 object-cover rounded-lg mb-4 transform transition-transform duration-300 hover:scale-105" 
                             />
-                            {event.featured && (
-                              <Badge className="absolute top-2 right-2 bg-gradient-primary animate-pulse">
-                                Featured
-                              </Badge>
-                            )}
                           </div>
                         )}
                         <h3 className="text-lg font-semibold mb-2 animate-in slide-in-from-left-4 duration-500 delay-200">
@@ -1100,7 +1169,7 @@ export function EventsTab(p: EventsTabProps) {
                           )}
                         </div>
                         <div className="flex flex-col items-stretch gap-3 mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-700">
-                          {/* Row 1: Edit + Convert to Gallery (modify event) */}
+                          {/* Row 1: Edit (modify event) */}
                           <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 p-2 shadow-sm">
                             <Button 
                               size="sm" 
@@ -1165,55 +1234,6 @@ export function EventsTab(p: EventsTabProps) {
                             <Edit className="w-3.5 h-3.5 mr-1.5 shrink-0" />
                             {p.t.edit}
                           </Button>
-                          {(() => {
-                            const isUpcoming = event.event_type === 'upcoming' || !event.event_type;
-                            const eventDate = new Date(event.date);
-                            const now = new Date();
-                            const eventHasPassed = eventDate.getTime() < now.getTime();
-                            return isUpcoming && eventHasPassed;
-                          })() && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 min-w-[7rem] px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground rounded-sm transition-all duration-200"
-                              title={p.t.convertToGalleryTooltip || (p.language === 'en' ? 'Move to gallery and add images/videos. Orders and statistics are kept.' : 'DÃ©placer vers la galerie. Commandes et statistiques conservÃ©es.')}
-                              onClick={async () => {
-                                const { data: passesData, error: passesError } = await supabase
-                                  .from('event_passes')
-                                  .select('*')
-                                  .eq('event_id', event.id)
-                                  .order('is_primary', { ascending: false })
-                                  .order('created_at', { ascending: true });
-                                if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
-                                  console.error(`Error fetching passes for event ${event.id}:`, passesError);
-                                }
-                                const mappedPasses = (passesData || []).map((p: any) => ({
-                                  id: p.id,
-                                  name: p.name || '',
-                                  price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
-                                  description: p.description || '',
-                                  is_primary: p.is_primary || false
-                                }));
-                                const { passes: _, ...eventWithoutPasses } = event;
-                                const eventWithPasses: Event = {
-                                  ...eventWithoutPasses,
-                                  passes: mappedPasses,
-                                  instagram_link: event.instagram_link || event.whatsapp_link,
-                                  event_type: 'gallery',
-                                  gallery_images: event.gallery_images || [],
-                                  gallery_videos: event.gallery_videos || []
-                                };
-                                p.setPendingGalleryImages([]);
-                                p.setPendingGalleryVideos([]);
-                                p.setPassValidationErrors({});
-                                p.setEditingEvent(eventWithPasses);
-                                setTimeout(() => p.setIsEventDialogOpen(true), 0);
-                              }}
-                            >
-                              <ImagePlus className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                              {p.t.convertToGallery || (p.language === 'en' ? 'Convert to Gallery' : 'Convertir en Galerie')}
-                            </Button>
-                          )}
                           </div>
                           {/* Row 2: Pass Stock (only for upcoming events; gallery events have no pass stock) */}
                           {event.event_type !== 'gallery' && (

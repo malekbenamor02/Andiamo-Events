@@ -10,6 +10,7 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { getApiBaseUrl, API_ROUTES } from '@/lib/api-routes';
 import { formatDateDMY, isPassPurchaseWindowClosed } from '@/lib/date-utils';
+import { generateSlug } from '@/lib/utils';
 
 // New unified order system components
 import { CustomerInfoForm } from '@/components/orders/CustomerInfoForm';
@@ -58,6 +59,8 @@ interface Event {
   special_notes?: string;
   is_test?: boolean;
   event_status?: string;
+  event_type?: string;
+  slug?: string | null;
 }
 
 interface PassPurchaseProps {
@@ -90,7 +93,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   const [submitted, setSubmitted] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [selectedAmbassadorDetails, setSelectedAmbassadorDetails] = useState<Ambassador | null>(null);
-  const [purchaseBlockedReason, setPurchaseBlockedReason] = useState<'past' | 'completed' | null>(null);
+  const [purchaseBlockedReason, setPurchaseBlockedReason] = useState<'completed' | null>(null);
   
   // Fetch payment options
   const { data: paymentOptions = [], isLoading: loadingPaymentOptions } = usePaymentOptions();
@@ -395,19 +398,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         return;
       }
 
-      // Block pass purchase 2h after event start (or when completed)
-      const now = new Date();
-      if (isPassPurchaseWindowClosed(event.date, event.event_status, now)) {
-        setPurchaseBlockedReason(
-          event.event_status === 'completed' ? 'completed' : 'past'
-        );
+      // Block pass purchase when admin marked completed or cancelled (cancelled handled above)
+      if (isPassPurchaseWindowClosed(event.date, event.event_status)) {
+        setPurchaseBlockedReason('completed');
         setEvent({ ...event, passes: [] });
         setLoading(false);
         toast({
-          title: language === 'en' ? 'Event ended' : 'Événement terminé',
-          description: language === 'en' 
-            ? 'Pass purchase is no longer available for this event.' 
-            : 'La réservation n\'est plus disponible pour cet événement.',
+          title: language === 'en' ? 'Sales are closed' : 'Ventes fermées',
+          description: language === 'en'
+            ? 'Pass purchase for this event is closed. You can still view the event recap on the gallery page.'
+            : 'L\'achat de passes pour cet événement est fermé. Vous pouvez voir le récapitulatif sur la page galerie.',
           variant: 'default'
         });
         return;
@@ -880,29 +880,37 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     );
   }
 
-  // Past or completed event: show message and link to event details (no pass purchase)
+  // Admin closed sales (completed): clear message + link to gallery recap
   if (purchaseBlockedReason) {
-    const eventSlug = (event as { slug?: string }).slug;
+    const recapSlug = (event.slug && String(event.slug).trim()) || generateSlug(event.name);
+    const galleryUrl = `/gallery/${recapSlug}`;
+    const eventDetailsUrl = `/event/${recapSlug}`;
     return (
-      <div className="min-h-screen bg-gradient-dark flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-dark flex items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardContent className="p-6 text-center">
-            <Calendar className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <Lock className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
             <h2 className="text-xl font-bold mb-2">
-              {language === 'en' ? 'This event has passed' : 'Cet événement est terminé'}
+              {language === 'en' ? 'Pass sales are closed' : 'Vente des passes fermée'}
             </h2>
-            <p className="text-muted-foreground mb-4">
-              {language === 'en' 
-                ? 'Pass purchase is no longer available for this event.'
-                : 'La réservation n\'est plus disponible pour cet événement.'}
+            <p className="text-muted-foreground mb-2">
+              {language === 'en'
+                ? 'This event has been marked complete. Tickets and passes are no longer on sale.'
+                : 'Cet événement est marqué comme terminé. Les billets et passes ne sont plus en vente.'}
+            </p>
+            <p className="text-muted-foreground text-sm mb-6">
+              {language === 'en'
+                ? 'Open the event gallery for photos, videos, and the full story.'
+                : 'Consultez la galerie de l\'événement pour les photos, vidéos et le récit.'}
             </p>
             <div className="flex flex-col sm:flex-row gap-2 justify-center">
-              {eventSlug && (
-                <Button onClick={() => navigate(`/event/${eventSlug}`)}>
-                  {language === 'en' ? 'View event details' : 'Voir les détails'}
-                </Button>
-              )}
-              <Button variant={eventSlug ? 'outline' : 'default'} onClick={() => navigate('/events')}>
+              <Button onClick={() => navigate(galleryUrl)}>
+                {language === 'en' ? 'View event gallery' : 'Voir la galerie'}
+              </Button>
+              <Button variant="outline" onClick={() => navigate(eventDetailsUrl)}>
+                {language === 'en' ? 'Event information' : 'Informations'}
+              </Button>
+              <Button variant="ghost" onClick={() => navigate('/events')}>
                 {t[language].backToEvents}
               </Button>
             </div>
@@ -988,16 +996,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       <PageMeta title={purchaseTitle} description={purchaseDescription} path={purchasePath} />
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="flex items-center mb-8">
+        <div className="mb-8 flex flex-col items-center sm:flex-row sm:items-center sm:gap-0">
           <Button
             variant="ghost"
             onClick={() => navigate('/events')}
-            className="text-white hover:text-primary hover:bg-transparent"
+            className="hidden sm:inline-flex w-fit shrink-0 text-white hover:text-primary hover:bg-transparent"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             {t[language].backToEvents}
           </Button>
-          <h1 className="text-3xl font-heading font-bold text-gradient-neon ml-4 uppercase">
+          <h1 className="w-full text-center text-2xl font-heading font-bold uppercase leading-tight text-gradient-neon sm:ml-4 sm:w-auto sm:text-left sm:text-3xl">
             {t[language].title}
           </h1>
         </div>

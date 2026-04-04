@@ -76,6 +76,9 @@ export const API_ROUTES = {
   ADMIN_APPROVE_ORDER: '/api/admin-approve-order',
   ADMIN_REMOVE_ORDER: '/api/admin-remove-order',
   ADMIN_RESEND_TICKET_EMAIL: '/api/admin-resend-ticket-email',
+  /** Super admin only: QR images and ticket statuses for an order (query param orderId). */
+  ADMIN_ORDER_QR_TICKETS: (orderId: string) =>
+    `/api/admin/order-qr-tickets?orderId=${encodeURIComponent(orderId)}`,
   ADMIN_UPDATE_ORDER_EMAIL: '/api/admin/update-order-email',
   ADMIN_UPDATE_ORDER_NOTES: '/api/admin/update-order-notes',
   

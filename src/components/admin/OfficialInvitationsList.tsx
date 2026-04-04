@@ -106,7 +106,14 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (statusFilter !== 'all') params.append('status', statusFilter);
-      if (eventFilter !== 'all') params.append('event_id', eventFilter);
+      // Prefer dashboard "Filter by Event" immediately (avoids a one-frame race with eventFilter state).
+      const eventIdForQuery =
+        selectedEventId && String(selectedEventId).trim() !== ''
+          ? selectedEventId
+          : eventFilter !== 'all'
+            ? eventFilter
+            : undefined;
+      if (eventIdForQuery) params.append('event_id', eventIdForQuery);
       params.append('limit', limit.toString());
       params.append('offset', offset.toString());
 
@@ -188,7 +195,7 @@ export const OfficialInvitationsList: React.FC<OfficialInvitationsListProps> = (
 
   useEffect(() => {
     fetchInvitations();
-  }, [statusFilter, eventFilter, offset]);
+  }, [statusFilter, eventFilter, offset, selectedEventId]);
 
   // Listen for invitation creation events
   useEffect(() => {

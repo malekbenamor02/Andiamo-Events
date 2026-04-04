@@ -17,6 +17,7 @@ import Loader from "@/components/ui/Loader";
 import { Store, Building2, Users, Package, ShoppingCart, Activity, Plus, RefreshCw, Edit, Trash2, Copy, Check, X, Eye, Mail, Send, BarChart3, TrendingUp } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import { AdminOrderQrTicketsSection } from "@/pages/admin/components/AdminOrderQrTicketsSection";
 
 function fetcher(url: string, options?: RequestInit) {
   return fetch(`${getApiBaseUrl()}${url}`, { ...options, credentials: "include" });
@@ -25,6 +26,8 @@ function fetcher(url: string, options?: RequestInit) {
 interface PosTabProps {
   language: "en" | "fr";
   selectedEventId?: string;
+  /** Enables QR ticket preview in order detail (API is super_admin-only). */
+  isSuperAdmin?: boolean;
 }
 
 interface Outlet {
@@ -105,7 +108,7 @@ interface EventPass {
 
 type ConfirmTarget = { kind: "delete-outlet"; o: Outlet } | { kind: "delete-user"; u: PosUser } | { kind: "remove-order"; o: PosOrder };
 
-export function PosTab({ language, selectedEventId }: PosTabProps) {
+export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosTabProps) {
   const { toast } = useToast();
   const [subTab, setSubTab] = useState("orders");
   const [outlets, setOutlets] = useState<Outlet[]>([]);
@@ -1043,6 +1046,13 @@ export function PosTab({ language, selectedEventId }: PosTabProps) {
                   </Button>
                 )}
               </DialogFooter>
+              <AdminOrderQrTicketsSection
+                orderId={selectedOrder.id}
+                open={!!selectedOrder}
+                language={language}
+                isSuperAdmin={isSuperAdmin}
+                theme="pos"
+              />
             </div>
           )}
         </DialogContent>

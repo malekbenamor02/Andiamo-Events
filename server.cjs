@@ -33,8 +33,12 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 
-// Official online ticket email template (matches email-templates/online-ticket-email-preview.html)
-const { buildOnlineTicketEmailHtml } = require('./api/lib/online-ticket-email-html.cjs');
+// Official online ticket email template — run `node email-templates/generate-previews.cjs` to refresh browser previews
+const { buildOnlineTicketEmailHtml, formatEventTime } = require('./api/lib/online-ticket-email-html.cjs');
+const { createOfficialInvitationEmailHTML } = require('./api/lib/official-invitation-email-html.cjs');
+const { buildOrderConfirmationEmailHtml } = require('./api/lib/order-confirmation-email-html.cjs');
+const { emailLogoHeaderHtml } = require('./api/lib/email-branding.cjs');
+const { buildTicketEmailPdfAttachments } = require('./api/lib/ticket-pdf.cjs');
 
 // Import centralized SMS template helpers
 const {
@@ -548,6 +552,8 @@ const checkSuspiciousActivity = async (eventType, details, req) => {
             to: ALERT_EMAIL,
             subject: `🚨 Security Alert: Suspicious Activity Detected - ${eventType}`,
             html: `
+              ${emailLogoHeaderHtml()}
+              <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;padding:16px;">
               <h2>Security Alert</h2>
               <p><strong>Event Type:</strong> ${eventType}</p>
               <p><strong>IP Address:</strong> ${ipAddress}</p>
@@ -558,6 +564,7 @@ const checkSuspiciousActivity = async (eventType, details, req) => {
               <p><strong>Details:</strong></p>
               <pre>${JSON.stringify(details, null, 2)}</pre>
               <p><em>This is an automated security alert. Please review the security audit logs.</em></p>
+              </div>
             `
           });
         } catch (emailError) {
@@ -3228,46 +3235,6 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
 // JWT middleware for protected admin routes
 // Verifies the HttpOnly JWT cookie and checks expiration
 // The JWT contains a 1-hour expiration that cannot be extended
-// Helper function to create official invitation email HTML
-function createOfficialInvitationEmailHTML(data) {
-  // Validate required data
-  if (!data || !data.event || !data.qrCodes || !Array.isArray(data.qrCodes) || data.qrCodes.length === 0) {
-    throw new Error('Invalid email data: missing required fields or empty QR codes array');
-  }
-
-  const formatDate = (dateString) => {
-    try {
-      if (!dateString) return 'TBD';
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return dateString;
-      return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    } catch { return dateString || 'TBD'; }
-  };
-  const formatTime = (dateString) => {
-    try {
-      if (!dateString) return '';
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return '';
-      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    } catch { return ''; }
-  };
-  const eventDate = formatDate(data.event?.date);
-  const eventTime = formatTime(data.event?.date);
-  const qrCodesHtml = data.qrCodes.map((qr, index) => {
-    if (data.qrCodes.length === 1) {
-      return `<img src="${qr.qr_code_url}" alt="Invitation QR Code" style="max-width: 300px; height: auto; display: block; margin: 0 auto 20px; border-radius: 8px;" />`;
-    } else {
-      return `<div style="margin: 10px; padding: 20px; background: #FFFFFF; border: 2px solid #E21836; border-radius: 12px; display: inline-block;"><p style="margin: 0 0 15px 0; color: #E21836; font-size: 14px; font-weight: 600;">QR Code ${index + 1}</p><img src="${qr.qr_code_url}" alt="Invitation QR Code ${index + 1}" style="max-width: 250px; height: auto; display: block; margin: 0 auto; border-radius: 8px;" /></div>`;
-    }
-  }).join('');
-  const qrCodeSectionTitle = data.qrCodes.length > 1 ? `Your QR Codes (${data.qrCodes.length})` : "Your QR Code";
-  const qrCodeInstruction = data.qrCodes.length > 1 ? "Scan any of these QR codes at the entrance to access your assigned zone" : "Scan this QR code at the entrance to access your assigned zone";
-  const zoneTableHtml = data.zoneName && data.zoneDescription ? `<table style="width: 100%; border-collapse: collapse; margin-top: 20px;"><thead><tr><th style="background: #1A1A1A; color: #FFFFFF; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600;">Zone</th><th style="background: #1A1A1A; color: #FFFFFF; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600;">Access Details</th></tr></thead><tbody><tr><td style="padding: 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); font-size: 14px; color: #1A1A1A;">${data.zoneName}</td><td style="padding: 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); font-size: 14px; color: #1A1A1A;">${data.zoneDescription}</td></tr></tbody></table><p style="margin-top: 20px; font-size: 14px; color: #666666; line-height: 1.7;">Access is valid only for the zone mentioned above.<br>Zone changes are not permitted on-site.</p>` : '';
-  // Full HTML template - using the same structure as official-invitation-email-preview.html
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="color-scheme" content="light dark"><title>Official Invitation – Andiamo Events</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;line-height:1.6;color:#1A1A1A;background:#FFFFFF}@media(prefers-color-scheme:dark){body{color:#FFFFFF;background:#1A1A1A}}a{color:#E21836!important;text-decoration:none}.email-wrapper{max-width:600px;margin:0 auto;background:#FFFFFF}@media(prefers-color-scheme:dark){.email-wrapper{background:#1A1A1A}}.content-card{background:#F5F5F5;margin:0 20px 30px;border-radius:12px;padding:50px 40px;border:1px solid rgba(0,0,0,0.1)}@media(prefers-color-scheme:dark){.content-card{background:#1F1F1F;border:1px solid rgba(42,42,42,0.5)}}.title-section{text-align:center;margin-bottom:40px;padding-bottom:30px;border-bottom:1px solid rgba(0,0,0,0.1)}.title{font-size:32px;font-weight:700;color:#1A1A1A;margin-bottom:12px}@media(prefers-color-scheme:dark){.title{color:#FFFFFF}}.subtitle{font-size:16px;color:#666666;font-weight:400}@media(prefers-color-scheme:dark){.subtitle{color:#B0B0B0}}.greeting{font-size:18px;color:#1A1A1A;margin-bottom:30px;line-height:1.7}@media(prefers-color-scheme:dark){.greeting{color:#FFFFFF}}.greeting strong{color:#E21836;font-weight:600}.message{font-size:16px;color:#666666;margin-bottom:25px;line-height:1.7}@media(prefers-color-scheme:dark){.message{color:#B0B0B0}}.info-block{background:#E8E8E8;border:1px solid rgba(0,0,0,0.15);border-radius:8px;padding:30px;margin:40px 0}@media(prefers-color-scheme:dark){.info-block{background:#252525;border:1px solid rgba(42,42,42,0.8)}}.info-row{margin-bottom:25px}.info-row:last-child{margin-bottom:0}.info-label{font-size:11px;color:#999999;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px;font-weight:600}@media(prefers-color-scheme:dark){.info-label{color:#6B6B6B}}.info-value{font-size:18px;color:#1A1A1A;font-weight:500;letter-spacing:0.5px}@media(prefers-color-scheme:dark){.info-value{color:#FFFFFF}}.event-details-block{background:#E8E8E8;border:1px solid rgba(0,0,0,0.15);border-radius:8px;padding:30px;margin:40px 0}@media(prefers-color-scheme:dark){.event-details-block{background:#252525;border:1px solid rgba(42,42,42,0.8)}}.event-details-title{font-size:18px;color:#E21836;font-weight:600;margin-bottom:20px}.event-detail-row{margin-bottom:15px}.event-detail-row:last-child{margin-bottom:0}.event-detail-label{font-size:11px;color:#999999;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:5px;font-weight:600}@media(prefers-color-scheme:dark){.event-detail-label{color:#6B6B6B}}.event-detail-value{font-size:16px;color:#1A1A1A;font-weight:500}@media(prefers-color-scheme:dark){.event-detail-value{color:#FFFFFF}}.qr-code-section{text-align:center;margin:40px 0;padding:30px;background:#FFFFFF;border:2px solid #E21836;border-radius:12px}@media(prefers-color-scheme:dark){.qr-code-section{background:#1F1F1F}}.qr-code-title{font-size:20px;color:#1A1A1A;font-weight:600;margin-bottom:15px}@media(prefers-color-scheme:dark){.qr-code-title{color:#FFFFFF}}.qr-code-instruction{font-size:15px;color:#666666;margin-bottom:25px;line-height:1.6}@media(prefers-color-scheme:dark){.qr-code-instruction{color:#B0B0B0}}.rules-section{background:#FFF9E6;border-left:3px solid #E21836;padding:20px 25px;margin:35px 0;border-radius:4px}@media(prefers-color-scheme:dark){.rules-section{background:#2A2419;border-left:3px solid #E21836}}.rules-title{font-size:16px;color:#E21836;font-weight:600;margin-bottom:15px}.rules-list{list-style:none;padding:0;margin:0}.rules-list li{font-size:14px;color:#666666;line-height:1.8;margin-bottom:10px;padding-left:25px;position:relative}@media(prefers-color-scheme:dark){.rules-list li{color:#B0B0B0}}.rules-list li:before{content:"⚠️";position:absolute;left:0}.rules-list li:last-child{margin-bottom:0}.arrival-note{font-size:14px;color:#666666;margin-top:15px;line-height:1.7}@media(prefers-color-scheme:dark){.arrival-note{color:#B0B0B0}}.support-section{background:#E8E8E8;border-left:3px solid rgba(226,24,54,0.3);padding:20px 25px;margin:35px 0;border-radius:4px}@media(prefers-color-scheme:dark){.support-section{background:#252525}}.support-text{font-size:14px;color:#666666;line-height:1.7;margin-bottom:10px}@media(prefers-color-scheme:dark){.support-text{color:#B0B0B0}}.support-contact{font-size:14px;color:#666666;line-height:1.8}@media(prefers-color-scheme:dark){.support-contact{color:#B0B0B0}}.support-email{color:#E21836!important;text-decoration:none;font-weight:500}.closing-section{text-align:center;margin:50px 0 40px;padding-top:40px;border-top:1px solid rgba(0,0,0,0.1)}@media(prefers-color-scheme:dark){.closing-section{border-top:1px solid rgba(255,255,255,0.1)}}.slogan{font-size:24px;font-style:italic;color:#E21836;font-weight:300;letter-spacing:1px;margin-bottom:30px}.signature{font-size:16px;color:#666666;line-height:1.7}@media(prefers-color-scheme:dark){.signature{color:#B0B0B0}}.footer{margin-top:50px;padding:40px 20px 30px;text-align:center;border-top:1px solid rgba(0,0,0,0.1)}@media(prefers-color-scheme:dark){.footer{border-top:1px solid rgba(255,255,255,0.05)}}.footer-text{font-size:12px;color:#999999;margin-bottom:20px;line-height:1.6}@media(prefers-color-scheme:dark){.footer-text{color:#6B6B6B}}.footer-links{margin:15px auto 0;text-align:center}.footer-link{color:#999999;text-decoration:none;font-size:13px;margin:0 8px}@media(prefers-color-scheme:dark){.footer-link{color:#6B6B6B}}.footer-link:hover{color:#E21836!important}</style></head><body><div class="email-wrapper"><div class="content-card"><div class="title-section"><h1 class="title">Official Invitation</h1><p class="subtitle">Andiamo Events</p></div><p class="greeting">Dear <strong>${data.guestName}</strong>,</p><p class="message">Mouayed Chakir has the pleasure to invite you to the <strong>${data.event.name}</strong>, proudly organized by Andiamo Events.</p><p class="message">We are pleased to confirm that your invitation has been successfully registered. This email serves as your official entry pass to the event.</p><p class="message">Please find your personal QR code${data.qrCodes.length > 1 ? 's' : ''} included below. ${data.qrCodes.length > 1 ? 'They' : 'It'} will be required for access control and validation at the venue.</p><p class="message">Kindly keep this invitation available on your phone or printed on the day of the event.</p><div class="event-details-block"><div class="event-details-title">Event Details</div><div class="event-detail-row"><div class="event-detail-label">Date</div><div class="event-detail-value">${eventDate}</div></div>${eventTime ? `<div class="event-detail-row"><div class="event-detail-label">Show Time</div><div class="event-detail-value">${eventTime}</div></div>` : ''}<div class="event-detail-row"><div class="event-detail-label">Venue</div><div class="event-detail-value">${data.event.venue}</div></div></div><div class="info-block"><div class="info-row"><div class="info-label">Invitation</div><div class="info-value">#${data.invitationNumber}</div></div><div class="info-row"><div class="info-label">Guest Name</div><div class="info-value">${data.guestName}</div></div><div class="info-row"><div class="info-label">Phone Number</div><div class="info-value">${data.guestPhone}</div></div></div>${zoneTableHtml ? `<div class="info-block"><div class="info-label" style="margin-bottom:15px;">Zone & Access Details</div>${zoneTableHtml}</div>` : ''}<div class="qr-code-section"><h3 class="qr-code-title">${qrCodeSectionTitle}</h3><p class="qr-code-instruction">${qrCodeInstruction}</p>${qrCodesHtml}</div><div class="rules-section"><div class="rules-title">Important Access Rules</div><ul class="rules-list"><li>Each QR code is valid for one (1) person only and for a single entry.</li><li>Reproduction, sharing, or duplication of the QR code is strictly prohibited.</li><li>Once scanned, the QR code becomes invalid.</li></ul><p class="arrival-note">Please arrive at least 1h30mn before the show time to ensure smooth check-in.</p></div><div class="support-section"><p class="support-text">For any assistance or additional information, please contact us at</p><p class="support-contact"><a href="mailto:contact@andiamoevents.com" class="support-email">contact@andiamoevents.com</a> or <strong style="color:#E21836!important">+216 28 070 128</strong></p></div><div class="closing-section"><p class="slogan">We Create Memories</p><p class="signature">Best regards,<br>Andiamo Events Team</p></div></div><div class="footer"><p class="footer-text">Developed by <span style="color:#E21836!important">Malek Ben Amor</span></p><div class="footer-links"><a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a><span style="color:#999999">•</span><a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a></div></div></div></body></html>`;
-  return { from: '"Andiamo Events" <contact@andiamoevents.com>', to: data.guestEmail, subject: 'Official Invitation – Andiamo Events', html: html };
-}
-
 function requireAdminAuth(req, res, next) {
   try {
     const token = req.cookies?.adminToken;
@@ -4456,6 +4423,10 @@ async function forwardToMisc(req, res) {
 
 app.get('/api/admin/email-addresses/counts', requireAdminAuth, (req, res) => forwardToMisc(req, res));
 app.get('/api/admin/email-addresses/sources', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.get('/api/admin/order-qr-tickets', requireAdminAuth, (req, res) => {
+  req.url = req.originalUrl || req.url;
+  return forwardToMisc(req, res);
+});
 app.get('/api/marketing/cron/email-campaigns', (req, res) => forwardToMisc(req, res));
 app.post('/api/marketing/cron/email-campaigns', (req, res) => forwardToMisc(req, res));
 app.post('/api/marketing/campaigns/:id/launch', requireAdminAuth, (req, res) => forwardToMisc(req, res));
@@ -5908,10 +5879,16 @@ app.post('/api/admin/events', requireAdminAuth, async (req, res) => {
       poster_url: payload.poster_url ?? null,
       ticket_link: payload.ticket_link ?? null,
       whatsapp_link: payload.whatsapp_link ?? null,
-      featured: !!payload.featured,
-      event_type: payload.event_type || 'upcoming',
+      event_status: payload.event_status === 'completed' || payload.event_status === 'cancelled' || payload.event_status === 'active'
+        ? payload.event_status
+        : 'active',
+      event_type:
+        payload.event_status === 'completed'
+          ? 'gallery'
+          : (payload.event_type || 'upcoming'),
       gallery_images: payload.gallery_images ?? [],
       gallery_videos: payload.gallery_videos ?? [],
+      gallery_credit: payload.gallery_credit ?? null,
     };
 
     const { data, error } = await supabaseService
@@ -5941,6 +5918,13 @@ app.patch('/api/admin/events/:id', requireAdminAuth, async (req, res) => {
       return res.status(400).json({ error: 'Missing event payload' });
     }
 
+    const normalizedStatus =
+      payload.event_status === 'completed' || payload.event_status === 'cancelled' || payload.event_status === 'active'
+        ? payload.event_status
+        : 'active';
+    const eventType =
+      normalizedStatus === 'completed' ? 'gallery' : (payload.event_type || 'upcoming');
+
     const updateData = {
       name: payload.name,
       date: payload.date ?? null,
@@ -5950,10 +5934,11 @@ app.patch('/api/admin/events/:id', requireAdminAuth, async (req, res) => {
       poster_url: payload.poster_url ?? null,
       ticket_link: payload.ticket_link ?? null,
       whatsapp_link: payload.whatsapp_link ?? null,
-      featured: !!payload.featured,
-      event_type: payload.event_type || 'upcoming',
+      event_status: normalizedStatus,
+      event_type: eventType,
       gallery_images: payload.gallery_images ?? [],
       gallery_videos: payload.gallery_videos ?? [],
+      gallery_credit: payload.gallery_credit ?? null,
       updated_at: new Date().toISOString(),
     };
 
@@ -7743,6 +7728,7 @@ app.post('/api/send-order-completion-email', async (req, res) => {
         </style>
       </head>
       <body>
+        ${emailLogoHeaderHtml()}
         <div class="container">
           <div class="header">
             <h1>✅ Order Confirmed!</h1>
@@ -8086,6 +8072,7 @@ app.post('/api/resend-order-completion-email', requireAdminAuth, async (req, res
         </style>
       </head>
       <body>
+        ${emailLogoHeaderHtml()}
         <div class="container">
           <div class="header">
             <h1>✅ Order Confirmed!</h1>
@@ -8608,481 +8595,6 @@ app.post('/api/generate-qr-code', async (req, res) => {
 });
 
 /**
- * Helper function to build ticket email HTML template
- * Reusable by both generateTicketsAndSendEmail and resend ticket email
- */
-// Helper function to format event time
-function formatEventTime(eventDate) {
-  if (!eventDate) return null;
-  try {
-    const date = new Date(eventDate);
-    if (isNaN(date.getTime())) return null;
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    const dayName = days[date.getDay()];
-    const day = date.getDate();
-    const monthName = months[date.getMonth()];
-    const year = date.getFullYear();
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${dayName} · ${day} ${monthName} ${year} · ${hours}:${minutes}`;
-  } catch (e) {
-    return null;
-  }
-}
-
-/**
- * Build order confirmation email HTML (simple version without tickets)
- * Reusable for both client and ambassador
- */
-function buildOrderConfirmationEmailHtml(order, orderPasses, recipientType = 'client') {
-  const orderNumber = order.order_number !== null && order.order_number !== undefined 
-    ? `#${order.order_number}` 
-    : order.id.substring(0, 8).toUpperCase();
-  
-  const eventTime = formatEventTime(order.events?.date) || 'TBA';
-  const venue = order.events?.venue || 'Venue to be announced';
-  
-  // Determine title and subtitle based on recipient type
-  const title = recipientType === 'client' ? 'Payment Processing' : 'New Order';
-  const subtitle = recipientType === 'client' ? 'Payment Processing – Andiamo Events' : 'New Order - Andiamo Events';
-  
-  // Determine greeting message based on recipient type
-  const greetingMessage = recipientType === 'client' 
-    ? 'Thank you for your order with Andiamo Events!<br><br>One of our official Andiamo Events ambassadors, ' + (order.ambassadors?.full_name || 'your assigned ambassador') + ', will be contacting you shortly to complete the delivery process and assist you if needed.<br><br>Once the payment process is fully completed, you will receive a final confirmation email with all the necessary details.'
-    : 'We\'re excited to confirm that a new order has been successfully processed!<br><br>Please contact the client as soon as possible to confirm availability, coordinate delivery, and provide assistance if needed.<br><br>Timely communication is essential to ensure a smooth experience for the client.<br><br>Thank you for your cooperation.';
-  
-  // Helper function to extract Instagram username from URL
-  const getInstagramUsername = (url) => {
-    if (!url) return null;
-    // Handle both https://www.instagram.com/username and https://instagram.com/username
-    const match = url.match(/instagram\.com\/([^\/\?]+)/);
-    return match ? match[1] : null;
-  };
-  
-  // Helper function to ensure Instagram URL is properly formatted
-  const formatInstagramUrl = (url) => {
-    if (!url) return 'https://www.instagram.com/andiamo.events/';
-    // If it's already a full URL, return it
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url;
-    }
-    // If it's just a username, add the full URL
-    return `https://www.instagram.com/${url.replace('@', '')}/`;
-  };
-  
-  // Get ambassador Instagram username and URL
-  const ambassadorInstagramUrl = order.ambassadors?.social_link 
-    ? formatInstagramUrl(order.ambassadors.social_link)
-    : 'https://www.instagram.com/andiamo.events/';
-  const ambassadorInstagramUsername = getInstagramUsername(ambassadorInstagramUrl) || 'andiamo.events';
-  
-  console.log(`📧 Ambassador Instagram - URL: ${ambassadorInstagramUrl}, Username: ${ambassadorInstagramUsername}`);
-  
-  // Build passes summary
-  const passesSummaryHtml = orderPasses.map(p => `
-    <tr>
-      <td>${p.pass_type}</td>
-      <td style="text-align: center;">${p.quantity}</td>
-      <td style="text-align: right;">${parseFloat(p.price).toFixed(2)} TND</td>
-    </tr>
-  `).join('');
-  
-  const supportUrl = `${process.env.VITE_API_URL || process.env.API_URL || 'https://andiamoevents.com'}/contact`;
-  
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="color-scheme" content="light dark">
-      <meta name="supported-color-schemes" content="light dark">
-      <title>Order Confirmation - Andiamo Events</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-          line-height: 1.6; 
-          color: #1A1A1A; 
-          background: #FFFFFF;
-          padding: 0;
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
-        }
-        @media (prefers-color-scheme: dark) {
-          body {
-            color: #FFFFFF;
-            background: #1A1A1A;
-          }
-        }
-        a {
-          color: #E21836 !important;
-          text-decoration: none;
-        }
-        .email-wrapper {
-          max-width: 600px;
-          margin: 0 auto;
-          background: #FFFFFF;
-        }
-        @media (prefers-color-scheme: dark) {
-          .email-wrapper {
-            background: #1A1A1A;
-          }
-        }
-        .content-card {
-          background: #F5F5F5;
-          margin: 0 20px 30px;
-          border-radius: 12px;
-          padding: 50px 40px;
-          border: 1px solid rgba(0, 0, 0, 0.1);
-        }
-        @media (prefers-color-scheme: dark) {
-          .content-card {
-            background: #1F1F1F;
-            border: 1px solid rgba(42, 42, 42, 0.5);
-          }
-        }
-        .title-section {
-          text-align: center;
-          margin-bottom: 40px;
-          padding-bottom: 30px;
-          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-        }
-        @media (prefers-color-scheme: dark) {
-          .title-section {
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-          }
-        }
-        .title {
-          font-size: 32px;
-          font-weight: 700;
-          color: #1A1A1A;
-          margin-bottom: 12px;
-          letter-spacing: -0.5px;
-        }
-        @media (prefers-color-scheme: dark) {
-          .title {
-            color: #FFFFFF;
-          }
-        }
-        .subtitle {
-          font-size: 16px;
-          color: #666666;
-          font-weight: 400;
-        }
-        @media (prefers-color-scheme: dark) {
-          .subtitle {
-            color: #B0B0B0;
-          }
-        }
-        .greeting {
-          font-size: 18px;
-          color: #1A1A1A;
-          margin-bottom: 30px;
-          line-height: 1.7;
-        }
-        @media (prefers-color-scheme: dark) {
-          .greeting {
-            color: #FFFFFF;
-          }
-        }
-        .greeting strong {
-          color: #E21836;
-          font-weight: 600;
-        }
-        .message {
-          font-size: 16px;
-          color: #666666;
-          margin-bottom: 25px;
-          line-height: 1.7;
-        }
-        @media (prefers-color-scheme: dark) {
-          .message {
-            color: #B0B0B0;
-          }
-        }
-        .order-info-block {
-          background: #E8E8E8;
-          border: 1px solid rgba(0, 0, 0, 0.15);
-          border-radius: 8px;
-          padding: 30px;
-          margin: 40px 0;
-        }
-        @media (prefers-color-scheme: dark) {
-          .order-info-block {
-            background: #252525;
-            border: 1px solid rgba(42, 42, 42, 0.8);
-          }
-        }
-        .info-row {
-          margin-bottom: 20px;
-        }
-        .info-row:last-child {
-          margin-bottom: 0;
-        }
-        .info-label {
-          font-size: 11px;
-          color: #999999;
-          text-transform: uppercase;
-          letter-spacing: 1.2px;
-          margin-bottom: 10px;
-          font-weight: 600;
-        }
-        @media (prefers-color-scheme: dark) {
-          .info-label {
-            color: #6B6B6B;
-          }
-        }
-        .info-value {
-          font-family: 'Courier New', 'Monaco', monospace;
-          font-size: 18px;
-          color: #1A1A1A;
-          font-weight: 500;
-          word-break: break-all;
-          letter-spacing: 0.5px;
-        }
-        @media (prefers-color-scheme: dark) {
-          .info-value {
-            color: #FFFFFF;
-          }
-        }
-        .passes-table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 20px 0;
-        }
-        .passes-table th {
-          text-align: left;
-          padding: 12px 0;
-          color: #E21836;
-          font-weight: 600;
-          font-size: 14px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          border-bottom: 2px solid rgba(226, 24, 54, 0.3);
-        }
-        .passes-table td {
-          padding: 12px 0;
-          color: #1A1A1A;
-          font-size: 15px;
-        }
-        @media (prefers-color-scheme: dark) {
-          .passes-table td {
-            color: #FFFFFF;
-          }
-        }
-        .total-row {
-          border-top: 2px solid rgba(226, 24, 54, 0.3);
-          margin-top: 10px;
-          padding-top: 15px;
-        }
-        .total-row td {
-          font-weight: 700;
-          font-size: 18px;
-          color: #E21836;
-          padding-top: 15px;
-        }
-        .support-section {
-          background: #E8E8E8;
-          border-left: 3px solid rgba(226, 24, 54, 0.3);
-          padding: 20px 25px;
-          margin: 35px 0;
-          border-radius: 4px;
-        }
-        @media (prefers-color-scheme: dark) {
-          .support-section {
-            background: #252525;
-          }
-        }
-        .support-text {
-          font-size: 14px;
-          color: #666666;
-          line-height: 1.7;
-        }
-        @media (prefers-color-scheme: dark) {
-          .support-text {
-            color: #B0B0B0;
-          }
-        }
-        .support-email {
-          color: #E21836 !important;
-          text-decoration: none;
-          font-weight: 500;
-        }
-        .closing-section {
-          text-align: center;
-          margin: 50px 0 40px;
-          padding-top: 40px;
-          border-top: 1px solid rgba(0, 0, 0, 0.1);
-        }
-        @media (prefers-color-scheme: dark) {
-          .closing-section {
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-          }
-        }
-        .slogan {
-          font-size: 24px;
-          font-style: italic;
-          color: #E21836;
-          font-weight: 300;
-          margin-bottom: 30px;
-        }
-        .signature {
-          font-size: 16px;
-          color: #666666;
-          line-height: 1.7;
-        }
-        @media (prefers-color-scheme: dark) {
-          .signature {
-            color: #B0B0B0;
-          }
-        }
-        .footer {
-          margin-top: 50px;
-          padding: 40px 20px 30px;
-          text-align: center;
-          border-top: 1px solid rgba(0, 0, 0, 0.1);
-        }
-        @media (prefers-color-scheme: dark) {
-          .footer {
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-          }
-        }
-        .footer-text {
-          font-size: 12px;
-          color: #999999;
-          margin-bottom: 20px;
-          line-height: 1.6;
-        }
-        @media (prefers-color-scheme: dark) {
-          .footer-text {
-            color: #6B6B6B;
-          }
-        }
-        .footer-links {
-          margin: 15px auto 0;
-          text-align: center;
-        }
-        .footer-link {
-          color: #999999;
-          text-decoration: none;
-          font-size: 13px;
-          margin: 0 8px;
-        }
-        @media (prefers-color-scheme: dark) {
-          .footer-link {
-            color: #6B6B6B;
-          }
-        }
-        .footer-link:hover {
-          color: #E21836 !important;
-        }
-        @media only screen and (max-width: 600px) {
-          .content-card {
-            margin: 0 15px 20px;
-            padding: 35px 25px;
-          }
-          .title {
-            font-size: 26px;
-          }
-          .order-info-block {
-            padding: 25px 20px;
-          }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="email-wrapper">
-        <div class="content-card">
-          <div class="title-section">
-            <h1 class="title">${title}</h1>
-            <p class="subtitle">${subtitle}</p>
-          </div>
-          
-          <p class="greeting">Dear <strong>${recipientType === 'client' ? (order.user_name || 'Valued Customer') : (order.ambassadors?.full_name || 'Ambassador')}</strong>,</p>
-          
-          <p class="message">
-            ${greetingMessage}
-          </p>
-          
-          <div class="order-info-block">
-            <div class="info-row">
-              <div class="info-label">Order Number</div>
-              <div class="info-value">${orderNumber}</div>
-            </div>
-            ${recipientType === 'client' ? `
-            ${order.ambassadors ? `
-            <div class="info-row">
-              <div class="info-label">Delivered by</div>
-              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.ambassadors.full_name}</div>
-            </div>
-            <div class="info-row">
-              <div class="info-label">Ambassador Phone</div>
-              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.ambassadors.phone || 'N/A'}</div>
-            </div>
-            <div class="info-row">
-              <div class="info-label">Ambassador Instagram</div>
-              <div style="font-size: 18px; color: #E21836; font-weight: 600;">
-                <a href="${ambassadorInstagramUrl}" target="_blank" style="color: #E21836 !important; text-decoration: none;">@${ambassadorInstagramUsername}</a>
-              </div>
-            </div>
-            ` : ''}
-            ` : `
-            <div class="info-row">
-              <div class="info-label">Client Name</div>
-              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.user_name || 'N/A'}</div>
-            </div>
-            <div class="info-row">
-              <div class="info-label">Client Phone</div>
-              <div style="font-size: 18px; color: #E21836; font-weight: 600;">${order.user_phone || 'N/A'}</div>
-            </div>
-            `}
-          </div>
-
-          <div class="order-info-block">
-            <h3 style="color: #E21836; margin-bottom: 20px; font-size: 18px; font-weight: 600;">Passes Purchased</h3>
-            <table class="passes-table">
-              <thead>
-                <tr>
-                  <th>Pass Type</th>
-                  <th style="text-align: center;">Quantity</th>
-                  <th style="text-align: right;">Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${passesSummaryHtml}
-                <tr class="total-row">
-                  <td colspan="2" style="text-align: right; padding-right: 20px;"><strong>${recipientType === 'client' ? 'Total Amount Paid:' : 'Total Amount:'}</strong></td>
-                  <td style="text-align: right;"><strong>${parseFloat(order.total_price).toFixed(2)} TND</strong></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div class="support-section">
-            ${recipientType === 'client' ? `
-            <p class="support-text">Need assistance? Contact us at 
-              <a href="mailto:Contact@andiamoevents.com" style="color: #E21836 !important; text-decoration: none; font-weight: 500;">Contact@andiamoevents.com</a> or in our Instagram page 
-              <a href="https://www.instagram.com/andiamo.events/" target="_blank" style="color: #E21836 !important; text-decoration: none; font-weight: 500;">@andiamo.events</a> or contact with 
-              <a href="tel:28070128" style="color: #E21836 !important; text-decoration: none; font-weight: 500;">28070128</a>.
-            </p>
-            ` : `
-            <p class="support-text">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a>.</p>
-            `}
-          </div>
-          <div class="closing-section">
-            <p class="slogan">We Create Memories</p>
-            <p class="signature">Best regards,<br>The Andiamo Events Team</p>
-          </div>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-}
-
-/**
  * Send order confirmation email to a single recipient
  * Non-blocking, logs errors but doesn't throw
  */
@@ -9361,7 +8873,9 @@ async function generateTicketsAndSendEmail(orderId) {
           id,
           name,
           date,
-          venue
+          venue,
+          city,
+          poster_url
         ),
         ambassadors (
           id,
@@ -10137,6 +9651,7 @@ async function generateTicketsAndSendEmail(orderId) {
             </style>
           </head>
           <body>
+            ${emailLogoHeaderHtml()}
             <div class="email-wrapper">
               <div class="content-card">
                 <div class="title-section">
@@ -10242,12 +9757,14 @@ async function generateTicketsAndSendEmail(orderId) {
           htmlLength: emailHtml.length
         });
         
+        const pdfAttachments = await buildTicketEmailPdfAttachments(order, tickets, orderPasses);
         const emailResult = await transporter.sendMail({
           from: '"Andiamo Events" <contact@andiamoevents.com>',
           replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
           to: order.user_email,
           subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-          html: emailHtml
+          html: emailHtml,
+          ...(pdfAttachments.length ? { attachments: pdfAttachments } : {}),
         });
 
         console.log('✅ Email sent successfully:', {
@@ -11399,7 +10916,9 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLi
           id,
           name,
           date,
-          venue
+          venue,
+          city,
+          poster_url
         ),
         ambassadors (
           id,
@@ -11525,12 +11044,14 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLi
       // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
       // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
       console.log('📤 Sending email to:', order.user_email);
+      const pdfAttachmentsResend = await buildTicketEmailPdfAttachments(order, tickets, passes);
       const emailResult = await transporter.sendMail({
         from: '"Andiamo Events" <contact@andiamoevents.com>',
         replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
         to: order.user_email,
         subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-        html: emailHtml
+        html: emailHtml,
+        ...(pdfAttachmentsResend.length ? { attachments: pdfAttachmentsResend } : {}),
       });
 
       console.log('✅ Email sent successfully:', {
@@ -12017,7 +11538,7 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     const passIds = passes.map(p => p.passId);
     const { data: eventPasses, error: passesError } = await dbClient
       .from('event_passes')
-      .select('id, name, price, is_active, max_quantity, sold_quantity, allowed_payment_methods')
+      .select('id, name, price, is_active, max_quantity, sold_quantity, allowed_payment_methods, event_id')
       .in('id', passIds);
 
     if (passesError) {
@@ -12035,6 +11556,33 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
         error: 'Invalid passes',
         details: 'One or more passes not found'
       });
+    }
+
+    const orderEventIds = [...new Set((eventPasses || []).map((p) => p.event_id).filter(Boolean))];
+    if (orderEventIds.length > 0) {
+      const { data: evRows, error: evErr } = await dbClient
+        .from('events')
+        .select('id, event_status')
+        .in('id', orderEventIds);
+      if (!evErr && evRows) {
+        const blocked = evRows.find(
+          (e) => e.event_status === 'completed' || e.event_status === 'cancelled'
+        );
+        if (blocked) {
+          await logOrderCreateFailure(req, 400, {
+            error: 'Event not available for purchase',
+            eventId: blocked.id,
+            event_status: blocked.event_status
+          });
+          return res.status(400).json({
+            error: 'Event not available for purchase',
+            details:
+              blocked.event_status === 'cancelled'
+                ? 'This event has been cancelled.'
+                : 'Pass sales are closed for this event.'
+          });
+        }
+      }
     }
 
     // Create pass lookup map

@@ -21,7 +21,7 @@ export function useAdminRole() {
         return { isSuperAdmin: false, role: null };
       }
       const data = await response.json();
-      const role = data.role || data.data?.role || null;
+      const role = data.admin?.role || data.role || data.data?.role || null;
       return {
         isSuperAdmin: role === 'super_admin',
         role

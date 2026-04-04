@@ -52,6 +52,9 @@ export interface OverviewTabProps {
     pendingRevenue: number;
     soldTickets: number;
   };
+  /** When false, the four financial KPIs (revenue / sold tickets) are hidden — super_admin only */
+  showFinancialKpis: boolean;
+  adminName: string | null;
   pendingAmbassadorOrdersCount: number;
   previousPendingAmbassadorOrdersCount: number | null;
   activityChartData: { name: string; applications: number; approved: number; orders: number; revenue: number; eventsCreated: number }[];
@@ -68,6 +71,8 @@ export function OverviewTab({
   approvedCount,
   events,
   displayStats,
+  showFinancialKpis,
+  adminName,
   pendingAmbassadorOrdersCount,
   previousPendingAmbassadorOrdersCount,
   activityChartData,
@@ -94,13 +99,22 @@ export function OverviewTab({
                 <h2 className="text-3xl font-heading font-bold" style={{ color: "#E21836" }}>
                   {language === "en" ? "Welcome Back!" : "Bon Retour !"}
                 </h2>
+                {adminName ? (
+                  <p className="text-base font-heading font-medium" style={{ color: "#E8E8E8" }}>
+                    {language === "en" ? "Signed in as " : "Connecté en tant que "}
+                    <span className="font-semibold" style={{ color: "#FFFFFF" }}>
+                      {adminName}
+                    </span>
+                  </p>
+                ) : null}
                 <p className="text-lg font-heading" style={{ color: "#B0B0B0" }}>
                   {language === "en"
                     ? "Here's what's happening with your events today"
                     : "Voici ce qui se passe avec vos événements aujourd'hui"}
                 </p>
               </div>
-              {/* Responsive KPI grid: keeps alignment consistent and avoids divider/wrapping issues */}
+              {/* Financial KPIs: super_admin only (includes POS in dashboard totals) */}
+              {showFinancialKpis ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-start gap-x-10 gap-y-3">
                 <div className="text-center">
                   <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
@@ -138,6 +152,7 @@ export function OverviewTab({
                   </p>
                 </div>
               </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -148,7 +163,7 @@ export function OverviewTab({
         {/* Pending Applications Card */}
         <Card
           className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-            animatedCards.has(0) ? "animate-in slide-in-from-bottom-4 fade-in duration-700" : "opacity-0 translate-y-8"
+            animatedCards.has(0) ? "animate-in slide-in-from-bottom-4 fade-in duration-700" : "opacity-100"
           }`}
           style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
           onMouseEnter={(e) => {
@@ -208,7 +223,7 @@ export function OverviewTab({
         {/* Approved Applications Card */}
         <Card
           className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-            animatedCards.has(1) ? "animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200" : "opacity-0 translate-y-8"
+            animatedCards.has(1) ? "animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200" : "opacity-100"
           }`}
           style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
           onMouseEnter={(e) => {
@@ -271,7 +286,7 @@ export function OverviewTab({
         {/* Total Events Card */}
         <Card
           className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-            animatedCards.has(2) ? "animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400" : "opacity-0 translate-y-8"
+            animatedCards.has(2) ? "animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400" : "opacity-100"
           }`}
           style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
           onMouseEnter={(e) => {
@@ -334,7 +349,7 @@ export function OverviewTab({
         {/* Ambassador Orders Pending Card */}
         <Card
           className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-            animatedCards.has(3) ? "animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600" : "opacity-0 translate-y-8"
+            animatedCards.has(3) ? "animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600" : "opacity-100"
           }`}
           style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
           onMouseEnter={(e) => {
@@ -681,7 +696,7 @@ export function OverviewTab({
                         </div>
                       </div>
                       <Badge variant="outline" className="font-heading">
-                        {event.featured ? (language === "en" ? "Featured" : "En Vedette") : event.event_type}
+                        {event.event_type || "upcoming"}
                       </Badge>
                     </div>
                   </div>

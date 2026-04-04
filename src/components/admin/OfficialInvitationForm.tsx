@@ -30,11 +30,14 @@ interface EventPass {
 interface OfficialInvitationFormProps {
   onSuccess?: () => void;
   language?: 'en' | 'fr';
+  /** When set (dashboard "Filter by Event"), the form uses this event and locks the event field. */
+  dashboardSelectedEventId?: string;
 }
 
 export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({ 
   onSuccess,
-  language = 'en'
+  language = 'en',
+  dashboardSelectedEventId
 }) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -85,6 +88,12 @@ export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({
 
     fetchEvents();
   }, [toast, language]);
+
+  useEffect(() => {
+    if (dashboardSelectedEventId && String(dashboardSelectedEventId).trim() !== '') {
+      setSelectedEventId(dashboardSelectedEventId);
+    }
+  }, [dashboardSelectedEventId]);
 
   // Fetch passes when event is selected
   useEffect(() => {
@@ -262,7 +271,11 @@ export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({
       setGuestName('');
       setGuestPhone('');
       setGuestEmail('');
-      setSelectedEventId('');
+      setSelectedEventId(
+        dashboardSelectedEventId && String(dashboardSelectedEventId).trim() !== ''
+          ? dashboardSelectedEventId
+          : ''
+      );
       setSelectedPassTypeId('');
       setQuantity('1');
 
@@ -358,7 +371,13 @@ export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({
             <Select
               value={selectedEventId}
               onValueChange={setSelectedEventId}
-              disabled={loading || loadingEvents}
+              disabled={
+                loading ||
+                loadingEvents ||
+                Boolean(
+                  dashboardSelectedEventId && String(dashboardSelectedEventId).trim() !== ''
+                )
+              }
             >
               <SelectTrigger id="event">
                 <SelectValue placeholder={language === 'en' ? 'Select an event' : 'Sélectionnez un événement'} />
@@ -386,6 +405,14 @@ export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({
                 {selectedEvent.venue}, {selectedEvent.city}
               </p>
             )}
+            {dashboardSelectedEventId &&
+              String(dashboardSelectedEventId).trim() !== '' && (
+                <p className="text-xs text-muted-foreground">
+                  {language === 'en'
+                    ? 'Event matches the dashboard filter above.'
+                    : 'L’événement correspond au filtre du tableau de bord ci-dessus.'}
+                </p>
+              )}
           </div>
 
           {/* Pass Type Selection */}

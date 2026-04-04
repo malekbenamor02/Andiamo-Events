@@ -1,8 +1,10 @@
 /**
- * Official online ticket email HTML – matches email-templates/online-ticket-email-preview.html
+ * Official online ticket email HTML — regenerate browser preview: `node email-templates/generate-previews.cjs`
  * Used by ClicToPay success email, first-time ticket email, and admin resend ticket email.
  * (.cjs so require() works when package.json has "type": "module")
  */
+
+const { emailLogoHeaderHtml } = require('./email-branding.cjs');
 
 function formatEventTime(dateString) {
   if (!dateString) return 'TBA';
@@ -169,6 +171,7 @@ function buildOnlineTicketEmailHtml(opts) {
   </style>
 </head>
 <body>
+  ${emailLogoHeaderHtml()}
   <div class="email-wrapper">
     <div class="content-card">
       <div class="title-section">
@@ -176,7 +179,7 @@ function buildOnlineTicketEmailHtml(opts) {
         <p class="subtitle">Order Confirmation - Andiamo Events</p>
       </div>
       <p class="greeting">Dear <strong>${escapeHtml(customerName || 'Valued Customer')}</strong>,</p>
-      <p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.</p>
+      <p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are shown below, and a printable PDF is attached (one page per ticket) so you can save or print them easily.</p>
       <div class="order-info-block">
         <div class="info-row">
           <div class="info-label">Order Number</div>

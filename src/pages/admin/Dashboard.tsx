@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,7 +23,6 @@ import ExcelJS from "exceljs";
 import {
   CheckCircle,
   XCircle,
-  Clock,
   Users,
   TrendingUp,
   DollarSign,
@@ -86,7 +85,6 @@ import {
   Store,
   History,
   Menu,
-  PanelLeft,
   Bell,
   Lightbulb,
 } from "lucide-react";
@@ -101,7 +99,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerTrigger } from "@/components/ui/drawer";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { formatDateDMY } from "@/lib/date-utils";
+import {
+  formatDateDMY,
+  getDefaultAdminDashboardEventId,
+  sortEventsForAdminDashboardSelector,
+} from "@/lib/date-utils";
+import { isLocalhostClient } from "@/lib/localhost";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { apiFetch, handleApiResponse } from "@/lib/api-client";
@@ -151,6 +154,9 @@ import { EventsTab } from "./components/EventsTab";
 import { AmbassadorInfoDialog } from "./components/AmbassadorInfoDialog";
 import { OnlineOrderDetailsDialog } from "./components/OnlineOrderDetailsDialog";
 import { OrderDetailsDialog } from "./components/OrderDetailsDialog";
+import { AdminSessionCountdown } from "./components/AdminSessionCountdown";
+import type { AdminSessionCountdownState } from "./components/AdminSessionCountdown";
+import { AdminDesktopSidebarRail } from "./components/AdminDesktopSidebarRail";
 
 type AdminNotificationKind =
   | "ambassador_application"
@@ -166,6 +172,22 @@ interface AdminNotification {
   title: string;
   message: string;
   createdAt: string;
+}
+
+/** Tabs a regular `admin` may use; `super_admin` may use all dashboard tabs. */
+const REGULAR_ADMIN_TAB_KEYS = new Set([
+  "overview",
+  "ambassadors",
+  "applications",
+  "online-orders",
+  "ambassador-sales",
+  "pos",
+]);
+
+function isAdminTabAllowedForRole(tab: string, role: string | null): boolean {
+  if (role === "super_admin") return true;
+  if (role === "admin") return REGULAR_ADMIN_TAB_KEYS.has(tab);
+  return true;
 }
 
 const AdminDashboard = ({ language }: AdminDashboardProps) => {
@@ -383,10 +405,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [teamMemberToDelete, setTeamMemberToDelete] = useState(null);
 
   // Animation states
-  const [hasAnimated, setHasAnimated] = useState(false);
   const [animatedCards, setAnimatedCards] = useState<Set<number>>(new Set());
   const [animatedEvents, setAnimatedEvents] = useState<Set<string>>(new Set());
-  const [hasEventsAnimated, setHasEventsAnimated] = useState(false);
   const [animatedAmbassadors, setAnimatedAmbassadors] = useState<Set<string>>(new Set());
   const [hasAmbassadorsAnimated, setHasAmbassadorsAnimated] = useState(false);
   const [animatedApplications, setAnimatedApplications] = useState<Set<string>>(new Set());
@@ -794,6 +814,28 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     return out;
   }, [applications, codAmbassadorOrders, onlineOrdersForChart, events]);
 
+  /**
+   * Header event selector: all events. Test events (`is_test`) only on localhost / local dev — same as public listings.
+   */
+  const selectableDashboardEvents = useMemo(() => {
+    const showTest = isLocalhostClient();
+    const filtered = events.filter((e) => {
+      if (!showTest && e.is_test === true) return false;
+      return true;
+    });
+    return sortEventsForAdminDashboardSelector(filtered);
+  }, [events]);
+
+  /** Stable key for event list so entrance animation re-runs when ids change (e.g. data loads after tab open). */
+  const eventsListAnimationKey = useMemo(
+    () =>
+      [...events]
+        .map((e) => e.id)
+        .sort()
+        .join(","),
+    [events],
+  );
+
   const [loadingOrders, setLoadingOrders] = useState(false);
 
   // Online Orders state
@@ -812,7 +854,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     city: 'all',
   });
 
-  // Dashboard overview stats: paid revenue + sold tickets for online + ambassador only (matches Reports / Excel pass totals)
+  /** POS paid/pending totals for overview KPIs (super_admin only); from /api/admin/pos-statistics */
+  const [posOverviewTotals, setPosOverviewTotals] = useState<{
+    paidRevenue: number;
+    paidTickets: number;
+    pendingRevenue: number;
+  } | null>(null);
+
+  // Dashboard overview stats: paid revenue + sold tickets for online + ambassador; super_admin also includes POS (paid + pending revenue; paid tickets only)
   const dashboardOrderStats = useMemo(() => {
     const PAID_AMB = ['PAID', 'COMPLETED'];
     const PENDING_AMB = ['PENDING_CASH', 'PENDING_ADMIN_APPROVAL', 'PENDING_AMBASSADOR_CONFIRMATION', 'APPROVED'];
@@ -852,9 +901,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     const onlinePendingRevenue = onlinePending.reduce((s, o) => s + getOrderLineRevenue(o), 0);
     const onlineSoldTickets = onlinePaid.reduce((s, o) => s + getOrderTicketsAndRevenue(o).tickets, 0);
 
-    const paidRevenue = ambPaidRevenue + onlinePaidRevenue;
-    const pendingRevenue = ambPendingRevenue + onlinePendingRevenue;
-    const soldTickets = ambSoldTickets + onlineSoldTickets;
+    let paidRevenue = ambPaidRevenue + onlinePaidRevenue;
+    let pendingRevenue = ambPendingRevenue + onlinePendingRevenue;
+    let soldTickets = ambSoldTickets + onlineSoldTickets;
+
+    const posExtra =
+      currentAdminRole === "super_admin"
+        ? posOverviewTotals ?? { paidRevenue: 0, paidTickets: 0, pendingRevenue: 0 }
+        : { paidRevenue: 0, paidTickets: 0, pendingRevenue: 0 };
+    paidRevenue += posExtra.paidRevenue;
+    pendingRevenue += posExtra.pendingRevenue;
+    soldTickets += posExtra.paidTickets;
 
     return {
       totalRevenue: paidRevenue + pendingRevenue,
@@ -862,53 +919,34 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       pendingRevenue,
       soldTickets,
     };
-  }, [codAmbassadorOrders, onlineOrders]);
-
-  // Compteur (count-up) animation for welcome block metrics
-  const [displayStats, setDisplayStats] = useState({ totalRevenue: 0, paidRevenue: 0, pendingRevenue: 0, soldTickets: 0 });
-  const [hasCountUpAnimated, setHasCountUpAnimated] = useState(false);
-
-  // Re-run the count-up animation whenever the event filter changes
-  useEffect(() => {
-    setHasCountUpAnimated(false);
-  }, [selectedEventId]);
+  }, [codAmbassadorOrders, onlineOrders, currentAdminRole, posOverviewTotals]);
 
   useEffect(() => {
-    if (activeTab !== 'overview') {
-      setHasCountUpAnimated(false);
+    if (currentAdminRole !== "super_admin") {
+      setPosOverviewTotals(null);
       return;
     }
-    const { totalRevenue, paidRevenue, pendingRevenue, soldTickets } = dashboardOrderStats;
-    if (hasCountUpAnimated) {
-      setDisplayStats({ totalRevenue, paidRevenue, pendingRevenue, soldTickets });
-      return;
-    }
-    const hasData = totalRevenue > 0 || paidRevenue > 0 || pendingRevenue > 0 || soldTickets > 0;
-    if (!hasData) {
-      setDisplayStats({ totalRevenue: 0, paidRevenue: 0, pendingRevenue: 0, soldTickets: 0 });
-      return;
-    }
-    const duration = 1200;
-    const steps = 60;
-    const stepDuration = duration / steps;
-    let step = 0;
-    const interval = setInterval(() => {
-      step++;
-      const p = Math.min(1, step / steps);
-      setDisplayStats({
-        totalRevenue: Math.round(totalRevenue * p),
-        paidRevenue: Math.round(paidRevenue * p),
-        pendingRevenue: Math.round(pendingRevenue * p),
-        soldTickets: Math.round(soldTickets * p),
+    let cancelled = false;
+    const qs = selectedEventId ? `?event_id=${encodeURIComponent(selectedEventId)}` : "";
+    fetch(`/api/admin/pos-statistics${qs}`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("pos-statistics"))))
+      .then((data: { paidRevenue?: number; paidTickets?: number; pendingRevenue?: number }) => {
+        if (cancelled) return;
+        setPosOverviewTotals({
+          paidRevenue: Number(data.paidRevenue) || 0,
+          paidTickets: Number(data.paidTickets) || 0,
+          pendingRevenue: Number(data.pendingRevenue) || 0,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPosOverviewTotals({ paidRevenue: 0, paidTickets: 0, pendingRevenue: 0 });
+        }
       });
-      if (step >= steps) {
-        clearInterval(interval);
-        setDisplayStats({ totalRevenue, paidRevenue, pendingRevenue, soldTickets });
-        setHasCountUpAnimated(true);
-      }
-    }, stepDuration);
-    return () => clearInterval(interval);
-  }, [activeTab, hasCountUpAnimated, dashboardOrderStats.totalRevenue, dashboardOrderStats.paidRevenue, dashboardOrderStats.pendingRevenue, dashboardOrderStats.soldTickets]);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentAdminRole, selectedEventId]);
 
   // COD Orders filters
   const [codOrderFilters, setCodOrderFilters] = useState({
@@ -944,23 +982,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     dateTo: null as Date | null
   });
 
-  // Session expiration timestamp (milliseconds) - from server JWT token only
-  // STRICT: Token expiration is fixed at login and NEVER resets or extends
-  // The JWT contains an immutable 'exp' field that cannot be changed
-  // No localStorage - session is managed entirely by server JWT token
-  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
-  
-  // Session time left in seconds - calculated from expiration timestamp
-  // STRICT: Timer is based on JWT 'exp' field - never resets, never extends
-  const calculateTimeLeft = (expiration: number | null): number => {
-    if (!expiration) return 0; // No expiration = no session
-    const remaining = Math.max(0, Math.floor((expiration - Date.now()) / 1000));
-    return remaining;
-  };
-  
-  // Initialize session timer - will be set from server response
-  // STRICT: No default value - must come from server token
-  const [sessionTimeLeft, setSessionTimeLeft] = useState<number>(0);
+  // Session countdown lives in AdminSessionCountdown so 1s ticks do not re-render this page.
+  const [sessionCountdown, setSessionCountdown] = useState<AdminSessionCountdownState>(null);
 
   // Realtime notification center state
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
@@ -1201,10 +1224,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       eventType: "Event Type",
       eventTypeUpcoming: "Upcoming Event",
       eventTypeGallery: "Gallery Event (Past Event)",
-      convertToGallery: "Convert to Gallery",
-      convertToGalleryTooltip: "Move this event to the gallery and add images/videos. Orders and statistics are kept.",
+      eventStatus: "Event status",
+      eventStatusActive: "Active — pass sales open",
+      eventStatusCompleted: "Completed — sales closed, becomes gallery",
+      eventStatusCancelled: "Cancelled",
+      eventStatusCompletedHint:
+        "Closes pass purchase and Book Now. The event becomes a gallery page: add photos, videos, and story below (save, then edit again to upload if needed).",
       galleryImages: "Gallery Images",
       galleryVideos: "Gallery Videos",
+      galleryCredit: "Gallery credit (on photos)",
+      galleryCreditHint: "Shown as “Event by : …” on each gallery image. Example: Mouayed Chakir & Sirine Chamli",
       uploadGalleryFiles: "Upload Gallery Files",
       addGalleryFile: "Add File",
       removeGalleryFile: "Remove",
@@ -1301,10 +1330,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       eventType: "Type d'Ã‰vÃ©nement",
       eventTypeUpcoming: "Ã‰vÃ©nement Ã  Venir",
       eventTypeGallery: "Ã‰vÃ©nement Galerie (Ã‰vÃ©nement PassÃ©)",
-      convertToGallery: "Convertir en Galerie",
-      convertToGalleryTooltip: "DÃ©placer cet Ã©vÃ©nement vers la galerie et ajouter images/vidÃ©os. Commandes et statistiques conservÃ©es.",
+      eventStatus: "Statut de l'Ã©vÃ©nement",
+      eventStatusActive: "Actif — vente de passes ouverte",
+      eventStatusCompleted: "TerminÃ© — ventes fermÃ©es, page galerie",
+      eventStatusCancelled: "AnnulÃ©",
+      eventStatusCompletedHint:
+        "Ferme l'achat de passes et le bouton RÃ©server. L'Ã©vÃ©nement devient une page galerie : ajoutez photos, vidÃ©os et texte ci-dessous (enregistrez puis modifiez Ã  nouveau pour tÃ©lÃ©verser si besoin).",
       galleryImages: "Images de Galerie",
       galleryVideos: "VidÃ©os de Galerie",
+      galleryCredit: "CrÃ©dit galerie (sur les photos)",
+      galleryCreditHint:
+        "Affiche sous le logo sur chaque photo (ex. : Mouayed Chakir & Sirine Chamli).",
       uploadGalleryFiles: "TÃ©lÃ©charger des Fichiers de Galerie",
       addGalleryFile: "Ajouter un Fichier",
       removeGalleryFile: "Supprimer",
@@ -1362,7 +1398,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   useEffect(() => {
     fetchAllData();
-    fetchAmbassadorSalesData();
   }, []);
 
   // Request browser notification permission as soon as dashboard loads so notifications
@@ -1626,67 +1661,53 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     };
   }, [language]);
 
-  // Animation effect for overview cards
+  // Overview KPI stagger — re-run each time we land on the tab (no hasAnimated gate:
+  // React Strict Mode clears timeouts on first mount, which previously left cards 1–3 invisible.)
   useEffect(() => {
-    if (activeTab === "overview" && !hasAnimated) {
-      const timer = setTimeout(() => {
-        setHasAnimated(true);
-        // Animate cards one by one
-        const cards = [0, 1, 2, 3];
-        cards.forEach((cardIndex, index) => {
-          setTimeout(() => {
-            setAnimatedCards(prev => new Set([...prev, cardIndex]));
-          }, index * 200); // 200ms delay between each card
-        });
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-    
-    // Reset animation when switching away from overview
     if (activeTab !== "overview") {
-      setHasAnimated(false);
       setAnimatedCards(new Set());
+      return;
     }
-  }, [activeTab, hasAnimated]);
 
-  // Animation effect for events
+    setAnimatedCards(new Set());
+    const cards = [0, 1, 2, 3];
+    const timeoutIds = cards.map((cardIndex, index) =>
+      window.setTimeout(() => {
+        setAnimatedCards((prev) => new Set([...prev, cardIndex]));
+      }, index * 120),
+    );
+    return () => timeoutIds.forEach((id) => window.clearTimeout(id));
+  }, [activeTab]);
+
+  // Animation effect for events (keyed by id set: if user opens tab before fetch completes,
+  // we must re-stagger when events arrive — old logic left cards at opacity-0 forever.)
   useEffect(() => {
-    if (activeTab === "events" && !hasEventsAnimated) {
-      const timer = setTimeout(() => {
-        setHasEventsAnimated(true);
-        // Animate events one by one
-        events.forEach((event, index) => {
-          setTimeout(() => {
-            setAnimatedEvents(prev => new Set([...prev, event.id]));
-          }, index * 150); // 150ms delay between each event
-        });
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-    
-    // Reset animation when switching away from events
     if (activeTab !== "events") {
-      setHasEventsAnimated(false);
       setAnimatedEvents(new Set());
+      return;
     }
-  }, [activeTab, hasEventsAnimated, events]);
+
+    setAnimatedEvents(new Set());
+    const timeoutIds = events.map((event, index) =>
+      window.setTimeout(() => {
+        setAnimatedEvents((prev) => new Set([...prev, event.id]));
+      }, index * 80),
+    );
+    return () => timeoutIds.forEach((id) => window.clearTimeout(id));
+  }, [activeTab, eventsListAnimationKey, events]);
 
   // Animation effect for ambassadors
   useEffect(() => {
     if (activeTab === "ambassadors" && !hasAmbassadorsAnimated) {
-      const timer = setTimeout(() => {
-        setHasAmbassadorsAnimated(true);
-        // Animate ambassadors one by one
-        ambassadors.forEach((ambassador, index) => {
-          setTimeout(() => {
-            setAnimatedAmbassadors(prev => new Set([...prev, ambassador.id]));
-          }, index * 150); // 150ms delay between each ambassador
-        });
-      }, 300);
-      return () => clearTimeout(timer);
+      setHasAmbassadorsAnimated(true);
+      const timeoutIds = ambassadors.map((ambassador, index) =>
+        window.setTimeout(() => {
+          setAnimatedAmbassadors((prev) => new Set([...prev, ambassador.id]));
+        }, index * 80)
+      );
+      return () => timeoutIds.forEach((id) => window.clearTimeout(id));
     }
-    
-    // Reset animation when switching away from ambassadors
+
     if (activeTab !== "ambassadors") {
       setHasAmbassadorsAnimated(false);
       setAnimatedAmbassadors(new Set());
@@ -1795,41 +1816,35 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Animation effect for applications
   useEffect(() => {
-    // Reset animation when filters change
     setHasApplicationsAnimated(false);
     setAnimatedApplications(new Set());
-    
-    if (activeTab === "applications") {
-      const timer = setTimeout(() => {
-        setHasApplicationsAnimated(true);
-        // Animate applications one by one (limit to first 50 for performance)
-        const appsToAnimate = filteredApplications.slice(0, 50);
-        appsToAnimate.forEach((application, index) => {
-          setTimeout(() => {
-            setAnimatedApplications(prev => new Set([...prev, application.id]));
-          }, index * 50); // Reduced delay for faster animation
-        });
-      }, 100); // Reduced initial delay
-      return () => clearTimeout(timer);
+
+    if (activeTab !== "applications") {
+      return;
     }
+
+    setHasApplicationsAnimated(true);
+    const appsToAnimate = filteredApplications.slice(0, 50);
+    const timeoutIds = appsToAnimate.map((application, index) =>
+      window.setTimeout(() => {
+        setAnimatedApplications((prev) => new Set([...prev, application.id]));
+      }, index * 40)
+    );
+    return () => timeoutIds.forEach((id) => window.clearTimeout(id));
   }, [activeTab, filteredApplications.length, applicationStatusFilter, applicationCityFilter, applicationVilleFilter, applicationSearchTerm, filteredApplications]);
 
   // Animation effect for sponsors
   useEffect(() => {
     if (activeTab === "sponsors" && !hasSponsorsAnimated) {
-      const timer = setTimeout(() => {
-        setHasSponsorsAnimated(true);
-        // Animate sponsors one by one
-        sponsors.forEach((sponsor, index) => {
-          setTimeout(() => {
-            setAnimatedSponsors(prev => new Set([...prev, sponsor.id]));
-          }, index * 150); // 150ms delay between each sponsor
-        });
-      }, 300);
-      return () => clearTimeout(timer);
+      setHasSponsorsAnimated(true);
+      const timeoutIds = sponsors.map((sponsor, index) =>
+        window.setTimeout(() => {
+          setAnimatedSponsors((prev) => new Set([...prev, sponsor.id]));
+        }, index * 80)
+      );
+      return () => timeoutIds.forEach((id) => window.clearTimeout(id));
     }
-    
-    // Reset animation when switching away from sponsors
+
     if (activeTab !== "sponsors") {
       setHasSponsorsAnimated(false);
       setAnimatedSponsors(new Set());
@@ -1839,19 +1854,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Animation effect for team members
   useEffect(() => {
     if (activeTab === "team" && !hasTeamAnimated) {
-      const timer = setTimeout(() => {
-        setHasTeamAnimated(true);
-        // Animate team members one by one
-        teamMembers.forEach((member, index) => {
-          setTimeout(() => {
-            setAnimatedTeamMembers(prev => new Set([...prev, member.id]));
-          }, index * 150); // 150ms delay between each member
-        });
-      }, 300);
-      return () => clearTimeout(timer);
+      setHasTeamAnimated(true);
+      const timeoutIds = teamMembers.map((member, index) =>
+        window.setTimeout(() => {
+          setAnimatedTeamMembers((prev) => new Set([...prev, member.id]));
+        }, index * 80)
+      );
+      return () => timeoutIds.forEach((id) => window.clearTimeout(id));
     }
-    
-    // Reset animation when switching away from team
+
     if (activeTab !== "team") {
       setHasTeamAnimated(false);
       setAnimatedTeamMembers(new Set());
@@ -1861,19 +1872,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Animation effect for contact messages
   useEffect(() => {
     if (activeTab === "contact" && !hasContactMessagesAnimated) {
-      const timer = setTimeout(() => {
-        setHasContactMessagesAnimated(true);
-        // Enhanced staggered animation for contact messages
-        filteredContactMessages.forEach((message, index) => {
-          setTimeout(() => {
-            setAnimatedContactMessages(prev => new Set([...prev, message.id]));
-          }, index * 200); // Increased delay for more dramatic effect
-        });
-      }, 500); // Increased initial delay
-      return () => clearTimeout(timer);
+      setHasContactMessagesAnimated(true);
+      const timeoutIds = filteredContactMessages.map((message, index) =>
+        window.setTimeout(() => {
+          setAnimatedContactMessages((prev) => new Set([...prev, message.id]));
+        }, index * 60)
+      );
+      return () => timeoutIds.forEach((id) => window.clearTimeout(id));
     }
-    
-    // Reset animation when switching away from contact
+
     if (activeTab !== "contact") {
       setHasContactMessagesAnimated(false);
       setAnimatedContactMessages(new Set());
@@ -1926,45 +1933,61 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   useEffect(() => {
     if (activeTab === "tickets" && !hasTicketsAnimated) {
-      const timer = setTimeout(() => {
-        setHasTicketsAnimated(true);
-        // Enhanced staggered animation for tickets with different timing
-        tickets.forEach((ticket, index) => {
-          setTimeout(() => {
-            setAnimatedTickets(prev => new Set([...prev, ticket.id]));
-          }, index * 250); // Increased delay for more dramatic effect
-        });
-      }, 600); // Increased initial delay for more impact
-      return () => clearTimeout(timer);
+      setHasTicketsAnimated(true);
+      const timeoutIds = tickets.map((ticket, index) =>
+        window.setTimeout(() => {
+          setAnimatedTickets((prev) => new Set([...prev, ticket.id]));
+        }, index * 80)
+      );
+      return () => timeoutIds.forEach((id) => window.clearTimeout(id));
     }
 
-    // Reset animation when switching away from tickets
     if (activeTab !== "tickets") {
       setHasTicketsAnimated(false);
       setAnimatedTickets(new Set());
     }
   }, [activeTab, hasTicketsAnimated, tickets]);
 
-  // Set default selected event to upcoming event
-  useEffect(() => {
-    if (events.length > 0 && !selectedEventId) {
-      const upcomingEvent = events.find(event => event.event_type === 'upcoming');
-      if (upcomingEvent) {
-        setSelectedEventId(upcomingEvent.id);
-      } else {
-        setSelectedEventId(events[0].id);
-      }
+  useLayoutEffect(() => {
+    if (selectableDashboardEvents.length === 0) {
+      if (selectedEventId) setSelectedEventId("");
+      return;
     }
-  }, [events, selectedEventId]);
+    if (
+      !selectedEventId ||
+      !selectableDashboardEvents.some((e) => e.id === selectedEventId)
+    ) {
+      setSelectedEventId(
+        getDefaultAdminDashboardEventId(selectableDashboardEvents)
+      );
+    }
+  }, [selectableDashboardEvents, selectedEventId]);
 
-  // Reload data when selected event changes
+  /** One source of truth: changing the header event reloads ambassador + online data and the overview activity chart for that event. */
   useEffect(() => {
-    // Skip reload on initial mount (when selectedEventId is being set for the first time)
-    // Only reload when selectedEventId actually changes after initial load
-    if (events.length > 0) {
-      fetchAmbassadorSalesData();
-      fetchOnlineOrders();
-    }
+    if (!selectedEventId) return;
+
+    void fetchAmbassadorSalesData();
+    void fetchOnlineOrders();
+
+    (async () => {
+      try {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        let chartQuery = (supabase as any)
+          .from("orders")
+          .select(
+            "id, created_at, total_price, total, status, payment_status, order_passes (quantity, price)",
+          )
+          .eq("source", "platform_online")
+          .gte("created_at", sevenDaysAgo.toISOString())
+          .eq("event_id", selectedEventId);
+        const { data: onlineForChart } = await chartQuery;
+        setOnlineOrdersForChart(onlineForChart || []);
+      } catch {
+        setOnlineOrdersForChart([]);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEventId]);
 
@@ -2508,31 +2531,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       const ambassadorNameMap = new Map<string, string>();
       const ambassadorStatusMap = new Map<string, string>();
 
-      const { data: allAmbassadorsData, error: ambassadorsError } = await (supabase as any)
-        .from('ambassadors')
-        .select('id, full_name, ville, status, city');
+      const apiBase = getApiBaseUrl();
+      let ordersUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_SALES_ORDERS, apiBase) + '?limit=1000';
+      if (statusFilter) {
+        ordersUrl += `&status=${encodeURIComponent(statusFilter)}`;
+      }
+      if (selectedEventId) {
+        ordersUrl += `&event_id=${encodeURIComponent(selectedEventId)}`;
+      }
 
+      const [ambassadorsRes, ordersResponse] = await Promise.all([
+        (supabase as any).from('ambassadors').select('id, full_name, ville, status, city'),
+        fetch(ordersUrl, { credentials: 'include' }),
+      ]);
+
+      const { data: allAmbassadorsData, error: ambassadorsError } = ambassadorsRes;
       if (!ambassadorsError && allAmbassadorsData?.length) {
         (allAmbassadorsData || []).forEach((amb: any) => {
           ambassadorNameMap.set(amb.id, amb.full_name);
           ambassadorStatusMap.set(amb.id, amb.status || '');
         });
       }
-
-      // Use API endpoint instead of direct Supabase queries
-      // API endpoint excludes REMOVED_BY_ADMIN orders by default, but includes them when status=REMOVED_BY_ADMIN
-      const apiBase = getApiBaseUrl();
-      let ordersUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_SALES_ORDERS, apiBase) + '?limit=1000';
-      if (statusFilter) {
-        ordersUrl += `&status=${encodeURIComponent(statusFilter)}`;
-      }
-      // Filter by selected event if one is selected
-      if (selectedEventId) {
-        ordersUrl += `&event_id=${encodeURIComponent(selectedEventId)}`;
-      }
-      const ordersResponse = await fetch(ordersUrl, {
-        credentials: 'include'
-      });
 
       if (!ordersResponse.ok) {
         let errMessage = 'Failed to fetch ambassador orders';
@@ -2636,19 +2655,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       }));
       setAllAmbassadorOrders(enrichedAllOrders);
 
-      // Fetch order logs (non-blocking: do not throw so orders still show if logs fail)
-      const { data: logsData, error: logsError } = await (supabase as any)
-        .from('order_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
+      // Order logs: load after orders so the tab stops spinning sooner
+      void (async () => {
+        try {
+          const { data: logsData, error: logsError } = await (supabase as any)
+            .from('order_logs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(100);
 
-      if (logsError) {
-        console.warn('Order logs fetch failed (optional):', logsError);
-        setOrderLogs([]);
-      } else {
-        setOrderLogs(logsData || []);
-      }
+          if (logsError) {
+            console.warn('Order logs fetch failed (optional):', logsError);
+            setOrderLogs([]);
+          } else {
+            setOrderLogs(logsData || []);
+          }
+        } catch (e) {
+          console.warn('Order logs fetch failed (optional):', e);
+          setOrderLogs([]);
+        }
+      })();
     } catch (error: any) {
       if (error?.message && !error.message.includes('Failed to fetch') && !error.message.includes('NetworkError')) {
         console.error('Error fetching ambassador sales data:', error);
@@ -4699,7 +4725,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const buildMarketingEmailHtml = (content: string, recipientName?: string) => {
     const supportUrl = `${window.location.origin}/contact`;
     const recipient = recipientName || 'Valued Subscriber';
-    
+    const logoSrc = `${window.location.origin}/email-assets/logo-white.png`
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+    const emailLogoBar = `<div class="email-logo-bar" style="max-width:600px;margin:0 auto;background-color:#1A1A1A;text-align:center;padding:22px 16px 18px;line-height:0;">
+  <img src="${logoSrc}" alt="Andiamo Events" width="200" style="max-width:200px;width:200px;height:auto;display:inline-block;border:0;outline:none;-ms-interpolation-mode:bicubic;" />
+</div>`;
+
     return `
       <!DOCTYPE html>
       <html>
@@ -4930,6 +4963,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         </style>
       </head>
       <body>
+        ${emailLogoBar}
         <div class="email-wrapper">
           <div class="content-card">
             <div class="title-section">
@@ -6049,29 +6083,26 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             // The expiration time is set at login and NEVER changes until re-login
             if (data.sessionExpiresAt) {
               const expiration = data.sessionExpiresAt;
-              // Only set if not already set (prevents reset on refresh)
-              setSessionExpiresAt(prev => {
-                // If we already have the same expiration, don't update
-                // This ensures the timer never resets on page refresh
-                if (prev === expiration) return prev;
-                // Only update if we don't have one yet or if it's different (shouldn't happen)
-                return prev || expiration;
-              });
-              // Use server-provided remaining seconds if available.
-              // This avoids issues when the device clock differs from the server clock.
               const remainingFromServer =
                 typeof (data as any).sessionTimeRemaining === "number"
                   ? (data as any).sessionTimeRemaining
                   : null;
-              const fallbackRemaining =
-                Math.max(0, Math.floor((expiration - Date.now()) / 1000));
-
-                const expirationLooksLikeSeconds = typeof expiration === "number" && expiration < 1e12;
-              setSessionTimeLeft(
-                remainingFromServer !== null ? remainingFromServer : fallbackRemaining,
+              const fallbackRemaining = Math.max(
+                0,
+                Math.floor((expiration - Date.now()) / 1000),
               );
-            } else {
-              // sessionExpiresAt missing; keep session timer at 0
+              const remainingSeconds =
+                remainingFromServer !== null ? remainingFromServer : fallbackRemaining;
+
+              setSessionCountdown((prev) => {
+                const nextExpiresAt =
+                  prev?.expiresAt === expiration
+                    ? prev.expiresAt
+                    : prev
+                      ? prev.expiresAt
+                      : expiration;
+                return { expiresAt: nextExpiresAt, remainingSeconds };
+              });
             }
             
             // Show alert if role is not super_admin but user expects it
@@ -6694,13 +6725,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [activeTab, currentAdminRole]);
 
-  // Protect super_admin-only tabs: redirect regular admins away from logs, settings, admins tabs
+  // Regular admins: only the six allowed tabs; anything else (events, reports, careers, …) → overview
   useEffect(() => {
-    if (currentAdminRole && currentAdminRole !== 'super_admin') {
-      // If regular admin tries to access super_admin-only tabs, redirect to overview
-        if (activeTab === 'logs' || activeTab === 'settings' || activeTab === 'admins' || activeTab === 'official-invitations' || activeTab === 'scanners') {
-        setActiveTab('overview');
-      }
+    if (currentAdminRole === "admin" && !REGULAR_ADMIN_TAB_KEYS.has(activeTab)) {
+      setActiveTab("overview");
     }
   }, [activeTab, currentAdminRole]);
 
@@ -8313,16 +8341,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
         return;
       }
-      // Gallery conversion only allowed after the event date has passed
-      if (event.event_type === 'gallery' && event.date) {
+      const isCompleted = event.event_status === 'completed';
+      const effectiveEventType = isCompleted ? 'gallery' : (event.event_type || 'upcoming');
+
+      // Gallery conversion only allowed after the event date has passed (unless admin marked completed — then gallery is allowed anytime)
+      if (effectiveEventType === 'gallery' && event.date && !isCompleted) {
         const eventDate = new Date(event.date);
         const now = new Date();
         if (eventDate.getTime() > now.getTime()) {
           toast({
             title: t.error,
             description: language === 'en' 
-              ? "Cannot set as gallery event until after the event date." 
-              : "Impossible de passer en galerie avant la date de l'Ã©vÃ©nement.",
+              ? "Cannot set as gallery event until after the event date, or mark the event as Completed." 
+              : "Impossible de passer en galerie avant la date de l'Ã©vÃ©nement, ou marquez l'Ã©vÃ©nement comme TerminÃ©.",
             variant: "destructive",
           });
           return;
@@ -8356,7 +8387,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       let finalGalleryImages = event.gallery_images || [];
       let finalGalleryVideos = event.gallery_videos || [];
       
-      if (event.event_type === 'gallery') {
+      if (effectiveEventType === 'gallery') {
         setUploadingGallery(true);
         try {
           // Upload pending images
@@ -8404,6 +8435,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         }
       }
 
+      const rawStatus = event.event_status;
+      const normalizedEventStatus =
+        rawStatus === 'completed' || rawStatus === 'cancelled' || rawStatus === 'active'
+          ? rawStatus
+          : 'active';
+
       const eventPayload = {
         name: event.name,
         date: eventDate,
@@ -8413,10 +8450,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         poster_url: posterUrl,
         ticket_link: event.ticket_link,
         whatsapp_link: event.instagram_link, // Database column is still whatsapp_link, but we use instagram_link in UI
-        featured: event.featured,
-        event_type: event.event_type || 'upcoming',
+        event_status: normalizedEventStatus,
+        event_type: effectiveEventType,
         gallery_images: finalGalleryImages,
-        gallery_videos: finalGalleryVideos
+        gallery_videos: finalGalleryVideos,
+        gallery_credit: event.gallery_credit?.trim() || null,
       };
 
       if (event.id) {
@@ -8460,6 +8498,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 // Keep existing passes (not modified in edit dialog)
                 gallery_images: finalGalleryImages,
                 gallery_videos: finalGalleryVideos,
+                gallery_credit: event.gallery_credit?.trim() || null,
+                event_status: normalizedEventStatus,
+                event_type: effectiveEventType,
                 instagram_link: event.instagram_link,
                 updated_at: new Date().toISOString() 
               }
@@ -8473,6 +8514,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           passes: [], // Passes will be created via Pass Stock Management dialog
           gallery_images: finalGalleryImages,
           gallery_videos: finalGalleryVideos,
+          gallery_credit: event.gallery_credit?.trim() || null,
         };
         // Add to the beginning of the list (newest first)
         setEvents(prev => [newEvent, ...prev]);
@@ -10397,47 +10439,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, []);
 
-  // Session timer - calculates remaining time from expiration timestamp
-  // STRICT SESSION TIMER: Based on immutable JWT 'exp' field
-  // Timer NEVER resets, NEVER extends - only counts down from login time
-  // The expiration timestamp is fixed at login and cannot be changed
-  useEffect(() => {
-    if (!sessionExpiresAt) {
-      // No expiration set yet - wait for server response
-      return;
-    }
-
-    let didExpire = false;
-    const timer = setInterval(() => {
-      // Decrement locally based on the server-provided remaining seconds.
-      // This avoids issues when the device clock differs from the server clock.
-      setSessionTimeLeft((prev) => {
-        const next = Math.max(0, prev - 1);
-        if (next <= 0 && !didExpire) {
-          // During the post-login warmup window on mobile, temporarily avoid forcing a redirect.
-          if (suppress401Until && Date.now() < suppress401Until) {
-            return prev;
-          }
-          didExpire = true;
-          clearInterval(timer);
-
-          toast({
-            title: language === 'en' ? "Session Expired" : "Session expirÃ©e",
-            description: language === 'en' 
-              ? "Your session has expired. Please login again."
-              : "Votre session a expirÃ©. Veuillez vous reconnecter.",
-            variant: "destructive",
-          });
-          // Use window.location for hard redirect (clears all state)
-          window.location.href = '/admin/login';
-        }
-        return next;
-      });
-    }, 1000); // Update every second
-
-    return () => clearInterval(timer);
-  }, [sessionExpiresAt, toast, language, suppress401Until]);
-
   // Add JWT expiration handling
   useEffect(() => {
     const handleApiError = (response: Response) => {
@@ -10505,14 +10506,37 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Mobile nav drawer open state (must be before any conditional return to satisfy Rules of Hooks)
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  // Desktop: sidebar nav hidden when cursor not on it; slides in from left on hover
-  const [sidebarNavVisible, setSidebarNavVisible] = useState(false);
 
-  // Allowed tabs on mobile: overview, ambassador-sales, online-orders, pos, reports (and settings for super_admin)
+  // Mobile: regular admin = six tabs only; super_admin = full nav (sheet + bottom bar subsets)
   const mobileAllowedTabs = useMemo(() => {
-    const base = ["overview", "ambassador-sales", "online-orders", "pos", "tickets"];
-    if (currentAdminRole === "super_admin") return [...base, "settings"];
-    return base;
+    if (currentAdminRole === "super_admin") {
+      return [
+        "overview",
+        "events",
+        "ambassadors",
+        "applications",
+        "careers",
+        "online-orders",
+        "ambassador-sales",
+        "pos",
+        "tickets",
+        "settings",
+        "official-invitations",
+        "scanners",
+        "admins",
+        "sponsors",
+        "team",
+        "contact",
+        "suggestions",
+        "marketing",
+        "aio-events",
+        "logs",
+      ];
+    }
+    if (currentAdminRole === "admin") {
+      return ["overview", "ambassadors", "applications", "online-orders", "ambassador-sales", "pos"];
+    }
+    return ["overview", "ambassador-sales", "online-orders", "pos"];
   }, [currentAdminRole]);
 
   // On mobile, if current tab is not allowed, switch to first allowed tab
@@ -10622,6 +10646,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             </span>
             <span className="text-base font-semibold truncate w-full text-center" style={{ color: '#E21836' }}>
               {activeTab === "overview" && t.overview}
+              {activeTab === "ambassadors" && t.ambassadors}
+              {activeTab === "applications" && t.applications}
               {activeTab === "online-orders" && (language === 'en' ? 'Online Orders' : 'Commandes en Ligne')}
               {activeTab === "ambassador-sales" && (language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs')}
               {activeTab === "pos" && (language === 'en' ? 'Point de Vente' : 'Point de Vente')}
@@ -10630,8 +10656,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             </span>
           </div>
           <div className="flex items-center gap-1.5 shrink-0 text-xs font-medium" style={{ color: '#B8B8B8' }}>
-            <Clock className="w-3.5 h-3.5" style={{ color: '#E21836' }} />
-            <span>{Math.floor(sessionTimeLeft / 3600)}h {Math.floor((sessionTimeLeft % 3600) / 60)}m</span>
+            <AdminSessionCountdown
+              session={sessionCountdown}
+              language={language}
+              suppress401Until={suppress401Until > 0 ? suppress401Until : null}
+              variant="mobile"
+            />
           </div>
         </header>
       )}
@@ -10706,9 +10736,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             <div className="space-y-1">
               {isTabAllowedOnMobile("overview") && (
                 <button
+                  type="button"
+                  data-active={activeTab === "overview"}
                   onClick={() => handleMobileNavSelect("overview")}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "overview" && "shadow-lg")}
-                  style={{ color: activeTab === "overview" ? '#E21836' : '#B0B0B0', background: activeTab === "overview" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "overview" && "shadow-lg")}
+                  style={{ background: activeTab === "overview" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <BarChart3 className="w-4 h-4 shrink-0" />
                   <span>{t.overview}</span>
@@ -10716,9 +10748,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
               {isTabAllowedOnMobile("events") && (
                 <button
+                  type="button"
+                  data-active={activeTab === "events"}
                   onClick={() => handleMobileNavSelect("events")}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "events" && "shadow-lg")}
-                  style={{ color: activeTab === "events" ? '#E21836' : '#B0B0B0', background: activeTab === "events" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "events" && "shadow-lg")}
+                  style={{ background: activeTab === "events" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <CalendarIcon className="w-4 h-4 shrink-0" />
                   <span>{t.events}</span>
@@ -10726,9 +10760,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
               {isTabAllowedOnMobile("ambassadors") && (
                 <button
+                  type="button"
+                  data-active={activeTab === "ambassadors"}
                   onClick={() => handleMobileNavSelect("ambassadors")}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "ambassadors" && "shadow-lg")}
-                  style={{ color: activeTab === "ambassadors" ? '#E21836' : '#B0B0B0', background: activeTab === "ambassadors" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "ambassadors" && "shadow-lg")}
+                  style={{ background: activeTab === "ambassadors" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <Users className="w-4 h-4 shrink-0" />
                   <span>{t.ambassadors}</span>
@@ -10736,9 +10772,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
               {isTabAllowedOnMobile("applications") && (
                 <button
+                  type="button"
+                  data-active={activeTab === "applications"}
                   onClick={() => handleMobileNavSelect("applications")}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "applications" && "shadow-lg")}
-                  style={{ color: activeTab === "applications" ? '#E21836' : '#B0B0B0', background: activeTab === "applications" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "applications" && "shadow-lg")}
+                  style={{ background: activeTab === "applications" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <FileText className="w-4 h-4 shrink-0" />
                   <span>{t.applications}</span>
@@ -10746,9 +10784,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
               {isTabAllowedOnMobile("careers") && (
                 <button
+                  type="button"
+                  data-active={activeTab === "careers"}
                   onClick={() => handleMobileNavSelect("careers")}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "careers" && "shadow-lg")}
-                  style={{ color: activeTab === "careers" ? '#E21836' : '#B0B0B0', background: activeTab === "careers" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "careers" && "shadow-lg")}
+                  style={{ background: activeTab === "careers" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <Briefcase className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Careers' : 'Carrières'}</span>
@@ -10756,12 +10796,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
               {isTabAllowedOnMobile("online-orders") && (
                 <button
+                  type="button"
+                  data-active={activeTab === "online-orders"}
                   onClick={() => {
                     handleMobileNavSelect("online-orders");
                     if (onlineOrders.length === 0) fetchOnlineOrders();
                   }}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "online-orders" && "shadow-lg")}
-                  style={{ color: activeTab === "online-orders" ? '#E21836' : '#B0B0B0', background: activeTab === "online-orders" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "online-orders" && "shadow-lg")}
+                  style={{ background: activeTab === "online-orders" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <CreditCard className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</span>
@@ -10769,12 +10811,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
               {isTabAllowedOnMobile("ambassador-sales") && (
                 <button
+                  type="button"
+                  data-active={activeTab === "ambassador-sales"}
                   onClick={() => {
                     handleMobileNavSelect("ambassador-sales");
                     if (codAmbassadorOrders.length === 0) fetchAmbassadorSalesData();
                   }}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "ambassador-sales" && "shadow-lg")}
-                  style={{ color: activeTab === "ambassador-sales" ? '#E21836' : '#B0B0B0', background: activeTab === "ambassador-sales" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "ambassador-sales" && "shadow-lg")}
+                  style={{ background: activeTab === "ambassador-sales" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <Package className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs'}</span>
@@ -10782,9 +10826,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
               {isTabAllowedOnMobile("pos") && (
                 <button
+                  type="button"
+                  data-active={activeTab === "pos"}
                   onClick={() => handleMobileNavSelect("pos")}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "pos" && "shadow-lg")}
-                  style={{ color: activeTab === "pos" ? '#E21836' : '#B0B0B0', background: activeTab === "pos" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "pos" && "shadow-lg")}
+                  style={{ background: activeTab === "pos" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <Store className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Point de Vente' : 'Point de Vente'}</span>
@@ -10792,9 +10838,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
               {isTabAllowedOnMobile("settings") && currentAdminRole === 'super_admin' && (
                 <button
+                  type="button"
+                  data-active={activeTab === "settings"}
                   onClick={() => handleMobileNavSelect("settings")}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "settings" && "shadow-lg")}
-                  style={{ color: activeTab === "settings" ? '#E21836' : '#B0B0B0', background: activeTab === "settings" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "settings" && "shadow-lg")}
+                  style={{ background: activeTab === "settings" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <Settings className="w-4 h-4 shrink-0" />
                   <span>{t.settings}</span>
@@ -10814,9 +10862,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
               {isTabAllowedOnMobile("official-invitations") && currentAdminRole === 'super_admin' && (
                 <button
+                  type="button"
+                  data-active={activeTab === "official-invitations"}
                   onClick={() => handleMobileNavSelect("official-invitations")}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "official-invitations" && "shadow-lg")}
-                  style={{ color: activeTab === "official-invitations" ? '#E21836' : '#B0B0B0', background: activeTab === "official-invitations" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "official-invitations" && "shadow-lg")}
+                  style={{ background: activeTab === "official-invitations" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <Mail className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}</span>
@@ -10824,9 +10874,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
               {isTabAllowedOnMobile("tickets") && (
                 <button
+                  type="button"
+                  data-active={activeTab === "tickets"}
                   onClick={() => handleMobileNavSelect("tickets")}
-                  className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "tickets" && "shadow-lg")}
-                  style={{ color: activeTab === "tickets" ? '#E21836' : '#B0B0B0', background: activeTab === "tickets" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "tickets" && "shadow-lg")}
+                  style={{ background: activeTab === "tickets" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
                 >
                   <DollarSign className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Reports' : 'Rapports'}</span>
@@ -10846,405 +10898,29 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       </Sheet>
 
       <div className="flex">
-        {/* Desktop: nav wrapper in flow - scrolls with page; width collapses to trigger strip when hidden */}
-        <div
-          className="hidden lg:block shrink-0 min-h-screen overflow-hidden relative transition-[width] duration-300 ease-out"
-          style={{
-            width: sidebarNavVisible ? '16rem' : '12px',
-            borderRight: '1px solid #2A2A2A'
-          }}
-          onMouseEnter={() => setSidebarNavVisible(true)}
-          onMouseLeave={() => setSidebarNavVisible(false)}
-        >
-          {/* Trigger strip when collapsed */}
-          <div
-            className="absolute left-0 top-0 bottom-0 w-3 flex items-center justify-center pointer-events-none"
-            style={{
-              background: 'rgba(26, 26, 26, 0.85)',
-              opacity: sidebarNavVisible ? 0 : 1,
-              transition: 'opacity 0.2s'
-            }}
-            aria-hidden
-          >
-            <PanelLeft className="w-3.5 h-3.5 shrink-0" style={{ color: '#E21836' }} />
-          </div>
-          {/* Sidebar - slides in from left on hover */}
-          <div 
-            className="absolute left-0 top-0 w-64 min-h-full flex flex-col transition-transform duration-300 ease-out"
-            style={{
-              background: '#1A1A1A',
-              borderRight: '1px solid #2A2A2A',
-              transform: sidebarNavVisible ? 'translateX(0)' : 'translateX(-100%)'
-            }}
-          >
-          <div className="p-4 border-b" style={{ borderColor: '#2A2A2A' }}>
-            <h2 className="text-lg font-semibold" style={{ color: '#FFFFFF' }}>Navigation</h2>
-          </div>
-          <div className="p-2 flex-1">
-            <div className="space-y-1 animate-in slide-in-from-left-4 duration-700">
-              <button
-                onClick={() => setActiveTab("overview")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-100 ${
-                  activeTab === "overview" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "overview" ? '#E21836' : '#B0B0B0',
-                  background: activeTab === "overview" ? 'rgba(226, 24, 54, 0.15)' : 'transparent'
-                }}
-                onMouseEnter={(e) => {
-                  if (activeTab !== "overview") {
-                    e.currentTarget.style.color = '#E21836';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeTab !== "overview") {
-                    e.currentTarget.style.color = '#B0B0B0';
-                  }
-                }}
-              >
-                <BarChart3 className={`w-4 h-4 transition-transform duration-300 ${activeTab === "overview" ? "animate-pulse" : ""}`} />
-                <span>{t.overview}</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("events")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-200 ${
-                  activeTab === "events" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "events" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "events" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <CalendarIcon className={`w-4 h-4 transition-transform duration-300 ${activeTab === "events" ? "animate-pulse" : ""}`} />
-                <span>{t.events}</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("ambassadors")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-300 ${
-                  activeTab === "ambassadors" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "ambassadors" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "ambassadors" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Users className={`w-4 h-4 transition-transform duration-300 ${activeTab === "ambassadors" ? "animate-pulse" : ""}`} />
-                <span>{t.ambassadors}</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("applications")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-400 ${
-                  activeTab === "applications" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "applications" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "applications" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <FileText className={`w-4 h-4 transition-transform duration-300 ${activeTab === "applications" ? "animate-pulse" : ""}`} />
-                <span>{t.applications}</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("careers")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-420 ${
-                  activeTab === "careers" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  color: activeTab === "careers" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "careers" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Briefcase className={`w-4 h-4 transition-transform duration-300 ${activeTab === "careers" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'Careers' : 'Carrières'}</span>
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab("online-orders");
-                  if (onlineOrders.length === 0) {
-                    fetchOnlineOrders();
-                  }
-                }}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-450 ${
-                  activeTab === "online-orders" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "online-orders" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "online-orders" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <CreditCard className={`w-4 h-4 transition-transform duration-300 ${activeTab === "online-orders" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'Online Orders' : 'Commandes en Ligne'}</span>
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab("ambassador-sales");
-                  if (codAmbassadorOrders.length === 0) {
-                    fetchAmbassadorSalesData();
-                  }
-                }}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-500 ${
-                  activeTab === "ambassador-sales" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "ambassador-sales" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "ambassador-sales" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Package className={`w-4 h-4 transition-transform duration-300 ${activeTab === "ambassador-sales" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs'}</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("pos")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-550 ${
-                  activeTab === "pos" ? "shadow-lg" : ""
-                }`}
-                style={{
-                  color: activeTab === "pos" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "pos" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Store className={`w-4 h-4 transition-transform duration-300 ${activeTab === "pos" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'Point de Vente' : 'Point de Vente'}</span>
-              </button>
-              {currentAdminRole === 'super_admin' && (
-                <button
-                  onClick={() => setActiveTab("official-invitations")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-600 ${
-                    activeTab === "official-invitations" 
-                      ? "shadow-lg" 
-                      : ""
-                  }`}
-                  style={{
-                    color: activeTab === "official-invitations" ? '#E21836' : '#B8B8B8',
-                    background: activeTab === "official-invitations" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                  }}
-                >
-                  <Mail className={`w-4 h-4 transition-transform duration-300 ${activeTab === "official-invitations" ? "animate-pulse" : ""}`} />
-                  <span>{language === 'en' ? 'Official Invitations' : 'Invitations Officielles'}</span>
-                </button>
-              )}
-              <button
-                onClick={() => setActiveTab("tickets")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-650 ${
-                  activeTab === "tickets" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "tickets" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "tickets" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <DollarSign className={`w-4 h-4 transition-transform duration-300 ${activeTab === "tickets" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'Reports' : 'Rapports'}</span>
-              </button>
-              {currentAdminRole === 'super_admin' && (
-                <button
-                  onClick={() => setActiveTab("scanners")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-700 ${
-                    activeTab === "scanners" ? "shadow-lg" : ""
-                  }`}
-                  style={{
-                    color: activeTab === "scanners" ? '#E21836' : '#B8B8B8',
-                    background: activeTab === "scanners" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                  }}
-                >
-                  <QrCode className={`w-4 h-4 transition-transform duration-300 ${activeTab === "scanners" ? "animate-pulse" : ""}`} />
-                  <span>{language === 'en' ? 'Scanners' : 'Scanners'}</span>
-                </button>
-              )}
-              {currentAdminRole === 'super_admin' && (
-                <button
-                  onClick={() => setActiveTab("admins")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-750 ${
-                    activeTab === "admins" 
-                      ? "shadow-lg" 
-                      : ""
-                  }`}
-                  style={{
-                    color: activeTab === "admins" ? '#E21836' : '#B8B8B8',
-                    background: activeTab === "admins" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                  }}
-                >
-                  <User className={`w-4 h-4 transition-transform duration-300 ${activeTab === "admins" ? "animate-pulse" : ""}`} />
-                  <span>{language === 'en' ? 'Admins' : 'Administrateurs'}</span>
-                </button>
-              )}
-              <button
-                onClick={() => setActiveTab("sponsors")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-500 ${
-                  activeTab === "sponsors" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "sponsors" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "sponsors" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Building2 className={`w-4 h-4 transition-transform duration-300 ${activeTab === "sponsors" ? "animate-pulse" : ""}`} />
-                <span>Sponsors</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("team")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-600 ${
-                  activeTab === "team" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "team" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "team" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Users2 className={`w-4 h-4 transition-transform duration-300 ${activeTab === "team" ? "animate-pulse" : ""}`} />
-                <span>Team</span>
-              </button>
-              {/* Debug: Show current role */}
-              {process.env.NODE_ENV === 'development' && (
-                <div className="px-3 py-2 text-xs text-muted-foreground">
-                  Role: {currentAdminRole || 'loading...'}
-                </div>
-              )}
-              <button
-                onClick={() => {
-                  setActiveTab("marketing");
-                  // Load marketing data only when Marketing tab is opened
-                  if (phoneSubscribers.length === 0) {
-                    fetchPhoneSubscribers();
-                  }
-                  if (smsLogs.length === 0) {
-                    fetchSmsLogs();
-                  }
-                }}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-800 ${
-                  activeTab === "marketing" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "marketing" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "marketing" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Megaphone className={`w-4 h-4 transition-transform duration-300 ${activeTab === "marketing" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'SMS - E-mail' : 'SMS - E-mail'}</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("contact")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
-                  activeTab === "contact" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "contact" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "contact" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <MessageCircle className={`w-4 h-4 transition-transform duration-300 ${activeTab === "contact" ? "animate-pulse" : ""}`} />
-                <span>Contact Messages</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("suggestions")}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
-                  activeTab === "suggestions" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "suggestions" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "suggestions" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Lightbulb className={`w-4 h-4 transition-transform duration-300 ${activeTab === "suggestions" ? "animate-pulse" : ""}`} />
-                <span>Suggestions</span>
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab("aio-events");
-                  if (aioEventsSubmissions.length === 0) {
-                    fetchAioEventsSubmissions(true);
-                  }
-                }}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-850 ${
-                  activeTab === "aio-events" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "aio-events" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "aio-events" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Database className={`w-4 h-4 transition-transform duration-300 ${activeTab === "aio-events" ? "animate-pulse" : ""}`} />
-                <span>AIO Events</span>
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab("logs");
-                  if (logs.length === 0) {
-                    fetchLogs(true);
-                  }
-                }}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-875 ${
-                  activeTab === "logs" 
-                    ? "shadow-lg" 
-                    : ""
-                }`}
-                style={{
-                  color: activeTab === "logs" ? '#E21836' : '#B8B8B8',
-                  background: activeTab === "logs" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                }}
-              >
-                <Activity className={`w-4 h-4 transition-transform duration-300 ${activeTab === "logs" ? "animate-pulse" : ""}`} />
-                <span>{language === 'en' ? 'Logs & Analytics' : 'Journaux et Analytiques'}</span>
-              </button>
-              {currentAdminRole === 'super_admin' && (
-                <button
-                  onClick={() => setActiveTab("settings")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-300 transform hover:scale-105 animate-in slide-in-from-left-4 duration-500 delay-925 ${
-                    activeTab === "settings" 
-                      ? "shadow-lg" 
-                      : ""
-                  }`}
-                  style={{
-                    color: activeTab === "settings" ? '#E21836' : '#B8B8B8',
-                    background: activeTab === "settings" ? 'rgba(226, 24, 54, 0.08)' : 'transparent'
-                  }}
-                >
-                  <Settings className={`w-4 h-4 transition-transform duration-300 ${activeTab === "settings" ? "animate-pulse" : ""}`} />
-                  <span>{t.settings}</span>
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="p-4 border-t border-border/20">
-            <Button
-              variant="outline"
-              onClick={handleLogout}
-              className="w-full flex items-center space-x-2 transition-all duration-300 transform hover:scale-105 hover:shadow-md hover:bg-destructive hover:text-destructive-foreground animate-in slide-in-from-left-4 duration-500 delay-900"
-            >
-              <LogOut className="w-4 h-4 transition-transform duration-300 hover:animate-pulse" />
-              <span>{t.logout}</span>
-            </Button>
-          </div>
-        </div>
-        </div>
+        <AdminDesktopSidebarRail
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          currentAdminRole={currentAdminRole}
+          language={language}
+          t={t}
+          isAdminTabAllowedForRole={isAdminTabAllowedForRole}
+          onlineOrdersCount={onlineOrders.length}
+          fetchOnlineOrders={fetchOnlineOrders}
+          codAmbassadorOrdersCount={codAmbassadorOrders.length}
+          fetchAmbassadorSalesData={fetchAmbassadorSalesData}
+          phoneSubscribersCount={phoneSubscribers.length}
+          fetchPhoneSubscribers={fetchPhoneSubscribers}
+          smsLogsCount={smsLogs.length}
+          fetchSmsLogs={fetchSmsLogs}
+          aioEventsSubmissionsCount={aioEventsSubmissions.length}
+          fetchAioEventsSubmissions={fetchAioEventsSubmissions}
+          logsCount={logs.length}
+          fetchLogs={fetchLogs}
+          handleLogout={handleLogout}
+        />
 
-        {/* Main Content - overflow hidden to prevent horizontal scroll on mobile */}
+                {/* Main Content - overflow hidden to prevent horizontal scroll on mobile */}
         <div className="flex-1 min-w-0 overflow-x-hidden">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 min-w-0">
             {/* Header - responsive: stack on mobile, hide main title on mobile (shown in top bar) */}
@@ -11267,20 +10943,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                     {t.subtitle}
                   </p>
                 </div>
-                {/* Session Timer - compact on mobile */}
-                <div 
-                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg shrink-0"
-                  style={{
-                    background: '#1F1F1F',
-                    border: '1px solid #2A2A2A',
-                    color: '#B8B8B8'
-                  }}
-                >
-                  <Clock className="w-4 h-4 animate-pulse" style={{ color: '#E21836' }} />
-                  <span className="text-sm font-medium">
-                    {language === 'en' ? 'Session:' : 'Session:'} {Math.floor(sessionTimeLeft / 3600)}h {Math.floor((sessionTimeLeft % 3600) / 60)}m {sessionTimeLeft % 60}s
-                  </span>
-                </div>
+                {!isMobile && (
+                  <AdminSessionCountdown
+                    session={sessionCountdown}
+                    language={language}
+                    suppress401Until={suppress401Until > 0 ? suppress401Until : null}
+                    variant="desktop"
+                  />
+                )}
               </div>
               
               {/* Event Selector + Notification Center */}
@@ -11296,50 +10966,52 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       ? "Filter by Event:"
                       : "Filtrer par Événement:"}
                   </Label>
-                  <Select
-                    value={selectedEventId || "all"}
-                    onValueChange={(value) => {
-                      setSelectedEventId(value === "all" ? "" : value);
-                    }}
-                  >
-                    <SelectTrigger
+                  {selectableDashboardEvents.length === 0 ? (
+                    <span
                       id="event-selector"
-                      className="w-[170px] sm:w-[300px] min-w-0"
+                      className="text-sm px-3 py-2 rounded-md border max-w-[300px] min-w-0 truncate"
                       style={{
                         background: "#1F1F1F",
                         borderColor: "#2A2A2A",
-                        color: "#FFFFFF",
+                        color: "#B0B0B0",
                       }}
                     >
-                      <SelectValue
-                        placeholder={
-                          language === "en"
-                            ? "All Events"
-                            : "Tous les Événements"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">
-                        {language === "en"
-                          ? "All Events"
-                          : "Tous les Événements"}
-                      </SelectItem>
-                      {events
-                        .filter((e) => e.event_type === "upcoming")
-                        .sort(
-                          (a, b) =>
-                            new Date(a.date).getTime() -
-                            new Date(b.date).getTime(),
-                        )
-                        .map((event) => (
+                      {language === "en" ? "No events" : "Aucun événement"}
+                    </span>
+                  ) : (
+                    <Select
+                      value={selectedEventId}
+                      onValueChange={setSelectedEventId}
+                    >
+                      <SelectTrigger
+                        id="event-selector"
+                        className="w-[170px] sm:w-[300px] min-w-0"
+                        style={{
+                          background: "#1F1F1F",
+                          borderColor: "#2A2A2A",
+                          color: "#FFFFFF",
+                        }}
+                      >
+                        <SelectValue
+                          placeholder={
+                            language === "en"
+                              ? "Select event"
+                              : "Choisir un événement"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selectableDashboardEvents.map((event) => (
                           <SelectItem key={event.id} value={event.id}>
-                            {event.name} - {formatDateDMY(event.date, language)}
+                            {event.name}
+                            {event.is_test ? " (test)" : ""} —{" "}
+                            {formatDateDMY(event.date, language)}
                           </SelectItem>
                         ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedEventId && (
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {selectedEventId && selectableDashboardEvents.length > 0 && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -11479,16 +11151,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               onValueChange={(value) => {
                 // On mobile, only allow mobile-allowed tabs
                 if (isMobile && !mobileAllowedTabs.includes(value)) return;
-                // Prevent regular admins from accessing super_admin-only tabs
-                if (currentAdminRole !== 'super_admin' && (value === 'logs' || value === 'settings' || value === 'admins' || value === 'official-invitations' || value === 'scanners')) {
-                  return; // Don't allow tab change
-                }
+                if (!isAdminTabAllowedForRole(value, currentAdminRole)) return;
                 setActiveTab(value);
               }} 
-              className="space-y-6 min-w-0 [&>[data-state=active]]:animate-in [&>[data-state=active]]:fade-in-50 [&>[data-state=active]]:duration-300"
+              className="space-y-6 min-w-0"
             >
-              {/* Tabs Content - separated from navigation; smooth transition when switching tabs */}
-              <TabsContent value="overview" className="space-y-6 mt-8 sm:mt-0 data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:duration-300">
+              <TabsContent value="overview" className="space-y-6 mt-8 sm:mt-0">
                 <OverviewTab
                   language={language}
                   t={t}
@@ -11496,7 +11164,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   pendingApplications={pendingApplications}
                   approvedCount={approvedCount}
                   events={events}
-                  displayStats={displayStats}
+                  displayStats={dashboardOrderStats}
+                  showFinancialKpis={currentAdminRole === "super_admin"}
+                  adminName={currentAdminName}
                   pendingAmbassadorOrdersCount={pendingAmbassadorOrdersCount}
                   previousPendingAmbassadorOrdersCount={previousPendingAmbassadorOrdersCount}
                   activityChartData={activityChartData}
@@ -11578,7 +11248,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               )}
 
               <TabsContent value="pos" className="space-y-6">
-              <PosTab language={language} selectedEventId={selectedEventId || undefined} />
+              <PosTab
+                language={language}
+                selectedEventId={selectedEventId || undefined}
+                isSuperAdmin={currentAdminRole === "super_admin"}
+              />
               </TabsContent>
 
               {/* Ambassadors Tab */}
@@ -11756,7 +11430,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 filterOptions={filterOptions}
                 filteredCodOrders={filteredCodOrders}
                 codAmbassadorOrders={codAmbassadorOrders}
-                events={events}
+                dashboardEventId={selectedEventId}
                 selectedPassTypeTotal={selectedPassTypeTotal}
                 loadingOrders={loadingOrders}
                 orderLogs={orderLogs}
@@ -11952,6 +11626,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         ambassador={selectedOrderAmbassador}
         orderLogs={orderLogs}
         language={language}
+        isSuperAdmin={currentAdminRole === "super_admin"}
         resendingTicketEmail={resendingTicketEmail}
         onOrderUpdate={(updates) => setSelectedOrder(prev => prev ? { ...prev, ...updates } : null)}
         onRefresh={(status) => fetchAmbassadorSalesData(status)}
@@ -11976,6 +11651,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         onUpdateStatus={updateOnlineOrderStatus}
         onUpdateEmail={updateOnlineOrderEmail}
         onResendTicket={handleResendTicketEmail}
+        isSuperAdmin={currentAdminRole === "super_admin"}
       />
 
       <AmbassadorInfoDialog

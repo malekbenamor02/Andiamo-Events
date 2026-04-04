@@ -7,6 +7,7 @@ import { generateSlug } from "@/lib/utils";
 import { getOptimizedImageUrl } from "@/lib/image-utils";
 import TypewriterText from "./TypewriterText";
 import { useFeaturedEvents, type Event } from "@/hooks/useEvents";
+import { isPassPurchaseWindowClosed } from "@/lib/date-utils";
 
 interface HeroSectionProps {
   language: 'en' | 'fr';
@@ -434,7 +435,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
             {content?.description || defaultContent[language].description}
           </p> */}
 
-          {nextEvent && (
+          {nextEvent && !isPassPurchaseWindowClosed(nextEvent.date, nextEvent.event_status) && (
             <div className="flex justify-center items-center mt-8 animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
               <Button
                 variant="default"

@@ -2,6 +2,15 @@
 // This endpoint approves orders in PENDING_ADMIN_APPROVAL status
 // CRITICAL: Inlined authAdminMiddleware to avoid separate function
 
+import { createRequire } from 'module';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const requireCjs = createRequire(import.meta.url);
+const { emailLogoHeaderHtml } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
+const { buildTicketEmailPdfAttachments } = requireCjs(path.join(__dirname, 'lib/ticket-pdf.cjs'));
+
 // Helper function to format event time
 function formatEventTime(eventDate) {
   if (!eventDate) return null;
@@ -391,7 +400,9 @@ export default async (req, res) => {
             id,
             name,
             date,
-            venue
+            venue,
+            city,
+            poster_url
           ),
           ambassadors (
             id,
@@ -698,6 +709,7 @@ export default async (req, res) => {
                 </style>
               </head>
               <body>
+                ${emailLogoHeaderHtml()}
                 <div class="email-wrapper">
                   <div class="content-card">
                     <div class="title-section">
@@ -771,12 +783,14 @@ export default async (req, res) => {
             
             // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
             // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
+            const pdfAttachmentsApprove = await buildTicketEmailPdfAttachments(fullOrder, tickets, orderPasses);
             await transporter.sendMail({
               from: '"Andiamo Events" <contact@andiamoevents.com>',
               replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
               to: fullOrder.user_email,
               subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-              html: emailHtml
+              html: emailHtml,
+              ...(pdfAttachmentsApprove.length ? { attachments: pdfAttachmentsApprove } : {}),
             });
             
             // Update tickets to DELIVERED

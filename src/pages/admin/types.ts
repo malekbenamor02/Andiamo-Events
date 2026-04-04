@@ -58,10 +58,14 @@ export interface Event {
   poster_url?: string;
   instagram_link?: string;
   ticket_link?: string;
-  featured?: boolean;
+  /** When true, event is hidden from production; on localhost it still appears in lists (incl. admin selector, labeled). */
+  is_test?: boolean;
   event_type?: 'upcoming' | 'gallery'; // New field to distinguish event types
+  event_status?: 'active' | 'cancelled' | 'completed' | string | null;
   gallery_images?: string[]; // Array of gallery image URLs
   gallery_videos?: string[]; // Array of gallery video URLs
+  /** Public gallery page: credit under ANDIAMO logo on each tile */
+  gallery_credit?: string | null;
   passes?: EventPass[]; // Array of passes for this event - REQUIRED for publishing
   created_at: string;
   updated_at: string;

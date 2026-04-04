@@ -19,6 +19,7 @@ import { apiFetch } from "@/lib/api-client";
 import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AdminOrderQrTicketsSection } from "./AdminOrderQrTicketsSection";
 import {
   Package, FileText, Activity, Database, Calendar as CalendarIcon, Clock, DollarSign,
   User, Phone, Mail, MapPin, Ticket, Users, Save, X, Edit, RefreshCw, Send,
@@ -42,6 +43,8 @@ export interface OrderDetailsDialogProps {
   onSkip: (orderId: string, reason?: string) => void | Promise<void>;
   onComplete: (orderId: string) => void | Promise<void>;
   onResendTicket: (orderId: string) => void | Promise<void>;
+  /** When true, loads and shows QR ticket images and statuses (API allows super_admin only). */
+  isSuperAdmin?: boolean;
 }
 
 export function OrderDetailsDialog({
@@ -61,6 +64,7 @@ export function OrderDetailsDialog({
   onComplete,
   onResendTicket,
   orderFilters,
+  isSuperAdmin = false,
 }: OrderDetailsDialogProps) {
   const { toast } = useToast();
   const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -1371,6 +1375,13 @@ export function OrderDetailsDialog({
                   </CardContent>
                 </Card>
               )}
+
+              <AdminOrderQrTicketsSection
+                orderId={order.id != null && String(order.id).length > 0 ? String(order.id) : null}
+                open={open}
+                language={language}
+                isSuperAdmin={isSuperAdmin}
+              />
             </div>
           )}
         </DialogContent>

@@ -3,7 +3,7 @@
  * Main component that orchestrates all analytics sections
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useAnalytics, DateRange } from '@/hooks/useAnalytics';
@@ -28,17 +28,11 @@ interface ReportsAnalyticsProps {
 
 export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId, adminRole = null }: ReportsAnalyticsProps) {
   const [dateRange, setDateRange] = useState<DateRange>('ALL_TIME');
-  const [animationKey, setAnimationKey] = useState(0);
   const [exporting, setExporting] = useState(false);
   const { toast } = useToast();
   const { data: events, isLoading: eventsLoading } = useEvents();
   const selectedEventId = dashboardSelectedEventId ?? null;
   const { data: analyticsData, isLoading: analyticsLoading, error: analyticsError } = useAnalytics(selectedEventId, dateRange);
-
-  // Reset animations when event or date range changes
-  useEffect(() => {
-    setAnimationKey(prev => prev + 1);
-  }, [selectedEventId, dateRange]);
 
   const selectedEvent = selectedEventId 
     ? events?.find(e => e.id === selectedEventId)
@@ -71,8 +65,8 @@ export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId, ad
         title: language === 'fr' ? 'Export réussi' : 'Export ready',
         description:
           language === 'fr'
-            ? 'Le fichier Excel (en ligne + ambassadeurs) a été téléchargé.'
-            : 'Excel file downloaded with Online payments and Ambassador sales sheets.',
+            ? 'Le fichier Excel (synthèse, en ligne, ambassadeurs, PDV et stock) a été téléchargé.'
+            : 'Excel file downloaded with Summary, Online, Ambassador, POS, and Pass stock sheets.',
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -87,7 +81,7 @@ export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId, ad
   };
 
   return (
-    <div className="space-y-6" key={animationKey}>
+    <div className="space-y-6">
       {/* Event Context - Top of Page */}
       <div className="space-y-4 animate-in slide-in-from-top-4 fade-in duration-700">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">

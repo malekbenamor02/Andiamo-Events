@@ -3,7 +3,7 @@
  * Extracted from Dashboard.tsx for maintainability.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,7 +48,8 @@ export interface AmbassadorSalesTabProps {
   filterOptions: AmbassadorFilterOptions;
   filteredCodOrders: CodOrder[];
   codAmbassadorOrders: CodOrder[];
-  events: Array<{ id: string; name: string }>;
+  /** Matches the main dashboard event filter — reports use this event only (no separate event picker). */
+  dashboardEventId?: string;
   selectedPassTypeTotal: number;
   loadingOrders: boolean;
   orderLogs: AmbassadorOrderLog[];
@@ -60,6 +61,7 @@ export interface AmbassadorSalesTabProps {
 
 const PAID_STATUSES = ["PAID", "COMPLETED"];
 const PENDING_STATUSES = ["PENDING_CASH", "PENDING_ADMIN_APPROVAL", "PENDING_AMBASSADOR_CONFIRMATION", "APPROVED"];
+const ORDERS_PAGE_SIZE = 100;
 
 function getTicketsFromOrder(order: CodOrder): number {
   if (order.passes && order.passes.length > 0) {
@@ -70,8 +72,35 @@ function getTicketsFromOrder(order: CodOrder): number {
 
 export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
   const { toast } = useToast();
-  const [reportEventId, setReportEventId] = useState<string>("");
+  const reportEventId = p.dashboardEventId ?? "";
   const [reportStatusFilter, setReportStatusFilter] = useState<"paid" | "pending" | "all">("paid");
+  const [ordersListPage, setOrdersListPage] = useState(1);
+
+  const filteredOrdersCount = p.filteredCodOrders.length;
+  const ordersTotalPages = Math.max(1, Math.ceil(filteredOrdersCount / ORDERS_PAGE_SIZE));
+
+  useEffect(() => {
+    setOrdersListPage(1);
+  }, [
+    p.orderFilters.orderId,
+    p.orderFilters.status,
+    p.orderFilters.phone,
+    p.orderFilters.ambassador,
+    p.orderFilters.city,
+    p.orderFilters.ville,
+    p.orderFilters.passType,
+  ]);
+
+  useEffect(() => {
+    if (ordersListPage > ordersTotalPages) {
+      setOrdersListPage(ordersTotalPages);
+    }
+  }, [ordersListPage, ordersTotalPages]);
+
+  const paginatedCodOrders = useMemo(() => {
+    const start = (ordersListPage - 1) * ORDERS_PAGE_SIZE;
+    return p.filteredCodOrders.slice(start, start + ORDERS_PAGE_SIZE);
+  }, [p.filteredCodOrders, ordersListPage]);
 
   const reportRows = useMemo(() => {
     const orders = p.codAmbassadorOrders;
@@ -226,6 +255,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
   };
 
   return (
+    <TooltipProvider delayDuration={200}>
     <TabsContent value="ambassador-sales" className="space-y-6">
       <Tabs value={p.salesSystemTab} onValueChange={p.setSalesSystemTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
@@ -392,6 +422,42 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                 </Button>
               </div>
 
+              {!p.loadingOrders && filteredOrdersCount > ORDERS_PAGE_SIZE && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3 text-xs text-muted-foreground">
+                  <span>
+                    {p.language === "en" ? "Showing" : "Affichage"}{" "}
+                    {(ordersListPage - 1) * ORDERS_PAGE_SIZE + 1}–
+                    {Math.min(ordersListPage * ORDERS_PAGE_SIZE, filteredOrdersCount)}{" "}
+                    {p.language === "en" ? "of" : "sur"} {filteredOrdersCount}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      disabled={ordersListPage <= 1}
+                      onClick={() => setOrdersListPage((n) => Math.max(1, n - 1))}
+                    >
+                      {p.language === "en" ? "Previous" : "Précédent"}
+                    </Button>
+                    <span className="tabular-nums px-1">
+                      {ordersListPage} / {ordersTotalPages}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      disabled={ordersListPage >= ordersTotalPages}
+                      onClick={() => setOrdersListPage((n) => Math.min(ordersTotalPages, n + 1))}
+                    >
+                      {p.language === "en" ? "Next" : "Suivant"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {p.loadingOrders ? (
                 <div className="text-center py-8">
                   <Loader size="md" className="mx-auto mb-2" />
@@ -449,7 +515,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                               </TableCell>
                             </TableRow>
                           ) : (
-                            p.filteredCodOrders.map((order) => {
+                            paginatedCodOrders.map((order) => {
                               const passes = order.passes || [];
                               const createdText = (() => {
                                 const d = new Date(order.created_at);
@@ -525,18 +591,16 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
 
                                   <TableCell className="py-2 text-center">
                                     <div className="flex justify-center items-center gap-2">
-                                      <TooltipProvider>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <div
-                                              className={`w-3 h-3 rounded-full cursor-help ${getStatusColor(order.status)}`}
-                                            />
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p className="text-xs">{getStatusLabel(order.status)}</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <div
+                                            className={`w-3 h-3 rounded-full cursor-help ${getStatusColor(order.status)}`}
+                                          />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p className="text-xs">{getStatusLabel(order.status)}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
                                     </div>
                                   </TableCell>
 
@@ -621,7 +685,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {p.filteredCodOrders.map((order) => {
+                      {paginatedCodOrders.map((order) => {
                         const passes = order.passes || [];
                         const createdText = (() => {
                           const d = new Date(order.created_at);
@@ -635,18 +699,16 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                             <CardContent className="p-4">
                               <div className="flex items-start justify-end gap-3">
                                 <div className="flex items-center gap-2">
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <div
-                                          className={`w-3 h-3 rounded-full cursor-help ${getStatusColor(order.status)}`}
-                                        />
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p className="text-xs">{getStatusLabel(order.status)}</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        className={`w-3 h-3 rounded-full cursor-help ${getStatusColor(order.status)}`}
+                                      />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs">{getStatusLabel(order.status)}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
                                   <span className="text-xs" style={{ color: "#B0B0B0" }}>
                                     {getStatusLabel(order.status)}
                                   </span>
@@ -840,22 +902,6 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap items-end gap-4">
-                <div className="space-y-2">
-                  <Label className="text-xs">{p.language === "en" ? "Event" : "Événement"}</Label>
-                  <Select value={reportEventId || "all"} onValueChange={(v) => setReportEventId(v === "all" ? "" : v)}>
-                    <SelectTrigger className="w-[220px]">
-                      <SelectValue placeholder={p.language === "en" ? "All events" : "Tous les événements"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{p.language === "en" ? "All events" : "Tous les événements"}</SelectItem>
-                      {p.events.map((ev) => (
-                        <SelectItem key={ev.id} value={ev.id}>
-                          {ev.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="space-y-2">
                   <Label className="text-xs">{p.language === "en" ? "Orders" : "Commandes"}</Label>
                   <div className="flex rounded-lg border bg-muted/30 p-1">
@@ -1071,5 +1117,6 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
         </TabsContent>
       </Tabs>
     </TabsContent>
+    </TooltipProvider>
   );
 }

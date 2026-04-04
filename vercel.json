@@ -176,6 +176,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/order-qr-tickets",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/auto-reject-expired-orders",
       "destination": "/api/misc.js"
     },

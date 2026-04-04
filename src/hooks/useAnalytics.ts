@@ -173,7 +173,7 @@ async function fetchAnalyticsData(
   const dateFilter = customDateRange || getDateRangeFilter(dateRange);
   const { startDate, endDate } = dateFilter;
   // Build query - filter by event_id and date range if provided
-  // Paid online + ambassador cash only (matches Overview KPIs and Excel pass stock); PAID/COMPLETED status
+  // Paid online + ambassador cash + POS (point de vente); PAID/COMPLETED — matches Reports KPIs / Excel export
   // Use a high limit so insights (best day, peak hour, etc.) are computed from real data, not a truncated set (Supabase default is 1000)
   let query = supabase
     .from('orders')
@@ -207,8 +207,45 @@ async function fetchAnalyticsData(
   if (error) {
     throw new Error(`Failed to fetch analytics data: ${error.message}`);
   }
-  
-  const ordersList = ((orders || []) as any[]).filter(isPaidOnlineOrAmbassadorOrder);
+
+  // Paid POS orders (same event/date scope) — same shape as main query for the processing loop below
+  let posQuery = supabase
+    .from('orders')
+    .select(
+      `
+      *,
+      order_passes (*),
+      ambassadors (
+        id,
+        full_name
+      )
+    `,
+      { count: 'exact' }
+    )
+    .eq('source', 'point_de_vente')
+    .in('status', [OrderStatus.PAID, 'COMPLETED'])
+    .order('created_at', { ascending: false })
+    .limit(10000);
+
+  if (eventId) {
+    posQuery = posQuery.eq('event_id', eventId);
+  }
+  if (startDate) {
+    posQuery = posQuery.gte('created_at', startDate.toISOString());
+  }
+  if (endDate) {
+    posQuery = posQuery.lte('created_at', endDate.toISOString());
+  }
+
+  const { data: posOrders, error: posError } = await posQuery;
+  if (posError) {
+    throw new Error(`Failed to fetch POS analytics data: ${posError.message}`);
+  }
+
+  const ordersList = [
+    ...((orders || []) as any[]).filter(isPaidOnlineOrAmbassadorOrder),
+    ...((posOrders || []) as any[]),
+  ];
   
   // Fetch pending cash and approval orders for the new metrics
   let pendingOrdersQuery = supabase

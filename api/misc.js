@@ -19,6 +19,27 @@ function getBuildOnlineTicketEmailHtml() {
   return _buildOnlineTicketEmailHtml;
 }
 
+let _buildTicketEmailPdfAttachments = null;
+function getBuildTicketEmailPdfAttachments() {
+  if (_buildTicketEmailPdfAttachments) return _buildTicketEmailPdfAttachments;
+  _buildTicketEmailPdfAttachments = requireFromRoot(path.join(__dirname, 'lib', 'ticket-pdf.cjs')).buildTicketEmailPdfAttachments;
+  return _buildTicketEmailPdfAttachments;
+}
+
+const {
+  buildCampaignEmailHtml,
+  normalizeMarketingHeaderImageUrl,
+  sanitizeCampaignCtaLabel,
+} = requireFromRoot(path.join(__dirname, 'lib', 'campaign-email-html.cjs'));
+
+let _createOfficialInvitationEmailHTML = null;
+function getCreateOfficialInvitationEmailHTML() {
+  if (_createOfficialInvitationEmailHTML) return _createOfficialInvitationEmailHTML;
+  const mod = requireFromRoot(path.join(__dirname, 'lib', 'official-invitation-email-html.cjs'));
+  _createOfficialInvitationEmailHTML = mod.createOfficialInvitationEmailHTML;
+  return _createOfficialInvitationEmailHTML;
+}
+
 // Inlined verifyAdminAuth function (for admin-update-application and send-email)
 async function verifyAdminAuth(req) {
   try {
@@ -426,33 +447,6 @@ function formatPhoneNumber(phone) {
   return null;
 }
 
-function escapeHtmlAttr(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-    .replace(/</g, '&lt;');
-}
-
-/** Accept only http(s) URLs for campaign header images and CTA links */
-function normalizeMarketingHeaderImageUrl(raw) {
-  if (raw == null || typeof raw !== 'string') return null;
-  const u = raw.trim();
-  if (u.length < 8 || u.length > 2048) return null;
-  try {
-    const parsed = new URL(u);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-    return u;
-  } catch {
-    return null;
-  }
-}
-
-function sanitizeCampaignCtaLabel(raw, fallback = 'Book now') {
-  const t = String(raw == null ? '' : raw).trim().slice(0, 120).replace(/[<>]/g, '');
-  return t || fallback;
-}
-
 function parseMarketingDailyEmailCap(raw) {
   if (raw === undefined || raw === null || raw === '') return 150;
   const n = parseInt(raw, 10);
@@ -483,90 +477,6 @@ function buildCampaignEmailPlainText(subject, body, recipientDisplay = 'Subscrib
     'Developed by Malek Ben Amor — https://www.instagram.com/malekbenamor.dev/ — https://malekbenamor.dev/'
   );
   return lines.join('\n');
-}
-
-// Official campaign email template — structured for readability; lighter promo signals than heavy “deal” layouts (Primary vs Promotions is decided by Gmail).
-function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', headerImageUrl = null, ctaUrl = null, ctaLabel = null) {
-  const content = String(body || '').replace(/\n/g, '<br>');
-  const emailSubject = subject || 'Newsletter Update';
-  const safeHeaderUrl = normalizeMarketingHeaderImageUrl(headerImageUrl);
-  const headerImageBlock = safeHeaderUrl
-    ? `<div class="campaign-header-image" style="text-align:center;margin:0 0 28px;">
-  <img src="${escapeHtmlAttr(safeHeaderUrl)}" alt="" width="520" style="max-width:100%;height:auto;border-radius:10px;display:block;margin:0 auto;border:0;outline:none;" />
-</div>`
-    : '';
-  const safeCtaUrl = normalizeMarketingHeaderImageUrl(ctaUrl);
-  const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'Book now') : '';
-  const ctaBlock = safeCtaUrl
-    ? `<div style="text-align:center;margin:28px 0 8px;">
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;border-collapse:separate;">
-    <tr>
-      <td style="border-radius:10px;background-color:#E21836;mso-padding-alt:14px 32px;">
-        <a href="${escapeHtmlAttr(safeCtaUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:16px;font-weight:600;line-height:1.25;color:#ffffff !important;text-decoration:none;border-radius:10px;mso-line-height-rule:exactly;">${escapeHtmlAttr(safeCtaLabel)}</a>
-      </td>
-    </tr>
-  </table>
-</div>`
-    : '';
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${emailSubject.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #1A1A1A; background: #FFFFFF; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
-    a { color: #E21836; text-decoration: underline; }
-    .email-wrapper { max-width: 600px; margin: 0 auto; background: #FFFFFF; }
-    .content-card { margin: 0 20px 30px; padding: 36px 28px; border: 1px solid #e8e8e8; border-radius: 8px; }
-    .title-section { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid #eee; text-align: center; }
-    .title { font-size: 22px; font-weight: 600; color: #1A1A1A; margin: 0 0 8px 0; text-align: center; }
-    .subtitle { font-size: 15px; color: #555; margin: 0; font-weight: 400; text-align: center; }
-    .message-content { font-size: 16px; color: #333; margin-bottom: 20px; line-height: 1.7; }
-    .support-section { background: #E8E8E8; border-left: 3px solid rgba(226,24,54,0.3); padding: 20px 25px; margin: 28px 0; border-radius: 4px; }
-    .support-text { font-size: 14px; color: #666666; line-height: 1.7; margin: 0; }
-    .support-email { color: #E21836 !important; text-decoration: none; font-weight: 500; }
-    .closing-section { text-align: center; margin: 36px 0 0; padding-top: 28px; border-top: 1px solid #eee; }
-    .slogan { font-size: 22px; font-style: italic; color: #E21836; font-weight: 300; margin: 0 0 20px 0; }
-    .signature { font-size: 16px; color: #666666; line-height: 1.7; margin: 0; }
-    .footer { margin-top: 50px; padding: 40px 20px 30px; text-align: center; border-top: 1px solid rgba(0,0,0,0.1); }
-    .footer-text { font-size: 12px; color: #999999; margin-bottom: 20px; line-height: 1.6; }
-    .footer-links { margin: 15px auto 0; text-align: center; }
-    .footer-link { color: #999999; text-decoration: none; font-size: 13px; margin: 0 8px; }
-    .footer-link:hover { color: #E21836 !important; }
-    @media only screen and (max-width: 600px) { .content-card { margin: 0 12px 20px; padding: 28px 20px; } }
-  </style>
-</head>
-<body>
-  <div class="email-wrapper">
-    <div class="content-card">
-      <div class="title-section">
-        <p class="title">Andiamo Events</p>
-        <p class="subtitle">${emailSubject.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
-      </div>
-      ${headerImageBlock}
-      <div class="message-content">${content}</div>
-      ${ctaBlock}
-      <div class="support-section">
-        <p class="support-text">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a> or in our Instagram page <a href="https://www.instagram.com/andiamo.events/" target="_blank" rel="noopener noreferrer" class="support-email">@andiamo.events</a> or contact with <a href="tel:28070128" class="support-email">28070128</a>.</p>
-      </div>
-      <div class="closing-section">
-        <p class="slogan">We Create Memories</p>
-        <p class="signature">Best regards,<br>The Andiamo Events Team</p>
-      </div>
-    </div>
-    <div class="footer">
-      <p class="footer-text">You&apos;re receiving this email from Andiamo Events.<br />To stop these updates, reply to this message or email <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>.</p>
-      <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
-      <div class="footer-links">
-        <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link">Instagram</a>
-        <span style="color: #999999;">&bull;</span>
-        <a href="https://malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link">Website</a>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
 }
 
 // Helper function to send SMS via WinSMS API
@@ -1163,18 +1073,20 @@ export default async (req, res) => {
           const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
           const { data: events, error } = await supabase
             .from('events')
-            .select('id, date, event_type, updated_at, is_test')
+            .select('id, date, event_type, updated_at, is_test, slug')
             .order('date', { ascending: false });
           if (!error && events && events.length > 0) {
             const isProduction = process.env.VERCEL_ENV === 'production' || !process.env.VERCEL_ENV;
             const filtered = isProduction ? events.filter((e) => !e.is_test) : events;
             for (const e of filtered) {
-              const slug = `event-${e.id}`;
+              const legacySlug = `event-${e.id}`;
               const lastmod = e.updated_at && new Date(e.updated_at).toISOString().split('T')[0];
               if (e.event_type === 'gallery') {
-                urls.push({ loc: `${SITE_URL}/gallery/${slug}`, lastmod, changefreq: 'monthly', priority: '0.6' });
+                const galleryPathSlug = e.slug && String(e.slug).trim() ? String(e.slug).trim() : legacySlug;
+                urls.push({ loc: `${SITE_URL}/gallery/${galleryPathSlug}`, lastmod, changefreq: 'monthly', priority: '0.6' });
               } else {
-                urls.push({ loc: `${SITE_URL}/event/${slug}`, lastmod, changefreq: 'weekly', priority: '0.8' });
+                const upcomingPathSlug = e.slug && String(e.slug).trim() ? String(e.slug).trim() : legacySlug;
+                urls.push({ loc: `${SITE_URL}/event/${upcomingPathSlug}`, lastmod, changefreq: 'weekly', priority: '0.8' });
               }
             }
           }
@@ -2116,10 +2028,16 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           poster_url: payload.poster_url ?? null,
           ticket_link: payload.ticket_link ?? null,
           whatsapp_link: payload.whatsapp_link ?? null,
-          featured: !!payload.featured,
-          event_type: payload.event_type || 'upcoming',
+          event_status: payload.event_status === 'completed' || payload.event_status === 'cancelled' || payload.event_status === 'active'
+            ? payload.event_status
+            : 'active',
+          event_type:
+            payload.event_status === 'completed'
+              ? 'gallery'
+              : (payload.event_type || 'upcoming'),
           gallery_images: payload.gallery_images ?? [],
           gallery_videos: payload.gallery_videos ?? [],
+          gallery_credit: payload.gallery_credit ?? null,
         };
 
         const { data, error } = await dbClient
@@ -2148,6 +2066,13 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           return res.status(400).json({ error: 'Missing event payload' });
         }
 
+        const normalizedStatus =
+          payload.event_status === 'completed' || payload.event_status === 'cancelled' || payload.event_status === 'active'
+            ? payload.event_status
+            : 'active';
+        const eventType =
+          normalizedStatus === 'completed' ? 'gallery' : (payload.event_type || 'upcoming');
+
         const updateData = {
           name: payload.name,
           date: payload.date ?? null,
@@ -2157,10 +2082,11 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           poster_url: payload.poster_url ?? null,
           ticket_link: payload.ticket_link ?? null,
           whatsapp_link: payload.whatsapp_link ?? null,
-          featured: !!payload.featured,
-          event_type: payload.event_type || 'upcoming',
+          event_status: normalizedStatus,
+          event_type: eventType,
           gallery_images: payload.gallery_images ?? [],
           gallery_videos: payload.gallery_videos ?? [],
+          gallery_credit: payload.gallery_credit ?? null,
           updated_at: new Date().toISOString(),
         };
 
@@ -2927,7 +2853,9 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                 id,
                 name,
                 date,
-                venue
+                venue,
+                city,
+                poster_url
               ),
               ambassadors (
                 id,
@@ -3146,7 +3074,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
               price: p.price,
             }));
             
-            // Send email with QR codes (official template = online-ticket-email-preview.html)
+            // Send email with QR codes (template: api/lib/online-ticket-email-html.cjs; preview: email-templates/previews/)
             const totalAmountFirst = fullOrder.total_with_fees ?? fullOrder.total_price ?? 0;
             const feeAmountFirst = typeof fullOrder.fee_amount === 'number' ? fullOrder.fee_amount : undefined;
             const subtotalAmountFirst = feeAmountFirst != null ? totalAmountFirst - feeAmountFirst : undefined;
@@ -3177,12 +3105,14 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                 });
                 // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
                 // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
+                const pdfAttachmentsMisc1 = await getBuildTicketEmailPdfAttachments()(fullOrder, tickets, orderPasses);
                 await transporter.sendMail({
                   from: '"Andiamo Events" <contact@andiamoevents.com>',
                   replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
                   to: fullOrder.user_email,
                   subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-                  html: emailHtml
+                  html: emailHtml,
+                  ...(pdfAttachmentsMisc1.length ? { attachments: pdfAttachmentsMisc1 } : {}),
                 });
                 
                 // Update tickets to DELIVERED
@@ -3562,7 +3492,7 @@ We Create Memories`;
         try {
           const { data: fullOrderData, error: fullOrderError } = await dbClient
             .from('orders')
-            .select(`*, events (id, name, date, venue), ambassadors (id, full_name, phone)`)
+            .select(`*, events (id, name, date, venue, city, poster_url), ambassadors (id, full_name, phone)`)
             .eq('id', orderId)
             .single();
           if (fullOrderError || !fullOrderData) throw new Error('Failed to fetch order');
@@ -3647,7 +3577,15 @@ We Create Memories`;
                   subtotalAmount,
                   ticketsByPassType,
                 });
-                await transporter.sendMail({ from: '"Andiamo Events" <contact@andiamoevents.com>', replyTo: '"Andiamo Events" <contact@andiamoevents.com>', to: fullOrder.user_email, subject: 'Your Digital Tickets Are Ready - Andiamo Events', html: emailHtml });
+                const pdfAttachmentsMisc2 = await getBuildTicketEmailPdfAttachments()(fullOrder, tickets, orderPasses);
+                await transporter.sendMail({
+                  from: '"Andiamo Events" <contact@andiamoevents.com>',
+                  replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+                  to: fullOrder.user_email,
+                  subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+                  html: emailHtml,
+                  ...(pdfAttachmentsMisc2.length ? { attachments: pdfAttachmentsMisc2 } : {}),
+                });
                 await dbClient.from('tickets').update({ status: 'DELIVERED', email_delivery_status: 'sent', delivered_at: new Date().toISOString() }).in('id', tickets.map(t => t.id));
                 await dbClient.from('email_delivery_logs').insert({ order_id: orderId, email_type: 'ticket_delivery', recipient_email: fullOrder.user_email, recipient_name: fullOrder.user_name, subject: 'Your Digital Tickets Are Ready - Andiamo Events', status: 'sent', sent_at: new Date().toISOString() });
                 ticketResult.emailSent = true;
@@ -4027,6 +3965,125 @@ Billets envoyés par email. We Create Memories`;
         });
       }
     }
+
+    // ============================================
+    // GET /api/admin/order-qr-tickets?orderId= — super_admin only (QR images + ticket scan/generation status)
+    // ============================================
+    if (path === '/api/admin/order-qr-tickets' && method === 'GET') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        if (authResult.admin?.role !== 'super_admin') {
+          return res.status(403).json({
+            error: 'Forbidden',
+            details: 'Super admin privileges required to view order QR tickets',
+            valid: false
+          });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ error: 'Supabase not configured' });
+        }
+
+        const queryString = req.url && req.url.includes('?') ? req.url.split('?')[1] : '';
+        const params = new URLSearchParams(queryString);
+        const orderId = params.get('orderId');
+        if (!orderId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(orderId)) {
+          return res.status(400).json({ error: 'Valid orderId (UUID) is required' });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+        const supabaseService = process.env.SUPABASE_SERVICE_ROLE_KEY
+          ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+          : null;
+        const dbClient = supabaseService || supabase;
+
+        const { data: order, error: orderError } = await dbClient
+          .from('orders')
+          .select('id, status, payment_status, source')
+          .eq('id', orderId)
+          .maybeSingle();
+
+        if (orderError || !order) {
+          return res.status(404).json({ error: 'Order not found' });
+        }
+
+        const { data: qrRows, error: qrErr } = await dbClient
+          .from('qr_tickets')
+          .select('id, qr_code_url, pass_type, ticket_status, generated_at')
+          .eq('order_id', orderId)
+          .order('generated_at', { ascending: true });
+
+        if (qrErr) {
+          console.error('order-qr-tickets qr_tickets:', qrErr);
+          return res.status(500).json({ error: 'Failed to load QR tickets', details: qrErr.message });
+        }
+
+        let tickets = [];
+        if (qrRows && qrRows.length > 0) {
+          tickets = qrRows.map((r) => ({
+            id: r.id,
+            pass_type: r.pass_type || null,
+            qr_code_url: r.qr_code_url || null,
+            scan_status: r.ticket_status || null,
+            generation_status: null,
+            generated_at: r.generated_at || null
+          }));
+        } else {
+          const { data: ticketRows, error: tErr } = await dbClient
+            .from('tickets')
+            .select('id, qr_code_url, status, generated_at, order_passes(pass_type)')
+            .eq('order_id', orderId)
+            .order('generated_at', { ascending: true });
+
+          if (tErr) {
+            console.error('order-qr-tickets tickets:', tErr);
+            return res.status(500).json({ error: 'Failed to load tickets', details: tErr.message });
+          }
+
+          tickets = (ticketRows || []).map((t) => {
+            const op = t.order_passes;
+            const passType = op == null
+              ? null
+              : Array.isArray(op)
+                ? op[0]?.pass_type
+                : op.pass_type;
+            return {
+              id: t.id,
+              pass_type: passType || null,
+              qr_code_url: t.qr_code_url || null,
+              scan_status: null,
+              generation_status: t.status || null,
+              generated_at: t.generated_at || null
+            };
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          order: {
+            id: order.id,
+            status: order.status,
+            payment_status: order.payment_status,
+            source: order.source
+          },
+          tickets
+        });
+      } catch (error) {
+        console.error('Error in /api/admin/order-qr-tickets:', error);
+        return res.status(500).json({
+          error: 'Internal server error',
+          details: error.message
+        });
+      }
+    }
     
     // ============================================
     // /api/admin-resend-ticket-email (POST)
@@ -4090,7 +4147,9 @@ Billets envoyés par email. We Create Memories`;
               id,
               name,
               date,
-              venue
+              venue,
+              city,
+              poster_url
             ),
             ambassadors (
               id,
@@ -4270,12 +4329,14 @@ Billets envoyés par email. We Create Memories`;
             
             // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
             // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
+            const pdfAttachmentsMiscResend = await getBuildTicketEmailPdfAttachments()(order, tickets, passes);
             await transporter.sendMail({
               from: '"Andiamo Events" <contact@andiamoevents.com>',
               replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
               to: order.user_email,
               subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-              html: emailHtml
+              html: emailHtml,
+              ...(pdfAttachmentsMiscResend.length ? { attachments: pdfAttachmentsMiscResend } : {}),
             });
             
             emailSent = true;
@@ -4689,13 +4750,10 @@ Billets envoyés par email. We Create Memories`;
         if (date_from) query = query.gte('created_at', date_from);
         if (date_to) query = query.lte('created_at', date_to);
         
-        // Check and auto-reject expired orders before fetching (on-demand checking)
-        try {
-          await supabase.rpc('auto_reject_expired_pending_cash_orders');
-        } catch (rejectError) {
-          // Log but don't fail the request if auto-rejection fails
+        // Auto-reject expired orders in the background — do not block the list response (admin tab latency).
+        void supabase.rpc('auto_reject_expired_pending_cash_orders').catch((rejectError) => {
           console.warn('Warning: Failed to auto-reject expired orders:', rejectError);
-        }
+        });
         
         const { data, error, count } = await query;
         
@@ -5955,43 +6013,6 @@ Billets envoyés par email. We Create Memories`;
       }
     }
     
-    // Helper function to create official invitation email HTML
-    function createOfficialInvitationEmailHTML(data) {
-      if (!data || !data.event || !data.qrCodes || !Array.isArray(data.qrCodes) || data.qrCodes.length === 0) {
-        throw new Error('Invalid email data: missing required fields or empty QR codes array');
-      }
-      const formatDate = (dateString) => {
-        try {
-          if (!dateString) return 'TBD';
-          const date = new Date(dateString);
-          if (isNaN(date.getTime())) return dateString;
-          return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-        } catch { return dateString || 'TBD'; }
-      };
-      const formatTime = (dateString) => {
-        try {
-          if (!dateString) return '';
-          const date = new Date(dateString);
-          if (isNaN(date.getTime())) return '';
-          return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        } catch { return ''; }
-      };
-      const eventDate = formatDate(data.event?.date);
-      const eventTime = formatTime(data.event?.date);
-      const qrCodesHtml = data.qrCodes.map((qr, index) => {
-        if (data.qrCodes.length === 1) {
-          return `<img src="${qr.qr_code_url}" alt="Invitation QR Code" style="max-width: 300px; height: auto; display: block; margin: 0 auto 20px; border-radius: 8px;" />`;
-        } else {
-          return `<div style="margin: 10px; padding: 20px; background: #FFFFFF; border: 2px solid #E21836; border-radius: 12px; display: inline-block;"><p style="margin: 0 0 15px 0; color: #E21836; font-size: 14px; font-weight: 600;">QR Code ${index + 1}</p><img src="${qr.qr_code_url}" alt="Invitation QR Code ${index + 1}" style="max-width: 250px; height: auto; display: block; margin: 0 auto; border-radius: 8px;" /></div>`;
-        }
-      }).join('');
-      const qrCodeSectionTitle = data.qrCodes.length > 1 ? `Your QR Codes (${data.qrCodes.length})` : "Your QR Code";
-      const qrCodeInstruction = data.qrCodes.length > 1 ? "Scan any of these QR codes at the entrance to access your assigned zone" : "Scan this QR code at the entrance to access your assigned zone";
-      const zoneTableHtml = data.zoneName && data.zoneDescription ? `<table style="width: 100%; border-collapse: collapse; margin-top: 20px;"><thead><tr><th style="background: #1A1A1A; color: #FFFFFF; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600;">Zone</th><th style="background: #1A1A1A; color: #FFFFFF; padding: 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600;">Access Details</th></tr></thead><tbody><tr><td style="padding: 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); font-size: 14px; color: #1A1A1A;">${data.zoneName}</td><td style="padding: 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.1); font-size: 14px; color: #1A1A1A;">${data.zoneDescription}</td></tr></tbody></table><p style="margin-top: 20px; font-size: 14px; color: #666666; line-height: 1.7;">Access is valid only for the zone mentioned above.<br>Zone changes are not permitted on-site.</p>` : '';
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="color-scheme" content="light dark"><title>Official Invitation – Andiamo Events</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;line-height:1.6;color:#1A1A1A;background:#FFFFFF}@media(prefers-color-scheme:dark){body{color:#FFFFFF;background:#1A1A1A}}a{color:#E21836!important;text-decoration:none}.email-wrapper{max-width:600px;margin:0 auto;background:#FFFFFF}@media(prefers-color-scheme:dark){.email-wrapper{background:#1A1A1A}}.content-card{background:#F5F5F5;margin:0 20px 30px;border-radius:12px;padding:50px 40px;border:1px solid rgba(0,0,0,0.1)}@media(prefers-color-scheme:dark){.content-card{background:#1F1F1F;border:1px solid rgba(42,42,42,0.5)}}.title-section{text-align:center;margin-bottom:40px;padding-bottom:30px;border-bottom:1px solid rgba(0,0,0,0.1)}.title{font-size:32px;font-weight:700;color:#1A1A1A;margin-bottom:12px}@media(prefers-color-scheme:dark){.title{color:#FFFFFF}}.subtitle{font-size:16px;color:#666666;font-weight:400}@media(prefers-color-scheme:dark){.subtitle{color:#B0B0B0}}.greeting{font-size:18px;color:#1A1A1A;margin-bottom:30px;line-height:1.7}@media(prefers-color-scheme:dark){.greeting{color:#FFFFFF}}.greeting strong{color:#E21836;font-weight:600}.message{font-size:16px;color:#666666;margin-bottom:25px;line-height:1.7}@media(prefers-color-scheme:dark){.message{color:#B0B0B0}}.info-block{background:#E8E8E8;border:1px solid rgba(0,0,0,0.15);border-radius:8px;padding:30px;margin:40px 0}@media(prefers-color-scheme:dark){.info-block{background:#252525;border:1px solid rgba(42,42,42,0.8)}}.info-row{margin-bottom:25px}.info-row:last-child{margin-bottom:0}.info-label{font-size:11px;color:#999999;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px;font-weight:600}@media(prefers-color-scheme:dark){.info-label{color:#6B6B6B}}.info-value{font-size:18px;color:#1A1A1A;font-weight:500;letter-spacing:0.5px}@media(prefers-color-scheme:dark){.info-value{color:#FFFFFF}}.event-details-block{background:#E8E8E8;border:1px solid rgba(0,0,0,0.15);border-radius:8px;padding:30px;margin:40px 0}@media(prefers-color-scheme:dark){.event-details-block{background:#252525;border:1px solid rgba(42,42,42,0.8)}}.event-details-title{font-size:18px;color:#E21836;font-weight:600;margin-bottom:20px}.event-detail-row{margin-bottom:15px}.event-detail-row:last-child{margin-bottom:0}.event-detail-label{font-size:11px;color:#999999;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:5px;font-weight:600}@media(prefers-color-scheme:dark){.event-detail-label{color:#6B6B6B}}.event-detail-value{font-size:16px;color:#1A1A1A;font-weight:500}@media(prefers-color-scheme:dark){.event-detail-value{color:#FFFFFF}}.qr-code-section{text-align:center;margin:40px 0;padding:30px;background:#FFFFFF;border:2px solid #E21836;border-radius:12px}@media(prefers-color-scheme:dark){.qr-code-section{background:#1F1F1F}}.qr-code-title{font-size:20px;color:#1A1A1A;font-weight:600;margin-bottom:15px}@media(prefers-color-scheme:dark){.qr-code-title{color:#FFFFFF}}.qr-code-instruction{font-size:15px;color:#666666;margin-bottom:25px;line-height:1.6}@media(prefers-color-scheme:dark){.qr-code-instruction{color:#B0B0B0}}.rules-section{background:#FFF9E6;border-left:3px solid #E21836;padding:20px 25px;margin:35px 0;border-radius:4px}@media(prefers-color-scheme:dark){.rules-section{background:#2A2419;border-left:3px solid #E21836}}.rules-title{font-size:16px;color:#E21836;font-weight:600;margin-bottom:15px}.rules-list{list-style:none;padding:0;margin:0}.rules-list li{font-size:14px;color:#666666;line-height:1.8;margin-bottom:10px;padding-left:25px;position:relative}@media(prefers-color-scheme:dark){.rules-list li{color:#B0B0B0}}.rules-list li:before{content:"⚠️";position:absolute;left:0}.rules-list li:last-child{margin-bottom:0}.arrival-note{font-size:14px;color:#666666;margin-top:15px;line-height:1.7}@media(prefers-color-scheme:dark){.arrival-note{color:#B0B0B0}}.support-section{background:#E8E8E8;border-left:3px solid rgba(226,24,54,0.3);padding:20px 25px;margin:35px 0;border-radius:4px}@media(prefers-color-scheme:dark){.support-section{background:#252525}}.support-text{font-size:14px;color:#666666;line-height:1.7;margin-bottom:10px}@media(prefers-color-scheme:dark){.support-text{color:#B0B0B0}}.support-contact{font-size:14px;color:#666666;line-height:1.8}@media(prefers-color-scheme:dark){.support-contact{color:#B0B0B0}}.support-email{color:#E21836!important;text-decoration:none;font-weight:500}.closing-section{text-align:center;margin:50px 0 40px;padding-top:40px;border-top:1px solid rgba(0,0,0,0.1)}@media(prefers-color-scheme:dark){.closing-section{border-top:1px solid rgba(255,255,255,0.1)}}.slogan{font-size:24px;font-style:italic;color:#E21836;font-weight:300;letter-spacing:1px;margin-bottom:30px}.signature{font-size:16px;color:#666666;line-height:1.7}@media(prefers-color-scheme:dark){.signature{color:#B0B0B0}}.footer{margin-top:50px;padding:40px 20px 30px;text-align:center;border-top:1px solid rgba(0,0,0,0.1)}@media(prefers-color-scheme:dark){.footer{border-top:1px solid rgba(255,255,255,0.05)}}.footer-text{font-size:12px;color:#999999;margin-bottom:20px;line-height:1.6}@media(prefers-color-scheme:dark){.footer-text{color:#6B6B6B}}.footer-links{margin:15px auto 0;text-align:center}.footer-link{color:#999999;text-decoration:none;font-size:13px;margin:0 8px}@media(prefers-color-scheme:dark){.footer-link{color:#6B6B6B}}.footer-link:hover{color:#E21836!important}</style></head><body><div class="email-wrapper"><div class="content-card"><div class="title-section"><h1 class="title">Official Invitation</h1><p class="subtitle">Andiamo Events</p></div><p class="greeting">Dear <strong>${data.guestName}</strong>,</p><p class="message">Mouayed Chakir has the pleasure to invite you to the <strong>${data.event.name}</strong>, proudly organized by Andiamo Events.</p><p class="message">We are pleased to confirm that your invitation has been successfully registered. This email serves as your official entry pass to the event.</p><p class="message">Please find your personal QR code${data.qrCodes.length > 1 ? 's' : ''} included below. ${data.qrCodes.length > 1 ? 'They' : 'It'} will be required for access control and validation at the venue.</p><p class="message">Kindly keep this invitation available on your phone or printed on the day of the event.</p><div class="event-details-block"><div class="event-details-title">Event Details</div><div class="event-detail-row"><div class="event-detail-label">Date</div><div class="event-detail-value">${eventDate}</div></div>${eventTime ? `<div class="event-detail-row"><div class="event-detail-label">Show Time</div><div class="event-detail-value">${eventTime}</div></div>` : ''}<div class="event-detail-row"><div class="event-detail-label">Venue</div><div class="event-detail-value">${data.event.venue}</div></div></div><div class="info-block"><div class="info-row"><div class="info-label">Invitation</div><div class="info-value">#${data.invitationNumber}</div></div><div class="info-row"><div class="info-label">Guest Name</div><div class="info-value">${data.guestName}</div></div><div class="info-row"><div class="info-label">Phone Number</div><div class="info-value">${data.guestPhone}</div></div></div>${zoneTableHtml ? `<div class="info-block"><div class="info-label" style="margin-bottom:15px;">Zone & Access Details</div>${zoneTableHtml}</div>` : ''}<div class="qr-code-section"><h3 class="qr-code-title">${qrCodeSectionTitle}</h3><p class="qr-code-instruction">${qrCodeInstruction}</p>${qrCodesHtml}</div><div class="rules-section"><div class="rules-title">Important Access Rules</div><ul class="rules-list"><li>Each QR code is valid for one (1) person only and for a single entry.</li><li>Reproduction, sharing, or duplication of the QR code is strictly prohibited.</li><li>Once scanned, the QR code becomes invalid.</li></ul><p class="arrival-note">Please arrive at least 1h30mn before the show time to ensure smooth check-in.</p></div><div class="support-section"><p class="support-text">For any assistance or additional information, please contact us at</p><p class="support-contact"><a href="mailto:contact@andiamoevents.com" class="support-email">contact@andiamoevents.com</a> or <strong style="color:#E21836!important">+216 28 070 128</strong></p></div><div class="closing-section"><p class="slogan">We Create Memories</p><p class="signature">Best regards,<br>Andiamo Events Team</p></div></div><div class="footer"><p class="footer-text">Developed by <span style="color:#E21836!important">Malek Ben Amor</span></p><div class="footer-links"><a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a><span style="color:#999999">•</span><a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a></div></div></div></body></html>`;
-      return { from: '"Andiamo Events" <contact@andiamoevents.com>', to: data.guestEmail, subject: 'Official Invitation – Andiamo Events', html: html };
-    }
-    
     // Helper function to log invitation actions
     async function logInvitationAction(dbClient, action, invitationId, adminId, details = {}) {
       try {
@@ -6223,7 +6244,7 @@ Billets envoyés par email. We Create Memories`;
         }
         
         // Send email
-        const emailConfig = createOfficialInvitationEmailHTML({
+        const emailConfig = getCreateOfficialInvitationEmailHTML()({
           guestName: guest_name.trim(),
           guestPhone: guest_phone.trim(),
           guestEmail: guest_email.trim().toLowerCase(),
@@ -6451,7 +6472,7 @@ Billets envoyés par email. We Create Memories`;
           });
         }
         
-        const emailConfig = createOfficialInvitationEmailHTML({
+        const emailConfig = getCreateOfficialInvitationEmailHTML()({
           guestName: invitation.recipient_name,
           guestPhone: invitation.recipient_phone,
           guestEmail: invitation.recipient_email,

@@ -1,12 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { isLocalhostClient } from '@/lib/localhost';
 
-interface EventPass {
+export interface EventPass {
   id?: string;
   name: string;
   price: number;
   description: string;
   is_primary: boolean;
+  is_active?: boolean;
 }
 
 export interface Event {
@@ -19,11 +21,12 @@ export interface Event {
   poster_url: string;
   instagram_link?: string;
   whatsapp_link?: string;
-  featured: boolean;
   passes?: EventPass[];
   event_type?: 'upcoming' | 'gallery';
   gallery_images?: string[];
   gallery_videos?: string[];
+  /** Shown on gallery masonry tiles under the logo (“Event by : …”) */
+  gallery_credit?: string | null;
   event_status?: 'active' | 'cancelled' | 'completed';
   age_restriction?: number;
   dress_code?: string;
@@ -42,16 +45,8 @@ export const useEvents = () => {
   return useQuery<Event[]>({
     queryKey: ['events'],
     queryFn: async () => {
-      
-      // Check if we're on localhost (for testing) or production
-      const isLocalhost = typeof window !== 'undefined' && (
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.0.') ||
-        window.location.hostname.startsWith('172.')
-      );
-      
+      const isLocalhost = isLocalhostClient();
+
       // Fetch events
       const { data, error } = await supabase
         .from('events')
@@ -78,6 +73,7 @@ export const useEvents = () => {
             .from('event_passes')
             .select('*')
             .eq('event_id', e.id)
+            .eq('is_active', true)
             .order('is_primary', { ascending: false })
             .order('price', { ascending: true })
             .order('created_at', { ascending: true });
@@ -93,7 +89,8 @@ export const useEvents = () => {
             name: p.name || '',
             price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
             description: p.description || '',
-            is_primary: p.is_primary || false
+            is_primary: p.is_primary || false,
+            is_active: p.is_active !== false
           }));
 
           return {
@@ -119,19 +116,13 @@ export const useFeaturedEvents = () => {
   return useQuery<Event[]>({
     queryKey: ['events', 'featured'],
     queryFn: async () => {
-      // Check if we're on localhost (for testing) or production
-      const isLocalhost = typeof window !== 'undefined' && (
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.0.') ||
-        window.location.hostname.startsWith('172.')
-      );
+      const isLocalhost = isLocalhostClient();
 
       const { data, error } = await supabase
         .from('events')
         .select('*')
         .eq('event_type', 'upcoming')
+        .neq('event_status', 'cancelled')
         .order('date', { ascending: true });
 
       if (error) {
@@ -170,14 +161,7 @@ export const useEventBySlug = (eventSlug: string | undefined) => {
     queryFn: async () => {
       if (!eventSlug) return null;
 
-      // Check if we're on localhost (for testing) or production
-      const isLocalhost = typeof window !== 'undefined' && (
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.0.') ||
-        window.location.hostname.startsWith('172.')
-      );
+      const isLocalhost = isLocalhostClient();
 
       // Fetch all events and find by slug
       const { data, error } = await supabase
@@ -207,6 +191,7 @@ export const useEventBySlug = (eventSlug: string | undefined) => {
         .from('event_passes')
         .select('*')
         .eq('event_id', event.id)
+        .eq('is_active', true)
         .order('is_primary', { ascending: false })
         .order('price', { ascending: true });
 
@@ -215,7 +200,8 @@ export const useEventBySlug = (eventSlug: string | undefined) => {
         name: p.name || '',
         price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
         description: p.description || '',
-        is_primary: p.is_primary || false
+        is_primary: p.is_primary || false,
+        is_active: p.is_active !== false
       }));
 
       return {

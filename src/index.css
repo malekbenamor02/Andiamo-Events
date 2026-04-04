@@ -27,6 +27,81 @@
   display: none; /* Chrome, Safari, Opera */
 }
 
+/* Admin dashboard: navigation list scrollbar (brand red) */
+.admin-nav-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #e21836 #2a2a2a;
+}
+.admin-nav-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+.admin-nav-scrollbar::-webkit-scrollbar-track {
+  background: #2a2a2a;
+  border-radius: 4px;
+}
+.admin-nav-scrollbar::-webkit-scrollbar-thumb {
+  background: #e21836;
+  border-radius: 4px;
+}
+.admin-nav-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #c4142e;
+}
+
+/* Desktop admin sidebar: nav label + icon turn brand red on hover; active tab stays red */
+.admin-sidebar-nav-item {
+  color: #b8b8b8;
+  transition: color 0.1s ease;
+}
+.admin-sidebar-nav-item:hover {
+  color: #e21836;
+}
+.admin-sidebar-nav-item[data-active="true"] {
+  color: #e21836;
+}
+.admin-sidebar-nav-item svg {
+  color: inherit;
+}
+
+/* Main document scrollbar (viewport) — brand red, dark track */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #e21836 #2a2a2a;
+}
+html::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+html::-webkit-scrollbar-track {
+  background: #2a2a2a;
+}
+html::-webkit-scrollbar-thumb {
+  background: #e21836;
+  border-radius: 5px;
+}
+html::-webkit-scrollbar-thumb:hover {
+  background: #c4142e;
+}
+
+/* Body may be the scroll container in some layouts */
+body {
+  scrollbar-width: thin;
+  scrollbar-color: #e21836 #2a2a2a;
+}
+body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+body::-webkit-scrollbar-track {
+  background: #2a2a2a;
+}
+body::-webkit-scrollbar-thumb {
+  background: #e21836;
+  border-radius: 5px;
+}
+body::-webkit-scrollbar-thumb:hover {
+  background: #c4142e;
+}
+
 /* Security: Disable text selection globally */
 * {
   -webkit-user-select: none;

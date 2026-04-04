@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { AdminOrderQrTicketsSection } from "./AdminOrderQrTicketsSection";
 
 export interface OnlineOrderDetailsDialogProps {
   open: boolean;
@@ -72,6 +73,8 @@ export interface OnlineOrderDetailsDialogProps {
   onUpdateEmail: (orderId: string, newEmail: string) => void | Promise<void>;
   /** Optional: resend ticket email (only shown for paid orders when provided) */
   onResendTicket?: (orderId: string) => void | Promise<void>;
+  /** When true, loads and shows QR ticket images and statuses (API allows super_admin only). */
+  isSuperAdmin?: boolean;
 }
 
 export function OnlineOrderDetailsDialog({
@@ -82,6 +85,7 @@ export function OnlineOrderDetailsDialog({
   onUpdateStatus,
   onUpdateEmail,
   onResendTicket,
+  isSuperAdmin = false,
 }: OnlineOrderDetailsDialogProps) {
   const { toast } = useToast();
   const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -790,6 +794,13 @@ export function OnlineOrderDetailsDialog({
                 </div>
               </CardContent>
             </Card>
+
+            <AdminOrderQrTicketsSection
+              orderId={order.id}
+              open={open}
+              language={language}
+              isSuperAdmin={isSuperAdmin}
+            />
           </div>
         )}
       </DialogContent>

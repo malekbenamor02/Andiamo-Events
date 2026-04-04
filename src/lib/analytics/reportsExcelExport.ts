@@ -1,5 +1,5 @@
 /**
- * Branded Excel export for Reports (online vs ambassador paid orders).
+ * Branded Excel export for Reports (online, ambassador cash, and POS paid orders).
  */
 
 import ExcelJS from 'exceljs';
@@ -7,7 +7,12 @@ import type { WorksheetProtection } from 'exceljs';
 import { supabase } from '@/integrations/supabase/client';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
 import { getDateRangeFilter, getDateRangeLabel, type DateRange } from '@/hooks/useAnalytics';
-import { isPaidOnlineOrder, isPaidAmbassadorCashOrder, isPaidOnlineOrAmbassadorOrder } from '@/lib/orders/orderAnalytics';
+import {
+  isPaidOnlineOrder,
+  isPaidAmbassadorCashOrder,
+  isPaidOnlineOrAmbassadorOrder,
+  isPaidPosOrder,
+} from '@/lib/orders/orderAnalytics';
 import { getOrderReportRevenue, getOrderTicketsAndRevenue } from '@/lib/orders/orderRevenue';
 
 /** PostgREST often returns HTTP 400 with message "Bad Request" while the real cause is in `details`. */
@@ -46,8 +51,12 @@ const COPY: Record<
   Lang,
   {
     workbookTitle: string;
+    summarySheet: string;
     onlineSheet: string;
     ambSheet: string;
+    posSheet: string;
+    summaryColChannel: string;
+    summaryAllChannelsPaid: string;
     period: string;
     event: string;
     allEvents: string;
@@ -80,8 +89,12 @@ const COPY: Record<
 > = {
   en: {
     workbookTitle: 'ANDIAMO EVENTS — SALES REPORT',
+    summarySheet: 'Summary',
     onlineSheet: 'Online payments',
     ambSheet: 'Ambassador sales',
+    posSheet: 'POS sales',
+    summaryColChannel: 'Channel',
+    summaryAllChannelsPaid: 'All channels (paid)',
     passesStockSheet: 'Passes stock',
     period: 'Period',
     event: 'Event',
@@ -105,9 +118,9 @@ const COPY: Record<
     soldOtherChannels: 'Other (POS / external) (qty)',
     soldTotal: 'Total sold (Pass Stock)',
     stockPaidOnlyNote:
-      'No event filter: pass names from paid orders only, for the report date range. Totals are online + ambassador (excludes POS).',
+      'No event filter: pass names from paid orders only, for the report date range. Quantities include online, ambassador cash, and POS (point de vente).',
     stockPaidOnlyNoteEvent:
-      'Paid online and ambassador cash only (same as Overview / Reports). Quantities from order_passes by pass id. Total = Online + Ambassador for each pass.',
+      'Paid online, ambassador cash, and POS (point de vente). Quantities from order_passes by pass id. Total = Online + Ambassador + POS for each pass.',
     stockStripOnline: 'Online passes (total qty)',
     stockStripAmbassador: 'Ambassador passes (total qty)',
     stockStripOther: 'Other channels (total qty)',
@@ -115,8 +128,12 @@ const COPY: Record<
   },
   fr: {
     workbookTitle: 'ANDIAMO EVENTS — RAPPORT DES VENTES',
+    summarySheet: 'Synthèse',
     onlineSheet: 'Paiements en ligne',
     ambSheet: 'Ventes ambassadeurs',
+    posSheet: 'Ventes PDV',
+    summaryColChannel: 'Canal',
+    summaryAllChannelsPaid: 'Tous canaux (payés)',
     period: 'Période',
     event: 'Événement',
     allEvents: 'Tous les événements',
@@ -140,9 +157,9 @@ const COPY: Record<
     soldOtherChannels: 'Autre (POS / externe) (qté)',
     soldTotal: 'Total vendu (stock)',
     stockPaidOnlyNote:
-      'Sans événement : noms issus des commandes payées, selon la période du rapport. Totaux = en ligne + ambassadeurs (hors POS).',
+      'Sans événement : noms issus des commandes payées, selon la période du rapport. Quantités : en ligne, ambassadeurs et PDV (point de vente).',
     stockPaidOnlyNoteEvent:
-      'En ligne et ambassadeurs (espèces) payés uniquement (comme l’accueil / Rapports). Quantités via order_passes par pass. Total = En ligne + Ambassadeurs pour chaque pass.',
+      'Paiements en ligne, ambassadeurs (espèces) et PDV (point de vente). Quantités via order_passes par pass. Total = En ligne + Ambassadeurs + PDV pour chaque pass.',
     stockStripOnline: 'Billets en ligne (qté totale)',
     stockStripAmbassador: 'Billets ambassadeurs (qté totale)',
     stockStripOther: 'Autres canaux (qté totale)',
@@ -270,13 +287,48 @@ async function fetchPaidOrdersForExport(eventId: string | null, dateRange: DateR
     throw new Error(supabaseErrorMessage(error));
   }
   const rows = (data || []) as any[];
-  return rows.filter(isPaidOnlineOrAmbassadorOrder);
+  const onlineAndAmb = rows.filter(isPaidOnlineOrAmbassadorOrder);
+
+  let posQuery = supabase
+    .from('orders')
+    .select(
+      `
+      *,
+      order_passes (*),
+      ambassadors ( id, full_name, phone, email ),
+      events ( id, name, date, venue, city )
+    `,
+      { count: 'exact' }
+    )
+    .eq('source', 'point_de_vente')
+    .in('status', [OrderStatus.PAID, 'COMPLETED'])
+    .order('created_at', { ascending: false })
+    .limit(15000);
+
+  if (eventId) {
+    posQuery = posQuery.eq('event_id', eventId);
+  }
+  if (startDate) {
+    posQuery = posQuery.gte('created_at', startDate.toISOString());
+  }
+  if (endDate) {
+    posQuery = posQuery.lte('created_at', endDate.toISOString());
+  }
+
+  const { data: posData, error: posError } = await posQuery;
+  if (posError) {
+    throw new Error(supabaseErrorMessage(posError));
+  }
+  const posRows = ((posData || []) as any[]).filter(isPaidPosOrder);
+
+  return [...onlineAndAmb, ...posRows];
 }
 
 function splitOrders(orders: any[]) {
   const online = orders.filter((o) => o.payment_method === PaymentMethod.ONLINE);
   const ambassador = orders.filter((o) => o.payment_method === PaymentMethod.AMBASSADOR_CASH);
-  return { online, ambassador };
+  const pos = orders.filter((o) => isPaidPosOrder(o));
+  return { online, ambassador, pos };
 }
 
 /** Alphabetical by ambassador name, then by order date for stable grouping. */
@@ -472,8 +524,8 @@ export type PassStockSheetRow = {
 };
 
 /**
- * One row per event_pass: paid online vs paid ambassador via order_passes.pass_id
- * (same scope as Overview / Reports — excludes POS and non-paid stock states).
+ * One row per event_pass: paid online vs ambassador vs POS via order_passes.pass_id
+ * (same scope as Overview / Reports — non-paid stock states excluded).
  */
 async function fetchPassStockBreakdownForEvent(eventId: string): Promise<PassStockSheetRow[]> {
   const { data: passes, error: pErr } = await supabase
@@ -507,10 +559,10 @@ async function fetchPassStockBreakdownForEvent(eventId: string): Promise<PassSto
     ),
   ];
 
-  type Bucket = { online: number; ambassador: number };
+  type Bucket = { online: number; ambassador: number; other: number };
   const breakdown: Record<string, Bucket> = {};
   for (const p of list) {
-    breakdown[p.id] = { online: 0, ambassador: 0 };
+    breakdown[p.id] = { online: 0, ambassador: 0, other: 0 };
   }
 
   if (orderIds.length > 0) {
@@ -519,7 +571,7 @@ async function fetchPassStockBreakdownForEvent(eventId: string): Promise<PassSto
       const chunk = orderIds.slice(i, i + ORDERS_BY_ID_CHUNK);
       const { data: chunkRows, error: oErr } = await supabase
         .from('orders')
-        .select('id, payment_method, status, payment_status, event_id')
+        .select('id, payment_method, status, payment_status, event_id, source')
         .in('id', chunk);
       if (oErr) throw new Error(supabaseErrorMessage(oErr));
       if (chunkRows?.length) ordersRows.push(...chunkRows);
@@ -533,7 +585,7 @@ async function fetchPassStockBreakdownForEvent(eventId: string): Promise<PassSto
       const o = orderById.get(oid);
       if (!o) continue;
       if (!(o.event_id === eventId || o.event_id == null)) continue;
-      if (!isPaidOnlineOrder(o) && !isPaidAmbassadorCashOrder(o)) continue;
+      if (!isPaidOnlineOrder(o) && !isPaidAmbassadorCashOrder(o) && !isPaidPosOrder(o)) continue;
       const pid = op.pass_id as string;
       if (!breakdown[pid]) continue;
       const q = Number(op.quantity) || 0;
@@ -541,20 +593,23 @@ async function fetchPassStockBreakdownForEvent(eventId: string): Promise<PassSto
         breakdown[pid].online += q;
       } else if (isPaidAmbassadorCashOrder(o)) {
         breakdown[pid].ambassador += q;
+      } else if (isPaidPosOrder(o)) {
+        breakdown[pid].other += q;
       }
     }
   }
 
   return list.map((p) => {
-    const b = breakdown[p.id] || { online: 0, ambassador: 0 };
+    const b = breakdown[p.id] || { online: 0, ambassador: 0, other: 0 };
     const online = b.online;
     const ambassador = b.ambassador;
+    const other = b.other;
     return {
       name: p.name,
       online,
       ambassador,
-      other: 0,
-      total: online + ambassador,
+      other,
+      total: online + ambassador + other,
     };
   });
 }
@@ -563,13 +618,15 @@ async function resolvePassTypesForStockSheet(
   eventId: string | null,
   onlineOrders: any[],
   ambassadorOrders: any[],
+  posOrders: any[],
   lang: Lang
 ): Promise<string[]> {
   const fromOnline = collectPassTypesFromOrders(onlineOrders);
   const fromAmb = collectPassTypesFromOrders(ambassadorOrders);
+  const fromPos = collectPassTypesFromOrders(posOrders);
   const fromEvent = eventId ? await fetchEventPassTypeNames(eventId) : [];
   const locale = lang === 'fr' ? 'fr' : 'en';
-  return Array.from(new Set([...fromEvent, ...fromOnline, ...fromAmb])).sort((a, b) =>
+  return Array.from(new Set([...fromEvent, ...fromOnline, ...fromAmb, ...fromPos])).sort((a, b) =>
     a.localeCompare(b, locale, { sensitivity: 'base' })
   );
 }
@@ -914,10 +971,12 @@ export async function downloadReportsExcel(params: {
   ];
   const subtitle = metaBits.join('  ·  ');
 
-  const { online, ambassador: ambassadorRaw } = splitOrders(orders);
+  const { online, ambassador: ambassadorRaw, pos } = splitOrders(orders);
   const ambassador = sortAmbassadorOrdersAlphabetically(ambassadorRaw, lang);
   const onlineTot = totalsLine(online);
   const ambTot = totalsLine(ambassador);
+  const posTot = totalsLine(pos);
+  const grandTot = totalsLine(orders);
   const aggMap = ambassadorAggregateMap(ambassador);
   const passTypes = await resolvePassTypeColumns(params.eventId, ambassador, lang);
   let roster = await fetchAmbassadorRosterForExport(params.eventId);
@@ -936,13 +995,15 @@ export async function downloadReportsExcel(params: {
   let stockPassTypes: string[] = [];
   let onlineByPass = new Map<string, number>();
   let ambByPass = new Map<string, number>();
+  let posByPass = new Map<string, number>();
   let passStockEventRows: PassStockSheetRow[] | null = null;
   if (params.eventId) {
     passStockEventRows = await fetchPassStockBreakdownForEvent(params.eventId);
   } else {
-    stockPassTypes = await resolvePassTypesForStockSheet(null, online, ambassador, lang);
+    stockPassTypes = await resolvePassTypesForStockSheet(null, online, ambassador, pos, lang);
     onlineByPass = accumulatePassesSoldByType(online);
     ambByPass = accumulatePassesSoldByType(ambassador);
+    posByPass = accumulatePassesSoldByType(pos);
   }
 
   const workbook = new ExcelJS.Workbook();
@@ -953,6 +1014,56 @@ export async function downloadReportsExcel(params: {
   const lastColAmbOrder = ambassadorOrderHeaders(lang).length;
   const sumColCount = ambassadorSummaryHeaders(lang, passTypes).length;
   const lastColAmbSheet = Math.max(lastColAmbOrder, sumColCount);
+  const lastColSummary = 4;
+
+  const wsSum = workbook.addWorksheet(c.summarySheet, {
+    views: [{ state: 'frozen', ySplit: 6 }],
+  });
+  styleTitleRow(wsSum, 1, lastColSummary, c.workbookTitle, subtitle);
+  let rSum = 3;
+  wsSum.getRow(rSum).height = 8;
+  rSum += 1;
+  setSummaryStrip(
+    wsSum,
+    rSum,
+    lastColSummary,
+    [
+      { label: c.totalOrders, value: String(grandTot.count) },
+      { label: c.totalTickets, value: String(grandTot.tickets) },
+      { label: c.totalRevenue, value: `${grandTot.revenue.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-GB')} ${c.tnd}` },
+    ],
+    'teal'
+  );
+  rSum += 1;
+  wsSum.getRow(rSum).height = 6;
+  rSum += 1;
+  setHeaderRow(wsSum, rSum, [c.summaryColChannel, c.totalOrders, c.totalTickets, c.totalRevenue]);
+  rSum += 1;
+  const sumRows: (string | number)[][] = [
+    [c.onlineSheet, onlineTot.count, onlineTot.tickets, Math.round(onlineTot.revenue * 100) / 100],
+    [c.ambSheet, ambTot.count, ambTot.tickets, Math.round(ambTot.revenue * 100) / 100],
+    [c.posSheet, posTot.count, posTot.tickets, Math.round(posTot.revenue * 100) / 100],
+  ];
+  sumRows.forEach((cells, i) => {
+    setDataRow(wsSum, rSum, cells, i % 2 === 0, [1, 2, 3]);
+    rSum += 1;
+  });
+  const sumTotRow: (string | number)[] = [
+    c.summaryAllChannelsPaid,
+    grandTot.count,
+    grandTot.tickets,
+    Math.round(grandTot.revenue * 100) / 100,
+  ];
+  setDataRow(wsSum, rSum, sumTotRow, true, [1, 2, 3]);
+  const sumTotalRow = wsSum.getRow(rSum);
+  for (let col = 1; col <= lastColSummary; col++) {
+    const cell = sumTotalRow.getCell(col);
+    cell.font = { name: 'Arial', size: 10, bold: true, color: THEME.white };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: THEME.primary };
+    cell.border = thinBorder(THEME.primary);
+  }
+  rSum += 1;
+  setColumnWidths(wsSum, [36, 14, 14, 22]);
 
   const wsOn = workbook.addWorksheet(c.onlineSheet, {
     views: [{ state: 'frozen', ySplit: 7 }],
@@ -1068,6 +1179,44 @@ export async function downloadReportsExcel(params: {
   }
   setColumnWidths(wsAm, ambWidths);
 
+  const wsPos = workbook.addWorksheet(c.posSheet, {
+    views: [{ state: 'frozen', ySplit: 7 }],
+  });
+
+  styleTitleRow(wsPos, 1, lastColOnline, c.workbookTitle, subtitle);
+  r = 3;
+  wsPos.getRow(r).height = 8;
+  r += 1;
+
+  setSummaryStrip(
+    wsPos,
+    r,
+    lastColOnline,
+    [
+      { label: c.totalOrders, value: String(posTot.count) },
+      { label: c.totalTickets, value: String(posTot.tickets) },
+      { label: c.totalRevenue, value: `${posTot.revenue.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-GB')} ${c.tnd}` },
+    ],
+    'green'
+  );
+  r += 1;
+  wsPos.getRow(r).height = 6;
+  r += 1;
+  setSectionLabel(wsPos, r, lastColOnline, c.allOrders);
+  r += 1;
+  setHeaderRow(wsPos, r, onlineHeaders(lang));
+  r += 1;
+
+  const revColPos = onlineHeaders(lang).indexOf(COL[lang].lineRevenue);
+  pos.forEach((order, i) => {
+    setDataRow(wsPos, r, orderRowOnline(order, lang), i % 2 === 0, [revColPos, revColPos + 1]);
+    r += 1;
+  });
+
+  setColumnWidths(wsPos, [
+    10, 38, 18, 12, 22, 14, 28, 14, 14, 36, 42, 10, 14, 12, 14, 16, 18, 32,
+  ]);
+
   // --- Passes stock: event → same basis as Pass Stock Management; all-events → paid orders in period by pass_type string ---
   const wsStock = workbook.addWorksheet(c.passesStockSheet, {
     views: [{ state: 'frozen', ySplit: 8 }],
@@ -1140,9 +1289,10 @@ export async function downloadReportsExcel(params: {
     rs += 1;
     setColumnWidths(wsStock, [42, 16, 18, 22, 18]);
   } else {
-    const lastColStock = 4;
+    const lastColStock = 5;
     const totalOnlinePassesQty = [...onlineByPass.values()].reduce((a, b) => a + b, 0);
     const totalAmbPassesQty = [...ambByPass.values()].reduce((a, b) => a + b, 0);
+    const totalPosPassesQty = [...posByPass.values()].reduce((a, b) => a + b, 0);
     styleTitleRow(wsStock, 1, lastColStock, c.workbookTitle, subtitle);
     wsStock.getRow(rs).height = 8;
     rs += 1;
@@ -1153,7 +1303,8 @@ export async function downloadReportsExcel(params: {
       [
         { label: c.stockStripOnline, value: String(totalOnlinePassesQty) },
         { label: c.stockStripAmbassador, value: String(totalAmbPassesQty) },
-        { label: c.stockStripAll, value: String(totalOnlinePassesQty + totalAmbPassesQty) },
+        { label: c.stockStripOther, value: String(totalPosPassesQty) },
+        { label: c.stockStripAll, value: String(totalOnlinePassesQty + totalAmbPassesQty + totalPosPassesQty) },
       ],
       'teal'
     );
@@ -1172,18 +1323,26 @@ export async function downloadReportsExcel(params: {
     noteCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     noteCell.border = thinBorder();
     rs += 1;
-    setHeaderRow(wsStock, rs, [c.passType, c.soldOnline, c.soldAmbassador, c.soldTotal]);
+    setHeaderRow(wsStock, rs, [
+      c.passType,
+      c.soldOnline,
+      c.soldAmbassador,
+      c.soldOtherChannels,
+      c.soldTotal,
+    ]);
     rs += 1;
-    const stockHighlights = [1, 2, 3];
+    const stockHighlights = [1, 2, 3, 4, 5];
     stockPassTypes.forEach((pt, i) => {
       const oq = onlineByPass.get(pt) ?? 0;
       const aq = ambByPass.get(pt) ?? 0;
-      setDataRow(wsStock, rs, [pt, oq, aq, oq + aq], i % 2 === 0, stockHighlights);
+      const pq = posByPass.get(pt) ?? 0;
+      setDataRow(wsStock, rs, [pt, oq, aq, pq, oq + aq + pq], i % 2 === 0, stockHighlights);
       rs += 1;
     });
     const totO = stockPassTypes.reduce((s, pt) => s + (onlineByPass.get(pt) ?? 0), 0);
     const totA = stockPassTypes.reduce((s, pt) => s + (ambByPass.get(pt) ?? 0), 0);
-    const stockTotalCells: (string | number)[] = ['TOTAL', totO, totA, totO + totA];
+    const totP = stockPassTypes.reduce((s, pt) => s + (posByPass.get(pt) ?? 0), 0);
+    const stockTotalCells: (string | number)[] = ['TOTAL', totO, totA, totP, totO + totA + totP];
     setDataRow(wsStock, rs, stockTotalCells, true, stockHighlights);
     const stockTotalRow = wsStock.getRow(rs);
     for (let col = 1; col <= lastColStock; col++) {
@@ -1193,7 +1352,7 @@ export async function downloadReportsExcel(params: {
       cell.border = thinBorder(THEME.primary);
     }
     rs += 1;
-    setColumnWidths(wsStock, [42, 22, 24, 18]);
+    setColumnWidths(wsStock, [42, 16, 18, 22, 18]);
   }
 
   try {
