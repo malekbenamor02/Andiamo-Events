@@ -4751,9 +4751,15 @@ Billets envoyés par email. We Create Memories`;
         if (date_to) query = query.lte('created_at', date_to);
         
         // Auto-reject expired orders in the background — do not block the list response (admin tab latency).
-        void supabase.rpc('auto_reject_expired_pending_cash_orders').catch((rejectError) => {
-          console.warn('Warning: Failed to auto-reject expired orders:', rejectError);
-        });
+        // Note: supabase.rpc() returns a Postgrest builder, not a native Promise — use await/try or .then(fn, fn), not .catch().
+        void (async () => {
+          try {
+            const { error: rpcErr } = await supabase.rpc('auto_reject_expired_pending_cash_orders');
+            if (rpcErr) console.warn('Warning: auto_reject_expired_pending_cash_orders RPC error:', rpcErr);
+          } catch (rejectError) {
+            console.warn('Warning: Failed to auto-reject expired orders:', rejectError);
+          }
+        })();
         
         const { data, error, count } = await query;
         
