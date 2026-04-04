@@ -884,7 +884,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   if (purchaseBlockedReason) {
     const recapSlug = (event.slug && String(event.slug).trim()) || generateSlug(event.name);
     const galleryUrl = `/gallery/${recapSlug}`;
-    const eventDetailsUrl = `/event/${recapSlug}`;
     return (
       <div className="min-h-screen bg-gradient-dark flex items-center justify-center px-4">
         <Card className="w-full max-w-md">
@@ -893,27 +892,14 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             <h2 className="text-xl font-bold mb-2">
               {language === 'en' ? 'Pass sales are closed' : 'Vente des passes fermée'}
             </h2>
-            <p className="text-muted-foreground mb-2">
+            <p className="text-muted-foreground mb-6">
               {language === 'en'
-                ? 'This event has been marked complete. Tickets and passes are no longer on sale.'
-                : 'Cet événement est marqué comme terminé. Les billets et passes ne sont plus en vente.'}
+                ? 'This event is complete. View the gallery for photos and the recap.'
+                : 'Événement terminé. Consultez la galerie pour les photos et le récapitulatif.'}
             </p>
-            <p className="text-muted-foreground text-sm mb-6">
-              {language === 'en'
-                ? 'Open the event gallery for photos, videos, and the full story.'
-                : 'Consultez la galerie de l\'événement pour les photos, vidéos et le récit.'}
-            </p>
-            <div className="flex flex-col sm:flex-row gap-2 justify-center">
-              <Button onClick={() => navigate(galleryUrl)}>
-                {language === 'en' ? 'View event gallery' : 'Voir la galerie'}
-              </Button>
-              <Button variant="outline" onClick={() => navigate(eventDetailsUrl)}>
-                {language === 'en' ? 'Event information' : 'Informations'}
-              </Button>
-              <Button variant="ghost" onClick={() => navigate('/events')}>
-                {t[language].backToEvents}
-              </Button>
-            </div>
+            <Button className="w-full sm:w-auto" onClick={() => navigate(galleryUrl)}>
+              {language === 'en' ? 'View event gallery' : 'Voir la galerie'}
+            </Button>
           </CardContent>
         </Card>
       </div>
