@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
 const { buildTicketEmailPdfAttachments } = requireCjs(path.join(__dirname, 'lib/ticket-pdf.cjs'));
+const { uploadTicketQrToR2OrSupabase } = requireCjs(path.join(__dirname, 'lib/r2-media.cjs'));
 
 async function verifyAdminAuth(req) {
   try {
@@ -532,7 +533,6 @@ async function ordersApprove(sb, id, auth, req, res) {
 
   const { v4: uuidv4 } = await import('uuid');
   const QRCode = await import('qrcode');
-  const storage = sb.storage.from('tickets');
   const tickets = [];
 
   for (const pass of orderPasses) {
@@ -540,13 +540,18 @@ async function ordersApprove(sb, id, auth, req, res) {
       const secureToken = uuidv4();
       const buf = await QRCode.default.toBuffer(secureToken, { type: 'png', width: 300, margin: 2 });
       const fname = `tickets/${id}/${secureToken}.png`;
-      await storage.upload(fname, buf, { contentType: 'image/png', upsert: true });
-      const { data: urlData } = storage.getPublicUrl(fname);
+      let publicQrUrl = null;
+      try {
+        publicQrUrl = await uploadTicketQrToR2OrSupabase(buf, fname, sb);
+      } catch (e) {
+        console.error('POS ticket QR upload:', e);
+        continue;
+      }
       const { data: t } = await sb.from('tickets').insert({
         order_id: id,
         order_pass_id: pass.id,
         secure_token: secureToken,
-        qr_code_url: urlData?.publicUrl || null,
+        qr_code_url: publicQrUrl,
         status: 'GENERATED',
         generated_at: new Date().toISOString()
       }).select().single();
@@ -643,12 +648,35 @@ async function ordersApprove(sb, id, auth, req, res) {
 }
 
 // --- Main ---
-function getQuery(url) {
-  const i = (url || '').indexOf('?');
-  if (i < 0) return {};
+function getQuery(url, req) {
   const o = {};
-  for (const [k, v] of new URLSearchParams(url.slice(i))) o[k] = v;
+  const i = (url || '').indexOf('?');
+  if (i >= 0) {
+    for (const [k, v] of new URLSearchParams(url.slice(i))) o[k] = v;
+  }
+  // Vercel may expose query on req.query; merge if URL string omits search params
+  const rq = req?.query;
+  if (rq && typeof rq === 'object') {
+    for (const k of Object.keys(rq)) {
+      if (o[k] !== undefined) continue;
+      const v = rq[k];
+      if (v == null || v === '') continue;
+      o[k] = Array.isArray(v) ? v[0] : v;
+    }
+  }
   return o;
+}
+
+function getApiPath(req) {
+  const raw = req.url || req.path || '/';
+  try {
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return new URL(raw).pathname;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return raw.split('?')[0];
 }
 
 export default async (req, res) => {
@@ -657,9 +685,9 @@ export default async (req, res) => {
     return; // CORS error already handled
   }
 
-  const path = (req.url || '').split('?')[0];
+  const path = getApiPath(req);
   const method = req.method;
-  const q = getQuery(req.url);
+  const q = getQuery(req.url, req);
 
   const auth = await verifyAdminAuth(req);
   if (!auth.valid) return res.status(auth.statusCode || 401).json({ error: auth.error });

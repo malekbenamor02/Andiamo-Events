@@ -929,21 +929,42 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
     let cancelled = false;
     const qs = selectedEventId ? `?event_id=${encodeURIComponent(selectedEventId)}` : "";
-    fetch(`/api/admin/pos-statistics${qs}`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("pos-statistics"))))
-      .then((data: { paidRevenue?: number; paidTickets?: number; pendingRevenue?: number }) => {
+    const url = `${getApiBaseUrl()}${API_ROUTES.ADMIN_POS_STATISTICS}${qs}`;
+
+    const loadWithRetry = async () => {
+      const maxAttempts = 4;
+      const backoffMs = [0, 500, 1500, 3500];
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
         if (cancelled) return;
-        setPosOverviewTotals({
-          paidRevenue: Number(data.paidRevenue) || 0,
-          paidTickets: Number(data.paidTickets) || 0,
-          pendingRevenue: Number(data.pendingRevenue) || 0,
-        });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setPosOverviewTotals({ paidRevenue: 0, paidTickets: 0, pendingRevenue: 0 });
+        if (attempt > 0) {
+          await new Promise((r) => setTimeout(r, backoffMs[attempt]));
         }
-      });
+        if (cancelled) return;
+        try {
+          const r = await fetch(url, { credentials: "include" });
+          if (!r.ok) throw new Error(`pos-statistics ${r.status}`);
+          const data = (await r.json()) as {
+            paidRevenue?: number;
+            paidTickets?: number;
+            pendingRevenue?: number;
+          };
+          if (cancelled) return;
+          setPosOverviewTotals({
+            paidRevenue: Number(data.paidRevenue) || 0,
+            paidTickets: Number(data.paidTickets) || 0,
+            pendingRevenue: Number(data.pendingRevenue) || 0,
+          });
+          return;
+        } catch {
+          /* retry */
+        }
+      }
+      if (!cancelled) {
+        setPosOverviewTotals({ paidRevenue: 0, paidTickets: 0, pendingRevenue: 0 });
+      }
+    };
+
+    void loadWithRetry();
     return () => {
       cancelled = true;
     };
