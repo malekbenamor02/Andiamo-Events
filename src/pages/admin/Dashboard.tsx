@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -855,12 +855,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     city: 'all',
   });
 
-  /** POS paid/pending totals for overview KPIs (super_admin only); from /api/admin/pos-statistics */
-  const [posOverviewTotals, setPosOverviewTotals] = useState<{
-    paidRevenue: number;
-    paidTickets: number;
-    pendingRevenue: number;
-  } | null>(null);
+  /**
+   * POS orders for overview KPIs (super_admin only). Loaded via Supabase like online/ambassador
+   * so production totals match the dashboard event filter without a separate API round-trip.
+   */
+  const [posOrdersForOverview, setPosOrdersForOverview] = useState<any[]>([]);
 
   // Dashboard overview stats: paid revenue + sold tickets for online + ambassador; super_admin also includes POS (paid + pending revenue; paid tickets only)
   const dashboardOrderStats = useMemo(() => {
@@ -906,13 +905,17 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     let pendingRevenue = ambPendingRevenue + onlinePendingRevenue;
     let soldTickets = ambSoldTickets + onlineSoldTickets;
 
-    const posExtra =
-      currentAdminRole === "super_admin"
-        ? posOverviewTotals ?? { paidRevenue: 0, paidTickets: 0, pendingRevenue: 0 }
-        : { paidRevenue: 0, paidTickets: 0, pendingRevenue: 0 };
-    paidRevenue += posExtra.paidRevenue;
-    pendingRevenue += posExtra.pendingRevenue;
-    soldTickets += posExtra.paidTickets;
+    if (currentAdminRole === "super_admin") {
+      const posPaid = posOrdersForOverview.filter((o: any) =>
+        o.status === "PAID" || o.status === "COMPLETED",
+      );
+      const posPending = posOrdersForOverview.filter(
+        (o: any) => o.status === "PENDING_ADMIN_APPROVAL",
+      );
+      paidRevenue += posPaid.reduce((s, o) => s + getOrderLineRevenue(o), 0);
+      pendingRevenue += posPending.reduce((s, o) => s + getOrderLineRevenue(o), 0);
+      soldTickets += posPaid.reduce((s, o) => s + getOrderTicketsAndRevenue(o).tickets, 0);
+    }
 
     return {
       totalRevenue: paidRevenue + pendingRevenue,
@@ -920,55 +923,40 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       pendingRevenue,
       soldTickets,
     };
-  }, [codAmbassadorOrders, onlineOrders, currentAdminRole, posOverviewTotals]);
+  }, [codAmbassadorOrders, onlineOrders, currentAdminRole, posOrdersForOverview]);
+
+  const fetchPosOrdersForOverview = useCallback(
+    async (opts?: { isStale?: () => boolean }) => {
+      const stale = () => opts?.isStale?.() === true;
+      if (currentAdminRole !== "super_admin" || !selectedEventId) {
+        if (!stale()) setPosOrdersForOverview([]);
+        return;
+      }
+      try {
+        const { data, error } = await (supabase as any)
+          .from("orders")
+          .select("*, order_passes (*)")
+          .eq("source", "point_de_vente")
+          .neq("status", "REMOVED_BY_ADMIN")
+          .eq("event_id", selectedEventId)
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        if (!stale()) setPosOrdersForOverview(data || []);
+      } catch (e) {
+        console.warn("POS overview orders fetch failed:", e);
+        if (!stale()) setPosOrdersForOverview([]);
+      }
+    },
+    [currentAdminRole, selectedEventId],
+  );
 
   useEffect(() => {
-    if (currentAdminRole !== "super_admin") {
-      setPosOverviewTotals(null);
-      return;
-    }
-    let cancelled = false;
-    const qs = selectedEventId ? `?event_id=${encodeURIComponent(selectedEventId)}` : "";
-    const url = `${getApiBaseUrl()}${API_ROUTES.ADMIN_POS_STATISTICS}${qs}`;
-
-    const loadWithRetry = async () => {
-      const maxAttempts = 4;
-      const backoffMs = [0, 500, 1500, 3500];
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        if (cancelled) return;
-        if (attempt > 0) {
-          await new Promise((r) => setTimeout(r, backoffMs[attempt]));
-        }
-        if (cancelled) return;
-        try {
-          const r = await fetch(url, { credentials: "include" });
-          if (!r.ok) throw new Error(`pos-statistics ${r.status}`);
-          const data = (await r.json()) as {
-            paidRevenue?: number;
-            paidTickets?: number;
-            pendingRevenue?: number;
-          };
-          if (cancelled) return;
-          setPosOverviewTotals({
-            paidRevenue: Number(data.paidRevenue) || 0,
-            paidTickets: Number(data.paidTickets) || 0,
-            pendingRevenue: Number(data.pendingRevenue) || 0,
-          });
-          return;
-        } catch {
-          /* retry */
-        }
-      }
-      if (!cancelled) {
-        setPosOverviewTotals({ paidRevenue: 0, paidTickets: 0, pendingRevenue: 0 });
-      }
-    };
-
-    void loadWithRetry();
+    let alive = true;
+    void fetchPosOrdersForOverview({ isStale: () => !alive });
     return () => {
-      cancelled = true;
+      alive = false;
     };
-  }, [currentAdminRole, selectedEventId]);
+  }, [fetchPosOrdersForOverview]);
 
   // COD Orders filters
   const [codOrderFilters, setCodOrderFilters] = useState({
@@ -11055,6 +11043,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         fetchAllData();
                         fetchAmbassadorSalesData();
                         fetchOnlineOrders();
+                        void fetchPosOrdersForOverview();
                       }}
                       className="flex items-center gap-2 whitespace-nowrap shrink-0"
                     >
