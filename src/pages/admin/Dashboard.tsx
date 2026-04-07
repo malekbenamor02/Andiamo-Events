@@ -123,6 +123,7 @@ import { PosTab } from "@/components/admin/PosTab";
 import { BulkSmsSelector } from "@/components/admin/BulkSmsSelector";
 import { getSourceDisplayName } from "@/lib/phone-numbers";
 import { getOrderLineRevenue, getOrderReportRevenue, getOrderTicketsAndRevenue } from "@/lib/orders/orderRevenue";
+import { computeOnlinePaymentFeesDisplay } from "@/lib/onlinePaymentFee";
 import type {
   AdminDashboardProps,
   AmbassadorApplication,
@@ -405,26 +406,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [isDeleteTeamDialogOpen, setIsDeleteTeamDialogOpen] = useState(false);
   const [teamMemberToDelete, setTeamMemberToDelete] = useState(null);
 
-  // Animation states
-  const [animatedCards, setAnimatedCards] = useState<Set<number>>(new Set());
-  const [animatedEvents, setAnimatedEvents] = useState<Set<string>>(new Set());
-  const [animatedAmbassadors, setAnimatedAmbassadors] = useState<Set<string>>(new Set());
-  const [hasAmbassadorsAnimated, setHasAmbassadorsAnimated] = useState(false);
-  const [animatedApplications, setAnimatedApplications] = useState<Set<string>>(new Set());
-  const [hasApplicationsAnimated, setHasApplicationsAnimated] = useState(false);
   const [applicationSearchTerm, setApplicationSearchTerm] = useState('');
   const [applicationDateFrom, setApplicationDateFrom] = useState<Date | undefined>(undefined);
   const [applicationDateTo, setApplicationDateTo] = useState<Date | undefined>(undefined);
   const [applicationCityFilter, setApplicationCityFilter] = useState<string>('all');
   const [applicationVilleFilter, setApplicationVilleFilter] = useState<string>('all');
   const [applicationStatusFilter, setApplicationStatusFilter] = useState<string>('pending');
-  const [animatedSponsors, setAnimatedSponsors] = useState<Set<string>>(new Set());
-  const [hasSponsorsAnimated, setHasSponsorsAnimated] = useState(false);
-  const [animatedTeamMembers, setAnimatedTeamMembers] = useState<Set<string>>(new Set());
-  const [hasTeamAnimated, setHasTeamAnimated] = useState(false);
   const [contactMessages, setContactMessages] = useState<any[]>([]);
-  const [animatedContactMessages, setAnimatedContactMessages] = useState<Set<string>>(new Set());
-  const [hasContactMessagesAnimated, setHasContactMessagesAnimated] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<any>(null);
   const [isDeleteMessageDialogOpen, setIsDeleteMessageDialogOpen] = useState(false);
   const [contactMessageSearchTerm, setContactMessageSearchTerm] = useState('');
@@ -435,9 +423,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [selectedSuggestion, setSelectedSuggestion] = useState<any>(null);
   const [suggestionToDelete, setSuggestionToDelete] = useState<any>(null);
   const [isDeleteSuggestionDialogOpen, setIsDeleteSuggestionDialogOpen] = useState(false);
-              const [tickets, setTickets] = useState<any[]>([]);
-            const [animatedTickets, setAnimatedTickets] = useState<Set<string>>(new Set());
-            const [hasTicketsAnimated, setHasTicketsAnimated] = useState(false);
+  const [tickets, setTickets] = useState<any[]>([]);
             const [isTicketDialogOpen, setIsTicketDialogOpen] = useState(false);
             const [editingTicket, setEditingTicket] = useState<any>(null);
             const [isDeleteTicketDialogOpen, setIsDeleteTicketDialogOpen] = useState(false);
@@ -827,16 +813,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     return sortEventsForAdminDashboardSelector(filtered);
   }, [events]);
 
-  /** Stable key for event list so entrance animation re-runs when ids change (e.g. data loads after tab open). */
-  const eventsListAnimationKey = useMemo(
-    () =>
-      [...events]
-        .map((e) => e.id)
-        .sort()
-        .join(","),
-    [events],
-  );
-
   const [loadingOrders, setLoadingOrders] = useState(false);
 
   // Online Orders state
@@ -1149,8 +1125,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (feesFromNotes?.total_with_fees != null) {
         total = feesFromNotes.total_with_fees;
       } else if (order.payment_method === "online") {
-        // Ensure notifications always show the fee-inclusive total for online orders.
-        total = Number((subtotalFromPasses * 1.05).toFixed(2));
+        // Ensure notifications show fee-inclusive total (matches ONLINE_PAYMENT_FEE_RATE / VITE_).
+        total = Number(
+          computeOnlinePaymentFeesDisplay(subtotalFromPasses).totalWithFees.toFixed(2),
+        );
       } else if (total == null) {
         total = subtotalFromPasses;
       }
@@ -1671,59 +1649,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     };
   }, [language]);
 
-  // Overview KPI stagger — re-run each time we land on the tab (no hasAnimated gate:
-  // React Strict Mode clears timeouts on first mount, which previously left cards 1–3 invisible.)
-  useEffect(() => {
-    if (activeTab !== "overview") {
-      setAnimatedCards(new Set());
-      return;
-    }
-
-    setAnimatedCards(new Set());
-    const cards = [0, 1, 2, 3];
-    const timeoutIds = cards.map((cardIndex, index) =>
-      window.setTimeout(() => {
-        setAnimatedCards((prev) => new Set([...prev, cardIndex]));
-      }, index * 120),
-    );
-    return () => timeoutIds.forEach((id) => window.clearTimeout(id));
-  }, [activeTab]);
-
-  // Animation effect for events (keyed by id set: if user opens tab before fetch completes,
-  // we must re-stagger when events arrive — old logic left cards at opacity-0 forever.)
-  useEffect(() => {
-    if (activeTab !== "events") {
-      setAnimatedEvents(new Set());
-      return;
-    }
-
-    setAnimatedEvents(new Set());
-    const timeoutIds = events.map((event, index) =>
-      window.setTimeout(() => {
-        setAnimatedEvents((prev) => new Set([...prev, event.id]));
-      }, index * 80),
-    );
-    return () => timeoutIds.forEach((id) => window.clearTimeout(id));
-  }, [activeTab, eventsListAnimationKey, events]);
-
-  // Animation effect for ambassadors
-  useEffect(() => {
-    if (activeTab === "ambassadors" && !hasAmbassadorsAnimated) {
-      setHasAmbassadorsAnimated(true);
-      const timeoutIds = ambassadors.map((ambassador, index) =>
-        window.setTimeout(() => {
-          setAnimatedAmbassadors((prev) => new Set([...prev, ambassador.id]));
-        }, index * 80)
-      );
-      return () => timeoutIds.forEach((id) => window.clearTimeout(id));
-    }
-
-    if (activeTab !== "ambassadors") {
-      setHasAmbassadorsAnimated(false);
-      setAnimatedAmbassadors(new Set());
-    }
-  }, [activeTab, hasAmbassadorsAnimated, ambassadors]);
-
   // Create a map of ambassadors by phone/email for faster lookup
   const ambassadorMap = useMemo(() => {
     const map = new Map<string, { ville?: string }>();
@@ -1824,79 +1749,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     ambassadorMap
   ]);
 
-  // Animation effect for applications
-  useEffect(() => {
-    setHasApplicationsAnimated(false);
-    setAnimatedApplications(new Set());
-
-    if (activeTab !== "applications") {
-      return;
-    }
-
-    setHasApplicationsAnimated(true);
-    const appsToAnimate = filteredApplications.slice(0, 50);
-    const timeoutIds = appsToAnimate.map((application, index) =>
-      window.setTimeout(() => {
-        setAnimatedApplications((prev) => new Set([...prev, application.id]));
-      }, index * 40)
-    );
-    return () => timeoutIds.forEach((id) => window.clearTimeout(id));
-  }, [activeTab, filteredApplications.length, applicationStatusFilter, applicationCityFilter, applicationVilleFilter, applicationSearchTerm, filteredApplications]);
-
-  // Animation effect for sponsors
-  useEffect(() => {
-    if (activeTab === "sponsors" && !hasSponsorsAnimated) {
-      setHasSponsorsAnimated(true);
-      const timeoutIds = sponsors.map((sponsor, index) =>
-        window.setTimeout(() => {
-          setAnimatedSponsors((prev) => new Set([...prev, sponsor.id]));
-        }, index * 80)
-      );
-      return () => timeoutIds.forEach((id) => window.clearTimeout(id));
-    }
-
-    if (activeTab !== "sponsors") {
-      setHasSponsorsAnimated(false);
-      setAnimatedSponsors(new Set());
-    }
-  }, [activeTab, hasSponsorsAnimated, sponsors]);
-
-  // Animation effect for team members
-  useEffect(() => {
-    if (activeTab === "team" && !hasTeamAnimated) {
-      setHasTeamAnimated(true);
-      const timeoutIds = teamMembers.map((member, index) =>
-        window.setTimeout(() => {
-          setAnimatedTeamMembers((prev) => new Set([...prev, member.id]));
-        }, index * 80)
-      );
-      return () => timeoutIds.forEach((id) => window.clearTimeout(id));
-    }
-
-    if (activeTab !== "team") {
-      setHasTeamAnimated(false);
-      setAnimatedTeamMembers(new Set());
-    }
-  }, [activeTab, hasTeamAnimated, teamMembers]);
-
-  // Animation effect for contact messages
-  useEffect(() => {
-    if (activeTab === "contact" && !hasContactMessagesAnimated) {
-      setHasContactMessagesAnimated(true);
-      const timeoutIds = filteredContactMessages.map((message, index) =>
-        window.setTimeout(() => {
-          setAnimatedContactMessages((prev) => new Set([...prev, message.id]));
-        }, index * 60)
-      );
-      return () => timeoutIds.forEach((id) => window.clearTimeout(id));
-    }
-
-    if (activeTab !== "contact") {
-      setHasContactMessagesAnimated(false);
-      setAnimatedContactMessages(new Set());
-    }
-  }, [activeTab, hasContactMessagesAnimated, contactMessages, contactMessageSearchTerm]);
-
   // Filter contact messages based on search term
   const filteredContactMessages = contactMessages.filter(message => {
     const searchLower = contactMessageSearchTerm.toLowerCase();
@@ -1924,39 +1776,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     return matchesSearch && matchesRead && matchesType;
   });
 
-  // Enhanced animation effect for tickets
+  // Load marketing/SMS/email subscriber data when Marketing tab is opened
   useEffect(() => {
     if (activeTab === "marketing") {
-      // Load marketing/SMS data only when Marketing tab is opened
       if (phoneSubscribers.length === 0) {
         fetchPhoneSubscribers();
       }
       if (smsLogs.length === 0) {
         fetchSmsLogs();
       }
-      // Load email subscribers when email marketing tab is active
       if (marketingSubTab === 'email' && emailSubscribers.length === 0) {
         fetchEmailSubscribers();
       }
     }
   }, [activeTab, marketingSubTab, phoneSubscribers.length, smsLogs.length, emailSubscribers.length]);
-
-  useEffect(() => {
-    if (activeTab === "tickets" && !hasTicketsAnimated) {
-      setHasTicketsAnimated(true);
-      const timeoutIds = tickets.map((ticket, index) =>
-        window.setTimeout(() => {
-          setAnimatedTickets((prev) => new Set([...prev, ticket.id]));
-        }, index * 80)
-      );
-      return () => timeoutIds.forEach((id) => window.clearTimeout(id));
-    }
-
-    if (activeTab !== "tickets") {
-      setHasTicketsAnimated(false);
-      setAnimatedTickets(new Set());
-    }
-  }, [activeTab, hasTicketsAnimated, tickets]);
 
   useLayoutEffect(() => {
     if (selectableDashboardEvents.length === 0) {
@@ -4735,13 +4568,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const buildMarketingEmailHtml = (content: string, recipientName?: string) => {
     const supportUrl = `${window.location.origin}/contact`;
     const recipient = recipientName || 'Valued Subscriber';
-    const logoSrc = `${window.location.origin}/email-assets/logo-white.png`
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-    const emailLogoBar = `<div class="email-logo-bar" style="max-width:600px;margin:0 auto;background-color:#1A1A1A;text-align:center;padding:22px 16px 18px;line-height:0;">
-  <img src="${logoSrc}" alt="Andiamo Events" width="200" style="max-width:200px;width:200px;height:auto;display:inline-block;border:0;outline:none;-ms-interpolation-mode:bicubic;" />
-</div>`;
+    const emailLogoBar = '';
 
     return `
       <!DOCTYPE html>
@@ -10617,6 +10444,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const mobileBottomTabs = [
     { key: "overview", label: t.overview, icon: BarChart3 },
+    ...(currentAdminRole === "super_admin"
+      ? [{ key: "events" as const, label: t.events, icon: CalendarIcon }]
+      : []),
     {
       key: "ambassador-sales",
       label: language === "en" ? "Ambassador Sales" : "Ventes Ambassadeurs",
@@ -10670,6 +10500,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             </span>
             <span className="text-base font-semibold truncate w-full text-center" style={{ color: '#E21836' }}>
               {activeTab === "overview" && t.overview}
+              {activeTab === "events" && t.events}
               {activeTab === "ambassadors" && t.ambassadors}
               {activeTab === "applications" && t.applications}
               {activeTab === "online-orders" && (language === 'en' ? 'Online Orders' : 'Commandes en Ligne')}
@@ -10948,11 +10779,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         <div className="flex-1 min-w-0 overflow-x-hidden">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8 min-w-0">
             {/* Header - responsive: stack on mobile, hide main title on mobile (shown in top bar) */}
-            <div className="mb-6 sm:mb-8 flex flex-col gap-4 min-w-0 animate-in slide-in-from-top-4 fade-in duration-700">
+            <div className="mb-6 sm:mb-8 flex flex-col gap-4 min-w-0">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-4">
                 <div className={cn("min-w-0", isMobile && "hidden")}>
                   <h1 
-                    className="text-2xl sm:text-4xl font-heading font-bold mb-2 animate-in slide-in-from-left-4 duration-1000 uppercase"
+                    className="text-2xl sm:text-4xl font-heading font-bold mb-2 uppercase"
                     style={{
                       color: '#E21836',
                       textShadow: '0 0 12px rgba(226, 24, 54, 0.45)'
@@ -10960,10 +10791,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   >
                     {t.title}
                   </h1>
-                  <p 
-                    className="animate-in slide-in-from-left-4 duration-1000 delay-300"
-                    style={{ color: '#B0B0B0' }}
-                  >
+                  <p style={{ color: '#B0B0B0' }}>
                     {t.subtitle}
                   </p>
                 </div>
@@ -11195,7 +11023,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   pendingAmbassadorOrdersCount={pendingAmbassadorOrdersCount}
                   previousPendingAmbassadorOrdersCount={previousPendingAmbassadorOrdersCount}
                   activityChartData={activityChartData}
-                  animatedCards={animatedCards}
                   setActiveTab={setActiveTab}
                   getStatusBadge={getStatusBadge}
                 />
@@ -11233,7 +11060,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 setConfirmDelete={setConfirmDelete}
                 isPassManagementLoading={isPassManagementLoading}
                 setIsPassManagementLoading={setIsPassManagementLoading}
-                animatedEvents={animatedEvents}
                 handleDeleteEvent={handleDeleteEvent}
               />
 
@@ -11285,7 +11111,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 language={language}
                 t={t}
                 ambassadors={ambassadors}
-                animatedAmbassadors={animatedAmbassadors}
                 editingAmbassador={editingAmbassador}
                 setEditingAmbassador={setEditingAmbassador}
                 newAmbassadorForm={newAmbassadorForm}
@@ -11324,7 +11149,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 setApplicationDateFrom={setApplicationDateFrom}
                 applicationDateTo={applicationDateTo}
                 setApplicationDateTo={setApplicationDateTo}
-                animatedApplications={animatedApplications}
                 emailStatus={emailStatus}
                 emailFailedApplications={emailFailedApplications}
                 selectedMotivation={selectedMotivation}
@@ -11349,7 +11173,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {/* Sponsors Tab */}
               <SponsorsTab
                 sponsors={sponsors}
-                animatedSponsors={animatedSponsors}
                 editingSponsor={editingSponsor}
                 setEditingSponsor={setEditingSponsor}
                 isSponsorDialogOpen={isSponsorDialogOpen}
@@ -11368,7 +11191,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {/* Team Tab */}
               <TeamTab
                 teamMembers={teamMembers}
-                animatedTeamMembers={animatedTeamMembers}
                 editingTeamMember={editingTeamMember}
                 setEditingTeamMember={setEditingTeamMember}
                 isTeamDialogOpen={isTeamDialogOpen}
@@ -11390,7 +11212,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 contactMessages={contactMessages}
                 contactMessageSearchTerm={contactMessageSearchTerm}
                 setContactMessageSearchTerm={setContactMessageSearchTerm}
-                animatedContactMessages={animatedContactMessages}
                 messageToDelete={messageToDelete}
                 isDeleteMessageDialogOpen={isDeleteMessageDialogOpen}
                 setIsDeleteMessageDialogOpen={setIsDeleteMessageDialogOpen}

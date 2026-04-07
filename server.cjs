@@ -37,8 +37,11 @@ const fs = require('fs');
 const { buildOnlineTicketEmailHtml, formatEventTime } = require('./api/lib/online-ticket-email-html.cjs');
 const { createOfficialInvitationEmailHTML } = require('./api/lib/official-invitation-email-html.cjs');
 const { buildOrderConfirmationEmailHtml } = require('./api/lib/order-confirmation-email-html.cjs');
-const { emailLogoHeaderHtml } = require('./api/lib/email-branding.cjs');
+const { fetchAmbassadorSocialLinkFromApplications } = require('./api/lib/ambassador-social-link.cjs');
+const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./api/lib/email-branding.cjs');
 const { buildTicketEmailPdfAttachments } = require('./api/lib/ticket-pdf.cjs');
+const { uploadTicketQrToR2OrSupabase } = require('./api/lib/r2-media.cjs');
+const { computeOnlinePaymentFees } = require('./api/lib/online-payment-fee.cjs');
 
 // Import centralized SMS template helpers
 const {
@@ -553,8 +556,8 @@ const checkSuspiciousActivity = async (eventType, details, req) => {
             subject: `🚨 Security Alert: Suspicious Activity Detected - ${eventType}`,
             html: `
               ${emailLogoHeaderHtml()}
-              <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;padding:16px;">
-              <h2>Security Alert</h2>
+              <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;padding:16px;background:#101010;color:#F0F0F0;">
+              <h2 style="color:#fff;">Security Alert</h2>
               <p><strong>Event Type:</strong> ${eventType}</p>
               <p><strong>IP Address:</strong> ${ipAddress}</p>
               <p><strong>Event Count:</strong> ${eventCount} (Threshold: ${threshold})</p>
@@ -2448,27 +2451,15 @@ app.post('/api/admin/official-invitations/create', requireAdminAuth, requireSupe
         errorCorrectionLevel: 'M'
       });
 
-      // Upload QR code to storage
       const fileName = `invitations/${invitation.id}/${secureToken}.png`;
       const storageClient = supabaseService || supabase;
-      const { error: uploadError } = await storageClient.storage
-        .from('tickets')
-        .upload(fileName, qrCodeBuffer, {
-          contentType: 'image/png',
-          upsert: true
-        });
-
-      if (uploadError) {
-        console.error(`Error uploading QR code ${i + 1}:`, uploadError);
+      let qrCodeUrl;
+      try {
+        qrCodeUrl = await uploadTicketQrToR2OrSupabase(qrCodeBuffer, fileName, storageClient);
+      } catch (uploadErr) {
+        console.error(`Error uploading QR code ${i + 1}:`, uploadErr);
         continue;
       }
-
-      // Get public URL
-      const { data: urlData } = storageClient.storage
-        .from('tickets')
-        .getPublicUrl(fileName);
-
-      const qrCodeUrl = urlData?.publicUrl;
 
       if (!qrCodeUrl) {
         console.error(`Failed to get public URL for QR code ${i + 1}`);
@@ -3311,6 +3302,14 @@ function requireAdminAuth(req, res, next) {
       valid: false
     });
   }
+}
+
+// R2 + WebP/AVIF media upload (same handlers as api/media.js on Vercel)
+try {
+  const { registerMediaRoutes } = require('./api/lib/register-media-routes.cjs');
+  registerMediaRoutes(app, { requireAdminAuth });
+} catch (mediaRegErr) {
+  console.error('Media routes registration failed:', mediaRegErr.message);
 }
 
 // Optional admin auth: sets req.admin if valid cookie, otherwise req.admin = null (does not 401).
@@ -6363,19 +6362,12 @@ app.get('/api/ambassadors/active', async (req, res) => {
     // Shuffle ambassadors array using Fisher-Yates algorithm for random display
     const shuffledAmbassadors = shuffleArray(ambassadors || []);
 
-    // Fetch social_link from ambassador_applications for each ambassador
     const ambassadorsWithSocial = await Promise.all(
       shuffledAmbassadors.map(async (ambassador) => {
-        // Try to find matching application by phone
-        const { data: application } = await supabase
-          .from('ambassador_applications')
-          .select('social_link')
-          .eq('phone_number', ambassador.phone)
-          .single();
-        
+        const social_link = await fetchAmbassadorSocialLinkFromApplications(supabase, ambassador.phone);
         return {
           ...ambassador,
-          social_link: application?.social_link || null
+          social_link: social_link || null,
         };
       })
     );
@@ -7710,21 +7702,21 @@ app.post('/api/send-order-completion-email', async (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Order Confirmation - Andiamo Events</title>
         <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; padding: 20px; }
-          .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #E8E8E8; background: #101010; padding: 20px; margin: 0; }
+          .container { max-width: 600px; margin: 0 auto; background: #1A1A1A; padding: 30px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); }
+          .header { background: linear-gradient(135deg, #3d2a5c 0%, #4a2860 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
           .header h1 { margin: 0; font-size: 28px; }
           .content { padding: 20px 0; }
-          .order-info { background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0; }
-          .order-info h3 { margin-top: 0; color: #667eea; }
-          .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+          .order-info { background: #1E1E1E; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid rgba(255,255,255,0.08); }
+          .order-info h3 { margin-top: 0; color: #E21836; }
+          .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
           .info-row:last-child { border-bottom: none; }
           .passes-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          .passes-table th, .passes-table td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
-          .passes-table th { background: #f9f9f9; color: #667eea; font-weight: 600; }
-          .total-row { font-weight: bold; font-size: 18px; color: #667eea; }
-          .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 14px; }
-          .support-link { display: inline-block; margin-top: 20px; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; }
+          .passes-table th, .passes-table td { padding: 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); color: #E8E8E8; }
+          .passes-table th { background: #1A1A1A; color: #E21836; font-weight: 600; }
+          .total-row { font-weight: bold; font-size: 18px; color: #E21836; }
+          .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); color: #888; font-size: 14px; }
+          .support-link { display: inline-block; margin-top: 20px; padding: 12px 24px; background: #E21836; color: white; text-decoration: none; border-radius: 5px; }
         </style>
       </head>
       <body>
@@ -8066,9 +8058,9 @@ app.post('/api/resend-order-completion-email', requireAdminAuth, async (req, res
         <meta charset="utf-8">
         <title>Order Confirmation - Andiamo Events</title>
         <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; padding: 20px; }
-          .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
-          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #E8E8E8; background: #101010; padding: 20px; margin: 0; }
+          .container { max-width: 600px; margin: 0 auto; background: #1A1A1A; padding: 30px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); }
+          .header { background: linear-gradient(135deg, #3d2a5c 0%, #4a2860 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; margin: -30px -30px 30px -30px; }
         </style>
       </head>
       <body>
@@ -8737,21 +8729,17 @@ async function sendOrderConfirmationEmails(orderId) {
       orderPasses = passes || [];
     }
 
-    // Fetch ambassador social_link from ambassador_applications
+    // Fetch ambassador social_link from ambassador_applications (phone variants + multi-row safe)
     if (order.ambassadors) {
       try {
-        // Always fetch social_link from ambassador_applications to ensure we have the latest
-        const { data: application } = await supabase
-          .from('ambassador_applications')
-          .select('social_link')
-          .eq('phone_number', order.ambassadors.phone)
-          .maybeSingle();
-        
-        if (application?.social_link) {
-          order.ambassadors.social_link = application.social_link;
-          console.log(`📧 Fetched ambassador Instagram: ${application.social_link}`);
+        const link = await fetchAmbassadorSocialLinkFromApplications(supabase, order.ambassadors.phone);
+        if (link) {
+          order.ambassadors.social_link = link;
+          console.log(`📧 Fetched ambassador Instagram: ${link}`);
         } else {
-          console.log(`⚠️ No Instagram link found for ambassador ${order.ambassadors.phone}`);
+          console.log(
+            `⚠️ No Instagram link found for ambassador phone ${order.ambassadors.phone} (id ${order.ambassadors.id})`
+          );
         }
       } catch (err) {
         console.warn('⚠️ Failed to fetch ambassador social_link from applications:', err);
@@ -9100,29 +9088,20 @@ async function generateTicketsAndSendEmail(orderId) {
 
         // Upload to Supabase Storage
         const fileName = `tickets/${orderId}/${secureToken}.png`;
-        const { data: uploadData, error: uploadError } = await storageClient.storage
-          .from('tickets')
-          .upload(fileName, qrCodeBuffer, {
-            contentType: 'image/png',
-            upsert: true
-          });
-
-        if (uploadError) {
-          console.error(`❌ Error uploading QR code for ticket ${secureToken}:`, uploadError);
+        let ticketPublicUrl = null;
+        try {
+          ticketPublicUrl = await uploadTicketQrToR2OrSupabase(qrCodeBuffer, fileName, storageClient);
+        } catch (uploadErr) {
+          console.error(`❌ Error uploading QR code for ticket ${secureToken}:`, uploadErr);
           continue;
         }
-
-        // Get public URL
-        const { data: urlData } = storageClient.storage
-          .from('tickets')
-          .getPublicUrl(fileName);
 
         // Create ticket entry (no individual access token needed - using order-level token)
         const ticketInsertData = {
           order_id: orderId,
           order_pass_id: pass.id,
           secure_token: secureToken,
-          qr_code_url: urlData?.publicUrl || null,
+          qr_code_url: ticketPublicUrl,
           status: 'GENERATED',
           generated_at: new Date().toISOString()
         };
@@ -9303,10 +9282,10 @@ async function generateTicketsAndSendEmail(orderId) {
             const ticketsList = passTickets
               .map((ticket, index) => {
                 return `
-                  <div style="margin: 20px 0; padding: 20px; background: #E8E8E8; border-radius: 8px; text-align: center; border: 1px solid rgba(0, 0, 0, 0.1);">
+                  <div style="margin: 20px 0; padding: 20px; background: #252525; border-radius: 8px; text-align: center; border: 1px solid rgba(255, 255, 255, 0.1);">
                     <h4 style="margin: 0 0 15px 0; color: #E21836; font-size: 16px; font-weight: 600;">${passType} - Ticket ${index + 1}</h4>
                     <img src="${ticket.qr_code_url}" alt="QR Code for ${passType}" style="max-width: 250px; height: auto; border-radius: 8px; border: 2px solid rgba(226, 24, 54, 0.3); display: block; margin: 0 auto;" />
-                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #666666; font-family: 'Courier New', monospace;">Token: ${ticket.secure_token.substring(0, 8)}...</p>
+                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #A8A8A8; font-family: 'Courier New', monospace;">Token: ${ticket.secure_token.substring(0, 8)}...</p>
                   </div>
                 `;
               })
@@ -9323,10 +9302,10 @@ async function generateTicketsAndSendEmail(orderId) {
 
         // Build passes summary HTML
         const passesSummaryHtml = passesSummary.map(p => `
-          <tr style="border-bottom: 1px solid rgba(0, 0, 0, 0.1);">
-            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px;">${p.passType}</td>
-            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: center;">${p.quantity}</td>
-            <td style="padding: 12px 0; color: #1A1A1A; font-size: 15px; text-align: right;">${p.price.toFixed(2)} TND</td>
+          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+            <td style="padding: 12px 0; color: #E8E8E8; font-size: 15px;">${p.passType}</td>
+            <td style="padding: 12px 0; color: #E8E8E8; font-size: 15px; text-align: center;">${p.quantity}</td>
+            <td style="padding: 12px 0; color: #E8E8E8; font-size: 15px; text-align: right;">${p.price.toFixed(2)} TND</td>
           </tr>
         `).join('');
 
@@ -9337,317 +9316,11 @@ async function generateTicketsAndSendEmail(orderId) {
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta name="color-scheme" content="light dark">
-            <meta name="supported-color-schemes" content="light dark">
+            <meta name="color-scheme" content="dark">
+            <meta name="supported-color-schemes" content="dark">
             <title>Your Digital Tickets - Andiamo Events</title>
             <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body { 
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-                line-height: 1.6; 
-                color: #1A1A1A; 
-                background: #FFFFFF;
-                padding: 0;
-                -webkit-font-smoothing: antialiased;
-                -moz-osx-font-smoothing: grayscale;
-              }
-              @media (prefers-color-scheme: dark) {
-                body {
-                  color: #FFFFFF;
-                  background: #1A1A1A;
-                }
-              }
-              a {
-                color: #E21836 !important;
-                text-decoration: none;
-              }
-              .email-wrapper {
-                max-width: 600px;
-                margin: 0 auto;
-                background: #FFFFFF;
-              }
-              @media (prefers-color-scheme: dark) {
-                .email-wrapper {
-                  background: #1A1A1A;
-                }
-              }
-              .content-card {
-                background: #F5F5F5;
-                margin: 0 20px 30px;
-                border-radius: 12px;
-                padding: 50px 40px;
-                border: 1px solid rgba(0, 0, 0, 0.1);
-              }
-              @media (prefers-color-scheme: dark) {
-                .content-card {
-                  background: #1F1F1F;
-                  border: 1px solid rgba(42, 42, 42, 0.5);
-                }
-              }
-              .title-section {
-                text-align: center;
-                margin-bottom: 40px;
-                padding-bottom: 30px;
-                border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-              }
-              @media (prefers-color-scheme: dark) {
-                .title-section {
-                  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-                }
-              }
-              .title {
-                font-size: 32px;
-                font-weight: 700;
-                color: #1A1A1A;
-                margin-bottom: 12px;
-                letter-spacing: -0.5px;
-              }
-              @media (prefers-color-scheme: dark) {
-                .title {
-                  color: #FFFFFF;
-                }
-              }
-              .subtitle {
-                font-size: 16px;
-                color: #666666;
-                font-weight: 400;
-              }
-              @media (prefers-color-scheme: dark) {
-                .subtitle {
-                  color: #B0B0B0;
-                }
-              }
-              .greeting {
-                font-size: 18px;
-                color: #1A1A1A;
-                margin-bottom: 30px;
-                line-height: 1.7;
-              }
-              @media (prefers-color-scheme: dark) {
-                .greeting {
-                  color: #FFFFFF;
-                }
-              }
-              .greeting strong {
-                color: #E21836;
-                font-weight: 600;
-              }
-              .message {
-                font-size: 16px;
-                color: #666666;
-                margin-bottom: 25px;
-                line-height: 1.7;
-              }
-              @media (prefers-color-scheme: dark) {
-                .message {
-                  color: #B0B0B0;
-                }
-              }
-              .order-info-block {
-                background: #E8E8E8;
-                border: 1px solid rgba(0, 0, 0, 0.15);
-                border-radius: 8px;
-                padding: 30px;
-                margin: 40px 0;
-              }
-              @media (prefers-color-scheme: dark) {
-                .order-info-block {
-                  background: #252525;
-                  border: 1px solid rgba(42, 42, 42, 0.8);
-                }
-              }
-              .info-row {
-                margin-bottom: 20px;
-              }
-              .info-row:last-child {
-                margin-bottom: 0;
-              }
-              .info-label {
-                font-size: 11px;
-                color: #999999;
-                text-transform: uppercase;
-                letter-spacing: 1.2px;
-                margin-bottom: 10px;
-                font-weight: 600;
-              }
-              @media (prefers-color-scheme: dark) {
-                .info-label {
-                  color: #6B6B6B;
-                }
-              }
-              .info-value {
-                font-family: 'Courier New', 'Monaco', monospace;
-                font-size: 18px;
-                color: #1A1A1A;
-                font-weight: 500;
-                word-break: break-all;
-                letter-spacing: 0.5px;
-              }
-              @media (prefers-color-scheme: dark) {
-                .info-value {
-                  color: #FFFFFF;
-                }
-              }
-              .passes-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 20px 0;
-              }
-              .passes-table th {
-                text-align: left;
-                padding: 12px 0;
-                color: #E21836;
-                font-weight: 600;
-                font-size: 14px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                border-bottom: 2px solid rgba(226, 24, 54, 0.3);
-              }
-              .passes-table td {
-                padding: 12px 0;
-                color: #1A1A1A;
-                font-size: 15px;
-              }
-              @media (prefers-color-scheme: dark) {
-                .passes-table td {
-                  color: #FFFFFF;
-                }
-              }
-              .total-row {
-                border-top: 2px solid rgba(226, 24, 54, 0.3);
-                margin-top: 10px;
-                padding-top: 15px;
-              }
-              .total-row td {
-                font-weight: 700;
-                font-size: 18px;
-                color: #E21836;
-                padding-top: 15px;
-              }
-              .tickets-section {
-                background: #E8E8E8;
-                border: 1px solid rgba(0, 0, 0, 0.15);
-                border-radius: 8px;
-                padding: 30px;
-                margin: 40px 0;
-              }
-              @media (prefers-color-scheme: dark) {
-                .tickets-section {
-                  background: #252525;
-                  border: 1px solid rgba(42, 42, 42, 0.8);
-                }
-              }
-              .support-section {
-                background: #E8E8E8;
-                border-left: 3px solid rgba(226, 24, 54, 0.3);
-                padding: 20px 25px;
-                margin: 35px 0;
-                border-radius: 4px;
-              }
-              @media (prefers-color-scheme: dark) {
-                .support-section {
-                  background: #252525;
-                }
-              }
-              .support-text {
-                font-size: 14px;
-                color: #666666;
-                line-height: 1.7;
-              }
-              @media (prefers-color-scheme: dark) {
-                .support-text {
-                  color: #B0B0B0;
-                }
-              }
-              .support-email {
-                color: #E21836 !important;
-                text-decoration: none;
-                font-weight: 500;
-              }
-              .closing-section {
-                text-align: center;
-                margin: 50px 0 40px;
-                padding-top: 40px;
-                border-top: 1px solid rgba(0, 0, 0, 0.1);
-              }
-              @media (prefers-color-scheme: dark) {
-                .closing-section {
-                  border-top: 1px solid rgba(255, 255, 255, 0.1);
-                }
-              }
-              .slogan {
-                font-size: 24px;
-                font-style: italic;
-                color: #E21836;
-                font-weight: 300;
-                letter-spacing: 1px;
-                margin-bottom: 30px;
-              }
-              .signature {
-                font-size: 16px;
-                color: #666666;
-                line-height: 1.7;
-              }
-              @media (prefers-color-scheme: dark) {
-                .signature {
-                  color: #B0B0B0;
-                }
-              }
-              .footer {
-                margin-top: 50px;
-                padding: 40px 20px 30px;
-                text-align: center;
-                border-top: 1px solid rgba(0, 0, 0, 0.1);
-              }
-              @media (prefers-color-scheme: dark) {
-                .footer {
-                  border-top: 1px solid rgba(255, 255, 255, 0.05);
-                }
-              }
-              .footer-text {
-                font-size: 12px;
-                color: #999999;
-                margin-bottom: 20px;
-                line-height: 1.6;
-              }
-              @media (prefers-color-scheme: dark) {
-                .footer-text {
-                  color: #6B6B6B;
-                }
-              }
-              .footer-links {
-                margin: 15px auto 0;
-                text-align: center;
-              }
-              .footer-link {
-                color: #999999;
-                text-decoration: none;
-                font-size: 13px;
-                margin: 0 8px;
-              }
-              @media (prefers-color-scheme: dark) {
-                .footer-link {
-                  color: #6B6B6B;
-                }
-              }
-              .footer-link:hover {
-                color: #E21836 !important;
-              }
-              @media only screen and (max-width: 600px) {
-                .content-card {
-                  margin: 0 15px 20px;
-                  padding: 35px 25px;
-                }
-                .title {
-                  font-size: 26px;
-                }
-                .order-info-block {
-                  padding: 25px 20px;
-                }
-                .tickets-section {
-                  padding: 25px 20px;
-                }
-              }
+${transactionalEmailDarkStylesCss()}
             </style>
           </head>
           <body>
@@ -9737,7 +9410,7 @@ async function generateTicketsAndSendEmail(orderId) {
                 <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
                 <div class="footer-links">
                   <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a>
-                  <span style="color: #999999;">•</span>
+                  <span style="color: #888888;">•</span>
                   <a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a>
                 </div>
               </div>
@@ -11816,9 +11489,12 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     const subtotal = validatedPasses.reduce((sum, p) => sum + (parseFloat(p.price) * p.quantity), 0);
     let feeAmount = 0;
     let totalWithFees = subtotal;
+    let feeRateForNotes = 0;
     if (paymentMethod === 'online' && subtotal > 0) {
-      feeAmount = Number((subtotal * 0.05).toFixed(3));
-      totalWithFees = subtotal + feeAmount;
+      const fees = computeOnlinePaymentFees(subtotal);
+      feeAmount = fees.feeAmount;
+      totalWithFees = fees.totalWithFees;
+      feeRateForNotes = fees.feeRate;
     }
 
     // STEP 5: Determine initial status
@@ -11892,7 +11568,7 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
         ...(paymentMethod === 'online'
           ? {
               payment_fees: {
-                fee_rate: 0.05,
+                fee_rate: feeRateForNotes,
                 fee_amount: feeAmount,
                 subtotal,
                 total_with_fees: totalWithFees

@@ -24,7 +24,6 @@ export interface ContactTabProps {
   contactMessages: ContactMessage[];
   contactMessageSearchTerm: string;
   setContactMessageSearchTerm: (v: string) => void;
-  animatedContactMessages: Set<string>;
   messageToDelete: ContactMessage | null;
   isDeleteMessageDialogOpen: boolean;
   setIsDeleteMessageDialogOpen: (v: boolean) => void;
@@ -38,7 +37,6 @@ export function ContactTab({
   contactMessages,
   contactMessageSearchTerm,
   setContactMessageSearchTerm,
-  animatedContactMessages,
   messageToDelete,
   isDeleteMessageDialogOpen,
   setIsDeleteMessageDialogOpen,
@@ -51,18 +49,18 @@ export function ContactTab({
   return (
     <>
       <TabsContent value="contact" className="space-y-6">
-        <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-          <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold text-gradient-neon">
             Contact Messages
           </h2>
-          <div className="flex items-center gap-4 animate-in slide-in-from-right-4 duration-1000 delay-300">
+          <div className="flex items-center gap-4">
             <Badge variant="secondary" className="animate-pulse">
               {filteredContactMessages.length} of {contactMessages.length} messages
             </Badge>
           </div>
         </div>
 
-        <div className="animate-in slide-in-from-bottom-4 duration-500 delay-400">
+        <div>
           <div className="relative group">
             <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 transition-transform duration-300 group-hover:rotate-90" />
             <Input
@@ -75,37 +73,27 @@ export function ContactTab({
         </div>
 
         <div className="grid grid-cols-1 gap-6">
-          {filteredContactMessages.map((message, index) => (
+          {filteredContactMessages.map((message) => (
             <div
               key={message.id}
-              className={`bg-card rounded-xl p-6 shadow-lg transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl hover:shadow-primary/10 ${
-                animatedContactMessages.has(message.id)
-                  ? "animate-in slide-in-from-bottom-4 fade-in duration-700"
-                  : "opacity-0 translate-y-8"
-              }`}
-              style={{
-                animationDelay: `${index * 200}ms`,
-                transform: animatedContactMessages.has(message.id)
-                  ? "translateY(0) scale(1)"
-                  : "translateY(20px) scale(0.95)",
-              }}
+              className="bg-card rounded-xl p-6 shadow-lg transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl hover:shadow-primary/10"
             >
-              <div className="flex justify-between items-start mb-4 animate-in slide-in-from-left-4 duration-500 delay-200">
+              <div className="flex justify-between items-start mb-4">
                 <div className="flex items-center space-x-3">
                   <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center animate-in zoom-in-95 duration-500 delay-300">
                     <User className="w-5 h-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg animate-in slide-in-from-left-4 duration-500 delay-300">
+                    <h3 className="font-semibold text-lg">
                       {message.name}
                     </h3>
-                    <p className="text-muted-foreground animate-in slide-in-from-left-4 duration-500 delay-400">
+                    <p className="text-muted-foreground">
                       {message.email}
                     </p>
                   </div>
                 </div>
-                <div className="text-right animate-in slide-in-from-right-4 duration-500 delay-500">
-                  <Badge variant="outline" className="mb-2 animate-in fade-in duration-500 delay-600">
+                <div className="text-right">
+                  <Badge variant="outline" className="mb-2">
                     {new Date(message.created_at).toLocaleDateString()}
                   </Badge>
                   <p className="text-xs text-muted-foreground">
@@ -114,22 +102,22 @@ export function ContactTab({
                 </div>
               </div>
 
-              <div className="space-y-3 animate-in slide-in-from-bottom-4 duration-500 delay-600">
+              <div className="space-y-3">
                 <div>
-                  <h4 className="font-medium text-primary mb-2 animate-in slide-in-from-left-4 duration-500 delay-700 flex items-center">
+                  <h4 className="font-medium text-primary mb-2 flex items-center">
                     <FileText className="w-4 h-4 mr-2 animate-pulse" />
                     Subject: {message.subject}
                   </h4>
                 </div>
 
-                <div className="bg-muted/50 rounded-lg p-4 animate-in slide-in-from-bottom-4 duration-500 delay-800 border-l-4 border-primary/20">
+                <div className="bg-muted/50 rounded-lg p-4 border-l-4 border-primary/20">
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">
                     {message.message}
                   </p>
                 </div>
               </div>
 
-              <div className="flex gap-2 mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-900">
+              <div className="flex gap-2 mt-4">
                 <Button
                   size="sm"
                   variant="outline"
@@ -175,7 +163,7 @@ export function ContactTab({
         </div>
 
         {filteredContactMessages.length === 0 && contactMessages.length > 0 && (
-          <div className="text-center py-12 animate-in fade-in duration-500">
+          <div className="text-center py-12">
             <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
             <h3 className="text-lg font-semibold mb-2">No messages found</h3>
             <p className="text-muted-foreground">
@@ -185,7 +173,7 @@ export function ContactTab({
         )}
 
         {contactMessages.length === 0 && (
-          <div className="text-center py-12 animate-in fade-in duration-500">
+          <div className="text-center py-12">
             <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
             <h3 className="text-lg font-semibold mb-2">No messages yet</h3>
             <p className="text-muted-foreground">
@@ -200,18 +188,18 @@ export function ContactTab({
         onOpenChange={setIsDeleteMessageDialogOpen}
       >
         <DialogContent className="animate-in zoom-in-95 duration-300">
-          <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-            <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
+          <DialogHeader>
+            <DialogTitle>
               Delete Message
             </DialogTitle>
           </DialogHeader>
-          <div className="animate-in slide-in-from-bottom-4 duration-500 delay-300">
+          <div>
             <p className="mb-4">
               Are you sure you want to delete this message? This action cannot be
               undone.
             </p>
             {messageToDelete && (
-              <div className="bg-muted/50 rounded-lg p-4 mb-4 animate-in slide-in-from-bottom-4 duration-500 delay-400">
+              <div className="bg-muted/50 rounded-lg p-4 mb-4">
                 <div className="flex justify-between items-start mb-2">
                   <div>
                     <p className="font-semibold">{messageToDelete.name}</p>
@@ -234,7 +222,7 @@ export function ContactTab({
               </div>
             )}
           </div>
-          <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-500">
+          <div className="flex justify-end gap-2 mt-6">
             <Button
               type="button"
               variant="outline"

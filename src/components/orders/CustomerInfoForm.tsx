@@ -8,53 +8,126 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CustomerInfo } from '@/types/orders';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
+import { normalizeCommonEmailTypos, sanitizePhoneInput } from '@/lib/utils';
+import { PASS_PURCHASE_FIELD_ERROR_AR } from '@/lib/orders/passPurchaseValidation';
+
+export type CustomerInfoFormSections = 'all' | 'identity' | 'email' | 'location';
+
+export interface CustomerInfoFormArHints {
+  fullName?: string;
+  phone?: string;
+  email?: string;
+  confirmEmail?: string;
+  city?: string;
+  ville?: string;
+}
 
 interface CustomerInfoFormProps {
   customerInfo: CustomerInfo;
   onChange: (info: CustomerInfo) => void;
   errors?: Record<string, string>;
   language?: 'en' | 'fr';
+  /** Which fields to show (default: all). */
+  sections?: CustomerInfoFormSections;
+  /** Shown when sections is `email` and handler is provided. */
+  emailConfirm?: string;
+  onEmailConfirmChange?: (value: string) => void;
+  confirmEmailLabel?: string;
+  arHints?: CustomerInfoFormArHints;
 }
 
-export function CustomerInfoForm({ 
-  customerInfo, 
-  onChange, 
+function ArHint({ text }: { text?: string }) {
+  if (!text?.trim()) return null;
+  return (
+    <span lang="ar" dir="rtl" className="block text-xs text-muted-foreground font-normal mt-0.5">
+      {text}
+    </span>
+  );
+}
+
+function FieldErrorWithAr({
+  message,
+  fieldKey,
+}: {
+  message: string;
+  fieldKey: 'full_name' | 'phone' | 'email' | 'email_confirm';
+}) {
+  const ar = PASS_PURCHASE_FIELD_ERROR_AR[fieldKey];
+  return (
+    <div className="mt-1 space-y-0.5">
+      <p className="text-sm text-red-500">{message}</p>
+      {ar && (
+        <p lang="ar" dir="rtl" className="text-sm text-red-500/90 text-right leading-snug">
+          {ar}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function CustomerInfoForm({
+  customerInfo,
+  onChange,
   errors = {},
-  language = 'en'
+  language = 'en',
+  sections = 'all',
+  emailConfirm = '',
+  onEmailConfirmChange,
+  confirmEmailLabel,
+  arHints,
 }: CustomerInfoFormProps) {
-  const t = language === 'en' ? {
-    fullName: 'Full Name',
-    phone: 'Phone Number',
-    email: 'Email',
-    city: 'City',
-    ville: 'Ville (Neighborhood)',
-    required: 'This field is required',
-    invalidPhone: 'Invalid phone number format',
-    invalidEmail: 'Invalid email format',
-    villeRequired: 'Ville is required when city is Sousse',
-    selectCity: 'Select City',
-    selectVille: 'Select Ville'
-  } : {
-    fullName: 'Nom Complet',
-    phone: 'Numéro de Téléphone',
-    email: 'Email',
-    city: 'Ville',
-    ville: 'Ville (Quartier)',
-    required: 'Ce champ est requis',
-    invalidPhone: 'Format de numéro de téléphone invalide',
-    invalidEmail: 'Format d\'email invalide',
-    villeRequired: 'La ville est requise lorsque la ville est Sousse',
-    selectCity: 'Sélectionner la Ville',
-    selectVille: 'Sélectionner le Quartier'
-  };
+  const t =
+    language === 'en'
+      ? {
+          fullName: 'Full Name',
+          phone: 'Phone Number',
+          email: 'Email',
+          confirmEmail: 'Confirm email',
+          city: 'City',
+          ville: 'Ville (Neighborhood)',
+          required: 'This field is required',
+          invalidPhone: 'Invalid phone number format',
+          invalidEmail: 'Invalid email format',
+          villeRequired: 'Ville is required when city is Sousse',
+          selectCity: 'Select City',
+          selectVille: 'Select Ville',
+        }
+      : {
+          fullName: 'Nom Complet',
+          phone: 'Numéro de Téléphone',
+          email: 'Email',
+          confirmEmail: "Confirmer l'email",
+          city: 'Ville',
+          ville: 'Ville (Quartier)',
+          required: 'Ce champ est requis',
+          invalidPhone: 'Format de numéro de téléphone invalide',
+          invalidEmail: "Format d'email invalide",
+          villeRequired: 'La ville est requise lorsque la ville est Sousse',
+          selectCity: 'Sélectionner la Ville',
+          selectVille: 'Sélectionner le Quartier',
+        };
 
   const handleChange = (field: keyof CustomerInfo, value: string) => {
+    const next = field === 'phone' ? sanitizePhoneInput(value) : value;
     onChange({
       ...customerInfo,
-      [field]: value,
-      // Reset ville when city changes
-      ...(field === 'city' ? { ville: undefined } : {})
+      [field]: next,
+      ...(field === 'city' ? { ville: undefined } : {}),
     } as CustomerInfo);
+  };
+
+  /** Gmail/iCloud typo fix on blur only — running on every keystroke blocks deleting characters in the domain. */
+  const commitEmailTypoFix = () => {
+    const fixed = normalizeCommonEmailTypos(customerInfo.email);
+    if (fixed !== customerInfo.email) {
+      onChange({ ...customerInfo, email: fixed } as CustomerInfo);
+    }
+  };
+
+  const commitConfirmEmailTypoFix = () => {
+    if (!onEmailConfirmChange) return;
+    const fixed = normalizeCommonEmailTypos(emailConfirm);
+    if (fixed !== emailConfirm) onEmailConfirmChange(fixed);
   };
 
   const getVillesForCity = (city: string) => {
@@ -65,95 +138,137 @@ export function CustomerInfoForm({
 
   const villes = customerInfo.city ? getVillesForCity(customerInfo.city) : [];
 
+  const showIdentity = sections === 'all' || sections === 'identity';
+  const showEmail = sections === 'all' || sections === 'email';
+  const showLocation = sections === 'all' || sections === 'location';
+  const showConfirmEmail = showEmail && typeof onEmailConfirmChange === 'function';
+
   return (
     <div className="space-y-4">
-      <div>
-        <Label htmlFor="full_name">{t.fullName} *</Label>
-        <Input
-          id="full_name"
-          value={customerInfo.full_name}
-          onChange={(e) => handleChange('full_name', e.target.value)}
-          className={errors.full_name || errors.fullName ? 'border-red-500' : ''}
-        />
-        {(errors.full_name || errors.fullName) && (
-          <p className="text-sm text-red-500 mt-1">{errors.full_name || errors.fullName}</p>
-        )}
-      </div>
+      {showIdentity && (
+        <>
+          <div>
+            <Label htmlFor="full_name">
+              {t.fullName} *
+              <ArHint text={arHints?.fullName} />
+            </Label>
+            <Input
+              id="full_name"
+              value={customerInfo.full_name}
+              onChange={(e) => handleChange('full_name', e.target.value)}
+              className={errors.full_name || errors.fullName ? 'border-red-500' : ''}
+            />
+            {(errors.full_name || errors.fullName) && (
+              <FieldErrorWithAr
+                message={errors.full_name || errors.fullName || ''}
+                fieldKey="full_name"
+              />
+            )}
+          </div>
 
-      <div>
-        <Label htmlFor="phone">{t.phone} *</Label>
-        <Input
-          id="phone"
-          type="tel"
-          value={customerInfo.phone}
-          onChange={(e) => handleChange('phone', e.target.value)}
-          className={errors.phone ? 'border-red-500' : ''}
-        />
-        {errors.phone && (
-          <p className="text-sm text-red-500 mt-1">{errors.phone}</p>
-        )}
-      </div>
+          <div>
+            <Label htmlFor="phone">
+              {t.phone} *
+              <ArHint text={arHints?.phone} />
+            </Label>
+            <Input
+              id="phone"
+              type="tel"
+              value={customerInfo.phone}
+              onChange={(e) => handleChange('phone', e.target.value)}
+              className={errors.phone ? 'border-red-500' : ''}
+            />
+            {errors.phone && <FieldErrorWithAr message={errors.phone} fieldKey="phone" />}
+          </div>
+        </>
+      )}
 
-      <div>
-        <Label htmlFor="email">{t.email} *</Label>
-        <Input
-          id="email"
-          type="email"
-          value={customerInfo.email}
-          onChange={(e) => handleChange('email', e.target.value)}
-          className={errors.email ? 'border-red-500' : ''}
-        />
-        {errors.email && (
-          <p className="text-sm text-red-500 mt-1">{errors.email}</p>
-        )}
-      </div>
+      {showEmail && (
+        <>
+          <div>
+            <Label htmlFor="email">
+              {t.email} *
+              <ArHint text={arHints?.email} />
+            </Label>
+            <Input
+              id="email"
+              type="email"
+              value={customerInfo.email}
+              onChange={(e) => handleChange('email', e.target.value)}
+              onBlur={commitEmailTypoFix}
+              className={errors.email ? 'border-red-500' : ''}
+            />
+            {errors.email && <FieldErrorWithAr message={errors.email} fieldKey="email" />}
+          </div>
 
-      <div>
-        <Label htmlFor="city">{t.city} *</Label>
-        <Select
-          value={customerInfo.city}
-          onValueChange={(value) => handleChange('city', value)}
-        >
-          <SelectTrigger className={errors.city ? 'border-red-500' : ''}>
-            <SelectValue placeholder={t.selectCity} />
-          </SelectTrigger>
-          <SelectContent>
-            {CITIES.map((city) => (
-              <SelectItem key={city} value={city}>
-                {city}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {errors.city && (
-          <p className="text-sm text-red-500 mt-1">{errors.city}</p>
-        )}
-      </div>
-
-      {villes.length > 0 && (
-        <div>
-          <Label htmlFor="ville">{t.ville} *</Label>
-          <Select
-            value={customerInfo.ville || ''}
-            onValueChange={(value) => handleChange('ville', value)}
-          >
-            <SelectTrigger className={errors.ville ? 'border-red-500' : ''}>
-              <SelectValue placeholder={t.selectVille} />
-            </SelectTrigger>
-            <SelectContent>
-              {villes.map((ville) => (
-                <SelectItem key={ville} value={ville}>
-                  {ville}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {errors.ville && (
-            <p className="text-sm text-red-500 mt-1">{errors.ville}</p>
+          {showConfirmEmail && (
+            <div>
+              <Label htmlFor="email_confirm">
+                {confirmEmailLabel ?? t.confirmEmail} *
+                <ArHint text={arHints?.confirmEmail} />
+              </Label>
+              <Input
+                id="email_confirm"
+                type="email"
+                autoComplete="off"
+                value={emailConfirm}
+                onChange={(e) => onEmailConfirmChange(e.target.value)}
+                onBlur={commitConfirmEmailTypoFix}
+                className={errors.email_confirm ? 'border-red-500' : ''}
+              />
+              {errors.email_confirm && (
+                <FieldErrorWithAr message={errors.email_confirm} fieldKey="email_confirm" />
+              )}
+            </div>
           )}
-        </div>
+        </>
+      )}
+
+      {showLocation && (
+        <>
+          <div>
+            <Label htmlFor="city">
+              {t.city} *
+              <ArHint text={arHints?.city} />
+            </Label>
+            <Select value={customerInfo.city} onValueChange={(value) => handleChange('city', value)}>
+              <SelectTrigger className={errors.city ? 'border-red-500' : ''}>
+                <SelectValue placeholder={t.selectCity} />
+              </SelectTrigger>
+              <SelectContent>
+                {CITIES.map((city) => (
+                  <SelectItem key={city} value={city}>
+                    {city}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.city && <p className="text-sm text-red-500 mt-1">{errors.city}</p>}
+          </div>
+
+          {villes.length > 0 && (
+            <div>
+              <Label htmlFor="ville">
+                {t.ville} *
+                <ArHint text={arHints?.ville} />
+              </Label>
+              <Select value={customerInfo.ville || ''} onValueChange={(value) => handleChange('ville', value)}>
+                <SelectTrigger className={errors.ville ? 'border-red-500' : ''}>
+                  <SelectValue placeholder={t.selectVille} />
+                </SelectTrigger>
+                <SelectContent>
+                  {villes.map((ville) => (
+                    <SelectItem key={ville} value={ville}>
+                      {ville}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.ville && <p className="text-sm text-red-500 mt-1">{errors.ville}</p>}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
-

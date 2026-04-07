@@ -3,6 +3,10 @@
 // ClicToPay (Société Monétique Tunisie) - register.do
 
 import { createClient } from '@supabase/supabase-js';
+import { createRequire } from 'module';
+
+const requireFee = createRequire(import.meta.url);
+const { computeOnlinePaymentFees } = requireFee('./lib/online-payment-fee.cjs');
 
 let corsUtils = null;
 async function getCorsUtils() {
@@ -97,7 +101,7 @@ export default async function handler(req, res) {
   // Prefer the canonical fee-inclusive amount from total_with_fees when available.
   // Fallbacks:
   // - total_price (for legacy rows already fee-inclusive)
-  // - recomputed subtotal * 1.05 from order_passes as a last resort.
+  // - recomputed subtotal + fee (ONLINE_PAYMENT_FEE_RATE) from order_passes as a last resort.
   let amount = 0;
   if (order.total_with_fees != null) {
     amount = Number(order.total_with_fees);
@@ -108,7 +112,7 @@ export default async function handler(req, res) {
       (sum, p) => sum + Number(p.price) * Number(p.quantity),
       0
     );
-    amount = Number((baseAmount * 1.05).toFixed(3));
+    amount = Number(computeOnlinePaymentFees(baseAmount).totalWithFees.toFixed(3));
   }
 
   if (!amount || amount <= 0) {

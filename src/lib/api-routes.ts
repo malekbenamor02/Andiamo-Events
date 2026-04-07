@@ -26,6 +26,11 @@ export const API_ROUTES = {
   
   // Email
   SEND_EMAIL: '/api/send-email',
+
+  /** R2 media (requires env); 503 R2_DISABLED → client falls back to Supabase upload helpers */
+  MEDIA_UPLOAD: '/api/media/upload',
+  MEDIA_DELETE: '/api/media/delete',
+  MEDIA_FAVICON_CLEANUP: '/api/media/favicon/cleanup',
   RESEND_ORDER_COMPLETION_EMAIL: '/api/resend-order-completion-email',
   EMAIL_DELIVERY_LOGS: (orderId: string) => `/api/email-delivery-logs/${orderId}`,
   

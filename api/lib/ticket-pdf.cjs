@@ -7,10 +7,59 @@
 
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
+const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const http = require('http');
+
+const FETCH_HEADERS = { 'User-Agent': 'Andiamo-Events-TicketPDF/1.0' };
+
+function getPublicSiteOrigin() {
+  const raw =
+    process.env.PUBLIC_SITE_URL ||
+    process.env.VITE_SITE_URL ||
+    process.env.VITE_APP_URL ||
+    process.env.VITE_API_URL ||
+    process.env.API_URL ||
+    '';
+  const s = String(raw).trim();
+  if (!s) return 'https://www.andiamoevents.com';
+  try {
+    const withProto = /^https?:\/\//i.test(s) ? s : `https://${s.replace(/^\/\//, '')}`;
+    const u = new URL(withProto);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return 'https://www.andiamoevents.com';
+  }
+}
+
+/**
+ * DB may store full CDN URL, protocol-relative URL, or a path. Node must fetch absolute http(s).
+ */
+function resolvePosterUrlForFetch(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('//')) return `https:${s}`;
+  const assetsBase = (process.env.PUBLIC_ASSETS_BASE_URL || '').replace(/\/$/, '');
+  if (assetsBase) {
+    if (s.startsWith('/')) return `${assetsBase}${s}`;
+    if (!s.includes('://')) return `${assetsBase}/${s.replace(/^\/+/, '')}`;
+  }
+  const origin = getPublicSiteOrigin().replace(/\/$/, '');
+  if (s.startsWith('/')) return `${origin}${s}`;
+  return '';
+}
+
+/** Supabase/PostgREST may return nested `events` as an object or a single-element array. */
+function normalizeOrderEvent(order) {
+  const e = order?.events;
+  if (e == null) return {};
+  if (Array.isArray(e)) return e[0] && typeof e[0] === 'object' ? e[0] : {};
+  if (typeof e === 'object') return e;
+  return {};
+}
 
 /** Overall ticket size in the PDF (1 = previous 900×320). Lower = smaller on screen/print. */
 const TICKET_LAYOUT_SCALE = 0.72;
@@ -45,7 +94,7 @@ function fetchUrlBuffer(url, redirects = 0) {
   if (!/^https?:\/\//i.test(u)) return Promise.resolve(null);
   return new Promise((resolve) => {
     const client = u.startsWith('https') ? https : http;
-    const req = client.get(u, { timeout: 12000 }, (res) => {
+    const req = client.get(u, { timeout: 12000, headers: FETCH_HEADERS }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         const next = new URL(res.headers.location, u).href;
         res.resume();
@@ -72,6 +121,34 @@ function fetchUrlBuffer(url, redirects = 0) {
   });
 }
 
+/**
+ * PDFKit embeds JPEG/PNG reliably; event posters are often WebP/AVIF from R2 — convert for embedding.
+ */
+async function fetchPosterRasterForPdf(posterUrl) {
+  const fetchUrl = resolvePosterUrlForFetch(posterUrl);
+  if (!fetchUrl) {
+    if (String(posterUrl || '').trim()) {
+      console.warn('[ticket-pdf] poster_url is not a fetchable absolute URL:', String(posterUrl).slice(0, 120));
+    }
+    return null;
+  }
+  const raw = await fetchUrlBuffer(fetchUrl);
+  if (!raw?.length) {
+    console.warn('[ticket-pdf] poster HTTP fetch failed or empty:', fetchUrl.slice(0, 160));
+    return null;
+  }
+  try {
+    return await sharp(raw)
+      .rotate()
+      .resize(2048, 2048, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 86, mozjpeg: true })
+      .toBuffer();
+  } catch (e) {
+    console.warn('[ticket-pdf] poster rasterize for PDF failed:', e?.message || e);
+    return null;
+  }
+}
+
 function loadLocalLogoBuffer() {
   try {
     const p = path.join(__dirname, '../../public/email-assets/logo-white.png');
@@ -80,6 +157,7 @@ function loadLocalLogoBuffer() {
   return null;
 }
 
+/** French date + start time only on the PDF stub (no end time). Same for every channel: online, POS, ambassador, admin approve, resend. */
 function formatEventDateFr(iso) {
   if (!iso) return { dateLine: 'DATE À CONFIRMER', timeLine: '' };
   try {
@@ -90,12 +168,9 @@ function formatEventDateFr(iso) {
     const y = d.getFullYear();
     const h = String(d.getHours()).padStart(2, '0');
     const m = String(d.getMinutes()).padStart(2, '0');
-    const end = new Date(d.getTime() + 4 * 60 * 60 * 1000);
-    const eh = String(end.getHours()).padStart(2, '0');
-    const em = String(end.getMinutes()).padStart(2, '0');
     return {
       dateLine: `${day} ${mon} ${y}`.toUpperCase(),
-      timeLine: `${h}:${m} • ${eh}:${em}`,
+      timeLine: `${h}:${m}`,
     };
   } catch {
     return { dateLine: 'DATE À CONFIRMER', timeLine: '' };
@@ -173,7 +248,7 @@ async function buildTicketsPdfBuffer(opts) {
     throw new Error('buildTicketsPdfBuffer: no tickets');
   }
 
-  const posterBuf = await fetchUrlBuffer(posterUrl || '');
+  const posterBuf = await fetchPosterRasterForPdf(posterUrl || '');
   const logoBuf = loadLocalLogoBuffer();
   const { dateLine, timeLine } = formatEventDateFr(eventDateIso);
   const venueStr = venueLine(venue, city);
@@ -350,13 +425,14 @@ async function buildTicketsPdfBuffer(opts) {
 
 /**
  * Nodemailer attachments array (single PDF), or [] if generation fails.
+ * All ticket emails that attach a PDF use this (server.cjs, api/misc.js, admin-pos, admin-approve-order).
  * @param {object} order — must include user_name, id, order_number?, events?: { name, date, venue, city?, poster_url? }
  * @param {Array} tickets — rows with secure_token, order_pass_id
  * @param {Array} orderPasses — order_passes rows with id, pass_type
  */
 async function buildTicketEmailPdfAttachments(order, tickets, orderPasses) {
   try {
-    const ev = order?.events || {};
+    const ev = normalizeOrderEvent(order);
     const buf = await buildTicketsPdfBuffer({
       customerName: order?.user_name,
       eventName: ev.name,

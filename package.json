@@ -16,6 +16,7 @@
     "invite:qr": "node scripts/create-invitation-qr-tickets.cjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1024.0",
     "@hookform/resolvers": "^3.9.0",
     "@microsoft/clarity": "^1.0.2",
     "@radix-ui/react-accordion": "^1.2.0",
@@ -71,6 +72,7 @@
     "input-otp": "^1.2.4",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.462.0",
+    "multer": "^2.1.1",
     "next-themes": "^0.3.0",
     "node-fetch": "^3.3.2",
     "nodemailer": "^6.10.1",
@@ -85,6 +87,7 @@
     "react-router-dom": "^6.26.2",
     "recharts": "^2.12.7",
     "serverless-http": "^4.0.0",
+    "sharp": "^0.34.5",
     "sonner": "^1.5.0",
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",
@@ -96,6 +99,7 @@
     "@eslint/js": "^9.9.0",
     "@sentry/vite-plugin": "^5.1.1",
     "@tailwindcss/typography": "^0.5.15",
+    "@types/multer": "^2.1.0",
     "@types/node": "^22.5.5",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18.3.3",

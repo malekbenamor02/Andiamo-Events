@@ -123,7 +123,6 @@ export interface ApplicationsTabProps {
   setApplicationDateFrom: (v: Date | undefined) => void;
   applicationDateTo: Date | undefined;
   setApplicationDateTo: (v: Date | undefined) => void;
-  animatedApplications: Set<string>;
   emailStatus: Record<string, "sent" | "failed" | "pending">;
   emailFailedApplications: Set<string>;
   selectedMotivation: SelectedMotivation | null;
@@ -159,7 +158,6 @@ export function ApplicationsTab({
   setApplicationDateFrom,
   applicationDateTo,
   setApplicationDateTo,
-  animatedApplications,
   emailStatus,
   emailFailedApplications,
   selectedMotivation,
@@ -180,11 +178,11 @@ export function ApplicationsTab({
 
   return (
     <TabsContent value="applications" className="space-y-6">
-      <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-        <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gradient-neon">
           Ambassador Applications
         </h2>
-        <div className="flex items-center gap-3 animate-in slide-in-from-right-4 duration-1000 delay-300">
+        <div className="flex items-center gap-3">
           <Button
             variant="outline"
             size="sm"
@@ -232,7 +230,7 @@ export function ApplicationsTab({
         </div>
       </div>
 
-      <div className="space-y-4 animate-in slide-in-from-bottom-4 fade-in duration-700 delay-500">
+      <div className="space-y-4">
         <div className="relative">
           <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
           <Input
@@ -547,11 +545,7 @@ export function ApplicationsTab({
               {filteredApplications.map((application) => (
                 <TableRow
                   key={application.id}
-                  className={cn(
-                    "transform transition-all duration-300 hover:bg-muted/30",
-                    animatedApplications.has(application.id) &&
-                      "animate-in fade-in duration-300"
-                  )}
+                  className="transform transition-all duration-300 hover:bg-muted/30"
                 >
                   <TableCell className="font-medium text-xs px-2 py-2">
                     {application.full_name}

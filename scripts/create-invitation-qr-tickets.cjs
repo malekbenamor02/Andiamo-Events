@@ -30,6 +30,13 @@ const { buildOnlineTicketEmailHtml } = require(path.join(
   'lib',
   'online-ticket-email-html.cjs'
 ));
+const { uploadTicketQrToR2OrSupabase } = require(path.join(
+  __dirname,
+  '..',
+  'api',
+  'lib',
+  'r2-media.cjs'
+));
 
 function getEmailTransporter() {
   const host = process.env.EMAIL_HOST;
@@ -172,14 +179,12 @@ async function main() {
         margin: 2,
       });
 
-      const { error: upErr } = await sb.storage.from('tickets').upload(fileName, qrCodeBuffer, {
-        contentType: 'image/png',
-        upsert: true,
-      });
-      if (upErr) throw new Error(`Storage upload failed: ${upErr.message}`);
-
-      const { data: urlData } = sb.storage.from('tickets').getPublicUrl(fileName);
-      const publicUrl = urlData?.publicUrl || null;
+      let publicUrl;
+      try {
+        publicUrl = await uploadTicketQrToR2OrSupabase(qrCodeBuffer, fileName, sb);
+      } catch (e) {
+        throw new Error(`Storage upload failed: ${e.message || e}`);
+      }
       if (!publicUrl) throw new Error('Could not resolve public URL for QR image.');
 
       const generatedAt = new Date().toISOString();

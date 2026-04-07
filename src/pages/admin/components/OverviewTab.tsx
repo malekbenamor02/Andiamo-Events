@@ -58,7 +58,6 @@ export interface OverviewTabProps {
   pendingAmbassadorOrdersCount: number;
   previousPendingAmbassadorOrdersCount: number | null;
   activityChartData: { name: string; applications: number; approved: number; orders: number; revenue: number; eventsCreated: number }[];
-  animatedCards: Set<number>;
   setActiveTab: (tab: string) => void;
   getStatusBadge: (status: string) => React.ReactNode;
 }
@@ -76,7 +75,6 @@ export function OverviewTab({
   pendingAmbassadorOrdersCount,
   previousPendingAmbassadorOrdersCount,
   activityChartData,
-  animatedCards,
   setActiveTab,
   getStatusBadge,
 }: OverviewTabProps) {
@@ -85,7 +83,7 @@ export function OverviewTab({
   return (
     <div className="space-y-6">
       {/* Welcome Header */}
-      <div className="animate-in slide-in-from-top-4 fade-in duration-700">
+      <div>
         <Card
           className="shadow-xl"
           style={{
@@ -162,9 +160,7 @@ export function OverviewTab({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full px-2">
         {/* Pending Applications Card */}
         <Card
-          className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-            animatedCards.has(0) ? "animate-in slide-in-from-bottom-4 fade-in duration-700" : "opacity-100"
-          }`}
+          className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
           style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
@@ -222,9 +218,7 @@ export function OverviewTab({
 
         {/* Approved Applications Card */}
         <Card
-          className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-            animatedCards.has(1) ? "animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200" : "opacity-100"
-          }`}
+          className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
           style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
@@ -285,9 +279,7 @@ export function OverviewTab({
 
         {/* Total Events Card */}
         <Card
-          className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-            animatedCards.has(2) ? "animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400" : "opacity-100"
-          }`}
+          className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
           style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
@@ -348,9 +340,7 @@ export function OverviewTab({
 
         {/* Ambassador Orders Pending Card */}
         <Card
-          className={`group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-            animatedCards.has(3) ? "animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600" : "opacity-100"
-          }`}
+          className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
           style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
@@ -406,7 +396,7 @@ export function OverviewTab({
       {/* Charts & Analytics Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card
-          className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-800 hover:shadow-lg transition-all duration-300"
+          className="hover:shadow-lg transition-all duration-300"
           style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
@@ -473,7 +463,7 @@ export function OverviewTab({
           </CardContent>
         </Card>
 
-        <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-900 hover:shadow-lg transition-all duration-300">
+        <Card className="hover:shadow-lg transition-all duration-300">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -556,7 +546,7 @@ export function OverviewTab({
       {/* Quick Actions & Upcoming Events */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card
-          className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-1000 hover:shadow-lg transition-all duration-300"
+          className="hover:shadow-lg transition-all duration-300"
           style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
@@ -649,7 +639,7 @@ export function OverviewTab({
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2 animate-in slide-in-from-bottom-4 fade-in duration-700 delay-1100 hover:shadow-lg transition-all duration-300">
+        <Card className="lg:col-span-2 hover:shadow-lg transition-all duration-300">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -674,9 +664,7 @@ export function OverviewTab({
                 .map((event, index) => (
                   <div
                     key={event.id}
-                    className={`p-4 bg-muted/50 rounded-lg border border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-md ${isMobile ? "" : "cursor-pointer"} group animate-in slide-in-from-left-4 fade-in duration-500 ${
-                      index === 0 ? "delay-1200" : index === 1 ? "delay-1300" : "delay-1400"
-                    }`}
+                    className={`p-4 bg-muted/50 rounded-lg border border-border/50 hover:border-primary/50 transition-all duration-300 hover:shadow-md ${isMobile ? "" : "cursor-pointer"} group`}
                     onClick={isMobile ? undefined : () => setActiveTab("events")}
                   >
                     <div className="flex items-start justify-between gap-4">
@@ -712,7 +700,7 @@ export function OverviewTab({
       </div>
 
       {/* Recent Activity */}
-      <Card className="animate-in slide-in-from-bottom-4 fade-in duration-1000 delay-1500 hover:shadow-lg transition-all duration-300">
+      <Card className="hover:shadow-lg transition-all duration-300">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -733,9 +721,7 @@ export function OverviewTab({
             {applications.slice(0, 5).map((app, index) => (
               <div
                 key={app.id}
-                className={`flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-lg border border-border/50 hover:border-primary/50 transform transition-all duration-300 hover:scale-[1.02] hover:shadow-md group animate-in slide-in-from-left-4 fade-in duration-500 ${
-                  index === 0 ? "delay-1600" : index === 1 ? "delay-1700" : index === 2 ? "delay-1800" : index === 3 ? "delay-1900" : "delay-2000"
-                }`}
+                className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-lg border border-border/50 hover:border-primary/50 transform transition-all duration-300 hover:scale-[1.02] hover:shadow-md group"
               >
                 <div className="flex items-center gap-4 flex-1">
                   <div

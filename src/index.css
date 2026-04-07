@@ -390,30 +390,19 @@ All colors MUST be HSL.
     transform: translateX(4px);
   }
   
+  /* Solid brand red (no gradient); !important wins over <Button variant="default"> bg utilities. */
   .btn-gradient {
-    background: var(--gradient-primary);
+    background: hsl(var(--primary)) !important;
     @apply text-white font-medium px-6 py-3 rounded-lg;
     @apply hover:scale-110 active:scale-95 transition-all duration-300;
-    box-shadow: 0 4px 15px hsl(var(--primary) / 0.3);
+    box-shadow: 0 4px 15px hsl(var(--primary) / 0.35);
     position: relative;
     overflow: hidden;
   }
-  
-  .btn-gradient::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, hsl(var(--primary) / 0.3), hsl(var(--accent) / 0.3));
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-  
-  .btn-gradient:hover::before {
-    opacity: 1;
-  }
-  
+
   .btn-gradient:hover {
-    box-shadow: 0 6px 30px hsl(var(--primary) / 0.5), 0 0 40px hsl(var(--accent) / 0.3);
+    background: hsl(var(--primary)) !important;
+    box-shadow: 0 6px 22px hsl(var(--primary) / 0.45);
     transform: translateY(-2px);
   }
   

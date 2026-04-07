@@ -70,7 +70,7 @@ export function SettingsTab(p: SettingsTabProps) {
     <TabsContent value="settings" className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full px-2">
                   {/* Sales Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
+                  <div>
                     <Card className="shadow-lg h-full flex flex-col">
                     <CardHeader className="pb-4">
                       <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -126,7 +126,7 @@ export function SettingsTab(p: SettingsTabProps) {
                   </div>
 
                   {/* Maintenance Mode Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
+                  <div>
                     <Card className="shadow-lg h-full flex flex-col">
                     <CardHeader className="pb-4">
                       <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -226,7 +226,7 @@ export function SettingsTab(p: SettingsTabProps) {
                   </div>
 
                   {/* Order Expiration Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
+                  <div>
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -373,7 +373,7 @@ export function SettingsTab(p: SettingsTabProps) {
                   </div>
 
                   {/* Ambassador Application Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
+                  <div>
                     <Card className="shadow-lg h-full flex flex-col">
                     <CardHeader className="pb-4">
                       <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -448,7 +448,7 @@ export function SettingsTab(p: SettingsTabProps) {
                   </div>
 
                   {/* Hero Images Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
+                  <div className="md:col-span-2 lg:col-span-3">
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -602,7 +602,7 @@ export function SettingsTab(p: SettingsTabProps) {
                   </div>
 
                   {/* Hero Typewriter Texts Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
+                  <div className="md:col-span-2 lg:col-span-3">
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -722,7 +722,7 @@ export function SettingsTab(p: SettingsTabProps) {
                   </div>
 
                   {/* About Images Settings Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 md:col-span-2 lg:col-span-3">
+                  <div className="md:col-span-2 lg:col-span-3">
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">

@@ -78,7 +78,6 @@ export interface AmbassadorsTabProps {
   language: "en" | "fr";
   t: AmbassadorsTabTranslation;
   ambassadors: Ambassador[];
-  animatedAmbassadors: Set<string>;
   editingAmbassador: Ambassador | null;
   setEditingAmbassador: (a: Ambassador | null) => void;
   newAmbassadorForm: NewAmbassadorForm;
@@ -123,7 +122,6 @@ export function AmbassadorsTab({
   language,
   t,
   ambassadors,
-  animatedAmbassadors,
   editingAmbassador,
   setEditingAmbassador,
   newAmbassadorForm,
@@ -227,11 +225,11 @@ export function AmbassadorsTab({
 
   return (
     <TabsContent value="ambassadors" className="space-y-6">
-      <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-        <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gradient-neon">
           Ambassadors Management
         </h2>
-        <div className="flex items-center gap-3 animate-in slide-in-from-right-4 duration-1000 delay-300">
+        <div className="flex items-center gap-3">
           <Button
             variant="outline"
             size="sm"
@@ -265,24 +263,24 @@ export function AmbassadorsTab({
                   setAmbassadorErrors({});
                   setIsAmbassadorDialogOpen(true);
                 }}
-                className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
+                className="transform hover:scale-105 transition-all duration-300"
               >
                 <Plus className="w-4 h-4 mr-2 animate-pulse" />
                 {t.add}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
-              <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-                <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
+              <DialogHeader>
+                <DialogTitle>
                   {editingAmbassador?.id
                     ? "Edit Ambassador"
                     : "Add New Ambassador"}
                 </DialogTitle>
               </DialogHeader>
               {editingAmbassador?.id ? (
-                <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-700 delay-300">
+                <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
+                    <div>
                       <Label htmlFor="ambassadorName">
                         {t.ambassadorName}{" "}
                         <span className="text-destructive">*</span>
@@ -311,7 +309,7 @@ export function AmbassadorsTab({
                         </p>
                       )}
                     </div>
-                    <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
+                    <div>
                       <Label htmlFor="ambassadorAge">
                         {language === "en" ? "Age" : "Âge"}{" "}
                         <span className="text-destructive">*</span>
@@ -335,7 +333,7 @@ export function AmbassadorsTab({
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
+                    <div>
                       <Label htmlFor="ambassadorPhone">
                         {t.ambassadorPhone}{" "}
                         <span className="text-destructive">*</span>
@@ -590,9 +588,9 @@ export function AmbassadorsTab({
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-700 delay-300">
+                <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
+                    <div>
                       <Label htmlFor="newAmbassadorName">
                         {language === "en" ? "Full Name" : "Nom Complet"}{" "}
                         <span className="text-destructive">*</span>
@@ -621,7 +619,7 @@ export function AmbassadorsTab({
                         </p>
                       )}
                     </div>
-                    <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
+                    <div>
                       <Label htmlFor="newAmbassadorAge">
                         {language === "en" ? "Age" : "Âge"}{" "}
                         <span className="text-destructive">*</span>
@@ -915,7 +913,7 @@ export function AmbassadorsTab({
                   </div>
                 </div>
               )}
-              <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-800">
+              <div className="flex justify-end gap-2 mt-6">
                 <DialogClose asChild>
                   <Button
                     variant="outline"
@@ -1081,7 +1079,7 @@ export function AmbassadorsTab({
             </div>
           )}
         </div>
-      <div className="rounded-lg border border-border/50 bg-card overflow-hidden animate-in fade-in duration-500">
+      <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="border-border/50 hover:bg-transparent">
@@ -1268,7 +1266,7 @@ export function AmbassadorsTab({
       </div>
       </div>
       {filteredList.length === 0 && (
-        <div className="text-center py-8 animate-in fade-in duration-500">
+        <div className="text-center py-8">
           <p className="text-muted-foreground animate-pulse">
             {t.noAmbassadors}
           </p>

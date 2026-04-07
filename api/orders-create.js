@@ -11,6 +11,8 @@ import https from 'https';
 
 const requireCjs = createRequire(import.meta.url);
 const { buildOrderConfirmationEmailHtml } = requireCjs('./lib/order-confirmation-email-html.cjs');
+const { fetchAmbassadorSocialLinkFromApplications } = requireCjs('./lib/ambassador-social-link.cjs');
+const { computeOnlinePaymentFees } = requireCjs('./lib/online-payment-fee.cjs');
 
 // --- Basic helpers (shared within this module) ---
 
@@ -625,12 +627,15 @@ export default async (req, res) => {
     // STEP 4: Calculate totals (server-side authority)
     const totalQuantity = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
     const subtotal = validatedPasses.reduce((sum, p) => sum + (parseFloat(p.price) * p.quantity), 0);
-    // Apply 5% fee only for online card payments; other methods use pure subtotal.
+    // Online card fee from ONLINE_PAYMENT_FEE_RATE (default 5%); other methods use pure subtotal.
     let feeAmount = 0;
     let totalWithFees = subtotal;
+    let feeRateForNotes = 0;
     if (paymentMethod === 'online' && subtotal > 0) {
-      feeAmount = Number((subtotal * 0.05).toFixed(3));
-      totalWithFees = subtotal + feeAmount;
+      const fees = computeOnlinePaymentFees(subtotal);
+      feeAmount = fees.feeAmount;
+      totalWithFees = fees.totalWithFees;
+      feeRateForNotes = fees.feeRate;
     }
 
     // STEP 5: Determine initial status
@@ -705,7 +710,7 @@ export default async (req, res) => {
         ...(paymentMethod === 'online'
           ? {
               payment_fees: {
-                fee_rate: 0.05,
+                fee_rate: feeRateForNotes,
                 fee_amount: feeAmount,
                 subtotal,
                 total_with_fees: totalWithFees
@@ -1534,21 +1539,17 @@ async function sendOrderConfirmationEmails(orderId, dbClient) {
       orderPasses = passes || [];
     }
 
-    // Fetch ambassador social_link from ambassador_applications
+    // Fetch ambassador social_link from ambassador_applications (phone variants + multi-row safe)
     if (order.ambassadors) {
       try {
-        // Always fetch social_link from ambassador_applications to ensure we have the latest
-        const { data: application } = await dbClient
-          .from('ambassador_applications')
-          .select('social_link')
-          .eq('phone_number', order.ambassadors.phone)
-          .maybeSingle();
-        
-        if (application?.social_link) {
-          order.ambassadors.social_link = application.social_link;
-          console.log(`📧 Fetched ambassador Instagram: ${application.social_link}`);
+        const link = await fetchAmbassadorSocialLinkFromApplications(dbClient, order.ambassadors.phone);
+        if (link) {
+          order.ambassadors.social_link = link;
+          console.log(`📧 Fetched ambassador Instagram: ${link}`);
         } else {
-          console.log(`⚠️ No Instagram link found for ambassador ${order.ambassadors.phone}`);
+          console.log(
+            `⚠️ No Instagram link found for ambassador phone ${order.ambassadors.phone} (id ${order.ambassadors.id})`
+          );
         }
       } catch (err) {
         console.warn('⚠️ Failed to fetch ambassador social_link from applications:', err);

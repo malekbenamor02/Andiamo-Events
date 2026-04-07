@@ -16,8 +16,8 @@ export interface OfficialInvitationsTabProps {
 export function OfficialInvitationsTab({ language, selectedEventId }: OfficialInvitationsTabProps) {
   return (
     <TabsContent value="official-invitations" className="space-y-6">
-      <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-        <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gradient-neon">
           {language === "en" ? "Official Invitations" : "Invitations Officielles"}
         </h2>
       </div>

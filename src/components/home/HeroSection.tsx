@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { generateSlug } from "@/lib/utils";
-import { getOptimizedImageUrl } from "@/lib/image-utils";
+import { avifVariantUrl, getOptimizedImageUrl } from "@/lib/image-utils";
 import TypewriterText from "./TypewriterText";
 import { useFeaturedEvents, type Event } from "@/hooks/useEvents";
 import { isPassPurchaseWindowClosed } from "@/lib/date-utils";
@@ -25,6 +25,9 @@ interface HeroSlide {
   alt?: string;
   poster?: string;
 }
+
+/** While hero copy is loading, or when admin left no lines for this language */
+const PLACEHOLDER_TYPEWRITER_LINE = "We Create Memories";
 
 // Video slide component with lazy loading
 const VideoSlide = ({ slide, isActive, isPageInteractive, onLoaded }: { slide: HeroSlide; isActive: boolean; isPageInteractive: boolean; onLoaded?: () => void }) => {
@@ -188,6 +191,7 @@ const VideoSlide = ({ slide, isActive, isPageInteractive, onLoaded }: { slide: H
 const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [heroContent, setHeroContent] = useState<any>({});
+  const [heroContentLoaded, setHeroContentLoaded] = useState(false);
   const [isPageInteractive, setIsPageInteractive] = useState(false);
   const [loadedMedia, setLoadedMedia] = useState<Set<number>>(new Set());
   const { data: featuredEvents = [] } = useFeaturedEvents();
@@ -215,9 +219,14 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
 
         if (data && data[0]) {
           setHeroContent(data[0].content as any);
+        } else {
+          setHeroContent({});
         }
       } catch (error) {
         console.error('Error fetching site content:', error);
+        setHeroContent({});
+      } finally {
+        setHeroContentLoaded(true);
       }
     };
 
@@ -248,33 +257,26 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
     }
   };
 
-  // Default typewriter texts for the hero title (used when no CMS content is set)
-  const defaultTypewriterTexts = {
-    en: [
-      "EL DAHEEH LIVE SHOW FOR THE FIRST TIME IN TUNIS !!",
-      "01 February 2026",
-      "PALAIS DES CONGRES , TUNIS, AVENUE MOHAMED 5",
-      "الدحيح في تونس",
-    ],
-    fr: [
-      "EL DAHEEH LIVE SHOW FOR THE FIRST TIME IN TUNIS !!",
-      "01 February 2026",
-      "PALAIS DES CONGRES , TUNIS, AVENUE MOHAMED 5",
-      "الدحيح في تونس",
-    ],
-  };
+  const typewriterLines = useMemo(() => {
+    const placeholderOnly = [PLACEHOLDER_TYPEWRITER_LINE];
+    if (!heroContentLoaded) {
+      return placeholderOnly;
+    }
+    const cmsTypewriterTexts = (heroContent?.typewriter_texts || {}) as {
+      en?: string[];
+      fr?: string[];
+    };
+    const raw = Array.isArray(cmsTypewriterTexts[language])
+      ? cmsTypewriterTexts[language]!
+      : [];
+    const cleaned = raw.map((t) => String(t).trim()).filter((t) => t.length > 0);
+    if (cleaned.length > 0) {
+      return cleaned;
+    }
+    return placeholderOnly;
+  }, [heroContent, language, heroContentLoaded]);
 
-  const staticSuffix = language === 'en' ? "" : "";
-
-  // Use Supabase content if available, otherwise fall back to default
-  const content = heroContent[language] || defaultContent[language];
-  const cmsTypewriterTexts = (heroContent?.typewriter_texts || {}) as { en?: string[]; fr?: string[] };
-  const rawTextsForLang = Array.isArray(cmsTypewriterTexts[language])
-    ? (cmsTypewriterTexts[language] as string[])
-    : [];
-  const cleanedTextsForLang = rawTextsForLang.map((t) => t.trim()).filter((t) => t.length > 0);
-  const activeTypewriterTexts =
-    cleanedTextsForLang.length > 0 ? cleanedTextsForLang : defaultTypewriterTexts[language];
+  const typewriterKey = `${heroContentLoaded}:${language}:${typewriterLines.join("\0")}`;
   
   // Get hero images from Supabase content
   // If no images are set in Supabase, use empty array (will show placeholder or nothing)
@@ -373,26 +375,36 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
                   onLoaded={() => handleMediaLoad(index)}
                 />
               ) : (
-                <img
-                  src={getOptimizedImageUrl(slide.src, { width: 1920, height: 1080, quality: 85, resize: 'cover' })}
-                  alt={slide.alt || `Andiamo Events – Hero image ${index + 1}`}
-                  className="w-full h-full object-cover"
-                  style={{ objectFit: 'cover' }}
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  width={1920}
-                  height={1080}
-                  onLoad={() => {
-                    // Image is ready when decoded - this is what we need for LCP
-                    // Browser has finished decoding the image
-                    handleMediaLoad(index);
-                  }}
-                  onError={() => {
-                    // Count errors as "loaded" to prevent infinite loading
-                    handleMediaLoad(index);
-                  }}
-                />
+                (() => {
+                  const webpSrc = getOptimizedImageUrl(slide.src, {
+                    width: 1920,
+                    height: 1080,
+                    quality: 85,
+                    resize: 'cover',
+                  });
+                  const avifSrc = avifVariantUrl(slide.src);
+                  const imgProps = {
+                    alt: slide.alt || `Andiamo Events – Hero image ${index + 1}`,
+                    className: 'w-full h-full object-cover' as const,
+                    style: { objectFit: 'cover' as const },
+                    loading: 'eager' as const,
+                    fetchPriority: 'high' as const,
+                    decoding: 'async' as const,
+                    width: 1920,
+                    height: 1080,
+                    onLoad: () => handleMediaLoad(index),
+                    onError: () => handleMediaLoad(index),
+                  };
+                  if (avifSrc) {
+                    return (
+                      <picture>
+                        <source srcSet={avifSrc} type="image/avif" />
+                        <img src={webpSrc} {...imgProps} />
+                      </picture>
+                    );
+                  }
+                  return <img src={webpSrc} {...imgProps} />;
+                })()
               )}
               <div 
                 className="absolute inset-0" 
@@ -420,8 +432,9 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
         <div className="animate-fade-in-up">
           <h1 className="text-3xl sm:text-4xl md:text-7xl font-heading font-black mb-6 min-h-[1.2em] uppercase">
             <span className="block text-white">
-              <TypewriterText 
-                texts={activeTypewriterTexts}
+              <TypewriterText
+                key={typewriterKey}
+                texts={typewriterLines}
                 speed={80}
                 deleteSpeed={40}
                 pauseTime={2500}
@@ -432,7 +445,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
           
           {/* Description text removed for testing */}
           {/* <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto animate-fade-in-up" style={{ animationDelay: "0.4s" }}>
-            {content?.description || defaultContent[language].description}
+            {defaultContent[language].description}
           </p> */}
 
           {nextEvent && !isPassPurchaseWindowClosed(nextEvent.date, nextEvent.event_status) && (

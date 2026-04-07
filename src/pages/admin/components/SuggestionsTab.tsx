@@ -99,18 +99,18 @@ export function SuggestionsTab({
   return (
     <>
       <TabsContent value="suggestions" className="space-y-6">
-        <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-          <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold text-gradient-neon">
             Audience Suggestions
           </h2>
-          <div className="flex items-center gap-4 animate-in slide-in-from-right-4 duration-1000 delay-300">
+          <div className="flex items-center gap-4">
             <Badge variant="secondary" className="animate-pulse">
               {filteredSuggestions.length} of {suggestions.length} suggestions
             </Badge>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-4 animate-in slide-in-from-bottom-4 duration-500 delay-400">
+        <div className="flex flex-wrap gap-4">
           <div className="relative group flex-1 min-w-[200px]">
             <Settings className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
@@ -153,7 +153,7 @@ export function SuggestionsTab({
           </div>
         </div>
 
-        <div className="rounded-md border animate-in slide-in-from-bottom-4 duration-500 delay-500">
+        <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -225,7 +225,7 @@ export function SuggestionsTab({
         </div>
 
         {filteredSuggestions.length === 0 && suggestions.length > 0 && (
-          <div className="text-center py-12 animate-in fade-in duration-500">
+          <div className="text-center py-12">
             <Lightbulb className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
             <h3 className="text-lg font-semibold mb-2">No suggestions match the filters</h3>
             <p className="text-muted-foreground">Try adjusting search or read filter.</p>
@@ -233,7 +233,7 @@ export function SuggestionsTab({
         )}
 
         {suggestions.length === 0 && (
-          <div className="text-center py-12 animate-in fade-in duration-500">
+          <div className="text-center py-12">
             <Lightbulb className="w-16 h-16 text-muted-foreground mx-auto mb-4 animate-pulse" />
             <h3 className="text-lg font-semibold mb-2">No suggestions yet</h3>
             <p className="text-muted-foreground">Suggestions from the website will appear here.</p>

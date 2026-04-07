@@ -371,7 +371,7 @@ export function MarketingTab(p: MarketingTabProps) {
                   <TabsContent value="sms" className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full px-2">
                   {/* SMS Balance Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700">
+                  <div>
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -452,7 +452,7 @@ export function MarketingTab(p: MarketingTabProps) {
                   </div>
 
                   {/* Test SMS Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200">
+                  <div>
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -521,7 +521,7 @@ export function MarketingTab(p: MarketingTabProps) {
                   </div>
 
                   {/* Export/Import Phone Subscribers Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400">
+                  <div>
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -654,7 +654,7 @@ export function MarketingTab(p: MarketingTabProps) {
                   </div>
 
                   {/* Bulk SMS Selector */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-600 lg:col-span-2">
+                  <div className="lg:col-span-2">
                     <BulkSmsSelector
                       language={p.language}
                       onSendComplete={() => {
@@ -666,7 +666,7 @@ export function MarketingTab(p: MarketingTabProps) {
                   </div>
 
                   {/* SMS Logs Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 lg:col-span-3">
+                  <div className="lg:col-span-3">
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
@@ -915,7 +915,7 @@ export function MarketingTab(p: MarketingTabProps) {
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full px-2">
                   {/* Email Subscribers Card */}
-                  <div className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-400">
+                  <div>
                     <Card className="shadow-lg h-full flex flex-col">
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">

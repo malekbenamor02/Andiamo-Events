@@ -18,7 +18,7 @@ interface OrderSummaryProps {
   termsAccepted?: boolean;
   onTermsChange?: (accepted: boolean) => void;
   language?: 'en' | 'fr';
-  /** Optional 5% fee amount for online payments (frontend display only). */
+  /** Optional online payment fee amount (frontend display; matches `VITE_ONLINE_PAYMENT_FEE_RATE`). */
   feeAmount?: number;
   /** Optional grand total including fees (frontend display only). */
   totalWithFees?: number;

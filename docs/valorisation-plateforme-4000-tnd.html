@@ -1,0 +1,1696 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Andiamo Events — Valorisation & stack technique · 4 000 TND</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-deep: #07080d;
+      --bg-card: rgba(255, 255, 255, 0.04);
+      --bg-card-hover: rgba(255, 255, 255, 0.07);
+      --border: rgba(255, 255, 255, 0.1);
+      --text: #f0f2f7;
+      --muted: #9aa3b5;
+      --accent: #5b9fd4;
+      --accent-2: #c084fc;
+      --gold: #e8c872;
+      --radius: 14px;
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+      --font: "DM Sans", system-ui, sans-serif;
+      --font-display: "Outfit", system-ui, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+      --pie-1: #2a2a2e;
+      --pie-2: #4a3d68;
+      --pie-3: #2f5553;
+      --pie-4: #544332;
+      --pie-5: #5c2e32;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--text);
+      background: var(--bg-deep);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    h1,
+    h2,
+    .section-head h2,
+    .value-showcase-title,
+    .flow-showcase-title {
+      font-family: var(--font-display);
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 4rem;
+    }
+
+    .hero {
+      position: relative;
+      text-align: center;
+      padding: 2.75rem 1.25rem 2.25rem;
+      margin-bottom: 2.5rem;
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: linear-gradient(180deg, #10121a 0%, #08090e 100%);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 20px 40px -36px rgba(0, 0, 0, 0.55);
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 56px 56px;
+      mask-image: radial-gradient(ellipse 85% 75% at 50% 30%, black 30%, transparent 72%);
+      pointer-events: none;
+      opacity: 0.4;
+    }
+
+    .hero > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.9rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.25);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+      animation: fadeDown 0.9s var(--ease-out) both;
+    }
+
+    .hero-badge span.dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--gold);
+    }
+
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero h1 {
+      font-size: clamp(1.85rem, 5vw, 2.65rem);
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1.15;
+      margin: 0 0 0.75rem;
+      color: var(--text);
+      animation: fadeUp 1s var(--ease-out) 0.1s both;
+    }
+
+    .hero-sub {
+      max-width: 36rem;
+      margin: 0 auto 1.75rem;
+      color: var(--muted);
+      font-size: 1.02rem;
+      animation: fadeUp 1s var(--ease-out) 0.2s both;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .amount-card {
+      display: inline-block;
+      padding: 1.15rem 2rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: linear-gradient(145deg, rgba(91, 159, 212, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 16px 36px -28px rgba(0, 0, 0, 0.45);
+      animation: fadeUp 1s var(--ease-out) 0.35s both;
+    }
+
+    .amount-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .amount-value {
+      font-size: clamp(2rem, 6vw, 2.75rem);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--gold);
+    }
+
+    .amount-note {
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .print-hint {
+      margin-top: 1.25rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+      animation: fadeUp 1s var(--ease-out) 0.45s both;
+    }
+
+    .print-hint kbd {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+    }
+
+    .hero-period {
+      margin: 0 0 1.35rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+      animation: fadeUp 1s var(--ease-out) 0.28s both;
+    }
+
+    .hero-period-label {
+      display: block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+      opacity: 0.9;
+    }
+
+    .hero-period time {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--text);
+      letter-spacing: 0.02em;
+    }
+
+    section {
+      margin-bottom: 2.5rem;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .section-head p {
+      margin: 0;
+      font-size: 0.9rem;
+      color: var(--muted);
+      max-width: 28rem;
+    }
+
+    .line-accent {
+      width: 48px;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+
+    .card {
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      padding: 1.35rem 1.5rem;
+    }
+
+    .post-project-card h3 {
+      margin: 0 0 0.65rem;
+      font-size: 1rem;
+      font-weight: 700;
+      font-family: var(--font-display);
+      letter-spacing: -0.02em;
+    }
+
+    .post-project-card > p {
+      margin: 0 0 0.85rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .post-project-card ul {
+      margin: 0;
+      padding-left: 1.15rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .post-project-card li {
+      margin-bottom: 0.35rem;
+    }
+
+    .post-project-card li:last-child {
+      margin-bottom: 0;
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out);
+    }
+
+    .reveal.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .tech-card {
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      padding: 1.15rem 1.25rem;
+      transition: transform 0.35s var(--ease-out), border-color 0.35s, background 0.35s, box-shadow 0.35s;
+    }
+
+    .tech-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(91, 159, 212, 0.35);
+      background: var(--bg-card-hover);
+      box-shadow: 0 12px 28px -20px rgba(0, 0, 0, 0.45);
+    }
+
+    .tech-card h3 {
+      margin: 0 0 0.65rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tech-card h3 .icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-size: 0.85rem;
+      background: rgba(91, 159, 212, 0.15);
+      color: var(--accent);
+    }
+
+    .tech-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .tech-list li {
+      padding: 0.35rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.5rem;
+      align-items: baseline;
+    }
+
+    .tech-list li:last-child {
+      border-bottom: none;
+    }
+
+    .tech-name {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .tech-desc {
+      flex: 1;
+      min-width: 140px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    th,
+    td {
+      padding: 0.65rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      background: rgba(91, 159, 212, 0.12);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    tbody tr {
+      background: rgba(255, 255, 255, 0.02);
+      transition: background 0.2s;
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .value-showcase {
+      position: relative;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      background:
+        radial-gradient(ellipse 100% 70% at 50% -15%, rgba(91, 159, 212, 0.1), transparent 52%),
+        linear-gradient(168deg, rgba(20, 22, 34, 0.97) 0%, rgba(8, 9, 14, 0.99) 100%);
+      padding: 2rem 1.5rem 2.1rem;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.45) inset,
+        0 20px 48px -28px rgba(0, 0, 0, 0.5);
+    }
+
+    .value-showcase::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+      background-size: 44px 44px;
+      opacity: 0.55;
+      pointer-events: none;
+      mask-image: radial-gradient(ellipse 90% 80% at 50% 45%, black 15%, transparent 75%);
+    }
+
+    .value-showcase-title {
+      text-align: center;
+      font-size: 1.08rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      margin: 0 0 1.85rem;
+      color: var(--text);
+      position: relative;
+      z-index: 1;
+    }
+
+    .value-showcase-grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 2.25rem 3rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .pie-donut {
+      position: relative;
+      width: min(272px, 74vw);
+      flex-shrink: 0;
+    }
+
+    .pie-donut-ring {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: conic-gradient(
+        var(--pie-1) 0 126deg,
+        var(--pie-2) 126deg 198deg,
+        var(--pie-3) 198deg 252deg,
+        var(--pie-4) 252deg 306deg,
+        var(--pie-5) 306deg 360deg
+      );
+      box-shadow:
+        0 22px 56px rgba(0, 0, 0, 0.5),
+        inset 0 0 72px rgba(0, 0, 0, 0.38),
+        0 0 0 1px rgba(255, 255, 255, 0.07);
+      transform: scale(0.55) rotate(-32deg);
+      opacity: 0;
+    }
+
+    .reveal.is-visible .pie-donut-ring {
+      animation: pie-enter 0.85s var(--ease-out) forwards;
+    }
+
+    @keyframes pie-enter {
+      to {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+      }
+    }
+
+    .pie-donut-hole {
+      position: absolute;
+      inset: 20.5%;
+      border-radius: 50%;
+      background: linear-gradient(158deg, #13151f 0%, #08090e 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow:
+        inset 0 3px 16px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(0, 0, 0, 0.35);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .pie-total {
+      font-family: var(--font-display);
+      font-size: clamp(1.4rem, 4.8vw, 1.72rem);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--gold);
+      line-height: 1.05;
+      text-shadow: 0 0 28px rgba(232, 200, 114, 0.22);
+    }
+
+    .pie-total-unit {
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-top: 0.25rem;
+    }
+
+    .pie-legend {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      min-width: min(340px, 100%);
+    }
+
+    .pie-legend li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.8rem;
+      padding: 0.6rem 0.75rem;
+      border-radius: 14px;
+      background: rgba(0, 0, 0, 0.22);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      opacity: 0;
+      transform: translateX(16px);
+      transition:
+        opacity 0.55s var(--ease-out),
+        transform 0.55s var(--ease-out),
+        border-color 0.3s,
+        background 0.3s;
+    }
+
+    .reveal.is-visible .pie-legend li {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    .reveal.is-visible .pie-legend li:nth-child(1) {
+      transition-delay: 0.18s;
+    }
+    .reveal.is-visible .pie-legend li:nth-child(2) {
+      transition-delay: 0.28s;
+    }
+    .reveal.is-visible .pie-legend li:nth-child(3) {
+      transition-delay: 0.38s;
+    }
+    .reveal.is-visible .pie-legend li:nth-child(4) {
+      transition-delay: 0.48s;
+    }
+    .reveal.is-visible .pie-legend li:nth-child(5) {
+      transition-delay: 0.58s;
+    }
+
+    .pie-legend li:hover {
+      border-color: rgba(91, 159, 212, 0.22);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .pie-legend-swatch {
+      width: 11px;
+      height: 11px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      margin-top: 0.28rem;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    .pie-legend-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .pie-legend-body strong {
+      display: block;
+      font-size: 0.93rem;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+
+    .pie-legend-meta {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      margin-top: 0.12rem;
+    }
+
+    .flow-showcase {
+      position: relative;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: linear-gradient(175deg, rgba(16, 18, 28, 0.95) 0%, rgba(8, 9, 15, 0.98) 100%);
+      padding: 1.65rem 1.25rem 1.85rem;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset, 0 16px 40px -28px rgba(0, 0, 0, 0.5);
+    }
+
+    .flow-showcase-title {
+      text-align: center;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin: 0 0 1.35rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .flow-track {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem 0.2rem;
+    }
+
+    .flow-item {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    .reveal.is-visible .flow-item {
+      animation: flow-pop 0.55s var(--ease-out) forwards;
+    }
+
+    .reveal.is-visible .flow-item:nth-child(1) {
+      animation-delay: 0.04s;
+    }
+    .reveal.is-visible .flow-item:nth-child(2) {
+      animation-delay: 0.1s;
+    }
+    .reveal.is-visible .flow-item:nth-child(3) {
+      animation-delay: 0.16s;
+    }
+    .reveal.is-visible .flow-item:nth-child(4) {
+      animation-delay: 0.22s;
+    }
+    .reveal.is-visible .flow-item:nth-child(5) {
+      animation-delay: 0.28s;
+    }
+    .reveal.is-visible .flow-item:nth-child(6) {
+      animation-delay: 0.34s;
+    }
+    .reveal.is-visible .flow-item:nth-child(7) {
+      animation-delay: 0.4s;
+    }
+    .reveal.is-visible .flow-item:nth-child(8) {
+      animation-delay: 0.46s;
+    }
+    .reveal.is-visible .flow-item:nth-child(9) {
+      animation-delay: 0.52s;
+    }
+    .reveal.is-visible .flow-item:nth-child(10) {
+      animation-delay: 0.58s;
+    }
+    .reveal.is-visible .flow-item:nth-child(11) {
+      animation-delay: 0.64s;
+    }
+    .reveal.is-visible .flow-item:nth-child(12) {
+      animation-delay: 0.7s;
+    }
+    .reveal.is-visible .flow-item:nth-child(13) {
+      animation-delay: 0.76s;
+    }
+
+    @keyframes flow-pop {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .flow-node {
+      padding: 0.52rem 0.95rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02));
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      white-space: nowrap;
+      transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s var(--ease-out);
+    }
+
+    .flow-node:hover {
+      border-color: rgba(91, 159, 212, 0.35);
+      box-shadow: none;
+      transform: translateY(-1px);
+    }
+
+    .flow-arrow {
+      width: 20px;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(91, 159, 212, 0.15), rgba(91, 159, 212, 0.75));
+      flex-shrink: 0;
+      position: relative;
+      align-self: center;
+    }
+
+    .flow-arrow::after {
+      content: "";
+      position: absolute;
+      right: -1px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: 4px solid transparent;
+      border-left-color: rgba(91, 159, 212, 0.8);
+    }
+
+    @media (max-width: 520px) {
+      .flow-arrow {
+        display: none;
+      }
+      .flow-track {
+        gap: 0.45rem;
+      }
+      .flow-node {
+        flex: 1 1 42%;
+        text-align: center;
+        white-space: normal;
+      }
+    }
+
+    blockquote {
+      margin: 0;
+      padding: 1.35rem 1.5rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      background: rgba(255, 255, 255, 0.03);
+      font-style: normal;
+      color: var(--text);
+      font-size: 0.95rem;
+      line-height: 1.65;
+    }
+
+    .spotlight-ctp {
+      position: relative;
+      border-radius: calc(var(--radius) + 4px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-left: 4px solid rgba(232, 200, 114, 0.55);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 1.65rem 1.5rem 1.5rem;
+      overflow: hidden;
+    }
+
+    .spotlight-ctp-inner {
+      position: relative;
+      z-index: 1;
+    }
+
+    .spotlight-ctp-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 0.5rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 6px;
+      background: rgba(232, 200, 114, 0.15);
+      border: 1px solid rgba(232, 200, 114, 0.35);
+    }
+
+    .spotlight-ctp h2 {
+      margin: 0 0 0.65rem;
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+    }
+
+    .spotlight-ctp-lead {
+      margin: 0 0 1rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+      max-width: 52rem;
+    }
+
+    .spotlight-ctp-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 0.75rem 1rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .spotlight-ctp-grid li {
+      font-size: 0.88rem;
+      color: var(--muted);
+      padding: 0.65rem 0.75rem;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .spotlight-ctp-grid strong {
+      display: block;
+      color: var(--text);
+      font-size: 0.82rem;
+      margin-bottom: 0.2rem;
+      font-weight: 650;
+    }
+
+    .int-card {
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      padding: 1.1rem 1.2rem;
+      transition: transform 0.35s var(--ease-out), border-color 0.35s, box-shadow 0.35s;
+    }
+
+    .int-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(91, 159, 212, 0.35);
+      box-shadow: 0 12px 28px -20px rgba(0, 0, 0, 0.45);
+    }
+
+    .int-card h3 {
+      margin: 0 0 0.4rem;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .int-card p {
+      margin: 0;
+      font-size: 0.86rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .int-tag {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      background: rgba(91, 159, 212, 0.15);
+      color: var(--accent);
+      margin-bottom: 0.45rem;
+      font-weight: 500;
+    }
+
+    .spotlight-amb {
+      position: relative;
+      border-radius: calc(var(--radius) + 4px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-left: 4px solid rgba(91, 159, 212, 0.45);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 1.65rem 1.5rem 1.5rem;
+      overflow: hidden;
+    }
+
+    .spotlight-amb-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+      margin-bottom: 0.5rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 6px;
+      background: rgba(192, 132, 252, 0.14);
+      border: 1px solid rgba(192, 132, 252, 0.35);
+    }
+
+    .spotlight-amb h2 {
+      margin: 0 0 0.65rem;
+      font-size: 1.32rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+    }
+
+    .spotlight-amb-lead {
+      margin: 0 0 1rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+      max-width: 52rem;
+    }
+
+    .spotlight-career {
+      position: relative;
+      border-radius: calc(var(--radius) + 4px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-left: 4px solid rgba(110, 201, 196, 0.55);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 1.65rem 1.5rem 1.5rem;
+      overflow: hidden;
+    }
+
+    .spotlight-career-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #6ec9c4;
+      margin-bottom: 0.5rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 6px;
+      background: rgba(45, 120, 115, 0.18);
+      border: 1px solid rgba(45, 120, 115, 0.35);
+    }
+
+    .spotlight-career h2 {
+      margin: 0 0 0.65rem;
+      font-size: 1.32rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+    }
+
+    .spotlight-career-lead {
+      margin: 0 0 1rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+      max-width: 52rem;
+    }
+
+    .dashboard-split {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+    }
+
+    .dash-role-card {
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      padding: 1.2rem 1.3rem 1.35rem;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+
+    .dash-role-card:hover {
+      border-color: rgba(91, 159, 212, 0.28);
+      box-shadow: 0 10px 24px -18px rgba(0, 0, 0, 0.4);
+    }
+
+    .dash-role-card.super {
+      border-color: rgba(232, 200, 114, 0.22);
+    }
+
+    .dash-role-card.super:hover {
+      border-color: rgba(232, 200, 114, 0.35);
+      box-shadow: 0 16px 48px -36px rgba(232, 200, 114, 0.12);
+    }
+
+    .dash-role-card h3 {
+      margin: 0 0 0.35rem;
+      font-size: 1.05rem;
+      font-weight: 700;
+      font-family: var(--font-display);
+    }
+
+    .dash-role-card .dash-role-tag {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.65rem;
+      display: block;
+    }
+
+    .dash-role-card p.intro {
+      margin: 0 0 0.75rem;
+      font-size: 0.86rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .tab-cloud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+
+    .tab-pill {
+      font-size: 0.74rem;
+      font-weight: 600;
+      padding: 0.35rem 0.65rem;
+      border-radius: 8px;
+      background: rgba(91, 159, 212, 0.1);
+      border: 1px solid rgba(91, 159, 212, 0.2);
+      color: var(--text);
+      line-height: 1.2;
+    }
+
+    .dash-role-card.super .tab-pill {
+      background: rgba(232, 200, 114, 0.08);
+      border-color: rgba(232, 200, 114, 0.22);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      html {
+        scroll-behavior: auto;
+      }
+      .reveal {
+        opacity: 1;
+        transform: none;
+      }
+      .pie-donut-ring {
+        transform: scale(1) rotate(0);
+        opacity: 1;
+        animation: none !important;
+      }
+      .pie-legend li {
+        opacity: 1;
+        transform: none;
+        transition: none;
+      }
+      .flow-item {
+        opacity: 1;
+        transform: none;
+        animation: none !important;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+        color: #111;
+      }
+      .print-hint {
+        display: none !important;
+      }
+      .hero h1 {
+        color: #111;
+        background: none;
+        -webkit-text-fill-color: #111;
+      }
+      .amount-value {
+        color: #1a1a1a;
+        text-shadow: none;
+      }
+      .tech-card,
+      .int-card,
+      .dash-role-card,
+      .card,
+      table,
+      .value-showcase,
+      .flow-showcase,
+      .spotlight-ctp,
+      .spotlight-amb,
+      .spotlight-career,
+      .hero {
+        border-color: #ccc;
+        background: #f9f9f9;
+        break-inside: avoid;
+      }
+      .tech-list li {
+        border-color: #ddd;
+      }
+      .reveal {
+        opacity: 1;
+        transform: none;
+      }
+      .pie-donut-ring {
+        transform: scale(1) rotate(0) !important;
+        opacity: 1 !important;
+        animation: none !important;
+      }
+      .pie-legend li {
+        opacity: 1 !important;
+        transform: none !important;
+      }
+      .flow-item {
+        opacity: 1 !important;
+        transform: none !important;
+        animation: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="hero-badge">
+        <span class="dot" aria-hidden="true"></span>
+        Full stack · Application web complète
+      </div>
+      <h1>Plateforme Andiamo Events</h1>
+      <p class="hero-sub">
+        Conception, développement et intégration <strong>full stack</strong>
+        (front-end, back-end, sécurité, déploiement et outils métier), incluant le <strong>réseau d’ambassadeurs</strong>
+        (ventes, validations, reporting), un <strong>module carrières / recrutement</strong> (offres, champs sur mesure, candidatures)
+        et un <strong>tableau de bord admin</strong> multi-onglets selon les rôles.
+        Ce document présente la <strong>valeur forfaitaire</strong> proposée et le <strong>socle technique réel</strong> du projet.
+      </p>
+      <p class="hero-period">
+        <span class="hero-period-label">Début du travail sur la plateforme</span>
+        <time datetime="2025-06-01">1<sup>er</sup> juin 2025</time>
+      </p>
+      <div class="amount-card">
+        <div class="amount-label">Valorisation forfaitaire proposée</div>
+        <div class="amount-value">4 000 TND</div>
+        <div class="amount-note">Dinars tunisiens — livraison de la plateforme telle que développée</div>
+      </div>
+      <p class="print-hint">
+        <strong>PDF :</strong> <kbd>Ctrl</kbd> + <kbd>P</kbd> → Enregistrer au format PDF
+      </p>
+    </header>
+
+    <section class="reveal" data-reveal>
+      <div class="section-head">
+        <div>
+          <div class="line-accent"></div>
+          <h2>Répartition de la valeur</h2>
+        </div>
+        <p>Vue synthétique du forfait <strong>4 000 TND</strong> par domaine d’effort.</p>
+      </div>
+      <div class="value-showcase" role="img" aria-label="Répartition indicative 4000 TND : 35 pour cent cœur métier, 20 pour cent admin, trois fois 15 pour cent pour front, intégrations et qualité">
+        <p class="value-showcase-title">Répartition indicative (4 000 TND)</p>
+        <div class="value-showcase-grid">
+          <div class="pie-donut">
+            <div class="pie-donut-ring" aria-hidden="true"></div>
+            <div class="pie-donut-hole">
+              <span class="pie-total">4 000</span>
+              <span class="pie-total-unit">TND</span>
+            </div>
+          </div>
+          <ul class="pie-legend">
+            <li>
+              <span class="pie-legend-swatch" style="background: var(--pie-1)" aria-hidden="true"></span>
+              <div class="pie-legend-body">
+                <strong>Cœur métier</strong>
+                <span class="pie-legend-meta">35 % · 1 400 TND — commandes, billets, POS, scan</span>
+              </div>
+            </li>
+            <li>
+              <span class="pie-legend-swatch" style="background: var(--pie-2)" aria-hidden="true"></span>
+              <div class="pie-legend-body">
+                <strong>Admin &amp; suivi</strong>
+                <span class="pie-legend-meta">20 % · 800 TND — tableaux de bord, rôles, opérations</span>
+              </div>
+            </li>
+            <li>
+              <span class="pie-legend-swatch" style="background: var(--pie-3)" aria-hidden="true"></span>
+              <div class="pie-legend-body">
+                <strong>Front public</strong>
+                <span class="pie-legend-meta">15 % · 600 TND — vitrine, achat, galerie</span>
+              </div>
+            </li>
+            <li>
+              <span class="pie-legend-swatch" style="background: var(--pie-4)" aria-hidden="true"></span>
+              <div class="pie-legend-body">
+                <strong>Intégrations</strong>
+                <span class="pie-legend-meta">15 % · 600 TND — paiement, email, stockage, API, canal ambassadeurs</span>
+              </div>
+            </li>
+            <li>
+              <span class="pie-legend-swatch" style="background: var(--pie-5)" aria-hidden="true"></span>
+              <div class="pie-legend-body">
+                <strong>Qualité &amp; déploiement</strong>
+                <span class="pie-legend-meta">15 % · 600 TND — perf, images, mise en prod</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="section-head">
+        <div>
+          <div class="line-accent"></div>
+          <h2>Chaîne de valeur</h2>
+        </div>
+        <p>Du visiteur à la donnée exploitable en back-office.</p>
+      </div>
+      <div class="flow-showcase">
+        <p class="flow-showcase-title">Parcours bout-en-bout</p>
+        <div class="flow-track" role="list">
+          <span class="flow-item flow-node" role="listitem">Visiteur</span>
+          <span class="flow-item flow-arrow" aria-hidden="true"></span>
+          <span class="flow-item flow-node" role="listitem">Site &amp; événements</span>
+          <span class="flow-item flow-arrow" aria-hidden="true"></span>
+          <span class="flow-item flow-node" role="listitem">Achat web ou POS</span>
+          <span class="flow-item flow-arrow" aria-hidden="true"></span>
+          <span class="flow-item flow-node" role="listitem">Paiement &amp; validation</span>
+          <span class="flow-item flow-arrow" aria-hidden="true"></span>
+          <span class="flow-item flow-node" role="listitem">Email &amp; billet / QR</span>
+          <span class="flow-item flow-arrow" aria-hidden="true"></span>
+          <span class="flow-item flow-node" role="listitem">Scan entrée</span>
+          <span class="flow-item flow-arrow" aria-hidden="true"></span>
+          <span class="flow-item flow-node" role="listitem">Admin &amp; statistiques</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="spotlight-amb">
+        <span class="spotlight-amb-badge">Réseau commercial</span>
+        <h2>Système ambassadeurs — ventes, validation &amp; reporting</h2>
+        <p class="spotlight-amb-lead">
+          Un <strong>canal de vente dédié</strong> : candidatures, comptes ambassadeurs, commandes
+          <strong>paiement à la livraison / cash ambassadeur</strong>, et pilotage centralisé dans le même tableau de bord que le reste de l’événementiel.
+        </p>
+        <ul class="spotlight-ctp-grid">
+          <li>
+            <strong>Candidatures &amp; validation</strong>
+            File des demandes d’adhésion, filtres, <strong>approbation / refus</strong>, emails de statut et suivi des envois.
+          </li>
+          <li>
+            <strong>Gestion des ambassadeurs</strong>
+            Fiches ambassadeurs, identifiants, suivi des profils actifs — interface dédiée dans le dashboard.
+          </li>
+          <li>
+            <strong>Ventes ambassadeurs (dashboard)</strong>
+            Commandes associées au réseau, <strong>statuts métier</strong> (en attente cash, validation admin / ambassadeur, payé, etc.), détail des passes et historique.
+          </li>
+          <li>
+            <strong>Reporting &amp; exports</strong>
+            <strong>Graphiques</strong> (Recharts), filtres par événement / statut, <strong>export Excel</strong>, journaux de commandes et lecture des performances par ambassadeur.
+          </li>
+          <li>
+            <strong>Configuration billetterie</strong>
+            Méthodes de paiement sur les passes incluant le <strong>paiement ambassadeur (cash à la livraison)</strong> lorsque activé sur l’événement.
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="section-head">
+        <div>
+          <div class="line-accent"></div>
+          <h2>Tableau de bord administrateur</h2>
+        </div>
+        <p>
+          Application admin riche : navigation par <strong>onglets</strong>, avec des droits <strong>admin</strong> vs
+          <strong>super administrateur</strong> (toutes les sections opérationnelles et de gouvernance).
+        </p>
+      </div>
+      <div class="dashboard-split">
+        <div class="dash-role-card">
+          <span class="dash-role-tag">Rôle · Administrateur</span>
+          <h3>Vue opérationnelle ciblée</h3>
+          <p class="intro">
+            Accès aux flux du quotidien : synthèse, réseau ambassadeurs, candidatures, commandes en ligne, ventes ambassadeurs et point de vente — sans les onglets réservés au super admin.
+          </p>
+          <div class="tab-cloud" aria-label="Onglets profil administrateur">
+            <span class="tab-pill">Aperçu</span>
+            <span class="tab-pill">Ambassadeurs</span>
+            <span class="tab-pill">Candidatures</span>
+            <span class="tab-pill">Commandes en ligne</span>
+            <span class="tab-pill">Ventes ambassadeurs</span>
+            <span class="tab-pill">Point de vente</span>
+          </div>
+        </div>
+        <div class="dash-role-card super">
+          <span class="dash-role-tag">Rôle · Super administrateur</span>
+          <h3>Contrôle complet de la plateforme</h3>
+          <p class="intro">
+            Tous les onglets ci-dessous, incluant contenu site, <strong>carrières &amp; recrutement</strong>, invitations, rapports financiers, scanners, équipes, marketing, logs et paramètres système.
+          </p>
+          <div class="tab-cloud" aria-label="Onglets profil super administrateur">
+            <span class="tab-pill">Aperçu</span>
+            <span class="tab-pill">Événements</span>
+            <span class="tab-pill">Ambassadeurs</span>
+            <span class="tab-pill">Candidatures</span>
+            <span class="tab-pill">Carrières</span>
+            <span class="tab-pill">Commandes en ligne</span>
+            <span class="tab-pill">Ventes ambassadeurs</span>
+            <span class="tab-pill">Point de vente</span>
+            <span class="tab-pill">Invitations officielles</span>
+            <span class="tab-pill">Rapports</span>
+            <span class="tab-pill">Scanners</span>
+            <span class="tab-pill">Administrateurs</span>
+            <span class="tab-pill">Sponsors</span>
+            <span class="tab-pill">Équipe</span>
+            <span class="tab-pill">SMS — E-mail</span>
+            <span class="tab-pill">Messages contact</span>
+            <span class="tab-pill">Suggestions</span>
+            <span class="tab-pill">AIO Events</span>
+            <span class="tab-pill">Journaux &amp; analytiques</span>
+            <span class="tab-pill">Paramètres</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="spotlight-career">
+        <span class="spotlight-career-badge">RH · Recrutement</span>
+        <h2>Module carrières — offres configurables &amp; champs personnalisés</h2>
+        <p class="spotlight-career-lead">
+          Espace dédié dans le tableau de bord <strong>super administrateur</strong> (onglet <strong>Carrières</strong>) pour publier des
+          <strong>domaines / fiches de poste</strong>, construire des formulaires de candidature <strong>à la carte</strong> et suivre tout le
+          cycle jusqu’au traitement des dossiers — sans refonte de code à chaque nouvelle offre.
+        </p>
+        <ul class="spotlight-ctp-grid">
+          <li>
+            <strong>Offres &amp; domaines</strong>
+            Création d’offres par <strong>domaine</strong> (nom, slug URL, description, type de contrat, ouverture / fermeture des candidatures).
+          </li>
+          <li>
+            <strong>Champs personnalisés</strong>
+            Formulaires dynamiques : types <strong>texte, email, téléphone, âge, date, lien</strong> (LinkedIn, portfolio…), <strong>zone de texte</strong>,
+            <strong>nombre</strong>, <strong>liste déroulante</strong> avec options, <strong>fichier</strong> (CV / pièces jointes) — champs <strong>obligatoires ou facultatifs</strong>.
+          </li>
+          <li>
+            <strong>Construction &amp; réutilisation</strong>
+            <strong>Bibliothèque de libellés prédéfinis</strong>, <strong>réordonnancement</strong> des champs, édition avancée côté API
+            (y compris actions groupées), <strong>modèles (templates)</strong> et application rapide d’un modèle à un domaine.
+          </li>
+          <li>
+            <strong>Page publique &amp; dépôt</strong>
+            Contenu de page carrière configurable ; candidatures avec <strong>upload sécurisé</strong> des documents ; options
+            <strong>ville</strong> et <strong>genre</strong> pilotées depuis l’admin.
+          </li>
+          <li>
+            <strong>Pipeline candidatures</strong>
+            Liste filtrable, <strong>approbation / refus</strong>, détail dossier, <strong>historique / audit</strong>, <strong>comparaison</strong> de profils,
+            <strong>export</strong> ; notifications temps réel côté admin pour les nouvelles candidatures.
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="spotlight-ctp">
+        <div class="spotlight-ctp-inner">
+          <span class="spotlight-ctp-badge">Monétique électronique · Tunisie</span>
+          <h2>ClicToPay — paiement en ligne intégré au parcours billetterie</h2>
+          <p class="spotlight-ctp-lead">
+            <strong>ClicToPay</strong> s’inscrit dans l’écosystème de la <strong>monétique électronique</strong> en Tunisie : solution d’
+            <strong>encaissement par carte bancaire</strong> et de <strong>paiement e-commerce</strong> proposée notamment par la
+            <strong>Société Monétique Tunisie (SMT)</strong>, utilisée par les commerçants et plateformes qui doivent accepter les cartes
+            locales et internationales dans un cadre bancaire sécurisé. L’intégration dans Andiamo Events va au-delà d’un simple lien :
+            elle assure une <strong>chaîne de confiance serveur → banque → confirmation de commande</strong>.
+          </p>
+          <ul class="spotlight-ctp-grid">
+            <li>
+              <strong>Vérification côté serveur</strong>
+              Confirmation du paiement via l’API ClicToPay (<em>statut de commande</em>) — le front-end seul n’est jamais considéré comme source de vérité.
+            </li>
+            <li>
+              <strong>Callback dédié</strong>
+              Point d’entrée API pour finaliser une commande en ligne : passage en payé, génération billets / QR lorsque le statut bancaire est validé.
+            </li>
+            <li>
+              <strong>Test &amp; production</strong>
+              Environnement de test (<code style="font-family: var(--mono); font-size: 0.78rem;">test.clictopay.com</code>) et bascule production selon les identifiants et URL configurés.
+            </li>
+            <li>
+              <strong>Sécurité navigateur</strong>
+              Domaines passerelle autorisés dans la politique CSP (iframe / scripts) pour un parcours de paiement conforme au déploiement Vercel.
+            </li>
+            <li>
+              <strong>Robustesse métier</strong>
+              Gestion des commandes en attente, expiration des sessions de paiement et libération de stock (logique cron / endpoints associés).
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="section-head">
+        <div>
+          <div class="line-accent"></div>
+          <h2>Intégrations services (marketing, email, mesure)</h2>
+        </div>
+        <p>Outils tiers pour l’email, la publicité, l’analyse d’audience et les métriques d’hébergement — selon configuration.</p>
+      </div>
+      <div class="tech-grid">
+        <div class="int-card">
+          <span class="int-tag">Email</span>
+          <h3>Brevo</h3>
+          <p>
+            <strong>Emails transactionnels</strong> (confirmations, campagnes, notifications) via SMTP — couche
+            <strong>Nodemailer</strong> côté serveur, avec les contraintes d’expéditeur propres à Brevo (adresse « from » distincte du login SMTP).
+          </p>
+        </div>
+        <div class="int-card">
+          <span class="int-tag">Ads · Meta</span>
+          <h3>Meta Pixel</h3>
+          <p>
+            Chargement <strong>fbevents.js</strong>, initialisation du pixel, suivi des vues de page et événements pour
+            <strong>conversions</strong> et <strong>remarketing</strong> (identifiant configurable via variables d’environnement Vite).
+          </p>
+        </div>
+        <div class="int-card">
+          <span class="int-tag">Analytics</span>
+          <h3>Google Analytics 4</h3>
+          <p>
+            Intégration <strong>gtag.js</strong> / <strong>dataLayer</strong>, mesure d’audience et événements personnalisés ; script et mesure
+            alignés sur l’ID de mesure (configuration <code style="font-family: var(--mono); font-size: 0.72rem;">VITE_GA_MEASUREMENT_ID</code>).
+          </p>
+        </div>
+        <div class="int-card">
+          <span class="int-tag">UX research</span>
+          <h3>Microsoft Clarity</h3>
+          <p>
+            Initialisation côté app pour <strong>heatmaps</strong>, enregistrements de session et analyse du comportement réel des visiteurs sur le parcours d’achat.
+          </p>
+        </div>
+        <div class="int-card">
+          <span class="int-tag">Hébergeur</span>
+          <h3>Vercel Analytics &amp; Speed Insights</h3>
+          <p>
+            Métriques de <strong>trafic</strong> et <strong>Web Vitals</strong> / performance perçue directement depuis l’infrastructure Vercel.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="section-head">
+        <div>
+          <div class="line-accent"></div>
+          <h2>Stack technique — front-end</h2>
+        </div>
+        <p>Interfaces utilisateur, formulaires, tableau de bord et expérience événementielle.</p>
+      </div>
+      <div class="tech-grid">
+        <div class="tech-card">
+          <h3><span class="icon">⚛</span> Framework</h3>
+          <ul class="tech-list">
+            <li><span class="tech-name">React 18</span> <span class="tech-desc">— Interface utilisateur</span></li>
+            <li><span class="tech-name">TypeScript</span> <span class="tech-desc">— Typage applicatif</span></li>
+            <li><span class="tech-name">Vite 5</span> <span class="tech-desc">— Build &amp; dev</span></li>
+            <li><span class="tech-name">React Router</span> <span class="tech-desc">— Navigation SPA</span></li>
+          </ul>
+        </div>
+        <div class="tech-card">
+          <h3><span class="icon">◆</span> UI &amp; données</h3>
+          <ul class="tech-list">
+            <li><span class="tech-name">Tailwind CSS</span> <span class="tech-desc">— Design system</span></li>
+            <li><span class="tech-name">Radix UI</span> <span class="tech-desc">— Composants accessibles</span></li>
+            <li><span class="tech-name">TanStack Query</span> <span class="tech-desc">— Données serveur &amp; cache</span></li>
+            <li><span class="tech-name">React Hook Form + Zod</span> <span class="tech-desc">— Formulaires &amp; validation</span></li>
+          </ul>
+        </div>
+        <div class="tech-card">
+          <h3><span class="icon">📊</span> Fonctionnalités clés</h3>
+          <ul class="tech-list">
+            <li><span class="tech-name">Recharts</span> <span class="tech-desc">— Tableaux de bord &amp; graphiques</span></li>
+            <li><span class="tech-name">html5-qrcode</span> <span class="tech-desc">— Scan de billets (caméra)</span></li>
+            <li><span class="tech-name">DOMPurify</span> <span class="tech-desc">— Sécurisation du HTML affiché</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="section-head">
+        <div>
+          <div class="line-accent"></div>
+          <h2>Stack technique — back-end &amp; API</h2>
+        </div>
+        <p>Node.js, routes serverless, logique métier, fichiers et génération PDF / QR.</p>
+      </div>
+      <div class="tech-grid">
+        <div class="tech-card">
+          <h3><span class="icon">⬢</span> API</h3>
+          <ul class="tech-list">
+            <li><span class="tech-name">Node.js</span> <span class="tech-desc">— Exécution serveur</span></li>
+            <li><span class="tech-name">Express</span> <span class="tech-desc">— Routes &amp; logique HTTP</span></li>
+            <li><span class="tech-name">Vercel Functions</span> <span class="tech-desc">— API serverless (serverless-http)</span></li>
+          </ul>
+        </div>
+        <div class="tech-card">
+          <h3><span class="icon">🔐</span> Auth &amp; protection</h3>
+          <ul class="tech-list">
+            <li><span class="tech-name">JWT</span> <span class="tech-desc">— Sessions &amp; API sécurisées</span></li>
+            <li><span class="tech-name">bcrypt</span> <span class="tech-desc">— Mots de passe</span></li>
+            <li><span class="tech-name">Rate limiting</span> <span class="tech-desc">— Limitation des abus sur l’API</span></li>
+          </ul>
+        </div>
+        <div class="tech-card">
+          <h3><span class="icon">📁</span> Médias &amp; stockage</h3>
+          <ul class="tech-list">
+            <li><span class="tech-name">Sharp</span> <span class="tech-desc">— Traitement &amp; formats d’images</span></li>
+            <li><span class="tech-name">Stockage S3 (R2)</span> <span class="tech-desc">— Fichiers &amp; médias en cloud</span></li>
+          </ul>
+        </div>
+        <div class="tech-card">
+          <h3><span class="icon">✉</span> Billets &amp; emails</h3>
+          <ul class="tech-list">
+            <li><span class="tech-name">PDFKit</span> <span class="tech-desc">— PDF (billets, documents)</span></li>
+            <li><span class="tech-name">QR Code</span> <span class="tech-desc">— Génération codes billetterie</span></li>
+            <li><span class="tech-name">Nodemailer</span> <span class="tech-desc">— Envoi des emails transactionnels</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="section-head">
+        <div>
+          <div class="line-accent"></div>
+          <h2>Données, hébergement &amp; outillage</h2>
+        </div>
+      </div>
+      <div class="tech-grid">
+        <div class="tech-card">
+          <h3><span class="icon">🗄</span> Données &amp; cloud</h3>
+          <ul class="tech-list">
+            <li><span class="tech-name">Supabase</span> <span class="tech-desc">— Base de données &amp; services associés</span></li>
+            <li><span class="tech-name">Vercel</span> <span class="tech-desc">— Hébergement application &amp; API</span></li>
+            <li><span class="tech-name">Cloudflare R2</span> <span class="tech-desc">— Stockage des médias</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="section-head">
+        <div>
+          <div class="line-accent"></div>
+          <h2>Sécurité &amp; conformité (couche prod)</h2>
+        </div>
+        <p>Défense en profondeur : navigateur, réseau, applicatif et supervision.</p>
+      </div>
+      <div class="tech-grid">
+        <div class="tech-card">
+          <h3><span class="icon">🛡</span> Production</h3>
+          <ul class="tech-list">
+            <li><span class="tech-name">Sentry</span> <span class="tech-desc">— Suivi des erreurs &amp; de la performance</span></li>
+            <li><span class="tech-name">HSTS &amp; CSP</span> <span class="tech-desc">— HTTPS renforcé, politique de contenu (navigateur)</span></li>
+            <li><span class="tech-name">En-têtes HTTP</span> <span class="tech-desc">— Protection clickjacking, isolation des origines, etc.</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="section-head">
+        <div>
+          <div class="line-accent"></div>
+          <h2>Périmètre fonctionnel (résumé)</h2>
+        </div>
+      </div>
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <table>
+          <thead>
+            <tr>
+              <th>Domaine</th>
+              <th>Livrable</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Public</td><td>Événements, galerie, parcours d’achat</td></tr>
+            <tr><td>Vente</td><td>Commandes, validation admin, POS</td></tr>
+            <tr><td>Billets</td><td>QR, PDF, emails</td></tr>
+            <tr><td>Contrôle</td><td>Scanner entrée</td></tr>
+            <tr><td>Admin</td><td>Dashboard multi-onglets (rôles admin / super admin), rapports, logs, paramètres</td></tr>
+            <tr><td>Ambassadeurs</td><td>Candidatures, validation, comptes, ventes COD, reporting &amp; exports</td></tr>
+            <tr><td>Carrières / RH</td><td>Offres par domaine, champs de formulaire personnalisés, templates, candidatures, export &amp; suivi</td></tr>
+            <tr><td>Médias</td><td>Upload, traitement image, CDN / objet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="section-head">
+        <div>
+          <div class="line-accent"></div>
+          <h2>Après ce projet — suivi &amp; autres missions</h2>
+        </div>
+        <p>
+          Au-delà du forfait de livraison, je reste disponible pour le <strong>support</strong>, la <strong>maintenance</strong> et le
+          <strong>développement continu</strong> ; en parallèle, je porte d’autres projets sous la bannière <strong>BTL — Born to Lead</strong>.
+        </p>
+      </div>
+      <div class="dashboard-split">
+        <div class="card post-project-card">
+          <h3>Support, maintenance &amp; évolutions</h3>
+          <p>
+            Les modalités (forfait mensuel, régie, ticket, SLA) se définissent <strong>avec vous</strong> selon le niveau d’engagement souhaité.
+            Typiquement, je peux prendre en charge ou vous accompagner sur&nbsp;:
+          </p>
+          <ul>
+            <li><strong>Correctifs</strong> et stabilisation après mise en production</li>
+            <li><strong>Veille</strong> : dépendances, correctifs de sécurité, compatibilité navigateurs / APIs</li>
+            <li><strong>Évolutions</strong> : petites fonctionnalités, ajustements admin, intégrations supplémentaires</li>
+            <li><strong>Performance &amp; fiabilité</strong> : diagnostics, optimisations, suivi des erreurs (ex. Sentry)</li>
+            <li><strong>Déploiement &amp; sauvegardes</strong> : procédures, environnements, documentation opérationnelle</li>
+          </ul>
+        </div>
+        <div class="card post-project-card">
+          <h3>BTL — Born to Lead</h3>
+          <p>
+            En dehors du cadre Andiamo Events, je recherche et réalise <strong>d’autres projets web / full stack</strong> : applications métier,
+            vitrines avancées, tableaux de bord, intégrations paiement ou outils tiers, etc.
+          </p>
+          <ul>
+            <li>Missions en <strong>développement</strong> et <strong>accompagnement technique</strong> sur la durée ou au forfait</li>
+            <li>Collaboration avec des structures qui veulent un <strong>produit maintenable</strong>, pas seulement une démo</li>
+            <li>Échange ouvert sur le <strong>périmètre</strong>, le <strong>planning</strong> et la <strong>facturation</strong> adaptés au projet</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="reveal" data-reveal>
+      <div class="section-head">
+        <div>
+          <div class="line-accent"></div>
+          <h2>Message pour la discussion</h2>
+        </div>
+      </div>
+      <blockquote>
+        Les <strong>4 000 TND</strong> reflètent le <strong>forfait de livraison</strong> d’une plateforme événementielle
+        <strong>développée en full stack</strong> : interfaces, API, sécurité,
+        <strong>réseau d’ambassadeurs</strong> (validations, ventes, reporting),
+        <strong>module carrières</strong> (offres, champs personnalisés, pipeline candidatures),
+        <strong>tableau de bord admin &amp; super admin</strong> (tous les onglets de pilotage),
+        <strong>paiement en ligne ClicToPay</strong> (monétique tunisienne), emails <strong>Brevo</strong>, mesure
+        (<strong>GA4</strong>, <strong>Meta Pixel</strong>, <strong>Clarity</strong>, <strong>Vercel</strong>) et supervision <strong>Sentry</strong>,
+        ainsi que données, médias, PDF/QR et mise en production. Le montant valorise l’<strong>ensemble du produit exploitable</strong>.
+        Dans le travail de conception et de développement, l’<strong>intelligence artificielle</strong> est utilisée comme
+        <strong>levier de productivité et de rapidité</strong> ; elle ne remplace pas le <strong>savoir-faire</strong> : chaque livrable
+        fait l’objet d’une <strong>relecture</strong>, de <strong>revues périodiques</strong> et d’<strong>améliorations continues</strong> portant sur la
+        <strong>qualité du code</strong>, les <strong>performances</strong> et la <strong>sécurité</strong> de la plateforme.
+      </blockquote>
+    </section>
+  </div>
+
+  <script>
+    var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function revealAll() {
+      document.querySelectorAll("[data-reveal]").forEach(function (el) {
+        el.classList.add("is-visible");
+      });
+    }
+    if (!reduceMotion && "IntersectionObserver" in window) {
+      var els = document.querySelectorAll("[data-reveal]");
+      var obs = new IntersectionObserver(
+        function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) {
+              e.target.classList.add("is-visible");
+            }
+          });
+        },
+        { rootMargin: "0px 0px -8% 0px", threshold: 0.08 }
+      );
+      els.forEach(function (el, i) {
+        el.style.transitionDelay = Math.min(i * 0.06, 0.45) + "s";
+        obs.observe(el);
+      });
+    } else {
+      revealAll();
+    }
+  </script>
+</body>
+</html>

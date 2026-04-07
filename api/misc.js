@@ -9,6 +9,9 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireFromRoot = createRequire(import.meta.url);
+const { fetchAmbassadorSocialLinkFromApplications } = requireFromRoot(
+  path.join(__dirname, 'lib', 'ambassador-social-link.cjs')
+);
 
 // Lazy-load ticket email builder so ambassador-sales/orders and other routes don't crash if this file is missing
 let _buildOnlineTicketEmailHtml = null;
@@ -31,6 +34,12 @@ const {
   normalizeMarketingHeaderImageUrl,
   sanitizeCampaignCtaLabel,
 } = requireFromRoot(path.join(__dirname, 'lib', 'campaign-email-html.cjs'));
+
+const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot(
+  path.join(__dirname, 'lib', 'online-payment-fee.cjs')
+);
+
+const { uploadTicketQrToR2OrSupabase } = requireFromRoot(path.join(__dirname, 'lib', 'r2-media.cjs'));
 
 let _createOfficialInvitationEmailHTML = null;
 function getCreateOfficialInvitationEmailHTML() {
@@ -1680,15 +1689,10 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
 
         const ambassadorsWithSocial = await Promise.all(
           shuffledAmbassadors.map(async (ambassador) => {
-            const { data: application } = await dbClient
-              .from('ambassador_applications')
-              .select('social_link')
-              .eq('phone_number', ambassador.phone)
-              .single();
-            
+            const social_link = await fetchAmbassadorSocialLinkFromApplications(dbClient, ambassador.phone);
             return {
               ...ambassador,
-              social_link: application?.social_link || null
+              social_link: social_link || null,
             };
           })
         );
@@ -3515,11 +3519,14 @@ We Create Memories`;
                 const secureToken = uuidv4();
                 const qrCodeBuffer = await QRCode.default.toBuffer(secureToken, { type: 'png', width: 300, margin: 2 });
                 const fileName = `tickets/${orderId}/${secureToken}.png`;
-                const { error: uploadError } = await storageClient.storage.from('tickets').upload(fileName, qrCodeBuffer, { contentType: 'image/png', upsert: true });
-                if (uploadError) continue;
-                const { data: urlData } = storageClient.storage.from('tickets').getPublicUrl(fileName);
+                let ticketQrUrl = null;
+                try {
+                  ticketQrUrl = await uploadTicketQrToR2OrSupabase(qrCodeBuffer, fileName, storageClient);
+                } catch {
+                  continue;
+                }
                 const { data: ticketData, error: ticketError } = await dbClient.from('tickets').insert({
-                  order_id: orderId, order_pass_id: pass.id, secure_token: secureToken, qr_code_url: urlData?.publicUrl || null, status: 'GENERATED', generated_at: new Date().toISOString()
+                  order_id: orderId, order_pass_id: pass.id, secure_token: secureToken, qr_code_url: ticketQrUrl, status: 'GENERATED', generated_at: new Date().toISOString()
                 }).select().single();
                 if (ticketError || !ticketData) continue;
                 tickets.push(ticketData);
@@ -3554,11 +3561,11 @@ We Create Memories`;
                 if (notes?.payment_fees?.total_with_fees != null) totalAmount = Number(notes.payment_fees.total_with_fees);
                 else if (orderPasses?.length) {
                   const sub = orderPasses.reduce((s, p) => s + (Number(p.price) || 0) * (p.quantity || 1), 0);
-                  if (sub > 0) totalAmount = Math.round((sub * 1.05) * 1000) / 1000;
+                  if (sub > 0) totalAmount = computeOnlinePaymentFees(sub).totalWithFees;
                 }
               } catch (_) { /* keep fallback */ }
             }
-            const feeAmount = typeof fullOrder.fee_amount === 'number' ? fullOrder.fee_amount : (isOnlineOrder && totalAmount > 0 ? Math.round((totalAmount / 1.05) * 0.05 * 1000) / 1000 : undefined);
+            const feeAmount = typeof fullOrder.fee_amount === 'number' ? fullOrder.fee_amount : (isOnlineOrder && totalAmount > 0 ? inferFeeFromInclusiveTotal(totalAmount) : undefined);
             const subtotalAmount = feeAmount != null ? totalAmount - feeAmount : undefined;
             if (fullOrder.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
               try {
@@ -3608,12 +3615,12 @@ We Create Memories`;
                 };
                 const formattedPhone = normalizePhone(rawPhone);
                 if (formattedPhone) {
-                  // For online orders always show total WITH fee: compute from order_passes (subtotal + 5%) so it's correct regardless of order row
+                  // For online orders always show total WITH fee: compute from order_passes + ONLINE_PAYMENT_FEE_RATE
                   const isOnline = fullOrder.payment_method === 'online' || fullOrder.source === 'platform_online';
                   let totalForSms;
                   if (isOnline && orderPasses?.length) {
                     const subtotal = orderPasses.reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.quantity) || 1), 0);
-                    totalForSms = subtotal > 0 ? Math.round((subtotal * 1.05) * 1000) / 1000 : (fullOrder.total_with_fees ?? fullOrder.total_price ?? 0);
+                    totalForSms = subtotal > 0 ? computeOnlinePaymentFees(subtotal).totalWithFees : (fullOrder.total_with_fees ?? fullOrder.total_price ?? 0);
                   } else {
                     totalForSms = fullOrder.total_with_fees ?? fullOrder.total_price ?? 0;
                   }

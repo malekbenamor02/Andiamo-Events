@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Andiamo Events — Email previews</title>
+  <style>
+    :root {
+      --brand: #E21836;
+      --bg: #0f0f10;
+      --panel: #1a1a1c;
+      --border: #2e2e32;
+      --text: #ececec;
+      --muted: #9a9a9e;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    aside {
+      width: min(320px, 38vw);
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+    }
+    aside header {
+      padding: 1rem 1rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    aside h1 {
+      margin: 0 0 0.25rem;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    aside p {
+      margin: 0;
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    nav {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem 0 1rem;
+    }
+    nav button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 0.55rem 1rem;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 0.8125rem;
+      line-height: 1.35;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+    }
+    nav button:hover {
+      background: rgba(226, 24, 54, 0.12);
+    }
+    nav button.active {
+      background: rgba(226, 24, 54, 0.18);
+      border-left-color: var(--brand);
+      font-weight: 600;
+    }
+    nav .group {
+      margin-top: 0.75rem;
+      padding: 0.35rem 1rem 0.2rem;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: #fff;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid #e5e5e5;
+      background: #fafafa;
+    }
+    .toolbar strong {
+      font-size: 0.875rem;
+      color: #1a1a1a;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .toolbar a, .toolbar span.hint {
+      font-size: 0.75rem;
+      color: var(--brand);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .toolbar a:hover { text-decoration: underline; }
+    .toolbar span.hint { color: #666; }
+    iframe {
+      flex: 1;
+      width: 100%;
+      border: 0;
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+  <aside>
+    <header>
+      <h1>Email previews</h1>
+      <p>Click to switch. Use ↑ ↓ to move. Regenerate: <code style="color:#ccc">node email-templates/generate-previews.cjs</code></p>
+    </header>
+    <nav id="nav" aria-label="Email templates"></nav>
+  </aside>
+  <main>
+    <div class="toolbar">
+      <strong id="currentLabel">Loading…</strong>
+      <a id="openTab" href="#" target="_blank" rel="noopener">Open in new tab</a>
+      <span class="hint" id="keyHint">↑ ↓ navigate</span>
+    </div>
+    <iframe id="preview" title="Email HTML preview" src="about:blank"></iframe>
+  </main>
+
+  <script>
+    (function () {
+      /** Keep in sync with email-templates/generate-previews.cjs; PDF via generate-sample-ticket-pdf.cjs */
+      const GROUPS = [
+        {
+          title: 'Transactional',
+          items: [
+            { id: '01', file: 'previews/01-digital-tickets-online.html', label: 'Digital tickets (with fees)' },
+            { id: '02', file: 'previews/02-digital-tickets-online-no-fees.html', label: 'Digital tickets (no fees)' },
+            { id: '03', file: 'previews/03-order-confirmation-client.html', label: 'Order confirmation — client' },
+            { id: '04', file: 'previews/04-order-confirmation-ambassador.html', label: 'Order confirmation — ambassador' },
+            { id: '05', file: 'previews/05-official-invitation.html', label: 'Official invitation' },
+          ],
+        },
+        {
+          title: 'Ticket PDF',
+          items: [
+            { id: '12', file: 'previews/sample-tickets-design.pdf', label: 'Sample ticket design (2 pages)' },
+          ],
+        },
+        {
+          title: 'Marketing & careers',
+          items: [
+            { id: '06', file: 'previews/06-marketing-campaign.html', label: 'Marketing / newsletter' },
+            { id: '07', file: 'previews/07-career-application-received.html', label: 'Career — application received' },
+            { id: '08', file: 'previews/08-career-application-approved.html', label: 'Career — approved' },
+          ],
+        },
+        {
+          title: 'Snapshots',
+          items: [
+            { id: '09', file: 'previews/09-security-alert.html', label: 'Security alert' },
+            { id: '10', file: 'previews/10-order-completion-cod-rich.html', label: 'COD completion (rich layout)' },
+            { id: '11', file: 'previews/11-order-completion-cod-simple.html', label: 'COD completion (simple layout)' },
+          ],
+        },
+      ];
+
+      const flat = GROUPS.flatMap((g) => g.items);
+      const nav = document.getElementById('nav');
+      const iframe = document.getElementById('preview');
+      const labelEl = document.getElementById('currentLabel');
+      const openTab = document.getElementById('openTab');
+      const buttons = [];
+
+      GROUPS.forEach((g) => {
+        const gt = document.createElement('div');
+        gt.className = 'group';
+        gt.textContent = g.title;
+        nav.appendChild(gt);
+        g.items.forEach((item) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = item.id + ' · ' + item.label;
+          b.dataset.file = item.file;
+          b.dataset.id = item.id;
+          b.dataset.label = item.label;
+          b.addEventListener('click', () => select(item, b));
+          nav.appendChild(b);
+          buttons.push(b);
+        });
+      });
+
+      function select(item, btn) {
+        iframe.src = item.file;
+        labelEl.textContent = item.label;
+        openTab.href = item.file;
+        buttons.forEach((x) => x.classList.toggle('active', x === btn));
+        history.replaceState(null, '', '#' + item.id);
+      }
+
+      function selectByIndex(i) {
+        if (i < 0 || i >= flat.length) return;
+        const item = flat[i];
+        const btn = buttons.find((b) => b.dataset.id === item.id);
+        if (btn) select(item, btn);
+      }
+
+      function currentIndex() {
+        const h = (location.hash || '').replace(/^#/, '');
+        const idx = flat.findIndex((x) => x.id === h);
+        return idx >= 0 ? idx : 0;
+      }
+
+      document.addEventListener('keydown', (e) => {
+        if (e.target.closest('input, textarea, [contenteditable]')) return;
+        const i = currentIndex();
+        if (e.key === 'ArrowDown' || e.key === 'j') {
+          e.preventDefault();
+          selectByIndex(Math.min(flat.length - 1, i + 1));
+        } else if (e.key === 'ArrowUp' || e.key === 'k') {
+          e.preventDefault();
+          selectByIndex(Math.max(0, i - 1));
+        }
+      });
+
+      window.addEventListener('hashchange', () => {
+        selectByIndex(currentIndex());
+      });
+
+      const start = currentIndex();
+      const first = flat[start];
+      const firstBtn = buttons.find((b) => b.dataset.id === first.id);
+      select(first, firstBtn);
+    })();
+  </script>
+</body>
+</html>

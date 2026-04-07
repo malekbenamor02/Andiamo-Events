@@ -1,5 +1,6 @@
 import type { OrderPass } from '@/types/orders';
 import { PaymentMethod } from '@/lib/constants/orderStatuses';
+import { computeOnlinePaymentFeesDisplay } from '@/lib/onlinePaymentFee';
 
 /**
  * Revenue and ticket count from line items when present; otherwise total_price / total.
@@ -78,7 +79,7 @@ export function getPaymentFeesFromNotes(order: { notes?: string | Record<string,
 
 /**
  * Revenue for KPIs, exports, and channel totals.
- * Paid online: amount including payment fees (`total_with_fees`, notes, or line subtotal × 1.05).
+ * Paid online: amount including payment fees (`total_with_fees`, notes, or line subtotal + configured online fee).
  * Pending online: line subtotal only (fees not applied until paid).
  * Other methods (e.g. ambassador cash): same as {@link getOrderLineRevenue}.
  */
@@ -117,7 +118,7 @@ export function getOrderReportRevenue(order: {
   }
 
   if (line > 0) {
-    return Number((line * 1.05).toFixed(2));
+    return Number(computeOnlinePaymentFeesDisplay(line).totalWithFees.toFixed(2));
   }
 
   const tp = Number(order.total_price);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { getApiBaseUrl } from "@/lib/api-routes";
+import { sanitizePhoneInput } from "@/lib/utils";
 import { formatDateDMY } from "@/lib/date-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -179,7 +180,7 @@ export default function PosDashboard({ outletSlug, language, toggleLanguage }: P
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div><Label className="text-[#B0B0B0]">{t.fullName} *</Label><Input className="mt-1 bg-[#252525] border-[#2A2A2A] text-white" value={customer.full_name} onChange={e => setCustomer(c => ({ ...c, full_name: e.target.value }))} required /></div>
-                <div><Label className="text-[#B0B0B0]">{t.phone} *</Label><Input className="mt-1 bg-[#252525] border-[#2A2A2A] text-white" value={customer.phone} onChange={e => setCustomer(c => ({ ...c, phone: e.target.value }))} required /></div>
+                <div><Label className="text-[#B0B0B0]">{t.phone} *</Label><Input className="mt-1 bg-[#252525] border-[#2A2A2A] text-white" value={customer.phone} onChange={e => setCustomer(c => ({ ...c, phone: sanitizePhoneInput(e.target.value) }))} required /></div>
                 <div><Label className="text-[#B0B0B0]">{t.email} *</Label><Input type="email" className="mt-1 bg-[#252525] border-[#2A2A2A] text-white" value={customer.email} onChange={e => setCustomer(c => ({ ...c, email: e.target.value }))} required /></div>
                 <div><Label className="text-[#B0B0B0]">{t.city}</Label><Input className="mt-1 bg-[#252525] border-[#2A2A2A] text-white" value={customer.city} onChange={e => setCustomer(c => ({ ...c, city: e.target.value }))} /></div>
                 <div><Label className="text-[#B0B0B0]">{t.ville}</Label><Input className="mt-1 bg-[#252525] border-[#2A2A2A] text-white" value={customer.ville} onChange={e => setCustomer(c => ({ ...c, ville: e.target.value }))} /></div>

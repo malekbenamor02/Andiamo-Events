@@ -12,6 +12,10 @@ import { PaymentMethod } from '@/lib/constants/orderStatuses';
 import { CustomerInfo } from '@/types/orders';
 import { SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
 
+/** Shown under EN/FR copy for ambassador cash payment */
+const AMBASSADOR_CASH_AR_HINT =
+  'أختار Ambassadeur يكلمك و تخلصو';
+
 interface EventPass {
   id: string;
   name: string;
@@ -107,16 +111,14 @@ export function PaymentOptionSelector({
     externalApp: 'External App Payment',
     ambassadorCash: 'Cash Payment (Ambassador)',
     payOnline: 'Pay securely online with credit/debit card',
-    payExternal: 'Pay through external payment app',
-    payCash: 'Choose an ambassador and pay cash to receive your order'
+    payExternal: 'Pay through external payment app'
   } : {
     selectPayment: 'Sélectionner le Mode de Paiement',
     online: 'Paiement en Ligne',
     externalApp: 'Paiement via Application Externe',
     ambassadorCash: 'Paiement Espèces (Ambassadeur)',
     payOnline: 'Payer en ligne en toute sécurité avec carte de crédit/débit',
-    payExternal: 'Payer via une application de paiement externe',
-    payCash: 'Choisissez un ambassadeur et payez en espèces pour recevoir votre commande'
+    payExternal: 'Payer via une application de paiement externe'
   };
 
   const getOptionIcon = (type: PaymentOption['option_type']) => {
@@ -151,8 +153,6 @@ export function PaymentOptionSelector({
         return t.payOnline;
       case 'external_app':
         return t.payExternal;
-      case 'ambassador_cash':
-        return t.payCash;
       default:
         return '';
     }
@@ -231,9 +231,9 @@ export function PaymentOptionSelector({
                   </div>
                   {!customerInfoComplete ? (
                     <p className="text-sm mt-1 text-muted-foreground/70">
-                      {language === 'en' 
-                        ? 'Please enter your information above to access the external payment link'
-                        : 'Veuillez entrer vos informations ci-dessus pour accéder au lien de paiement externe'}
+                      {language === 'en'
+                        ? 'Complete your contact details to access the external payment link'
+                        : 'Complétez vos coordonnées pour accéder au lien de paiement externe'}
                     </p>
                   ) : !compatibility.compatible ? (
                     <p className="text-sm mt-1 text-amber-500 font-medium">
@@ -310,9 +310,9 @@ export function PaymentOptionSelector({
                       </div>
                       {!customerInfoComplete ? (
                         <p className="text-sm mt-1 text-muted-foreground/70">
-                          {language === 'en' 
-                            ? 'Please enter your information above to select this payment method'
-                            : 'Veuillez entrer vos informations ci-dessus pour sélectionner ce mode de paiement'}
+                          {language === 'en'
+                            ? 'Complete your contact details to select this payment method'
+                            : 'Complétez vos coordonnées pour sélectionner ce mode de paiement'}
                         </p>
                       ) : !compatibility.compatible ? (
                         <p className="text-sm mt-1 text-amber-500 font-medium">
@@ -320,6 +320,16 @@ export function PaymentOptionSelector({
                             ? `This payment method is not available for: ${compatibility.incompatiblePasses.join(', ')}`
                             : `Cette méthode de paiement n'est pas disponible pour : ${compatibility.incompatiblePasses.join(', ')}`}
                         </p>
+                      ) : option.option_type === 'ambassador_cash' ? (
+                        <div className="mt-1 overflow-x-auto [-webkit-overflow-scrolling:touch] max-w-full">
+                          <p
+                            lang="ar"
+                            dir="rtl"
+                            className="text-sm text-muted-foreground text-right leading-relaxed whitespace-nowrap min-w-min"
+                          >
+                            {AMBASSADOR_CASH_AR_HINT}
+                          </p>
+                        </div>
                       ) : (
                         <p className="text-sm mt-1 text-muted-foreground">
                           {getOptionDescription(option)}

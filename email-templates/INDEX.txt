@@ -1,0 +1,43 @@
+Andiamo Events — email designs (Brevo SMTP / Nodemailer)
+
+-------------------------------------------------------------------
+BROWSER PREVIEWS (open these .html files locally)
+-------------------------------------------------------------------
+All-in-one gallery (sidebar + iframe, keyboard ↑ ↓ or j / k):
+  email-templates/email-gallery.html
+  Open that file in a browser, or serve the folder:  npx --yes serve email-templates -p 3456
+  then visit  http://localhost:3456/email-gallery.html
+
+Individual files live in: email-templates/previews/
+
+Regenerate from production template code:
+  node email-templates/generate-previews.cjs
+  (If you add a new preview file, also add it to the PREVIEWS list in email-gallery.html)
+
+Files:
+  01-digital-tickets-online.html          — api/lib/online-ticket-email-html.cjs (with fees row)
+  02-digital-tickets-online-no-fees.html  — same builder, no payment fees
+  03-order-confirmation-client.html       — api/lib/order-confirmation-email-html.cjs (client)
+  04-order-confirmation-ambassador.html — same (ambassador)
+  05-official-invitation.html             — api/lib/official-invitation-email-html.cjs
+  06-marketing-campaign.html              — api/lib/campaign-email-html.cjs
+  07-career-application-received.html   — api/lib/career-email-base-html.cjs
+  08-career-application-approved.html     — same base layout
+  09-security-alert.html                — snapshot (server.cjs inline alert)
+  10-order-completion-cod-rich.html     — snapshot (server send-order-completion-email)
+  11-order-completion-cod-simple.html   — snapshot (alternate completion template in server)
+
+Not generated here (still inline in code — similar visual family as 01/03):
+  • POS pending + ticket emails: api/pos.js, api/admin-pos.js
+  • Admin approve tickets: api/admin-approve-order.js
+  • Admin Dashboard marketing composer: src/pages/admin/Dashboard.tsx (buildMarketingEmailHtml)
+  • Career admin “new application” email: careerRoutes.cjs (buildCareerAdminNotificationEmail)
+
+-------------------------------------------------------------------
+SOURCE MODULES (edit design here, then re-run generate-previews.cjs)
+-------------------------------------------------------------------
+  api/lib/online-ticket-email-html.cjs
+  api/lib/order-confirmation-email-html.cjs
+  api/lib/official-invitation-email-html.cjs
+  api/lib/campaign-email-html.cjs
+  api/lib/career-email-base-html.cjs

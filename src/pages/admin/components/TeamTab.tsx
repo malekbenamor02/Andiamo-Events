@@ -21,7 +21,6 @@ import type { TeamMember } from "../types";
 
 export interface TeamTabProps {
   teamMembers: TeamMember[];
-  animatedTeamMembers: Set<string>;
   editingTeamMember: TeamMember | null;
   setEditingTeamMember: (v: TeamMember | null) => void;
   isTeamDialogOpen: boolean;
@@ -39,7 +38,6 @@ export interface TeamTabProps {
 
 export function TeamTab({
   teamMembers,
-  animatedTeamMembers,
   editingTeamMember,
   setEditingTeamMember,
   isTeamDialogOpen,
@@ -56,14 +54,14 @@ export function TeamTab({
 }: TeamTabProps) {
   return (
     <TabsContent value="team" className="space-y-6">
-      <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-        <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gradient-neon">
           Team Members
         </h2>
         <Button
           variant="default"
           onClick={onOpenAdd}
-          className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
+          className="transform hover:scale-105 transition-all duration-300"
         >
           <Plus className="w-4 h-4 mr-2 animate-pulse" />
           Add Team Member
@@ -73,11 +71,7 @@ export function TeamTab({
         {teamMembers.map((member) => (
           <div
             key={member.id}
-            className={`rounded-xl bg-card p-6 shadow-lg flex flex-col items-center justify-center transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-              animatedTeamMembers.has(member.id ?? "")
-                ? "animate-in slide-in-from-bottom-4 fade-in duration-700"
-                : "opacity-0 translate-y-8"
-            }`}
+            className="rounded-xl bg-card p-6 shadow-lg flex flex-col items-center justify-center transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
           >
             {member.photo_url && (
               <div className="animate-in zoom-in-95 duration-500 delay-200">
@@ -88,19 +82,19 @@ export function TeamTab({
                 />
               </div>
             )}
-            <h3 className="font-semibold mb-1 animate-in slide-in-from-left-4 duration-500 delay-300">
+            <h3 className="font-semibold mb-1">
               {member.name}
             </h3>
-            <p className="text-xs text-muted-foreground mb-1 animate-in slide-in-from-left-4 duration-500 delay-400">
+            <p className="text-xs text-muted-foreground mb-1">
               {member.role}
             </p>
             {member.bio && (
-              <p className="text-xs text-muted-foreground mb-2 line-clamp-2 animate-in slide-in-from-left-4 duration-500 delay-500">
+              <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
                 {member.bio}
               </p>
             )}
             {member.social_url && (
-              <div className="animate-in slide-in-from-bottom-4 duration-500 delay-600">
+              <div>
                 <a
                   href={member.social_url}
                   target="_blank"
@@ -111,7 +105,7 @@ export function TeamTab({
                 </a>
               </div>
             )}
-            <div className="flex gap-2 mt-2 animate-in slide-in-from-bottom-4 duration-500 delay-700">
+            <div className="flex gap-2 mt-2">
               <Button
                 size="sm"
                 variant="outline"
@@ -135,7 +129,7 @@ export function TeamTab({
         ))}
       </div>
       {teamMembers.length === 0 && (
-        <div className="text-center py-8 animate-in fade-in duration-500">
+        <div className="text-center py-8">
           <p className="text-muted-foreground animate-pulse">
             No team members found
           </p>
@@ -144,16 +138,16 @@ export function TeamTab({
 
       <Dialog open={isTeamDialogOpen} onOpenChange={setIsTeamDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
-          <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-            <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
+          <DialogHeader>
+            <DialogTitle>
               {editingTeamMember?.id
                 ? "Edit Team Member"
                 : "Add Team Member"}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={onSave} className="animate-in slide-in-from-bottom-4 duration-700 delay-300">
+          <form onSubmit={onSave}>
             <div className="space-y-4">
-              <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
+              <div>
                 <Label htmlFor="memberName">Name</Label>
                 <Input
                   id="memberName"
@@ -167,7 +161,7 @@ export function TeamTab({
                   className="transition-all duration-300 focus:scale-105"
                 />
               </div>
-              <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
+              <div>
                 <Label htmlFor="memberRole">Role</Label>
                 <Input
                   id="memberRole"
@@ -181,7 +175,7 @@ export function TeamTab({
                   className="transition-all duration-300 focus:scale-105"
                 />
               </div>
-              <div className="animate-in slide-in-from-left-4 duration-500 delay-600">
+              <div>
                 <Label htmlFor="memberBio">Bio</Label>
                 <Textarea
                   id="memberBio"
@@ -194,7 +188,7 @@ export function TeamTab({
                   className="transition-all duration-300 focus:scale-105"
                 />
               </div>
-              <div className="animate-in slide-in-from-right-4 duration-500 delay-700">
+              <div>
                 <Label htmlFor="memberPhoto">Photo</Label>
                 <div className="space-y-2">
                   {editingTeamMember?.photo_url && (
@@ -244,7 +238,7 @@ export function TeamTab({
                   </div>
                 </div>
               </div>
-              <div className="animate-in slide-in-from-left-4 duration-500 delay-800">
+              <div>
                 <Label htmlFor="memberSocial">Social URL</Label>
                 <Input
                   id="memberSocial"
@@ -259,7 +253,7 @@ export function TeamTab({
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-900">
+            <div className="flex justify-end gap-2 mt-6">
               <Button
                 type="button"
                 variant="outline"
@@ -285,15 +279,15 @@ export function TeamTab({
         onOpenChange={setIsDeleteTeamDialogOpen}
       >
         <DialogContent className="animate-in zoom-in-95 duration-300">
-          <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-            <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
+          <DialogHeader>
+            <DialogTitle>
               Delete Team Member
             </DialogTitle>
           </DialogHeader>
-          <p className="animate-in slide-in-from-bottom-4 duration-500 delay-300">
+          <p>
             Are you sure you want to delete this team member?
           </p>
-          <div className="flex justify-end gap-2 mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-500">
+          <div className="flex justify-end gap-2 mt-4">
             <DialogClose asChild>
               <Button
                 type="button"

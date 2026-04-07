@@ -77,8 +77,8 @@ export function AdminsTab({
 }: AdminsTabProps) {
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-        <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gradient-neon">
           {language === "en" ? "Admin Management" : "Gestion des Administrateurs"}
         </h2>
         <Dialog open={isAddAdminDialogOpen} onOpenChange={setIsAddAdminDialogOpen}>
@@ -88,7 +88,7 @@ export function AdminsTab({
                 setNewAdminData({ name: "", email: "", phone: "" });
                 setIsAddAdminDialogOpen(true);
               }}
-              className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
+              className="transform hover:scale-105 transition-all duration-300"
             >
               <Plus className="w-4 h-4 mr-2 animate-pulse" />
               {language === "en" ? "Add Admin" : "Ajouter un Admin"}
@@ -276,7 +276,7 @@ export function AdminsTab({
         </DialogContent>
       </Dialog>
 
-      <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-300">
+      <Card>
         <CardHeader>
           <CardTitle>
             {language === "en" ? "All Admins" : "Tous les Admins"}
@@ -387,7 +387,7 @@ export function AdminsTab({
       </Card>
 
       {/* Activity Logs */}
-      <Card className="animate-in slide-in-from-bottom-4 fade-in duration-700 delay-500">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <History className="w-5 h-5 text-primary" />

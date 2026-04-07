@@ -1,75 +1,128 @@
 import { supabase } from '@/integrations/supabase/client';
 import { sanitizeObject } from './sanitize';
+import { getApiBaseUrl } from '@/lib/api-routes';
 
 export interface FaviconSettings {
   favicon_ico?: string;
   favicon_32x32?: string;
   favicon_16x16?: string;
   apple_touch_icon?: string;
-  updated_at?: string; // Timestamp for cache-busting
+  updated_at?: string;
+}
+
+function extractKeyFromFaviconUrl(url: string): string | null {
+  const base = (import.meta.env.VITE_PUBLIC_ASSETS_BASE_URL || '').replace(/\/$/, '');
+  if (base && url.startsWith(base)) {
+    const path = url.slice(base.length).replace(/^\//, '');
+    return path || null;
+  }
+  try {
+    const urlParts = url.split('/');
+    const imagesIndex = urlParts.findIndex((part) => part === 'images');
+    if (imagesIndex !== -1 && urlParts[imagesIndex + 1]) {
+      return urlParts.slice(imagesIndex + 1).join('/');
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 /**
- * Upload favicon to Supabase Storage and update database
+ * Upload favicon to R2 (or Supabase fallback) and update database
  */
 export const uploadFavicon = async (
   file: File,
   type: 'favicon_ico' | 'favicon_32x32' | 'favicon_16x16' | 'apple_touch_icon'
 ): Promise<{ url: string; path: string; error?: string }> => {
-  try {
-    // Generate filename with timestamp to ensure unique URLs and force browser refresh
-    const fileExtension = file.name.split('.').pop();
-    const fileTimestamp = Date.now();
-    const fileName = `${type}_${fileTimestamp}.${fileExtension}`;
-    const filePath = `favicon/${fileName}`;
+  const apiBase = getApiBaseUrl();
 
-    // Delete old favicon files of the same type first
+  const tryR2 = async (): Promise<{ url: string; path: string; error?: string } | null> => {
     try {
-      const { data: oldFiles } = await supabase.storage
-        .from('images')
-        .list('favicon', {
-          search: type
-        });
-
-      if (oldFiles && oldFiles.length > 0) {
-        const filesToDelete = oldFiles
-          .filter(f => f.name.startsWith(`${type}_`))
-          .map(f => `favicon/${f.name}`);
-
-        if (filesToDelete.length > 0) {
-          await supabase.storage
-            .from('images')
-            .remove(filesToDelete);
-        }
-      }
-    } catch (deleteError) {
-      // Continue even if old file deletion fails
-      console.warn('Could not delete old favicon files:', deleteError);
-    }
-
-    // Upload to Supabase Storage with no cache to force refresh
-    const { data, error } = await supabase.storage
-      .from('images')
-      .upload(filePath, file, {
-        cacheControl: '0', // No cache to force browser refresh
-        upsert: false // Don't overwrite, use new filename
+      await fetch(`${apiBase}/api/media/favicon/cleanup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ faviconType: type }),
       });
 
-    if (error) {
-      console.error('Favicon upload error:', sanitizeObject(error));
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('scope', 'favicon');
+      fd.append('faviconType', type);
+      const res = await fetch(`${apiBase}/api/media/upload`, {
+        method: 'POST',
+        body: fd,
+        credentials: 'include',
+      });
+      let data: Record<string, unknown> = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
+      if (!res.ok) {
+        const code = data.code as string | undefined;
+        if (res.status === 503 && code === 'R2_DISABLED') return null;
+        if (res.status === 404) return null;
+        return {
+          url: '',
+          path: '',
+          error: (data.error as string) || res.statusText,
+        };
+      }
       return {
-        url: '',
-        path: '',
-        error: error.message
+        url: String(data.url || ''),
+        path: String(data.path || ''),
       };
+    } catch {
+      return null;
+    }
+  };
+
+  try {
+    const r2 = await tryR2();
+    let urlDataPublicUrl: string;
+    let filePath: string;
+
+    if (r2 && r2.url && !r2.error) {
+      urlDataPublicUrl = r2.url;
+      filePath = r2.path;
+    } else {
+      if (r2?.error) return { url: '', path: '', error: r2.error };
+
+      const fileExtension = file.name.split('.').pop();
+      const fileTimestamp = Date.now();
+      const fileName = `${type}_${fileTimestamp}.${fileExtension}`;
+      filePath = `favicon/${fileName}`;
+
+      try {
+        const { data: oldFiles } = await supabase.storage.from('images').list('favicon', {
+          search: type,
+        });
+        if (oldFiles && oldFiles.length > 0) {
+          const filesToDelete = oldFiles
+            .filter((f) => f.name.startsWith(`${type}_`))
+            .map((f) => `favicon/${f.name}`);
+          if (filesToDelete.length > 0) {
+            await supabase.storage.from('images').remove(filesToDelete);
+          }
+        }
+      } catch {
+        /* continue */
+      }
+
+      const { error } = await supabase.storage.from('images').upload(filePath, file, {
+        cacheControl: '0',
+        upsert: false,
+      });
+      if (error) {
+        return { url: '', path: '', error: error.message };
+      }
+      const { data: urlData } = supabase.storage.from('images').getPublicUrl(filePath);
+      urlDataPublicUrl = urlData.publicUrl;
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('images')
-      .getPublicUrl(filePath);
-
-    // Update favicon settings in database
     const { data: existingData } = await supabase
       .from('site_content')
       .select('content')
@@ -80,32 +133,29 @@ export const uploadFavicon = async (
     const settingsTimestamp = Date.now().toString();
     const updatedSettings: FaviconSettings = {
       ...currentSettings,
-      [type]: urlData.publicUrl,
-      updated_at: settingsTimestamp // Store timestamp for cache-busting
+      [type]: urlDataPublicUrl,
+      updated_at: settingsTimestamp,
     };
 
-    const { error: updateError, data: updateData } = await supabase
-      .from('site_content')
-      .upsert({
+    const { error: updateError, data: updateData } = await supabase.from('site_content').upsert(
+      {
         key: 'favicon_settings',
         content: updatedSettings,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'key'
-      });
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'key' }
+    );
 
     if (updateError) {
       console.error('Error updating favicon settings:', sanitizeObject(updateError));
       console.error('Update data:', sanitizeObject(updateData));
-      console.error('Settings being saved:', sanitizeObject(updatedSettings));
       return {
-        url: urlData.publicUrl,
+        url: urlDataPublicUrl,
         path: filePath,
-        error: updateError.message || 'Failed to save favicon settings to database'
+        error: updateError.message || 'Failed to save favicon settings to database',
       };
     }
 
-    // Verify the save was successful
     const { data: verifyData, error: verifyError } = await supabase
       .from('site_content')
       .select('content')
@@ -113,73 +163,66 @@ export const uploadFavicon = async (
       .single();
 
     if (verifyError || !verifyData) {
-      console.error('Failed to verify favicon settings save:', sanitizeObject(verifyError));
       return {
-        url: urlData.publicUrl,
+        url: urlDataPublicUrl,
         path: filePath,
-        error: 'Uploaded but failed to verify save. Please refresh and check.'
+        error: 'Uploaded but failed to verify save. Please refresh and check.',
       };
     }
 
-    return {
-      url: urlData.publicUrl,
-      path: filePath
-    };
-
+    return { url: urlDataPublicUrl, path: filePath };
   } catch (error) {
     console.error('Favicon upload failed:', sanitizeObject(error));
     return {
       url: '',
       path: '',
-      error: error instanceof Error ? error.message : 'Upload failed'
+      error: error instanceof Error ? error.message : 'Upload failed',
     };
   }
 };
 
-/**
- * Delete favicon from storage and database
- */
 export const deleteFavicon = async (
   type: 'favicon_ico' | 'favicon_32x32' | 'favicon_16x16' | 'apple_touch_icon',
   currentUrl: string
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    // Extract path from URL
-    let filePath: string | null = null;
-    try {
-      const urlParts = currentUrl.split('/');
-      const imagesIndex = urlParts.findIndex(part => part === 'images');
-      if (imagesIndex !== -1 && urlParts[imagesIndex + 1]) {
-        filePath = urlParts.slice(imagesIndex + 1).join('/');
-      }
-    } catch (e) {
-      console.warn('Could not extract file path from URL:', e);
-    }
+    const filePath = extractKeyFromFaviconUrl(currentUrl);
 
-    // Delete from storage if path is available
     if (filePath) {
-      const { error: deleteError } = await supabase.storage
-        .from('images')
-        .remove([filePath]);
-
-      if (deleteError) {
-        console.warn('Error deleting favicon from storage (continuing with database update):', deleteError);
+      const apiBase = getApiBaseUrl();
+      const res = await fetch(`${apiBase}/api/media/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ path: filePath }),
+      });
+      let data: Record<string, unknown> = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
+      const code = data.code as string | undefined;
+      const useSupabaseFallback =
+        !res.ok && ((res.status === 503 && code === 'R2_DISABLED') || res.status === 404);
+      if (!res.ok && useSupabaseFallback) {
+        await supabase.storage.from('images').remove([filePath]).catch(() => {});
       }
     }
 
-    // Update database - remove the favicon URL
     const { data: existingData, error: fetchError } = await supabase
       .from('site_content')
       .select('content')
       .eq('key', 'favicon_settings')
       .single();
 
-    // Handle various error cases gracefully
     if (fetchError) {
-      // PGRST116 = no rows returned (record doesn't exist)
-      // 406 = Not Acceptable
-      // 404 = Not Found
-      if (fetchError.code === 'PGRST116' || fetchError.code === 'P42P01' || fetchError.message?.includes('406') || fetchError.message?.includes('404')) {
+      if (
+        fetchError.code === 'PGRST116' ||
+        fetchError.code === 'P42P01' ||
+        fetchError.message?.includes('406') ||
+        fetchError.message?.includes('404')
+      ) {
         return { success: true };
       }
       throw new Error(`Failed to fetch favicon settings: ${fetchError.message || JSON.stringify(fetchError)}`);
@@ -189,38 +232,33 @@ export const deleteFavicon = async (
     const timestamp = Date.now().toString();
     const updatedSettings: FaviconSettings = {
       ...currentSettings,
-      updated_at: timestamp // Update timestamp even when deleting
+      updated_at: timestamp,
     };
     delete updatedSettings[type];
 
-    const { error: updateError } = await supabase
-      .from('site_content')
-      .upsert({
+    const { error: updateError } = await supabase.from('site_content').upsert(
+      {
         key: 'favicon_settings',
         content: updatedSettings,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'key'
-      });
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'key' }
+    );
 
     if (updateError) {
       throw new Error(`Database update failed: ${updateError.message || JSON.stringify(updateError)}`);
     }
 
     return { success: true };
-
   } catch (error) {
     console.error('Error deleting favicon:', sanitizeObject(error));
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 };
 
-/**
- * Fetch favicon settings from database
- */
 export const fetchFaviconSettings = async (): Promise<FaviconSettings> => {
   try {
     const { data, error } = await supabase
@@ -229,12 +267,13 @@ export const fetchFaviconSettings = async (): Promise<FaviconSettings> => {
       .eq('key', 'favicon_settings')
       .single();
 
-    // Handle various error cases gracefully
     if (error) {
-      // PGRST116 = no rows returned (record doesn't exist)
-      // 406 = Not Acceptable (might be RLS or format issue)
-      // 404 = Not Found
-      if (error.code === 'PGRST116' || error.code === 'P42P01' || error.message?.includes('406') || error.message?.includes('404')) {
+      if (
+        error.code === 'PGRST116' ||
+        error.code === 'P42P01' ||
+        error.message?.includes('406') ||
+        error.message?.includes('404')
+      ) {
         return {};
       }
       console.error('Error fetching favicon settings:', sanitizeObject(error));
@@ -247,7 +286,6 @@ export const fetchFaviconSettings = async (): Promise<FaviconSettings> => {
 
     return {};
   } catch (error) {
-    // Catch any unexpected errors
     console.error('Error fetching favicon settings:', error);
     return {};
   }

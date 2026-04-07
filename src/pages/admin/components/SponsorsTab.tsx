@@ -23,7 +23,6 @@ import type { Sponsor } from "../types";
 
 export interface SponsorsTabProps {
   sponsors: Sponsor[];
-  animatedSponsors: Set<string>;
   editingSponsor: Sponsor | null;
   setEditingSponsor: (v: Sponsor | null) => void;
   isSponsorDialogOpen: boolean;
@@ -41,7 +40,6 @@ export interface SponsorsTabProps {
 
 export function SponsorsTab({
   sponsors,
-  animatedSponsors,
   editingSponsor,
   setEditingSponsor,
   isSponsorDialogOpen,
@@ -58,14 +56,14 @@ export function SponsorsTab({
 }: SponsorsTabProps) {
   return (
     <TabsContent value="sponsors" className="space-y-6">
-      <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
-        <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gradient-neon">
           Sponsors
         </h2>
         <Button
           variant="default"
           onClick={onOpenAdd}
-          className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
+          className="transform hover:scale-105 transition-all duration-300"
         >
           <Plus className="w-4 h-4 mr-2 animate-pulse" />
           Add Sponsor
@@ -75,11 +73,7 @@ export function SponsorsTab({
         {sponsors.map((sponsor) => (
           <div
             key={sponsor.id}
-            className={`rounded-xl bg-card p-6 shadow-lg flex flex-col items-center justify-center transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl ${
-              animatedSponsors.has(sponsor.id ?? "")
-                ? "animate-in slide-in-from-bottom-4 fade-in duration-700"
-                : "opacity-0 translate-y-8"
-            }`}
+            className="rounded-xl bg-card p-6 shadow-lg flex flex-col items-center justify-center transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
           >
             {sponsor.logo_url && (
               <div className="animate-in zoom-in-95 duration-500 delay-200">
@@ -90,18 +84,18 @@ export function SponsorsTab({
                 />
               </div>
             )}
-            <h3 className="font-semibold mb-1 animate-in slide-in-from-left-4 duration-500 delay-300">
+            <h3 className="font-semibold mb-1">
               {sponsor.name}
             </h3>
-            <p className="text-xs text-muted-foreground mb-2 animate-in slide-in-from-left-4 duration-500 delay-400">
+            <p className="text-xs text-muted-foreground mb-2">
               {sponsor.description || sponsor.category}
             </p>
-            <div className="flex gap-2 mb-2 animate-in slide-in-from-bottom-4 duration-500 delay-500">
+            <div className="flex gap-2 mb-2">
               <Badge className="bg-primary text-white animate-pulse">
                 Global
               </Badge>
             </div>
-            <div className="flex gap-2 mt-2 animate-in slide-in-from-bottom-4 duration-500 delay-600">
+            <div className="flex gap-2 mt-2">
               <Button
                 size="sm"
                 variant="outline"
@@ -125,7 +119,7 @@ export function SponsorsTab({
         ))}
       </div>
       {sponsors.length === 0 && (
-        <div className="text-center py-8 animate-in fade-in duration-500">
+        <div className="text-center py-8">
           <p className="text-muted-foreground animate-pulse">
             No sponsors found
           </p>
@@ -134,14 +128,14 @@ export function SponsorsTab({
 
       <Dialog open={isSponsorDialogOpen} onOpenChange={setIsSponsorDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300">
-          <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-            <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
+          <DialogHeader>
+            <DialogTitle>
               {editingSponsor?.id ? "Edit Sponsor" : "Add Sponsor"}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={onSave} className="animate-in slide-in-from-bottom-4 duration-700 delay-300">
+          <form onSubmit={onSave}>
             <div className="space-y-4">
-              <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
+              <div>
                 <Label htmlFor="sponsorName">Name</Label>
                 <Input
                   id="sponsorName"
@@ -155,7 +149,7 @@ export function SponsorsTab({
                   className="transition-all duration-300 focus:scale-105"
                 />
               </div>
-              <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
+              <div>
                 <Label htmlFor="sponsorDescription">Description</Label>
                 <Textarea
                   id="sponsorDescription"
@@ -168,7 +162,7 @@ export function SponsorsTab({
                   className="transition-all duration-300 focus:scale-105"
                 />
               </div>
-              <div className="animate-in slide-in-from-left-4 duration-500 delay-600">
+              <div>
                 <Label htmlFor="sponsorWebsite">Website URL</Label>
                 <Input
                   id="sponsorWebsite"
@@ -182,7 +176,7 @@ export function SponsorsTab({
                   className="transition-all duration-300 focus:scale-105"
                 />
               </div>
-              <div className="animate-in slide-in-from-right-4 duration-500 delay-700">
+              <div>
                 <Label htmlFor="sponsorCategory">Category</Label>
                 <Input
                   id="sponsorCategory"
@@ -195,7 +189,7 @@ export function SponsorsTab({
                   className="transition-all duration-300 focus:scale-105"
                 />
               </div>
-              <div className="animate-in slide-in-from-left-4 duration-500 delay-800">
+              <div>
                 <Label>Logo</Label>
                 <FileUpload
                   onFileSelect={(file) =>
@@ -213,7 +207,7 @@ export function SponsorsTab({
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-900">
+            <div className="flex justify-end gap-2 mt-6">
               <Button
                 type="button"
                 variant="outline"
@@ -236,15 +230,15 @@ export function SponsorsTab({
 
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="animate-in zoom-in-95 duration-300">
-          <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-            <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
+          <DialogHeader>
+            <DialogTitle>
               Delete Sponsor
             </DialogTitle>
           </DialogHeader>
-          <p className="animate-in slide-in-from-bottom-4 duration-500 delay-300">
+          <p>
             Are you sure you want to delete this sponsor?
           </p>
-          <div className="flex justify-end gap-2 mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-500">
+          <div className="flex justify-end gap-2 mt-4">
             <DialogClose asChild>
               <Button
                 type="button"

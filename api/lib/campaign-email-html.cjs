@@ -1,6 +1,6 @@
 'use strict';
 
-const { emailLogoHeaderHtml } = require('./email-branding.cjs');
+const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./email-branding.cjs');
 
 function escapeHtmlAttr(s) {
   return String(s)
@@ -58,26 +58,18 @@ function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${emailSubject.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</title>
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #1A1A1A; background: #FFFFFF; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
-    a { color: #E21836; text-decoration: underline; }
-    .email-wrapper { max-width: 600px; margin: 0 auto; background: #FFFFFF; }
-    .content-card { margin: 0 20px 30px; padding: 36px 28px; border: 1px solid #e8e8e8; border-radius: 8px; }
-    .title-section { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid #eee; text-align: center; }
-    .title { font-size: 22px; font-weight: 600; color: #1A1A1A; margin: 0 0 8px 0; text-align: center; }
-    .subtitle { font-size: 15px; color: #555; margin: 0; font-weight: 400; text-align: center; }
-    .message-content { font-size: 16px; color: #333; margin-bottom: 20px; line-height: 1.7; }
-    .support-section { background: #E8E8E8; border-left: 3px solid rgba(226,24,54,0.3); padding: 20px 25px; margin: 28px 0; border-radius: 4px; }
-    .support-text { font-size: 14px; color: #666666; line-height: 1.7; margin: 0; }
-    .support-email { color: #E21836 !important; text-decoration: none; font-weight: 500; }
-    .closing-section { text-align: center; margin: 36px 0 0; padding-top: 28px; border-top: 1px solid #eee; }
-    .slogan { font-size: 22px; font-style: italic; color: #E21836; font-weight: 300; margin: 0 0 20px 0; }
-    .signature { font-size: 16px; color: #666666; line-height: 1.7; margin: 0; }
-    .footer { margin-top: 50px; padding: 40px 20px 30px; text-align: center; border-top: 1px solid rgba(0,0,0,0.1); }
-    .footer-text { font-size: 12px; color: #999999; margin-bottom: 20px; line-height: 1.6; }
-    .footer-links { margin: 15px auto 0; text-align: center; }
-    .footer-link { color: #999999; text-decoration: none; font-size: 13px; margin: 0 8px; }
-    .footer-link:hover { color: #E21836 !important; }
+${transactionalEmailDarkStylesCss()}
+    .content-card { padding: 36px 28px; border-radius: 8px; }
+    .title-section { margin-bottom: 28px; padding-bottom: 20px; text-align: center; }
+    .title { font-size: 22px; margin: 0 0 8px 0; text-align: center; }
+    .subtitle { font-size: 15px; text-align: center; }
+    .message-content { font-size: 16px; color: #C8C8C8; margin-bottom: 20px; line-height: 1.7; }
+    .closing-section { margin: 36px 0 0; padding-top: 28px; }
+    .slogan { font-size: 22px; margin: 0 0 20px 0; }
+    a { text-decoration: underline; }
     @media only screen and (max-width: 600px) { .content-card { margin: 0 12px 20px; padding: 28px 20px; } }
   </style>
 </head>
@@ -105,7 +97,7 @@ function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', 
       <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
       <div class="footer-links">
         <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link">Instagram</a>
-        <span style="color: #999999;">&bull;</span>
+        <span style="color: #888888;">&bull;</span>
         <a href="https://malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link">Website</a>
       </div>
     </div>

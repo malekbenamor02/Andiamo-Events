@@ -56,7 +56,6 @@ export interface EventsTabProps {
   setConfirmDelete: (t: { kind: 'delete-pass'; passId: string; passName: string; eventId: string } | null) => void;
   isPassManagementLoading: boolean;
   setIsPassManagementLoading: (v: boolean) => void;
-  animatedEvents: Set<string>;
   handleDeleteEvent: (eventId: string) => void;
 }
 
@@ -65,8 +64,8 @@ export function EventsTab(p: EventsTabProps) {
 
   return (
     <TabsContent value="events" className="space-y-6">
-<div className="flex justify-between items-center mb-4 animate-in slide-in-from-top-4 fade-in duration-700">
-                  <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">Events Management</h2>
+<div className="flex justify-between items-center mb-4">
+                  <h2 className="text-2xl font-bold text-gradient-neon">Events Management</h2>
                   <Dialog open={p.isEventDialogOpen} onOpenChange={p.setIsEventDialogOpen}>
                     <DialogTrigger asChild>
                       <Button 
@@ -83,7 +82,7 @@ export function EventsTab(p: EventsTabProps) {
                           p.setPassValidationErrors({});
                           p.setIsEventDialogOpen(true);
                         }}
-                        className="animate-in slide-in-from-right-4 duration-1000 delay-300 transform hover:scale-105 transition-all duration-300"
+                        className="transform hover:scale-105 transition-all duration-300"
                       >
                         <Plus className="w-4 h-4 mr-2 animate-pulse" />
                         {p.t.add}
@@ -93,14 +92,14 @@ export function EventsTab(p: EventsTabProps) {
                       className="max-w-4xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-300"
                       translate="no"
                     >
-                      <DialogHeader className="animate-in slide-in-from-top-4 duration-500">
-                        <DialogTitle className="animate-in slide-in-from-left-4 duration-700">
+                      <DialogHeader>
+                        <DialogTitle>
                           {p.editingEvent?.id ? 'Edit Event' : 'Add New Event'}
                         </DialogTitle>
                       </DialogHeader>
-                      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700 delay-300">
+                      <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4">
-                          <div className="animate-in slide-in-from-left-4 duration-500 delay-400">
+                          <div>
                             <Label htmlFor="eventName">{p.t.eventName}</Label>
                             <Input
                               id="eventName"
@@ -109,7 +108,7 @@ export function EventsTab(p: EventsTabProps) {
                               className="transition-all duration-300 focus:scale-105"
                             />
                           </div>
-                          <div className="animate-in slide-in-from-right-4 duration-500 delay-500">
+                          <div>
                             <Label htmlFor="eventDate">{p.t.eventDate}</Label>
                             <Input
                               id="eventDate"
@@ -486,7 +485,7 @@ export function EventsTab(p: EventsTabProps) {
                           </div>
                         )}
                       </div>
-                      <div className="flex justify-end gap-2 mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-800">
+                      <div className="flex justify-end gap-2 mt-6">
                         <DialogClose asChild>
                           <Button 
                             variant="outline"
@@ -514,30 +513,36 @@ export function EventsTab(p: EventsTabProps) {
                     p.setIsPassManagementDialogOpen(open);
                     if (!open) p.setSelectedPassForSettings(null);
                   }}>
-                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                      <DialogHeader>
-                        <div className="flex items-center justify-between pr-10">
-                          <div>
-                            <DialogTitle className="flex items-center gap-2">
+                    <DialogContent className="w-[min(100%,calc(100vw-1.25rem))] max-w-4xl max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 gap-3">
+                      <DialogHeader className="space-y-0">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 pr-10 sm:pr-12">
+                          <div className="min-w-0 flex-1 text-left">
+                            <DialogTitle className="flex flex-wrap items-center gap-2 text-left">
                               {p.selectedPassForSettings ? (
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="mr-2 -ml-2"
+                                  className="mr-0 sm:mr-2 -ml-2 shrink-0"
                                   onClick={() => p.setSelectedPassForSettings(null)}
                                 >
                                   <ArrowLeft className="w-4 h-4 mr-1" />
                                   {p.language === 'en' ? 'Back' : 'Retour'}
                                 </Button>
                               ) : null}
-                              <Package className="w-5 h-5" />
-                              {p.selectedPassForSettings
-                                ? p.selectedPassForSettings.name
-                                : (p.language === 'en' ? 'Pass Stock Management' : 'Gestion des Stocks de Passes')}
+                              <Package className="w-5 h-5 shrink-0" />
+                              <span className="min-w-0 break-words">
+                                {p.selectedPassForSettings
+                                  ? p.selectedPassForSettings.name
+                                  : (p.language === 'en' ? 'Pass Stock Management' : 'Gestion des Stocks de Passes')}
+                              </span>
                             </DialogTitle>
                             {p.eventForPassManagement && !p.selectedPassForSettings && (
-                              <p className="text-sm text-muted-foreground mt-2">
-                                {p.eventForPassManagement.name} â€¢ {formatDateDMY(p.eventForPassManagement.date, p.language)}
+                              <p className="text-sm text-muted-foreground mt-2 break-words">
+                                {p.eventForPassManagement.name}
+                                <span aria-hidden className="mx-1.5">
+                                  ·
+                                </span>
+                                {formatDateDMY(p.eventForPassManagement.date, p.language)}
                               </p>
                             )}
                           </div>
@@ -545,6 +550,7 @@ export function EventsTab(p: EventsTabProps) {
                             <Button
                               size="sm"
                               variant="default"
+                              className="shrink-0 w-full sm:w-auto"
                               onClick={() => {
                                 p.setNewPassForm({
                                   name: '',
@@ -1079,49 +1085,138 @@ export function EventsTab(p: EventsTabProps) {
                             <p>{p.language === 'en' ? 'No passes found for this event' : 'Aucun pass trouvé pour cet événement'}</p>
                           </div>
                         ) : (
-                          /* List view: compact table */
-                          <div className="rounded-lg border overflow-hidden">
-                            <table className="w-full">
-                              <thead className="bg-muted/50">
-                                <tr>
-                                  <th className="text-left p-3 text-sm font-medium">{p.language === 'en' ? 'Pass' : 'Pass'}</th>
-                                  <th className="text-left p-3 text-sm font-medium">{p.language === 'en' ? 'Price' : 'Prix'}</th>
-                                  <th className="text-left p-3 text-sm font-medium">{p.language === 'en' ? 'Sold' : 'Vendus'}</th>
-                                  <th className="text-left p-3 text-sm font-medium">{p.language === 'en' ? 'Remaining' : 'Restants'}</th>
-                                  <th className="text-left p-3 text-sm font-medium">{p.language === 'en' ? 'Status' : 'Statut'}</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {p.passesForManagement.map((pass, index) => {
-                                  const remaining = pass.remaining_quantity ?? (pass.max_quantity != null ? Math.max(0, pass.max_quantity - (pass.sold_quantity || 0)) : 0);
-                                  return (
-                                    <tr
-                                      key={pass.id || index}
-                                      className="border-t cursor-pointer hover:bg-muted/30 transition-colors"
-                                      onClick={() => p.setSelectedPassForSettings(pass)}
-                                    >
-                                      <td className="p-3">
-                                        <div className="flex items-center gap-2">
-                                          {pass.is_primary && <Badge variant="default" className="text-xs">{p.language === 'en' ? 'PRIMARY' : 'PRINCIPAL'}</Badge>}
-                                          <span className="font-medium">{pass.name}</span>
-                                        </div>
-                                      </td>
-                                      <td className="p-3 font-semibold text-primary">{pass.price.toFixed(2)} TND</td>
-                                      <td className="p-3">{pass.sold_quantity || 0}</td>
-                                      <td className="p-3 font-medium">{remaining}</td>
-                                      <td className="p-3">
-                                        <div className="flex flex-wrap gap-1">
-                                          {pass.is_sold_out && <Badge variant="destructive" className="text-xs">{p.language === 'en' ? 'Sold Out' : 'Épuisé'}</Badge>}
-                                          {!pass.is_active && <Badge variant="secondary" className="text-xs">{p.language === 'en' ? 'Inactive' : 'Inactif'}</Badge>}
-                                          {!pass.is_sold_out && pass.is_active && <Badge variant="outline" className="text-xs text-green-600">{p.language === 'en' ? 'Active' : 'Actif'}</Badge>}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
+                          /* List view: cards on small screens, table from md up */
+                          <>
+                            <div className="md:hidden space-y-3">
+                              {p.passesForManagement.map((pass, index) => {
+                                const remaining =
+                                  pass.remaining_quantity ??
+                                  (pass.max_quantity != null
+                                    ? Math.max(0, pass.max_quantity - (pass.sold_quantity || 0))
+                                    : 0);
+                                return (
+                                  <button
+                                    key={pass.id || index}
+                                    type="button"
+                                    onClick={() => p.setSelectedPassForSettings(pass)}
+                                    className="w-full text-left rounded-lg border border-border bg-card/30 p-4 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  >
+                                    <div className="flex flex-wrap items-center gap-2 gap-y-1 mb-3">
+                                      {pass.is_primary ? (
+                                        <Badge variant="default" className="text-xs shrink-0">
+                                          {p.language === 'en' ? 'PRIMARY' : 'PRINCIPAL'}
+                                        </Badge>
+                                      ) : null}
+                                      <span className="font-semibold text-base break-words">{pass.name}</span>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-3 text-sm">
+                                      <div>
+                                        <span className="text-muted-foreground text-xs block mb-0.5">
+                                          {p.language === 'en' ? 'Price' : 'Prix'}
+                                        </span>
+                                        <span className="font-semibold text-primary tabular-nums">
+                                          {pass.price.toFixed(2)} TND
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span className="text-muted-foreground text-xs block mb-0.5">
+                                          {p.language === 'en' ? 'Sold' : 'Vendus'}
+                                        </span>
+                                        <span className="font-medium tabular-nums">{pass.sold_quantity || 0}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-muted-foreground text-xs block mb-0.5">
+                                          {p.language === 'en' ? 'Remaining' : 'Restants'}
+                                        </span>
+                                        <span className="font-medium tabular-nums">{remaining}</span>
+                                      </div>
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-1.5">
+                                      {pass.is_sold_out && (
+                                        <Badge variant="destructive" className="text-xs">
+                                          {p.language === 'en' ? 'Sold Out' : 'Épuisé'}
+                                        </Badge>
+                                      )}
+                                      {!pass.is_active && (
+                                        <Badge variant="secondary" className="text-xs">
+                                          {p.language === 'en' ? 'Inactive' : 'Inactif'}
+                                        </Badge>
+                                      )}
+                                      {!pass.is_sold_out && pass.is_active && (
+                                        <Badge variant="outline" className="text-xs text-green-600 border-green-600/40">
+                                          {p.language === 'en' ? 'Active' : 'Actif'}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="hidden md:block rounded-lg border overflow-x-auto">
+                              <table className="w-full min-w-[640px] text-sm">
+                                <thead className="bg-muted/50">
+                                  <tr>
+                                    <th className="text-left p-3 font-medium">{p.language === 'en' ? 'Pass' : 'Pass'}</th>
+                                    <th className="text-left p-3 font-medium">{p.language === 'en' ? 'Price' : 'Prix'}</th>
+                                    <th className="text-left p-3 font-medium">{p.language === 'en' ? 'Sold' : 'Vendus'}</th>
+                                    <th className="text-left p-3 font-medium">{p.language === 'en' ? 'Remaining' : 'Restants'}</th>
+                                    <th className="text-left p-3 font-medium">{p.language === 'en' ? 'Status' : 'Statut'}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {p.passesForManagement.map((pass, index) => {
+                                    const remaining =
+                                      pass.remaining_quantity ??
+                                      (pass.max_quantity != null
+                                        ? Math.max(0, pass.max_quantity - (pass.sold_quantity || 0))
+                                        : 0);
+                                    return (
+                                      <tr
+                                        key={pass.id || index}
+                                        className="border-t cursor-pointer hover:bg-muted/30 transition-colors"
+                                        onClick={() => p.setSelectedPassForSettings(pass)}
+                                      >
+                                        <td className="p-3">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            {pass.is_primary && (
+                                              <Badge variant="default" className="text-xs shrink-0">
+                                                {p.language === 'en' ? 'PRIMARY' : 'PRINCIPAL'}
+                                              </Badge>
+                                            )}
+                                            <span className="font-medium">{pass.name}</span>
+                                          </div>
+                                        </td>
+                                        <td className="p-3 font-semibold text-primary whitespace-nowrap">
+                                          {pass.price.toFixed(2)} TND
+                                        </td>
+                                        <td className="p-3 tabular-nums">{pass.sold_quantity || 0}</td>
+                                        <td className="p-3 font-medium tabular-nums">{remaining}</td>
+                                        <td className="p-3">
+                                          <div className="flex flex-wrap gap-1">
+                                            {pass.is_sold_out && (
+                                              <Badge variant="destructive" className="text-xs">
+                                                {p.language === 'en' ? 'Sold Out' : 'Épuisé'}
+                                              </Badge>
+                                            )}
+                                            {!pass.is_active && (
+                                              <Badge variant="secondary" className="text-xs">
+                                                {p.language === 'en' ? 'Inactive' : 'Inactif'}
+                                              </Badge>
+                                            )}
+                                            {!pass.is_sold_out && pass.is_active && (
+                                              <Badge variant="outline" className="text-xs text-green-600">
+                                                {p.language === 'en' ? 'Active' : 'Actif'}
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </>
                         )}
                       </div>
                       <div className="flex justify-end gap-2 mt-6">
@@ -1138,11 +1233,7 @@ export function EventsTab(p: EventsTabProps) {
                   {p.events.map((event, index) => (
                     <Card 
                       key={event.id}
-                      className={`transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg ${
-                        p.animatedEvents.has(event.id)
-                          ? "animate-in slide-in-from-bottom-4 fade-in duration-700"
-                          : "opacity-100"
-                      }`}
+                      className="transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-lg"
                     >
                       <CardContent className="p-6">
                         {event.poster_url && (
@@ -1154,20 +1245,20 @@ export function EventsTab(p: EventsTabProps) {
                             />
                           </div>
                         )}
-                        <h3 className="text-lg font-semibold mb-2 animate-in slide-in-from-left-4 duration-500 delay-200">
+                        <h3 className="text-lg font-semibold mb-2">
                           {event.name}
                         </h3>
                         <div className="space-y-2 text-sm text-muted-foreground">
-                          <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-300">
+                          <div className="flex items-center space-x-2">
                             <CalendarIcon className="w-4 h-4 animate-pulse" />
                             <span>{formatDateDMY(event.date, p.language)}</span>
                           </div>
-                          <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-400">
+                          <div className="flex items-center space-x-2">
                             <MapPin className="w-4 h-4 animate-pulse" />
                             <span>{event.venue}, {event.city}</span>
                           </div>
                           {event.passes && event.passes.length > 0 && (
-                            <div className="flex items-center space-x-2 animate-in slide-in-from-left-4 duration-500 delay-500">
+                            <div className="flex items-center space-x-2">
                               <DollarSign className="w-4 h-4 animate-pulse" />
                               <span>
                                 {event.passes.length} {p.language === 'en' ? 'pass(es)' : 'pass(es)'} available
@@ -1175,7 +1266,7 @@ export function EventsTab(p: EventsTabProps) {
                             </div>
                           )}
                         </div>
-                        <div className="flex flex-col items-stretch gap-3 mt-4 animate-in slide-in-from-bottom-4 duration-500 delay-700">
+                        <div className="flex flex-col items-stretch gap-3 mt-4">
                           {/* Row 1: Edit (modify event) */}
                           <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 p-2 shadow-sm">
                             <Button 
@@ -1330,8 +1421,8 @@ export function EventsTab(p: EventsTabProps) {
                   ))}
                 </div>
                 {p.events.length === 0 && (
-                  <div className="text-center py-8 animate-in fade-in duration-500">
-                    <p className="text-muted-foreground animate-pulse">{p.t.noEvents}</p>
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">{p.t.noEvents}</p>
                   </div>
                 )}
     </TabsContent>

@@ -258,7 +258,7 @@ export interface OnlineOrder {
   quantity?: number;
   pass_type?: string;
   total_price?: number;
-  /** 5% online payment fee amount when applicable (online orders). */
+  /** Online payment fee amount when applicable (`ONLINE_PAYMENT_FEE_RATE`, default 5%). */
   fee_amount?: number | null;
   /** Canonical fee-inclusive total for online payments. */
   total_with_fees?: number | null;

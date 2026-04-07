@@ -8,8 +8,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Ambassador } from '@/types/orders';
-import { User, Phone, MapPin, AlertCircle } from 'lucide-react';
+import { User, MapPin, AlertCircle } from 'lucide-react';
 import { useActiveAmbassadors } from '@/hooks/useActiveAmbassadors';
+
+/** Replaces EN/FR subtitle under “Choose your ambassador” */
+const SELECT_AMBASSADOR_AR_DESC =
+  'أختار أقرب Ambassadeur يكلمك و تخلصو';
 
 interface AmbassadorSelectorProps {
   city: string;
@@ -30,23 +34,17 @@ export function AmbassadorSelector({
 
   const t = language === 'en' ? {
     selectAmbassador: 'Choose Your Ambassador',
-    selectAmbassadorDesc: 'Select an ambassador based on your location to complete your order',
     noAmbassadors: 'No active ambassadors available in this area',
     noAmbassadorsDesc: 'Please select a different city or ville, or choose a different payment method',
     loading: 'Loading ambassadors...',
     error: 'Error loading ambassadors',
-    phone: 'Phone',
-    location: 'Location',
     enterInfoFirst: 'Please enter your information above to see available ambassadors in your area'
   } : {
     selectAmbassador: 'Choisissez Votre Ambassadeur',
-    selectAmbassadorDesc: 'Sélectionnez un ambassadeur selon votre localisation pour finaliser votre commande',
     noAmbassadors: 'Aucun ambassadeur actif disponible dans cette zone',
     noAmbassadorsDesc: 'Veuillez sélectionner une autre ville ou quartier, ou choisir un autre mode de paiement',
     loading: 'Chargement des ambassadeurs...',
     error: 'Erreur lors du chargement des ambassadeurs',
-    phone: 'Téléphone',
-    location: 'Emplacement',
     enterInfoFirst: 'Veuillez entrer vos informations ci-dessus pour voir les ambassadeurs disponibles dans votre région'
   };
 
@@ -104,8 +102,16 @@ export function AmbassadorSelector({
   return (
     <div className="space-y-4">
       <div>
-        <Label className="text-base font-semibold">{t.selectAmbassador}</Label>
-        <p className="text-sm text-muted-foreground mt-1">{t.selectAmbassadorDesc}</p>
+        <Label className="text-base font-semibold text-primary">{t.selectAmbassador}</Label>
+        <div className="mt-1 overflow-x-auto [-webkit-overflow-scrolling:touch] max-w-full">
+          <p
+            lang="ar"
+            dir="rtl"
+            className="text-sm text-muted-foreground text-right leading-relaxed whitespace-nowrap min-w-min"
+          >
+            {SELECT_AMBASSADOR_AR_DESC}
+          </p>
+        </div>
       </div>
       
       <RadioGroup
@@ -140,18 +146,12 @@ export function AmbassadorSelector({
                         {ambassador.full_name}
                       </Label>
                     </div>
-                    <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                      <div className="flex items-center space-x-2">
-                        <Phone className="w-3 h-3" />
-                        <span>{ambassador.phone}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <MapPin className="w-3 h-3" />
-                        <span>
-                          {ambassador.city}
-                          {ambassador.ville && `, ${ambassador.ville}`}
-                        </span>
-                      </div>
+                    <div className="mt-2 flex items-center space-x-2 text-sm text-muted-foreground">
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      <span>
+                        {ambassador.city}
+                        {ambassador.ville && `, ${ambassador.ville}`}
+                      </span>
                     </div>
                   </div>
                 </div>

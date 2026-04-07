@@ -43,9 +43,9 @@ export function AioEventsTab({
 }: AioEventsTabProps) {
   return (
     <TabsContent value="aio-events" className="space-y-6">
-      <div className="flex justify-between items-center animate-in slide-in-from-top-4 fade-in duration-700">
+      <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-gradient-neon animate-in slide-in-from-left-4 duration-1000">
+          <h2 className="text-2xl font-bold text-gradient-neon">
             AIO Events Submissions
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
@@ -59,7 +59,7 @@ export function AioEventsTab({
             onClick={onExport}
             disabled={loading}
             variant="outline"
-            className="animate-in slide-in-from-right-4 duration-1000"
+           
           >
             {loading ? <Loader size="sm" className="mr-2" /> : <Download className="w-4 h-4 mr-2" />}
             {language === "en" ? "Export Excel" : "Exporter Excel"}
@@ -68,7 +68,7 @@ export function AioEventsTab({
             onClick={() => onRefresh(true)}
             disabled={loading}
             variant="outline"
-            className="animate-in slide-in-from-right-4 duration-1000"
+           
           >
             {loading ? <Loader size="sm" className="mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
             {language === "en" ? "Refresh" : "Actualiser"}

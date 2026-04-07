@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,8 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { getApiBaseUrl, API_ROUTES } from '@/lib/api-routes';
 import { formatDateDMY, isPassPurchaseWindowClosed } from '@/lib/date-utils';
-import { generateSlug } from '@/lib/utils';
+import { cn, generateSlug, normalizeCommonEmailTypos } from '@/lib/utils';
+import { computeOnlinePaymentFeesDisplay } from '@/lib/onlinePaymentFee';
 
 // New unified order system components
 import { CustomerInfoForm } from '@/components/orders/CustomerInfoForm';
@@ -27,7 +28,20 @@ import { PageMeta } from '@/components/PageMeta';
 import { trackEvent } from '@/lib/ga';
 import { trackMetaEvent, trackMetaViewContent, trackMetaInitiateCheckout } from '@/lib/meta';
 import { createMetaEventId, getMetaAttributionContext } from '@/lib/metaAttribution';
-
+import { v4 as uuidv4 } from 'uuid';
+import {
+  passPurchaseValidationCopy,
+  validatePassPurchasePasses,
+  validatePassPurchaseIdentity,
+  validatePassPurchaseEmailStep,
+  validatePassPurchaseLocation,
+  validatePassPurchasePaymentStep,
+  validatePassPurchaseFull,
+  validatePassPurchaseCustomer,
+  PASS_PURCHASE_FIELD_ERROR_AR,
+  firstPassPurchaseErrorField,
+  firstPassPurchaseErrorMessage,
+} from '@/lib/orders/passPurchaseValidation';
 interface EventPass {
   id: string;
   name: string;
@@ -67,6 +81,16 @@ interface PassPurchaseProps {
   language: 'en' | 'fr';
 }
 
+const WIZARD_STEP_COUNT = 5;
+
+/** Tunisian / Darija Arabic — main wizard card titles (steps 1–4). */
+const PASS_PURCHASE_AR = {
+  passSelection: 'أختار نوع Ticket',
+  namePhone: 'أكتب إسمك و نومروك',
+  email: 'تأكد mail صحيح بش يجيك فيه ticket',
+  cityVille: 'أختار وين تسكن ولا أقرب بلاصة ليك',
+} as const;
+
 const PassPurchase = ({ language }: PassPurchaseProps) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -94,7 +118,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [selectedAmbassadorDetails, setSelectedAmbassadorDetails] = useState<Ambassador | null>(null);
   const [purchaseBlockedReason, setPurchaseBlockedReason] = useState<'completed' | null>(null);
-  
+  const [wizardStep, setWizardStep] = useState(1);
+  const [emailConfirm, setEmailConfirm] = useState('');
+  const [stepDirection, setStepDirection] = useState<'forward' | 'back'>('forward');
+  /** Glass card that wraps the step fields — scroll this into view on Continue/Back so it stays visible (esp. mobile). */
+  const wizardFieldsBoxRef = useRef<HTMLDivElement>(null);
+  /** Step 5 footer (terms + Back / Submit) — scroll here on mobile after ambassador pick. */
+  const step5SubmitScrollRef = useRef<HTMLDivElement>(null);
+  /** Skip auto-scroll on first paint so event details stay visible at the top on load. */
+  const skipInitialWizardScrollRef = useRef(true);
+
   // Fetch payment options
   const { data: paymentOptions = [], isLoading: loadingPaymentOptions } = usePaymentOptions();
   
@@ -106,15 +139,18 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 
-  // Load reCAPTCHA v3 script for order creation
+  // Load reCAPTCHA v3 only on the final wizard step (payment / submit) — avoids badge + scoring on steps 1–4
   useEffect(() => {
     if (!RECAPTCHA_SITE_KEY || typeof window === 'undefined') return;
+    if (wizardStep !== WIZARD_STEP_COUNT) return;
     if ((window as any).grecaptcha) return;
+
     const script = document.createElement('script');
     script.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
     script.async = true;
     script.defer = true;
     document.body.appendChild(script);
+
     return () => {
       const existing = document.querySelector('script[src*="recaptcha/api.js"]');
       if (existing?.parentNode) existing.parentNode.removeChild(existing);
@@ -122,7 +158,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       if (badge?.parentNode) badge.parentNode.removeChild(badge);
       delete (window as any).grecaptcha;
     };
-  }, [RECAPTCHA_SITE_KEY]);
+  }, [RECAPTCHA_SITE_KEY, wizardStep]);
 
   const RECAPTCHA_TIMEOUT_MS = 15000;
 
@@ -134,8 +170,13 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       window.location.hostname.startsWith('172.');
     if (isLocalhost) return 'localhost-bypass-token';
     if (!RECAPTCHA_SITE_KEY || !(window as any).grecaptcha) return null;
+    const gr = (window as any).grecaptcha;
+    await new Promise<void>((resolve) => {
+      if (typeof gr.ready === 'function') gr.ready(() => resolve());
+      else resolve();
+    });
     try {
-      const executePromise = (window as any).grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'order_create' });
+      const executePromise = gr.execute(RECAPTCHA_SITE_KEY, { action: 'order_create' });
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error('RECAPTCHA_TIMEOUT')), RECAPTCHA_TIMEOUT_MS);
       });
@@ -156,6 +197,20 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       setSelectedAmbassadorDetails(null);
     }
   }, [paymentMethod]);
+
+  // Narrow viewports: choosing an ambassador leaves summary + Submit below the fold — scroll them into view
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (wizardStep !== WIZARD_STEP_COUNT) return;
+    if (paymentMethod !== PaymentMethod.AMBASSADOR_CASH) return;
+    if (!selectedAmbassadorId) return;
+    if (!window.matchMedia('(max-width: 767px)').matches) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        step5SubmitScrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      });
+    });
+  }, [selectedAmbassadorId, paymentMethod, wizardStep]);
 
   // Clear payment method if it becomes incompatible with selected passes (UX only - backend is authoritative)
   useEffect(() => {
@@ -229,6 +284,24 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     }
   }, [event?.id, purchaseBlockedReason, language, event?.name]);
 
+  // Scroll the wizard fields card into view on every step change (Continue / Back), not on first load (event details stay first).
+  useEffect(() => {
+    if (!event || loading || purchaseBlockedReason || submitted) return;
+    if (skipInitialWizardScrollRef.current) {
+      skipInitialWizardScrollRef.current = false;
+      return;
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        wizardFieldsBoxRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+          inline: 'nearest',
+        });
+      });
+    });
+  }, [wizardStep, event?.id, loading, purchaseBlockedReason, submitted]);
+
   const t = {
     en: {
       title: "Purchase Pass",
@@ -253,7 +326,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       selectPaymentMethod: "Please select a payment method",
       termsRequired: "You must accept the Terms of Service and Refund & Cancellation Policy",
       thankYou: "Thank you for your order!",
-      orderDetails: "Order Details"
+      orderDetails: "Order Details",
+      stepOf: "Step {n} of {total}",
+      stepIdentity: "Your name & phone",
+      stepEmail: "Your email",
+      stepLocation: "City & neighborhood",
+      stepPaymentSummary: "Payment & order summary",
+      completePaymentToSubmit: "Select a payment method above to continue.",
+      next: "Continue",
+      back: "Back",
     },
     fr: {
       title: "Acheter un Pass",
@@ -278,7 +359,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       selectPaymentMethod: "Veuillez sélectionner une méthode de paiement",
       termsRequired: "Vous devez accepter les Conditions d'Utilisation et la Politique de Remboursement et d'Annulation",
       thankYou: "Merci pour votre commande!",
-      orderDetails: "Détails de la Commande"
+      orderDetails: "Détails de la Commande",
+      stepOf: "Étape {n} sur {total}",
+      stepIdentity: "Nom et téléphone",
+      stepEmail: "Votre email",
+      stepLocation: "Ville et quartier",
+      stepPaymentSummary: "Paiement et récapitulatif",
+      completePaymentToSubmit: "Choisissez un mode de paiement ci-dessus pour continuer.",
+      next: "Continuer",
+      back: "Retour",
     }
   };
 
@@ -614,63 +703,130 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     return passes;
   };
 
-  // Validation
-  const validateForm = (): boolean => {
-    const errors: Record<string, string> = {};
+  const validationCopy = passPurchaseValidationCopy(language);
 
-    // Check at least one pass selected
-    const hasSelectedPass = Object.values(selectedPasses).some(qty => qty > 0);
-    if (!hasSelectedPass) {
-      errors.passes = t[language].selectAtLeastOnePass;
+  const runFullValidation = (): Record<string, string> => {
+    const emailNorm = normalizeCommonEmailTypos(customerInfo.email);
+    const confirmNorm = normalizeCommonEmailTypos(emailConfirm);
+    return validatePassPurchaseFull({
+      selectedPasses,
+      customerInfo: { ...customerInfo, email: emailNorm },
+      emailConfirm: confirmNorm,
+      paymentMethod,
+      selectedAmbassadorId,
+      copy: validationCopy,
+    });
+  };
+
+  const firstWizardStepForErrors = (errors: Record<string, string>): number | null => {
+    if (errors.passes) return 1;
+    if (errors.full_name || errors.phone) return 2;
+    if (errors.email || errors.email_confirm) return 3;
+    if (errors.city || errors.ville) return 4;
+    if (errors.paymentMethod || errors.ambassador) return 5;
+    return null;
+  };
+
+  /** EN/FR line plus optional Darija hint for name / phone / email (toast). */
+  const passPurchaseValidationToastDescription = (errors: Record<string, string>) => {
+    const primary = firstPassPurchaseErrorMessage(errors);
+    if (!primary) return t[language].fixFormErrors;
+    const field = firstPassPurchaseErrorField(errors);
+    const ar = field ? PASS_PURCHASE_FIELD_ERROR_AR[field] : undefined;
+    if (ar) {
+      return (
+        <>
+          <span className="block">{primary}</span>
+          <span lang="ar" dir="rtl" className="block mt-1.5 text-right text-[0.95em] leading-snug opacity-95">
+            {ar}
+          </span>
+        </>
+      );
     }
+    return primary;
+  };
 
-    // Validate customer info (required for all payment methods)
-    if (!customerInfo.full_name.trim() || customerInfo.full_name.trim().length < 2) {
-      errors.full_name = language === 'en' ? 'Please enter a valid name' : 'Veuillez entrer un nom valide';
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!customerInfo.email.trim() || !emailRegex.test(customerInfo.email)) {
-      errors.email = language === 'en' ? 'Please enter a valid email' : 'Veuillez entrer un email valide';
-    }
-
-    const phoneRegex = /^[2594][0-9]{7}$/;
-    if (!customerInfo.phone.trim() || !phoneRegex.test(customerInfo.phone)) {
-      errors.phone = language === 'en' ? 'Invalid phone number format' : 'Format de numéro invalide';
-    }
-
-    if (!customerInfo.city.trim()) {
-      errors.city = t[language].required;
-    }
-
-    // Validate payment method
-    if (!paymentMethod) {
-      errors.paymentMethod = t[language].selectPaymentMethod;
-    }
-
-    // Validate ambassador selection for ambassador_cash
-    if (paymentMethod === PaymentMethod.AMBASSADOR_CASH) {
-      if (!selectedAmbassadorId) {
-        errors.ambassador = language === 'en' ? 'Please select an ambassador' : 'Veuillez sélectionner un ambassadeur';
+  const goNext = () => {
+    setStepDirection('forward');
+    const copy = validationCopy;
+    let e: Record<string, string> = {};
+    switch (wizardStep) {
+      case 1:
+        e = validatePassPurchasePasses(selectedPasses, copy.selectAtLeastOnePass);
+        break;
+      case 2:
+        e = validatePassPurchaseIdentity(customerInfo, copy);
+        break;
+      case 3: {
+        const emailNorm = normalizeCommonEmailTypos(customerInfo.email);
+        const confirmNorm = normalizeCommonEmailTypos(emailConfirm);
+        if (emailNorm !== customerInfo.email) {
+          setCustomerInfo((prev) => ({ ...prev, email: emailNorm }));
+        }
+        if (confirmNorm !== emailConfirm) {
+          setEmailConfirm(confirmNorm);
+        }
+        e = validatePassPurchaseEmailStep(emailNorm, confirmNorm, copy);
+        break;
       }
+      case 4:
+        e = validatePassPurchaseLocation(customerInfo, copy);
+        break;
+      default:
+        break;
     }
+    if (Object.keys(e).length > 0) {
+      setValidationErrors(e);
+      wizardFieldsBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    setValidationErrors({});
+    setWizardStep((s) => Math.min(WIZARD_STEP_COUNT, s + 1));
+  };
 
+  const goBack = () => {
+    setStepDirection('back');
+    setValidationErrors({});
+    setWizardStep((s) => Math.max(1, s - 1));
+  };
+
+  const validateForm = (): { valid: boolean; errors: Record<string, string> } => {
+    const emailNorm = normalizeCommonEmailTypos(customerInfo.email);
+    const confirmNorm = normalizeCommonEmailTypos(emailConfirm);
+    if (emailNorm !== customerInfo.email || confirmNorm !== emailConfirm) {
+      setCustomerInfo((prev) => ({ ...prev, email: emailNorm }));
+      setEmailConfirm(confirmNorm);
+    }
+    const errors = runFullValidation();
     setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+    return { valid: Object.keys(errors).length === 0, errors };
   };
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Radix <button>s used to default to type="submit" inside <form>; ignore stray submits from earlier steps.
+    if (wizardStep !== WIZARD_STEP_COUNT) {
+      return;
+    }
+
     // Automatically accept terms when submitting
     setTermsAccepted(true);
 
-    if (!validateForm()) {
+    const { valid, errors: submitErrors } = validateForm();
+    if (!valid) {
+      const st = firstWizardStepForErrors(submitErrors);
+      if (st) setWizardStep(st);
       toast({
         title: t[language].error,
-        description: t[language].fixFormErrors,
+        description: passPurchaseValidationToastDescription(submitErrors),
         variant: "destructive",
+      });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          wizardFieldsBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
       });
       return;
     }
@@ -720,7 +876,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         content_type: 'product',
       });
 
-      const idempotencyKey = crypto.randomUUID();
+      const idempotencyKey = uuidv4();
       let recaptchaToken: string | null = null;
       try {
         recaptchaToken = await executeRecaptchaForOrder();
@@ -752,8 +908,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         setProcessing(false);
         return;
       }
+      const customerInfoForOrder: CustomerInfo = {
+        ...customerInfo,
+        email: normalizeCommonEmailTypos(customerInfo.email),
+      };
       const order = await createOrder({
-        customerInfo,
+        customerInfo: customerInfoForOrder,
         passes: selectedPassesArray,
         paymentMethod,
         ambassadorId: paymentMethod === PaymentMethod.AMBASSADOR_CASH ? selectedAmbassadorId || undefined : undefined,
@@ -909,13 +1069,18 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   // Calculate values that might be needed in early returns
   const totalPrice = calculateTotal();
   const isOnlinePayment = paymentMethod === PaymentMethod.ONLINE;
-  const onlineFeeAmount =
+  const onlineFees =
     isOnlinePayment && totalPrice > 0
-      ? Number((totalPrice * 0.05).toFixed(3))
-      : 0;
-  const totalWithFees = isOnlinePayment ? totalPrice + onlineFeeAmount : totalPrice;
+      ? computeOnlinePaymentFeesDisplay(totalPrice)
+      : null;
+  const onlineFeeAmount = onlineFees?.feeAmount ?? 0;
+  const totalWithFees = onlineFees?.totalWithFees ?? totalPrice;
   const hasSelectedPasses = Object.values(selectedPasses).some(qty => qty > 0);
   const selectedPassesArray = getSelectedPassesArray();
+  const step5ReadyToSubmit =
+    hasSelectedPasses &&
+    !!paymentMethod &&
+    (paymentMethod !== PaymentMethod.AMBASSADOR_CASH || !!selectedAmbassadorId);
 
   // Success screen - show OrderSuccessScreen for ambassador cash, simple message for others
   if (submitted) {
@@ -986,7 +1151,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           <Button
             variant="ghost"
             onClick={() => navigate('/events')}
-            className="hidden sm:inline-flex w-fit shrink-0 text-white hover:text-primary hover:bg-transparent"
+            className="hidden sm:inline-flex w-fit shrink-0 text-white hover:text-white/85 hover:bg-white/5"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             {t[language].backToEvents}
@@ -998,7 +1163,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Event Details */}
+            {/* Event Details — first on all breakpoints */}
             <div className="lg:col-span-1">
               <Card className="glass">
                 <CardHeader>
@@ -1046,14 +1211,57 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
               </Card>
             </div>
 
-            {/* Main Form */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* STEP 1: Pass Selection */}
-              <Card className="glass">
+            {/* Main Form — wizard; scroll-into-view on step change keeps this card visible after Continue/Back */}
+            <div className="lg:col-span-2 flex flex-col gap-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm text-muted-foreground">
+                <span aria-live="polite">
+                  {t[language].stepOf.replace('{n}', String(wizardStep)).replace('{total}', String(WIZARD_STEP_COUNT))}
+                </span>
+                <div className="flex gap-1.5 justify-center sm:justify-end" aria-hidden>
+                  {Array.from({ length: WIZARD_STEP_COUNT }, (_, i) => i + 1).map((n) => (
+                    <span
+                      key={n}
+                      className={cn(
+                        'h-2 w-6 sm:w-8 rounded-full transition-colors',
+                        n === wizardStep ? 'bg-primary' : n < wizardStep ? 'bg-primary/40' : 'bg-muted'
+                      )}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <Card
+                ref={wizardFieldsBoxRef}
+                className={cn(
+                  'glass scroll-mt-24',
+                  wizardStep === 5 && 'border-2 border-primary/30'
+                )}
+              >
                 <CardHeader>
-                  <CardTitle className="text-gradient-neon">{t[language].passSelection}</CardTitle>
+                  <CardTitle
+                    className={cn(
+                      'text-gradient-neon',
+                      wizardStep <= 4 && 'text-right leading-snug'
+                    )}
+                    {...(wizardStep <= 4 ? { lang: 'ar', dir: 'rtl' } : {})}
+                  >
+                    {wizardStep === 1 && PASS_PURCHASE_AR.passSelection}
+                    {wizardStep === 2 && PASS_PURCHASE_AR.namePhone}
+                    {wizardStep === 3 && PASS_PURCHASE_AR.email}
+                    {wizardStep === 4 && PASS_PURCHASE_AR.cityVille}
+                    {wizardStep === 5 && t[language].stepPaymentSummary}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  <div
+                    key={wizardStep}
+                    className={cn(
+                      'animate-in fade-in duration-300',
+                      stepDirection === 'back' ? 'slide-in-from-left-4' : 'slide-in-from-right-4'
+                    )}
+                  >
+                  {wizardStep === 1 && (
+                  <div className="space-y-4">
                   {event.passes && event.passes.length > 0 ? (
                     <div className={`${event.passes.length === 1 ? 'flex justify-center' : 'grid grid-cols-1 md:grid-cols-2'} gap-4`}>
                       {event.passes.map((pass: any) => {
@@ -1161,30 +1369,43 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                   {validationErrors.passes && (
                     <p className="text-red-500 text-sm mt-4">{validationErrors.passes}</p>
                   )}
-                </CardContent>
-              </Card>
+                  </div>
+                  )}
 
-              {/* STEP 2: Customer Information */}
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle className="text-gradient-neon">{t[language].customerInfo}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CustomerInfoForm
-                    customerInfo={customerInfo}
-                    onChange={setCustomerInfo}
-                    errors={validationErrors}
-                    language={language}
-                  />
-                </CardContent>
-              </Card>
+                  {wizardStep === 2 && (
+                    <CustomerInfoForm
+                      customerInfo={customerInfo}
+                      onChange={setCustomerInfo}
+                      errors={validationErrors}
+                      language={language}
+                      sections="identity"
+                    />
+                  )}
 
-              {/* STEP 3: Payment Options */}
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle className="text-gradient-neon">{t[language].payment}</CardTitle>
-                </CardHeader>
-                <CardContent>
+                  {wizardStep === 3 && (
+                    <CustomerInfoForm
+                      customerInfo={customerInfo}
+                      onChange={setCustomerInfo}
+                      errors={validationErrors}
+                      language={language}
+                      sections="email"
+                      emailConfirm={emailConfirm}
+                      onEmailConfirmChange={setEmailConfirm}
+                    />
+                  )}
+
+                  {wizardStep === 4 && (
+                    <CustomerInfoForm
+                      customerInfo={customerInfo}
+                      onChange={setCustomerInfo}
+                      errors={validationErrors}
+                      language={language}
+                      sections="location"
+                    />
+                  )}
+
+                  {wizardStep === 5 && (
+                  <div className="space-y-6">
                   {loadingPaymentOptions ? (
                     <div className="text-center py-8 text-muted-foreground">
                       {language === 'en' ? 'Loading payment options...' : 'Chargement des options de paiement...'}
@@ -1223,37 +1444,27 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                         }}
                         onExternalAppClick={async () => {
                           // Validate customer info only (pass selection not required)
-                          const errors: Record<string, string> = {};
-
-                          // Validate customer info
-                          if (!customerInfo.full_name.trim() || customerInfo.full_name.trim().length < 2) {
-                            errors.full_name = language === 'en' ? 'Please enter a valid name' : 'Veuillez entrer un nom valide';
+                          const emailNorm = normalizeCommonEmailTypos(customerInfo.email);
+                          const confirmNorm = normalizeCommonEmailTypos(emailConfirm);
+                          if (emailNorm !== customerInfo.email) {
+                            setCustomerInfo((prev) => ({ ...prev, email: emailNorm }));
                           }
-
-                          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                          if (!customerInfo.email.trim() || !emailRegex.test(customerInfo.email)) {
-                            errors.email = language === 'en' ? 'Please enter a valid email' : 'Veuillez entrer un email valide';
+                          if (confirmNorm !== emailConfirm) {
+                            setEmailConfirm(confirmNorm);
                           }
-
-                          const phoneRegex = /^[2594][0-9]{7}$/;
-                          if (!customerInfo.phone.trim() || !phoneRegex.test(customerInfo.phone)) {
-                            errors.phone = language === 'en' ? 'Invalid phone number format' : 'Format de numéro invalide';
-                          }
-
-                          if (!customerInfo.city.trim()) {
-                            errors.city = t[language].required;
-                          }
-
-                          // Check ville requirement
-                          if ((customerInfo.city === 'Sousse' || customerInfo.city === 'Tunis') && !customerInfo.ville) {
-                            errors.ville = language === 'en' ? 'Ville is required' : 'La ville est requise';
-                          }
+                          const errors = validatePassPurchaseCustomer(
+                            { ...customerInfo, email: emailNorm },
+                            confirmNorm,
+                            validationCopy
+                          );
 
                           if (Object.keys(errors).length > 0) {
                             setValidationErrors(errors);
+                            const st = firstWizardStepForErrors(errors);
+                            if (st) setWizardStep(st);
                             toast({
                               title: t[language].error,
-                              description: t[language].fixFormErrors,
+                              description: passPurchaseValidationToastDescription(errors),
                               variant: "destructive",
                             });
                             return;
@@ -1284,7 +1495,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                                 'Content-Type': 'application/json'
                               },
                               body: JSON.stringify({
-                                customerInfo,
+                                customerInfo: {
+                                  ...customerInfo,
+                                  email: normalizeCommonEmailTypos(customerInfo.email),
+                                },
                                 eventInfo,
                                 selectedPasses: selectedPassesArray,
                                 totalPrice: totalPrice,
@@ -1329,47 +1543,31 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       )}
                     </>
                   )}
-                </CardContent>
-              </Card>
+                  {paymentMethod === PaymentMethod.AMBASSADOR_CASH && (
+                    <div className="space-y-3 pt-2">
+                      <AmbassadorSelector
+                        city={customerInfo.city}
+                        ville={customerInfo.ville}
+                        selectedAmbassadorId={selectedAmbassadorId}
+                        onSelect={(id) => {
+                          setSelectedAmbassadorId(id);
+                          if (validationErrors.ambassador) {
+                            setValidationErrors((prev) => {
+                              const next = { ...prev };
+                              delete next.ambassador;
+                              return next;
+                            });
+                          }
+                        }}
+                        language={language}
+                      />
+                      {validationErrors.ambassador && (
+                        <p className="text-red-500 text-sm mt-1">{validationErrors.ambassador}</p>
+                      )}
+                    </div>
+                  )}
 
-              {/* STEP 4: Ambassador Selector (if ambassador_cash selected) */}
-              {paymentMethod === PaymentMethod.AMBASSADOR_CASH && (
-                <Card className="glass">
-                  <CardHeader>
-                    <CardTitle className="text-gradient-neon">
-                      {language === 'en' ? 'Choose Your Ambassador' : 'Choisissez Votre Ambassadeur'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <AmbassadorSelector
-                      city={customerInfo.city}
-                      ville={customerInfo.ville}
-                      selectedAmbassadorId={selectedAmbassadorId}
-                      onSelect={setSelectedAmbassadorId}
-                      language={language}
-                    />
-                    {validationErrors.ambassador && (
-                      <p className="text-red-500 text-sm mt-4">{validationErrors.ambassador}</p>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* STEP 5: Order Summary */}
-              {/* Show summary only after:
-                  - Passes are selected
-                  - Payment method is selected
-                  - If ambassador cash, ambassador must also be selected */}
-              {hasSelectedPasses && paymentMethod && (
-                paymentMethod === PaymentMethod.AMBASSADOR_CASH 
-                  ? selectedAmbassadorId 
-                  : true
-              ) && (
-                <Card className="glass border-2 border-primary/30">
-                  <CardHeader>
-                    <CardTitle className="text-gradient-neon">{t[language].summary}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
+                  <div className="space-y-4 border-t border-border/40 pt-6 mt-2">
                     <OrderSummary
                       selectedPasses={selectedPassesArray}
                       totalPrice={totalPrice}
@@ -1380,15 +1578,14 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       feeAmount={onlineFeeAmount}
                       totalWithFees={totalWithFees}
                     />
-                    
-                    {/* Terms Acceptance Notice */}
-                    <div className="mt-4 pt-4 border-t">
+
+                    <div className="pt-2 border-t">
                       <p className="text-sm text-muted-foreground text-center">
                         {language === 'en' ? (
                           <>
                             By submitting this order, you accept our{' '}
-                            <Link 
-                              to="/terms" 
+                            <Link
+                              to="/terms"
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-primary hover:underline underline-offset-2"
@@ -1400,8 +1597,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                         ) : (
                           <>
                             En soumettant cette commande, vous acceptez nos{' '}
-                            <Link 
-                              to="/terms" 
+                            <Link
+                              to="/terms"
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-primary hover:underline underline-offset-2"
@@ -1413,27 +1610,70 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                         )}
                       </p>
                     </div>
-                    
-                    {/* Submit Button */}
-                    <Button
-                      type="submit"
-                      disabled={processing || !hasSelectedPasses}
-                      className="w-full btn-gradient disabled:opacity-50 mt-4"
-                    >
-                      {processing ? (
-                        <>
-                          <Loader size="sm" className="mr-2 shrink-0 [background:white]" />
-                          {t[language].processing}
-                        </>
-                      ) : (
-                        paymentMethod === PaymentMethod.ONLINE 
-                          ? t[language].proceedToPayment 
-                          : t[language].submitOrder
+                  </div>
+                  </div>
+                  )}
+
+                  </div>
+
+                  <div
+                    ref={step5SubmitScrollRef}
+                    className="mt-8 pt-6 border-t border-border/40 space-y-3 scroll-mt-24"
+                  >
+                    {wizardStep === WIZARD_STEP_COUNT &&
+                      !processing &&
+                      hasSelectedPasses &&
+                      !step5ReadyToSubmit && (
+                        <p className="text-sm text-muted-foreground text-center sm:text-right">
+                          {t[language].completePaymentToSubmit}
+                        </p>
                       )}
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
+                    <div
+                      className={cn(
+                        'flex gap-3 sm:flex-row sm:items-center',
+                        wizardStep > 1 ? 'flex-col-reverse' : 'flex-col'
+                      )}
+                    >
+                    {wizardStep > 1 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={goBack}
+                        className="w-full sm:w-auto border-border hover:bg-muted/50 hover:text-foreground"
+                      >
+                        {t[language].back}
+                      </Button>
+                    )}
+                    {wizardStep < WIZARD_STEP_COUNT ? (
+                      <Button
+                        type="button"
+                        onClick={goNext}
+                        className="w-full sm:ml-auto sm:w-auto btn-gradient"
+                      >
+                        {t[language].next}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="submit"
+                        disabled={processing || !step5ReadyToSubmit}
+                        className="w-full sm:ml-auto sm:w-auto btn-gradient disabled:opacity-50"
+                      >
+                        {processing ? (
+                          <>
+                            <Loader size="sm" className="mr-2 shrink-0 [background:white]" />
+                            {t[language].processing}
+                          </>
+                        ) : paymentMethod === PaymentMethod.ONLINE ? (
+                          t[language].proceedToPayment
+                        ) : (
+                          t[language].submitOrder
+                        )}
+                      </Button>
+                    )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </form>

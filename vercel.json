@@ -76,6 +76,18 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/media/upload",
+      "destination": "/api/media.js"
+    },
+    {
+      "source": "/api/media/delete",
+      "destination": "/api/media.js"
+    },
+    {
+      "source": "/api/media/favicon/cleanup",
+      "destination": "/api/media.js"
+    },
+    {
       "source": "/api/passes/:eventId",
       "destination": "/api/passes-[eventId].js"
     },
@@ -469,6 +481,10 @@
     },
     "api/misc.js": {
       "maxDuration": 60
+    },
+    "api/media.js": {
+      "maxDuration": 60,
+      "memory": 1024
     },
     "api/admin/logs.js": {
       "maxDuration": 60
