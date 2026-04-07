@@ -6809,7 +6809,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         let chartQuery = (supabase as any)
           .from('orders')
-          .select('id, created_at, total_price, total, status, payment_status, order_passes (quantity, price)')
+          .select('id, created_at, total_price, status, payment_status, order_passes (quantity, price)')
           .eq('source', 'platform_online')
           .gte('created_at', sevenDaysAgo.toISOString());
         
