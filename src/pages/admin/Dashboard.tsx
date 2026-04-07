@@ -177,11 +177,12 @@ interface AdminNotification {
   createdAt: string;
 }
 
-/** Tabs a regular `admin` may use; `super_admin` may use all dashboard tabs. */
+/** Tabs a regular `admin` may use (includes careers); `super_admin` may use all dashboard tabs. */
 const REGULAR_ADMIN_TAB_KEYS = new Set([
   "overview",
   "ambassadors",
   "applications",
+  "careers",
   "online-orders",
   "ambassador-sales",
   "pos",
@@ -6601,7 +6602,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   }, [activeTab, currentAdminRole]);
 
-  // Regular admins: only the six allowed tabs; anything else (events, reports, careers, …) → overview
+  // Regular admins: only allowed tabs; anything else (events, reports, …) → overview
   useEffect(() => {
     if (currentAdminRole === "admin" && !REGULAR_ADMIN_TAB_KEYS.has(activeTab)) {
       setActiveTab("overview");
@@ -10397,7 +10398,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Mobile nav drawer open state (must be before any conditional return to satisfy Rules of Hooks)
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  // Mobile: regular admin = six tabs only; super_admin = full nav (sheet + bottom bar subsets)
+  // Mobile: regular admin = allowed-tab subset; super_admin = full nav (sheet + bottom bar subsets)
   const mobileAllowedTabs = useMemo(() => {
     if (currentAdminRole === "super_admin") {
       return [
@@ -10424,7 +10425,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       ];
     }
     if (currentAdminRole === "admin") {
-      return ["overview", "ambassadors", "applications", "online-orders", "ambassador-sales", "pos"];
+      return [
+        "overview",
+        "ambassadors",
+        "applications",
+        "careers",
+        "online-orders",
+        "ambassador-sales",
+        "pos",
+      ];
     }
     return ["overview", "ambassador-sales", "online-orders", "pos"];
   }, [currentAdminRole]);
