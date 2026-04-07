@@ -31,33 +31,41 @@ async function processRasterToWebpAvif(inputBuffer, options = {}) {
   const contentHash = crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 12);
 
   const webpQ = Math.min(100, Math.max(50, Number(process.env.MEDIA_WEBP_QUALITY || 82)));
-  const fullWebp = await sharp(normalized)
-    .webp({ quality: webpQ, effort: 4 })
-    .toBuffer();
+  const webpEffort = Math.min(6, Math.max(2, Number(process.env.MEDIA_WEBP_EFFORT || 4)));
 
-  const thumbWebp = await sharp(normalized)
+  const fullPromise = sharp(normalized).webp({ quality: webpQ, effort: webpEffort }).toBuffer();
+  const thumbPromise = sharp(normalized)
     .resize(THUMB_EDGE, THUMB_EDGE, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 78, effort: 4 })
+    .webp({ quality: 78, effort: webpEffort })
     .toBuffer();
 
-  let midWebp = null;
-  if (includeMidForHero) {
-    const mid = heroMidEdge();
-    midWebp = await sharp(normalized)
-      .resize(mid, mid, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: webpQ, effort: 4 })
-      .toBuffer();
+  const mid = includeMidForHero ? heroMidEdge() : null;
+  const midPromise =
+    includeMidForHero && mid != null
+      ? sharp(normalized)
+          .resize(mid, mid, { fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: webpQ, effort: webpEffort })
+          .toBuffer()
+      : Promise.resolve(null);
+
+  let avifPromise = Promise.resolve(null);
+  if (generateAvif) {
+    const avifQ = Math.min(63, Math.max(20, Number(process.env.MEDIA_AVIF_QUALITY || 45)));
+    avifPromise = sharp(normalized)
+      .avif({ quality: avifQ })
+      .toBuffer()
+      .catch((e) => {
+        console.warn('[media-image-pipeline] AVIF encode skipped:', e.message);
+        return null;
+      });
   }
 
-  let avifBuffer = null;
-  if (generateAvif) {
-    try {
-      const avifQ = Math.min(63, Math.max(20, Number(process.env.MEDIA_AVIF_QUALITY || 45)));
-      avifBuffer = await sharp(normalized).avif({ quality: avifQ }).toBuffer();
-    } catch (e) {
-      console.warn('[media-image-pipeline] AVIF encode skipped:', e.message);
-    }
-  }
+  const [fullWebp, thumbWebp, midWebp, avifBuffer] = await Promise.all([
+    fullPromise,
+    thumbPromise,
+    midPromise,
+    avifPromise,
+  ]);
 
   return { fullWebp, thumbWebp, midWebp, avifBuffer, contentHash };
 }

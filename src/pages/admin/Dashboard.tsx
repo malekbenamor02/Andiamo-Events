@@ -2230,7 +2230,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       let posterStoragePath: string | undefined;
 
       if (isVideo) {
-        const posterBlob = await captureVideoPosterFromFile(file);
+        const posterBlob = await Promise.race([
+          captureVideoPosterFromFile(file),
+          new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 12_000)),
+        ]);
         if (posterBlob) {
           const posterFile = new File([posterBlob], `hero-poster-${Date.now()}.jpg`, {
             type: 'image/jpeg',

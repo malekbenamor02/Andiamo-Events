@@ -16,13 +16,44 @@ type ApiUploadResult =
 
 type ApiUploadFailure = Extract<ApiUploadResult, { ok: false }>;
 
+const MEDIA_UPLOAD_TIMEOUT_MS = 110_000;
+
 async function postMediaUpload(formData: FormData): Promise<ApiUploadResult> {
   const base = getApiBaseUrl();
-  const res = await fetch(`${base}/api/media/upload`, {
-    method: 'POST',
-    body: formData,
-    credentials: 'include',
-  });
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), MEDIA_UPLOAD_TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(`${base}/api/media/upload`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+      signal: controller.signal,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      return {
+        ok: false,
+        fallback: false,
+        error:
+          'Upload timed out. Try a smaller file, or check your connection. Large images can take a minute.',
+      };
+    }
+    if (msg === 'The user aborted a request.') {
+      return {
+        ok: false,
+        fallback: false,
+        error:
+          'Upload timed out. Try a smaller file, or check your connection. Large images can take a minute.',
+      };
+    }
+    return { ok: false, fallback: false, error: msg || 'Upload failed' };
+  } finally {
+    window.clearTimeout(timer);
+  }
+
   let data: Record<string, unknown> = {};
   try {
     data = await res.json();
