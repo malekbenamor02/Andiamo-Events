@@ -96,6 +96,47 @@ export function getOptimizedImageUrl(
   }
 }
 
+/** CMS hero slide image fields (optional R2 derivatives). */
+export type HeroSlideImageFields = {
+  src: string;
+  thumbUrl?: string;
+  midUrl?: string;
+};
+
+/**
+ * Responsive srcset for hero background images using stored thumb/mid/full URLs.
+ * Falls back to a single full `imgSrc` when derivatives are missing (legacy slides).
+ */
+export function buildHeroImageSrcSet(slide: HeroSlideImageFields): {
+  srcSet: string | undefined;
+  imgSrc: string;
+  sizes: string;
+} {
+  const imgSrc = getOptimizedImageUrl(slide.src, {
+    width: 1920,
+    height: 1080,
+    quality: 85,
+    resize: 'cover',
+  });
+  const thumb = slide.thumbUrl;
+  const mid = slide.midUrl;
+  if (thumb && mid) {
+    return {
+      srcSet: `${thumb} 400w, ${mid} 1280w, ${imgSrc} 1920w`,
+      imgSrc,
+      sizes: '100vw',
+    };
+  }
+  if (thumb) {
+    return {
+      srcSet: `${thumb} 400w, ${imgSrc} 1920w`,
+      imgSrc,
+      sizes: '100vw',
+    };
+  }
+  return { srcSet: undefined, imgSrc, sizes: '100vw' };
+}
+
 export function getOptimizedImageSrcSet(
   url: string,
   widths: number[],

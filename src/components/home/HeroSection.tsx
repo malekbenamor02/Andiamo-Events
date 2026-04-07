@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { generateSlug } from "@/lib/utils";
-import { avifVariantUrl, getOptimizedImageUrl } from "@/lib/image-utils";
+import { avifVariantUrl, buildHeroImageSrcSet } from "@/lib/image-utils";
 import TypewriterText from "./TypewriterText";
 import { useFeaturedEvents, type Event } from "@/hooks/useEvents";
 import { isPassPurchaseWindowClosed } from "@/lib/date-utils";
@@ -24,15 +24,36 @@ interface HeroSlide {
   src: string;
   alt?: string;
   poster?: string;
+  thumbUrl?: string;
+  midUrl?: string;
+  avifUrl?: string;
 }
 
 /** While hero copy is loading, or when admin left no lines for this language */
 const PLACEHOLDER_TYPEWRITER_LINE = "We Create Memories";
 
-// Video slide component with lazy loading
-const VideoSlide = ({ slide, isActive, isPageInteractive, onLoaded }: { slide: HeroSlide; isActive: boolean; isPageInteractive: boolean; onLoaded?: () => void }) => {
+const VideoSlide = ({
+  slide,
+  isActive,
+  isPageInteractive,
+  loadSource,
+  onLoaded,
+}: {
+  slide: HeroSlide;
+  isActive: boolean;
+  isPageInteractive: boolean;
+  /** When false, no `src` — avoids downloading off-screen hero videos */
+  loadSource: boolean;
+  onLoaded?: () => void;
+}) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hasNotified = useRef(false);
+
+  useEffect(() => {
+    if (loadSource) {
+      hasNotified.current = false;
+    }
+  }, [loadSource]);
 
   const attemptPlay = async (reason: string) => {
     const video = videoRef.current;
@@ -53,21 +74,6 @@ const VideoSlide = ({ slide, isActive, isPageInteractive, onLoaded }: { slide: H
       console.warn(`Video autoplay prevented (${reason}):`, err);
     }
   };
-
-  // Load video immediately for loading screen tracking
-  useEffect(() => {
-    if (videoRef.current) {
-      const video = videoRef.current;
-      // Preload video immediately with high priority
-      video.preload = 'auto';
-      video.load();
-      // Try to load faster
-      if ('webkitDecodedFrameCount' in video) {
-        // Force faster loading on WebKit browsers
-        video.load();
-      }
-    }
-  }, []);
 
   // Try to play when active and page is interactive
   useEffect(() => {
@@ -124,17 +130,23 @@ const VideoSlide = ({ slide, isActive, isPageInteractive, onLoaded }: { slide: H
     };
   }, [isActive]);
 
+  const preload: HTMLVideoElement['preload'] = !loadSource
+    ? 'none'
+    : isActive
+      ? 'auto'
+      : 'metadata';
+
   return (
     <video
       ref={videoRef}
-      src={slide.src}
+      src={loadSource ? slide.src : undefined}
       poster={slide.poster}
       className="w-full h-full object-cover"
       autoPlay
       loop
       muted
       playsInline
-      preload="auto"
+      preload={preload}
       style={{ 
         objectFit: 'cover',
         width: '100%',
@@ -201,6 +213,10 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
   );
   const navigate = useNavigate();
   const transitionTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setLoadedMedia(new Set());
+  }, [heroContent]);
 
   // Ensure we start with the first slide
   useEffect(() => {
@@ -281,53 +297,41 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
   // Get hero images from Supabase content
   // If no images are set in Supabase, use empty array (will show placeholder or nothing)
   const heroSlides = heroContent.images || [];
+  const firstSlideReady = loadedMedia.has(0);
 
-  // Track critical hero media loading only
-  // Only wait for hero images (decoded) and hero videos (first frame ready)
+  // Gate shell/LCP on slide 0 only (other slides load in the background)
   useEffect(() => {
     if (heroSlides.length === 0) {
-      // If no slides, consider media loaded immediately
       onMediaLoaded?.();
       return;
     }
 
-    // Set a maximum timeout (5 seconds) to prevent infinite loading
-    // This ensures we don't block the user experience
     const maxTimeout = setTimeout(() => {
       console.warn('Critical hero media loading timeout - showing content anyway');
       onMediaLoaded?.();
     }, 5000);
 
-    // Check if all critical hero media is loaded
-    // Images: ready when decoded (onLoad)
-    // Videos: ready when first frame can display (loadeddata/canplay)
-    if (loadedMedia.size === heroSlides.length && heroSlides.length > 0) {
+    if (firstSlideReady) {
       clearTimeout(maxTimeout);
-      // Immediate reveal - no delay needed since media is ready
-      // Layout is already calculated, media is decoded/ready
       onMediaLoaded?.();
       return () => clearTimeout(maxTimeout);
     }
 
     return () => clearTimeout(maxTimeout);
-  }, [loadedMedia.size, heroSlides.length, onMediaLoaded]);
+  }, [firstSlideReady, heroSlides.length, onMediaLoaded]);
 
   // Handle media load callbacks
   const handleMediaLoad = (index: number) => {
     setLoadedMedia(prev => new Set([...prev, index]));
   };
 
-  // Handle slide transitions with crossfade effect
-  // Only start transitions after media is loaded
   useEffect(() => {
     if (heroSlides.length === 0) return;
-    if (loadedMedia.size < heroSlides.length) {
-      // Reset to first slide while loading
+    if (!firstSlideReady) {
       setCurrentSlide(0);
       return;
     }
-    
-    // Reset to first slide when all media is loaded
+
     setCurrentSlide(0);
     
     // Clear any existing timer
@@ -350,7 +354,7 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
         transitionTimerRef.current = null;
       }
     };
-  }, [heroSlides.length, loadedMedia.size]);
+  }, [heroSlides.length, firstSlideReady]);
 
 
   return (
@@ -359,7 +363,11 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
       <div className="absolute inset-0 z-0">
         {heroSlides.length > 0 ? heroSlides.map((slide, index) => {
           const isActive = index === currentSlide;
-          
+          const len = heroSlides.length;
+          const nextIndex = len > 0 ? (currentSlide + 1) % len : 0;
+          const loadVideoSource =
+            slide.type === 'video' && (index === 0 || isActive || index === nextIndex);
+
           return (
             <div
               key={index}
@@ -372,26 +380,29 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
                   slide={slide} 
                   isActive={isActive} 
                   isPageInteractive={isPageInteractive}
+                  loadSource={loadVideoSource}
                   onLoaded={() => handleMediaLoad(index)}
                 />
               ) : (
                 (() => {
-                  const webpSrc = getOptimizedImageUrl(slide.src, {
-                    width: 1920,
-                    height: 1080,
-                    quality: 85,
-                    resize: 'cover',
+                  const { srcSet, imgSrc, sizes } = buildHeroImageSrcSet({
+                    src: slide.src,
+                    thumbUrl: slide.thumbUrl,
+                    midUrl: slide.midUrl,
                   });
-                  const avifSrc = avifVariantUrl(slide.src);
+                  const avifSrc = slide.avifUrl || avifVariantUrl(slide.src);
                   const imgProps = {
                     alt: slide.alt || `Andiamo Events – Hero image ${index + 1}`,
                     className: 'w-full h-full object-cover' as const,
                     style: { objectFit: 'cover' as const },
-                    loading: 'eager' as const,
-                    fetchPriority: 'high' as const,
+                    loading: (index === 0 ? 'eager' : 'lazy') as 'eager' | 'lazy',
+                    fetchPriority: (index === 0 ? 'high' : 'low') as 'high' | 'low',
                     decoding: 'async' as const,
                     width: 1920,
                     height: 1080,
+                    sizes,
+                    ...(srcSet ? { srcSet } : {}),
+                    src: imgSrc,
                     onLoad: () => handleMediaLoad(index),
                     onError: () => handleMediaLoad(index),
                   };
@@ -399,11 +410,11 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
                     return (
                       <picture>
                         <source srcSet={avifSrc} type="image/avif" />
-                        <img src={webpSrc} {...imgProps} />
+                        <img {...imgProps} />
                       </picture>
                     );
                   }
-                  return <img src={webpSrc} {...imgProps} />;
+                  return <img {...imgProps} />;
                 })()
               )}
               <div 

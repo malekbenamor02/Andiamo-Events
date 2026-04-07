@@ -125,20 +125,26 @@ function registerMediaRoutes(app, { requireAdminAuth }) {
           return res.json({ url, path: key });
         }
         if (shouldEncodeToWebpAvif(mimetype, ext)) {
-          const { fullWebp, thumbWebp, avifBuffer, contentHash } = await processRasterToWebpAvif(
-            req.file.buffer
+          const { fullWebp, thumbWebp, midWebp, avifBuffer, contentHash } = await processRasterToWebpAvif(
+            req.file.buffer,
+            { includeMidForHero: true }
           );
           const idBase = `hero/${Date.now()}_${rand}_${contentHash}`;
           const webpKey = `${idBase}.webp`;
           const thumbKey = `${idBase}_thumb.webp`;
+          const midKey = `${idBase}_mid.webp`;
           const url = await putPublicObject({ key: webpKey, body: fullWebp, contentType: 'image/webp' });
           await putPublicObject({ key: thumbKey, body: thumbWebp, contentType: 'image/webp' });
+          if (midWebp) {
+            await putPublicObject({ key: midKey, body: midWebp, contentType: 'image/webp' });
+          }
           if (avifBuffer) {
             await putPublicObject({ key: `${idBase}.avif`, body: avifBuffer, contentType: 'image/avif' });
           }
           const thumbUrl = publicUrlForKey(thumbKey);
+          const midUrl = midWebp ? publicUrlForKey(midKey) : null;
           const avifUrl = avifBuffer ? publicUrlForKey(`${idBase}.avif`) : null;
-          return res.json({ url, path: webpKey, thumbUrl, avifUrl });
+          return res.json({ url, path: webpKey, thumbUrl, midUrl, avifUrl });
         }
         const key = `hero/${Date.now()}_${rand}.${ext || 'bin'}`;
         const url = await putPublicObject({ key, body: req.file.buffer, contentType: mimetype });

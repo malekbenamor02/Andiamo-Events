@@ -6,11 +6,12 @@ export interface UploadResult {
   path: string;
   error?: string;
   thumbUrl?: string;
+  midUrl?: string;
   avifUrl?: string;
 }
 
 type ApiUploadResult =
-  | { ok: true; url: string; path: string; thumbUrl?: string; avifUrl?: string }
+  | { ok: true; url: string; path: string; thumbUrl?: string; midUrl?: string; avifUrl?: string }
   | { ok: false; fallback: boolean; error?: string };
 
 type ApiUploadFailure = Extract<ApiUploadResult, { ok: false }>;
@@ -34,6 +35,7 @@ async function postMediaUpload(formData: FormData): Promise<ApiUploadResult> {
       url: String(data.url || ''),
       path: String(data.path || ''),
       thumbUrl: data.thumbUrl ? String(data.thumbUrl) : undefined,
+      midUrl: data.midUrl ? String(data.midUrl) : undefined,
       avifUrl: data.avifUrl ? String(data.avifUrl) : undefined,
     };
   }
@@ -74,7 +76,13 @@ export const uploadImage = async (file: File, folder: string = 'posters'): Promi
   fd.append('folder', folder);
   const api = await postMediaUpload(fd);
   if (api.ok) {
-    return { url: api.url, path: api.path, thumbUrl: api.thumbUrl, avifUrl: api.avifUrl };
+    return {
+      url: api.url,
+      path: api.path,
+      thumbUrl: api.thumbUrl,
+      midUrl: api.midUrl,
+      avifUrl: api.avifUrl,
+    };
   }
   const fail = api as ApiUploadFailure;
   if (!fail.fallback) {
@@ -119,7 +127,13 @@ export const uploadHeroImage = async (file: File): Promise<UploadResult> => {
   fd.append('scope', 'hero');
   const api = await postMediaUpload(fd);
   if (api.ok) {
-    return { url: api.url, path: api.path, thumbUrl: api.thumbUrl, avifUrl: api.avifUrl };
+    return {
+      url: api.url,
+      path: api.path,
+      thumbUrl: api.thumbUrl,
+      midUrl: api.midUrl,
+      avifUrl: api.avifUrl,
+    };
   }
   const fail = api as ApiUploadFailure;
   if (!fail.fallback) {

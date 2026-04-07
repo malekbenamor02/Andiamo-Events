@@ -15,6 +15,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
+import { captureVideoPosterFromFile } from "@/lib/video-poster-capture";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, sendEmailWithDetails, createAdminCredentialsEmail } from "@/lib/email";
@@ -2225,20 +2226,53 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
       }
       
-      // Upload to hero-images bucket
+      let posterPublicUrl: string | undefined;
+      let posterStoragePath: string | undefined;
+
+      if (isVideo) {
+        const posterBlob = await captureVideoPosterFromFile(file);
+        if (posterBlob) {
+          const posterFile = new File([posterBlob], `hero-poster-${Date.now()}.jpg`, {
+            type: 'image/jpeg',
+          });
+          const posterUp = await uploadHeroImage(posterFile);
+          if (!posterUp.error && posterUp.url && posterUp.path) {
+            posterPublicUrl = posterUp.url;
+            posterStoragePath = posterUp.path;
+          }
+        }
+      }
+
       const uploadResult = await uploadHeroImage(file);
-      
+
       if (uploadResult.error) {
+        if (posterStoragePath) {
+          await deleteHeroImage(posterStoragePath);
+        }
         throw new Error(uploadResult.error);
       }
 
-      // Create new hero image/video object
-      const newItem: HeroImage = {
-        type: fileType,
-        src: uploadResult.url,
-        alt: file.name.replace(/\.[^/.]+$/, ''), // Remove extension for alt text
-        path: uploadResult.path
-      };
+      const baseAlt = file.name.replace(/\.[^/.]+$/, '');
+      const newItem: HeroImage =
+        fileType === 'video'
+          ? {
+              type: 'video',
+              src: uploadResult.url,
+              alt: baseAlt,
+              path: uploadResult.path,
+              ...(posterPublicUrl && posterStoragePath
+                ? { poster: posterPublicUrl, posterPath: posterStoragePath }
+                : {}),
+            }
+          : {
+              type: 'image',
+              src: uploadResult.url,
+              alt: baseAlt,
+              path: uploadResult.path,
+              ...(uploadResult.thumbUrl ? { thumbUrl: uploadResult.thumbUrl } : {}),
+              ...(uploadResult.midUrl ? { midUrl: uploadResult.midUrl } : {}),
+              ...(uploadResult.avifUrl ? { avifUrl: uploadResult.avifUrl } : {}),
+            };
 
       // Add to hero images array
       const updatedImages = [...heroImages, newItem];
@@ -2269,8 +2303,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const handleDeleteHeroImage = async (index: number) => {
     try {
       const imageToDelete = heroImages[index];
-      
-      // Delete from storage if path exists
+
+      if (imageToDelete.posterPath) {
+        await deleteHeroImage(imageToDelete.posterPath);
+      }
       if (imageToDelete.path) {
         await deleteHeroImage(imageToDelete.path);
       }
@@ -10458,6 +10494,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       icon: CreditCard,
     },
     { key: "pos", label: "Point de Vente", icon: Store },
+    ...(currentAdminRole === "super_admin"
+      ? [{ key: "scanners" as const, label: language === "en" ? "Scanners" : "Scanners", icon: QrCode }]
+      : []),
     { key: "tickets", label: language === "en" ? "Reports" : "Rapports", icon: DollarSign },
     ...(currentAdminRole === "super_admin" ? [{ key: "settings", label: t.settings, icon: Settings }] : []),
   ]
@@ -10506,6 +10545,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {activeTab === "online-orders" && (language === 'en' ? 'Online Orders' : 'Commandes en Ligne')}
               {activeTab === "ambassador-sales" && (language === 'en' ? 'Ambassador Sales' : 'Ventes Ambassadeurs')}
               {activeTab === "pos" && (language === 'en' ? 'Point de Vente' : 'Point de Vente')}
+              {activeTab === "scanners" && (language === 'en' ? 'Scanners' : 'Scanners')}
               {activeTab === "tickets" && (language === 'en' ? 'Reports' : 'Rapports')}
               {activeTab === "settings" && t.settings}
             </span>
@@ -10689,6 +10729,18 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 >
                   <Store className="w-4 h-4 shrink-0" />
                   <span>{language === 'en' ? 'Point de Vente' : 'Point de Vente'}</span>
+                </button>
+              )}
+              {isTabAllowedOnMobile("scanners") && currentAdminRole === 'super_admin' && (
+                <button
+                  type="button"
+                  data-active={activeTab === "scanners"}
+                  onClick={() => handleMobileNavSelect("scanners")}
+                  className={cn("admin-sidebar-nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200", activeTab === "scanners" && "shadow-lg")}
+                  style={{ background: activeTab === "scanners" ? 'rgba(226, 24, 54, 0.15)' : 'transparent' }}
+                >
+                  <QrCode className="w-4 h-4 shrink-0" />
+                  <span>{language === 'en' ? 'Scanners' : 'Scanners'}</span>
                 </button>
               )}
               {isTabAllowedOnMobile("settings") && currentAdminRole === 'super_admin' && (

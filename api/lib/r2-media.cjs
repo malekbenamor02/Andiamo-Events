@@ -74,7 +74,7 @@ async function deleteObjectKey(key) {
   return true;
 }
 
-/** primaryKey e.g. posters/abc.webp → also removes .avif and _thumb.webp */
+/** primaryKey e.g. posters/abc.webp → also removes .avif, _thumb.webp, _mid.webp (hero) */
 async function deleteMediaImageVariants(primaryKey) {
   const ctx = getClientContext();
   if (!ctx) return false;
@@ -87,7 +87,7 @@ async function deleteMediaImageVariants(primaryKey) {
     return true;
   }
   const base = primaryKey.slice(0, -5);
-  const keys = [primaryKey, `${base}.avif`, `${base}_thumb.webp`];
+  const keys = [primaryKey, `${base}.avif`, `${base}_thumb.webp`, `${base}_mid.webp`];
   for (const k of keys) {
     try {
       await ctx.client.send(new DeleteObjectCommand({ Bucket: ctx.bucket, Key: k }));

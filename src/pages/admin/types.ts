@@ -145,8 +145,13 @@ export interface HeroImage {
   src: string;
   alt: string;
   path?: string;
-  poster?: string; // Optional poster image for videos
-  srcMobile?: string; // Optional mobile version for videos
+  poster?: string;
+  posterPath?: string;
+  /** R2 derivatives from Sharp pipeline (stored for responsive hero srcset / AVIF). */
+  thumbUrl?: string;
+  midUrl?: string;
+  avifUrl?: string;
+  srcMobile?: string;
 }
 
 /** About section image (admin settings). */

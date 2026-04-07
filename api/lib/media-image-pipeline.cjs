@@ -6,10 +6,21 @@ const crypto = require('crypto');
 const MAX_EDGE = 2560;
 const THUMB_EDGE = 400;
 
+const DEFAULT_HERO_MID_EDGE = 1280;
+
+function heroMidEdge() {
+  const n = Number(process.env.MEDIA_HERO_MID_EDGE || DEFAULT_HERO_MID_EDGE);
+  if (!Number.isFinite(n) || n < 480) return DEFAULT_HERO_MID_EDGE;
+  return Math.min(2560, Math.round(n));
+}
+
 /**
  * Normalize orientation, cap size, emit WebP full + thumb and optional AVIF.
+ * @param {Buffer} inputBuffer
+ * @param {{ includeMidForHero?: boolean }} [options] — when true, also emit midWebp (hero-responsive srcset)
  */
-async function processRasterToWebpAvif(inputBuffer) {
+async function processRasterToWebpAvif(inputBuffer, options = {}) {
+  const includeMidForHero = options.includeMidForHero === true;
   const generateAvif = process.env.MEDIA_SKIP_AVIF !== '1' && process.env.MEDIA_SKIP_AVIF !== 'true';
 
   const normalized = await sharp(inputBuffer)
@@ -29,6 +40,15 @@ async function processRasterToWebpAvif(inputBuffer) {
     .webp({ quality: 78, effort: 4 })
     .toBuffer();
 
+  let midWebp = null;
+  if (includeMidForHero) {
+    const mid = heroMidEdge();
+    midWebp = await sharp(normalized)
+      .resize(mid, mid, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: webpQ, effort: 4 })
+      .toBuffer();
+  }
+
   let avifBuffer = null;
   if (generateAvif) {
     try {
@@ -39,7 +59,7 @@ async function processRasterToWebpAvif(inputBuffer) {
     }
   }
 
-  return { fullWebp, thumbWebp, avifBuffer, contentHash };
+  return { fullWebp, thumbWebp, midWebp, avifBuffer, contentHash };
 }
 
 function shouldEncodeToWebpAvif(mimetype, ext) {
@@ -57,4 +77,5 @@ module.exports = {
   shouldEncodeToWebpAvif,
   MAX_EDGE,
   THUMB_EDGE,
+  heroMidEdge,
 };
