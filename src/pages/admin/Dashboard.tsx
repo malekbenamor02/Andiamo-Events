@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
 import { captureVideoPosterFromFile } from "@/lib/video-poster-capture";
+import { optimizeImageToWebp, preprocessHeroImageVariants, transcodeHeroVideoToMp4 } from "@/lib/hero-media-preprocess";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, sendEmailWithDetails, createAdminCredentialsEmail } from "@/lib/email";
@@ -2192,13 +2193,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
     } catch (error) {
       console.error('Error saving hero images:', error);
-      toast({
-        title: t.error,
-        description: language === 'en' 
-          ? 'Failed to save hero images' 
-          : 'Ã‰chec de la sauvegarde des images hero',
-        variant: 'destructive',
-      });
+      throw error;
     }
   };
 
@@ -2227,12 +2222,27 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         });
       }
       
+      let uploadFile = file;
       let posterPublicUrl: string | undefined;
       let posterStoragePath: string | undefined;
+      let midUploadUrl: string | undefined;
+      let thumbUploadUrl: string | undefined;
+      let midUploadPath: string | undefined;
+      let thumbUploadPath: string | undefined;
 
       if (isVideo) {
+        toast({
+          title: language === 'en' ? 'Optimizing video...' : 'Optimisation de la vidéo...',
+          description:
+            language === 'en'
+              ? 'Converting to MP4 (H.264) before upload.'
+              : 'Conversion en MP4 (H.264) avant le téléchargement.',
+          duration: 3500,
+        });
+        uploadFile = await transcodeHeroVideoToMp4(file);
+
         const posterBlob = await Promise.race([
-          captureVideoPosterFromFile(file),
+          captureVideoPosterFromFile(uploadFile),
           new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 12_000)),
         ]);
         if (posterBlob) {
@@ -2245,11 +2255,41 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             posterStoragePath = posterUp.path;
           }
         }
+      } else {
+        toast({
+          title: language === 'en' ? 'Optimizing image...' : 'Optimisation de l’image...',
+          description:
+            language === 'en'
+              ? 'Compressing and generating WebP variants.'
+              : 'Compression et génération des variantes WebP.',
+          duration: 3500,
+        });
+
+        const variants = await preprocessHeroImageVariants(file);
+        uploadFile = variants.full;
+
+        const midUp = await uploadHeroImage(variants.mid);
+        if (!midUp.error && midUp.url && midUp.path) {
+          midUploadUrl = midUp.url;
+          midUploadPath = midUp.path;
+        }
+
+        const thumbUp = await uploadHeroImage(variants.thumb);
+        if (!thumbUp.error && thumbUp.url && thumbUp.path) {
+          thumbUploadUrl = thumbUp.url;
+          thumbUploadPath = thumbUp.path;
+        }
       }
 
-      const uploadResult = await uploadHeroImage(file);
+      const uploadResult = await uploadHeroImage(uploadFile);
 
       if (uploadResult.error) {
+        if (midUploadPath) {
+          await deleteHeroImage(midUploadPath);
+        }
+        if (thumbUploadPath) {
+          await deleteHeroImage(thumbUploadPath);
+        }
         if (posterStoragePath) {
           await deleteHeroImage(posterStoragePath);
         }
@@ -2273,8 +2313,10 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               src: uploadResult.url,
               alt: baseAlt,
               path: uploadResult.path,
-              ...(uploadResult.thumbUrl ? { thumbUrl: uploadResult.thumbUrl } : {}),
-              ...(uploadResult.midUrl ? { midUrl: uploadResult.midUrl } : {}),
+              ...(thumbUploadUrl ? { thumbUrl: thumbUploadUrl } : {}),
+              ...(thumbUploadPath ? { thumbPath: thumbUploadPath } : {}),
+              ...(midUploadUrl ? { midUrl: midUploadUrl } : {}),
+              ...(midUploadPath ? { midPath: midUploadPath } : {}),
               ...(uploadResult.avifUrl ? { avifUrl: uploadResult.avifUrl } : {}),
             };
 
@@ -2291,11 +2333,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       });
     } catch (error) {
       console.error('Error uploading hero media:', error);
+      const detail =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Unknown error';
+      const shortDetail = detail.length > 220 ? `${detail.slice(0, 217)}…` : detail;
       toast({
         title: t.error,
-        description: language === 'en' 
-          ? 'Failed to upload hero media' 
-          : 'Ã‰chec du tÃ©lÃ©chargement du mÃ©dia hero',
+        description:
+          language === 'en'
+            ? `Failed to upload hero media: ${shortDetail}`
+            : `Échec du téléchargement du média hero : ${shortDetail}`,
         variant: 'destructive',
       });
     } finally {
@@ -2311,6 +2361,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (imageToDelete.posterPath) {
         await deleteHeroImage(imageToDelete.posterPath);
       }
+      if (imageToDelete.thumbPath) {
+        await deleteHeroImage(imageToDelete.thumbPath);
+      }
+      if (imageToDelete.midPath) {
+        await deleteHeroImage(imageToDelete.midPath);
+      }
       if (imageToDelete.path) {
         await deleteHeroImage(imageToDelete.path);
       }
@@ -2320,11 +2376,19 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       await saveHeroImages(updatedImages);
     } catch (error) {
       console.error('Error deleting hero image:', error);
+      const detail =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Unknown error';
+      const shortDetail = detail.length > 220 ? `${detail.slice(0, 217)}…` : detail;
       toast({
         title: t.error,
-        description: language === 'en' 
-          ? 'Failed to delete hero image' 
-          : 'Ã‰chec de la suppression de l\'image hero',
+        description:
+          language === 'en'
+            ? `Failed to delete hero image: ${shortDetail}`
+            : `Échec de la suppression de l'image hero : ${shortDetail}`,
         variant: 'destructive',
       });
     }
@@ -2332,7 +2396,25 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   // Handle reorder hero images
   const handleReorderHeroImages = async (newOrder: HeroImage[]) => {
-    await saveHeroImages(newOrder);
+    try {
+      await saveHeroImages(newOrder);
+    } catch (error) {
+      console.error('Error reordering hero images:', error);
+      const detail =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Unknown error';
+      toast({
+        title: t.error,
+        description:
+          language === 'en'
+            ? `Failed to save hero order: ${detail}`
+            : `Échec de l'enregistrement de l'ordre hero : ${detail}`,
+        variant: 'destructive',
+      });
+    }
   };
 
   // Save hero typewriter texts (hero title typing effect) to site_content
@@ -6737,11 +6819,12 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }, SAFETY_TIMEOUT_MS);
 
     try {
-      // Fetch applications
-      const { data: appsData, error: appsError } = await supabase
-        .from('ambassador_applications')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Core bootstrap data in parallel to reduce initial dashboard wait.
+      const [{ data: appsData, error: appsError }, { data: eventsData, error: eventsError }, { data: ambassadorsData, error: ambassadorsError }] = await Promise.all([
+        supabase.from('ambassador_applications').select('*').order('created_at', { ascending: false }),
+        supabase.from('events').select('*').order('date', { ascending: false }),
+        supabase.from('ambassadors').select('*').order('created_at', { ascending: false }),
+      ]);
 
       if (appsError) {
         console.error('Error fetching applications:', appsError);
@@ -6755,59 +6838,53 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setApplications(appsData || []);
       }
 
-      // Fetch events
-      const { data: eventsData, error: eventsError } = await supabase
-        .from('events')
-        .select('*')
-        .order('date', { ascending: false });
+      if (ambassadorsError) console.error('Error fetching ambassadors:', ambassadorsError);
+      else setAmbassadors(ambassadorsData || []);
 
-      if (eventsError) console.error('Error fetching events:', eventsError);
-      else {
-        // Fetch passes for each event
-        const eventsWithPasses = await Promise.all(
-          (eventsData || []).map(async (event) => {
-            const { data: passesData, error: passesError } = await supabase
-              .from('event_passes')
-              .select('*')
-              .eq('event_id', event.id)
-              .order('is_primary', { ascending: false })
-              .order('created_at', { ascending: true });
+      if (eventsError) {
+        console.error('Error fetching events:', eventsError);
+      } else {
+        const eventRows = eventsData || [];
+        const eventIds = eventRows.map((event: any) => event.id).filter(Boolean);
+        let passesByEventId: Record<string, any[]> = {};
 
-            // Handle 404 errors gracefully (table might not exist yet)
-            if (passesError) {
-              // Only log non-404 errors
-              if (passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
-                console.error(`Error fetching passes for event ${event.id}:`, passesError);
-              }
-              return { ...event, passes: [], instagram_link: event.whatsapp_link }; // Map database field to UI field
+        if (eventIds.length > 0) {
+          const { data: allPassesData, error: passesError } = await supabase
+            .from('event_passes')
+            .select('*')
+            .in('event_id', eventIds)
+            .order('is_primary', { ascending: false })
+            .order('created_at', { ascending: true });
+
+          if (passesError) {
+            if (passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
+              console.error('Error fetching event passes:', passesError);
             }
+          } else {
+            for (const p of allPassesData || []) {
+              const eid = p?.event_id;
+              if (!eid) continue;
+              if (!passesByEventId[eid]) passesByEventId[eid] = [];
+              passesByEventId[eid].push({
+                id: p.id,
+                name: p.name || '',
+                price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
+                description: p.description || '',
+                is_primary: p.is_primary || false,
+                sold_quantity: p.sold_quantity ?? 0
+              });
+            }
+          }
+        }
 
-            const mappedPasses = (passesData || []).map((p: any) => ({
-              id: p.id,
-              name: p.name || '',
-              price: typeof p.price === 'number' ? p.price : (p.price ? parseFloat(p.price) : 0),
-              description: p.description || '',
-              is_primary: p.is_primary || false,
-              sold_quantity: p.sold_quantity ?? 0
-            }));
-
-            return { ...event, passes: mappedPasses, instagram_link: event.whatsapp_link }; // Map database field to UI field
-          })
-        );
+        const eventsWithPasses = eventRows.map((event: any) => ({
+          ...event,
+          passes: passesByEventId[event.id] || [],
+          instagram_link: event.whatsapp_link,
+        }));
 
         setEvents(eventsWithPasses);
       }
-
-
-
-      // Fetch ambassadors
-      const { data: ambassadorsData, error: ambassadorsError } = await supabase
-        .from('ambassadors')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (ambassadorsError) console.error('Error fetching ambassadors:', ambassadorsError);
-      else setAmbassadors(ambassadorsData || []);
 
       // Fetch sales for all ambassadors
       if (ambassadorsData && ambassadorsData.length > 0) {
@@ -6835,11 +6912,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         setAmbassadorSales({});
       }
 
-      await fetchSalesSettingsData();
-      await fetchMaintenanceSettings();
-      await fetchAmbassadorApplicationSettings();
-      await fetchHeroImages();
-      await fetchAboutImages();
+      await Promise.all([
+        fetchSalesSettingsData(),
+        fetchMaintenanceSettings(),
+        fetchAmbassadorApplicationSettings(),
+        fetchHeroImages(),
+        fetchAboutImages(),
+      ]);
       // Marketing/SMS data will be loaded only when Marketing tab is opened
       // SMS Balance check removed - user must click button to check
 
@@ -8244,7 +8323,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Upload image if file is provided
       if (uploadedFile) {
         setUploadingImage(true);
-        const uploadResult = await uploadImage(uploadedFile, 'posters');
+        const optimizedPoster = await optimizeImageToWebp(uploadedFile, { maxEdge: 1920, quality: 0.84 });
+        const uploadResult = await uploadImage(optimizedPoster, 'posters');
         
         if (uploadResult.error) {
           toast({
@@ -9929,7 +10009,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     const uploadedUrls: string[] = [];
     
     for (const file of files) {
-      const uploadResult = await uploadImage(file, 'gallery');
+      const optimizedFile =
+        type === 'images'
+          ? await optimizeImageToWebp(file, { maxEdge: 1920, quality: 0.84 })
+          : await transcodeHeroVideoToMp4(file);
+      const uploadResult = await uploadImage(optimizedFile, 'gallery');
       
       if (uploadResult.error) {
         throw new Error(uploadResult.error);
@@ -11154,11 +11238,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
               {/* Official Invitations Tab - Only visible to super_admin */}
               {currentAdminRole === "super_admin" && (
-                <OfficialInvitationsTab language={language} selectedEventId={selectedEventId || undefined} />
+                activeTab === "official-invitations" && (
+                  <OfficialInvitationsTab language={language} selectedEventId={selectedEventId || undefined} />
+                )
               )}
               {currentAdminRole === "super_admin" && (
                 <TabsContent value="scanners" className="space-y-6">
-                  <ScannersTab language={language} selectedEventId={selectedEventId || undefined} />
+                  {activeTab === "scanners" && (
+                    <ScannersTab language={language} selectedEventId={selectedEventId || undefined} />
+                  )}
                 </TabsContent>
               )}
 
@@ -11331,103 +11419,111 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 />
               </TabsContent>
 
-              <AmbassadorSalesTab
-                language={language}
-                salesSystemTab={salesSystemTab}
-                setSalesSystemTab={setSalesSystemTab}
-                orderFilters={orderFilters}
-                setOrderFilters={setOrderFilters}
-                filterOptions={filterOptions}
-                filteredCodOrders={filteredCodOrders}
-                codAmbassadorOrders={codAmbassadorOrders}
-                dashboardEventId={selectedEventId}
-                selectedPassTypeTotal={selectedPassTypeTotal}
-                loadingOrders={loadingOrders}
-                orderLogs={orderLogs}
-                onExportExcel={exportOrdersToExcel}
-                onRefresh={fetchAmbassadorSalesData}
-                onViewOrder={(order) => {
-                  setSelectedOrder(order);
-                  setIsOrderDetailsOpen(true);
-                }}
-                onViewAmbassador={handleViewAmbassador}
-              />
+              {activeTab === "ambassador-sales" && (
+                <AmbassadorSalesTab
+                  language={language}
+                  salesSystemTab={salesSystemTab}
+                  setSalesSystemTab={setSalesSystemTab}
+                  orderFilters={orderFilters}
+                  setOrderFilters={setOrderFilters}
+                  filterOptions={filterOptions}
+                  filteredCodOrders={filteredCodOrders}
+                  codAmbassadorOrders={codAmbassadorOrders}
+                  dashboardEventId={selectedEventId}
+                  selectedPassTypeTotal={selectedPassTypeTotal}
+                  loadingOrders={loadingOrders}
+                  orderLogs={orderLogs}
+                  onExportExcel={exportOrdersToExcel}
+                  onRefresh={fetchAmbassadorSalesData}
+                  onViewOrder={(order) => {
+                    setSelectedOrder(order);
+                    setIsOrderDetailsOpen(true);
+                  }}
+                  onViewAmbassador={handleViewAmbassador}
+                />
+              )}
 
-              <MarketingTab
-                language={language}
-                marketingSubTab={marketingSubTab}
-                setMarketingSubTab={setMarketingSubTab}
-                emailSubscribers={emailSubscribers}
-                fetchEmailSubscribers={fetchEmailSubscribers}
-                loadingBalance={loadingBalance}
-                smsBalance={smsBalance}
-                fetchSmsBalance={fetchSmsBalance}
-                testPhoneNumber={testPhoneNumber}
-                setTestPhoneNumber={setTestPhoneNumber}
-                testSmsMessage={testSmsMessage}
-                setTestSmsMessage={setTestSmsMessage}
-                handleSendTestSms={handleSendTestSms}
-                sendingTestSms={sendingTestSms}
-                phoneSubscribers={phoneSubscribers}
-                handleExportPhones={handleExportPhones}
-                showImportDialog={showImportDialog}
-                setShowImportDialog={setShowImportDialog}
-                handleImportPhonesFromExcel={handleImportPhonesFromExcel}
-                importingPhones={importingPhones}
-                loadingLogs={loadingLogs}
-                smsLogs={smsLogs}
-                fetchSmsLogs={fetchSmsLogs}
-                fetchPhoneSubscribers={fetchPhoneSubscribers}
-                loadingEmailSubscribers={loadingEmailSubscribers}
-                handleExportEmails={handleExportEmails}
-                showEmailImportDialog={showEmailImportDialog}
-                setShowEmailImportDialog={setShowEmailImportDialog}
-                handleImportEmailsFromExcel={handleImportEmailsFromExcel}
-                importingEmails={importingEmails}
-                emailSubject={emailSubject}
-                setEmailSubject={setEmailSubject}
-                emailContent={emailContent}
-                setEmailContent={setEmailContent}
-                testEmailAddress={testEmailAddress}
-                setTestEmailAddress={setTestEmailAddress}
-                handleSendTestEmail={handleSendTestEmail}
-                sendingTestEmail={sendingTestEmail}
-                emailDelaySeconds={emailDelaySeconds}
-                setEmailDelaySeconds={setEmailDelaySeconds}
-                handleSendBulkEmails={handleSendBulkEmails}
-                sendingBulkEmails={sendingBulkEmails}
-                getSourceDisplayName={getSourceDisplayName}
-              />
+              {activeTab === "marketing" && (
+                <MarketingTab
+                  language={language}
+                  marketingSubTab={marketingSubTab}
+                  setMarketingSubTab={setMarketingSubTab}
+                  emailSubscribers={emailSubscribers}
+                  fetchEmailSubscribers={fetchEmailSubscribers}
+                  loadingBalance={loadingBalance}
+                  smsBalance={smsBalance}
+                  fetchSmsBalance={fetchSmsBalance}
+                  testPhoneNumber={testPhoneNumber}
+                  setTestPhoneNumber={setTestPhoneNumber}
+                  testSmsMessage={testSmsMessage}
+                  setTestSmsMessage={setTestSmsMessage}
+                  handleSendTestSms={handleSendTestSms}
+                  sendingTestSms={sendingTestSms}
+                  phoneSubscribers={phoneSubscribers}
+                  handleExportPhones={handleExportPhones}
+                  showImportDialog={showImportDialog}
+                  setShowImportDialog={setShowImportDialog}
+                  handleImportPhonesFromExcel={handleImportPhonesFromExcel}
+                  importingPhones={importingPhones}
+                  loadingLogs={loadingLogs}
+                  smsLogs={smsLogs}
+                  fetchSmsLogs={fetchSmsLogs}
+                  fetchPhoneSubscribers={fetchPhoneSubscribers}
+                  loadingEmailSubscribers={loadingEmailSubscribers}
+                  handleExportEmails={handleExportEmails}
+                  showEmailImportDialog={showEmailImportDialog}
+                  setShowEmailImportDialog={setShowEmailImportDialog}
+                  handleImportEmailsFromExcel={handleImportEmailsFromExcel}
+                  importingEmails={importingEmails}
+                  emailSubject={emailSubject}
+                  setEmailSubject={setEmailSubject}
+                  emailContent={emailContent}
+                  setEmailContent={setEmailContent}
+                  testEmailAddress={testEmailAddress}
+                  setTestEmailAddress={setTestEmailAddress}
+                  handleSendTestEmail={handleSendTestEmail}
+                  sendingTestEmail={sendingTestEmail}
+                  emailDelaySeconds={emailDelaySeconds}
+                  setEmailDelaySeconds={setEmailDelaySeconds}
+                  handleSendBulkEmails={handleSendBulkEmails}
+                  sendingBulkEmails={sendingBulkEmails}
+                  getSourceDisplayName={getSourceDisplayName}
+                />
+              )}
 
-              <AioEventsTab
-                language={language}
-                submissions={aioEventsSubmissions}
-                loading={loadingAioEventsSubmissions}
-                pagination={aioEventsPagination}
-                setPagination={setAioEventsPagination}
-                onExport={exportAioEventsSubmissionsToExcel}
-                onRefresh={fetchAioEventsSubmissions}
-              />
+              {activeTab === "aio-events" && (
+                <AioEventsTab
+                  language={language}
+                  submissions={aioEventsSubmissions}
+                  loading={loadingAioEventsSubmissions}
+                  pagination={aioEventsPagination}
+                  setPagination={setAioEventsPagination}
+                  onExport={exportAioEventsSubmissionsToExcel}
+                  onRefresh={fetchAioEventsSubmissions}
+                />
+              )}
 
-              <LogsTab
-                language={language}
-                logs={logs}
-                loading={loadingComprehensiveLogs}
-                logsFilters={logsFilters}
-                setLogsFilters={setLogsFilters}
-                logsPagination={logsPagination}
-                setLogsPagination={setLogsPagination}
-                autoRefresh={autoRefresh}
-                setAutoRefresh={setAutoRefresh}
-                selectedLog={selectedLog}
-                setSelectedLog={setSelectedLog}
-                isLogDrawerOpen={isLogDrawerOpen}
-                setIsLogDrawerOpen={setIsLogDrawerOpen}
-                onRefresh={fetchLogs}
-                cspReports={cspReports}
-                loadingCspReports={loadingCspReports}
-                onRefreshCspReports={fetchCspReports}
-              />
+              {activeTab === "logs" && (
+                <LogsTab
+                  language={language}
+                  logs={logs}
+                  loading={loadingComprehensiveLogs}
+                  logsFilters={logsFilters}
+                  setLogsFilters={setLogsFilters}
+                  logsPagination={logsPagination}
+                  setLogsPagination={setLogsPagination}
+                  autoRefresh={autoRefresh}
+                  setAutoRefresh={setAutoRefresh}
+                  selectedLog={selectedLog}
+                  setSelectedLog={setSelectedLog}
+                  isLogDrawerOpen={isLogDrawerOpen}
+                  setIsLogDrawerOpen={setIsLogDrawerOpen}
+                  onRefresh={fetchLogs}
+                  cspReports={cspReports}
+                  loadingCspReports={loadingCspReports}
+                  onRefreshCspReports={fetchCspReports}
+                />
+              )}
 
               {currentAdminRole === 'super_admin' && (
                 <SettingsTab

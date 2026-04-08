@@ -13,10 +13,14 @@
     "dev:full": "concurrently \"npm run dev\" \"npm run server\"",
     "security:check": "node scripts/check-security-config.js",
     "security:setup": "node scripts/setup-security.js",
-    "invite:qr": "node scripts/create-invitation-qr-tickets.cjs"
+    "invite:qr": "node scripts/create-invitation-qr-tickets.cjs",
+    "media:reupload-current": "node scripts/reupload-optimize-current-media.cjs --dry-run",
+    "media:reupload-current:apply": "node scripts/reupload-optimize-current-media.cjs --apply"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1024.0",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@hookform/resolvers": "^3.9.0",
     "@microsoft/clarity": "^1.0.2",
     "@radix-ui/react-accordion": "^1.2.0",
@@ -67,6 +71,7 @@
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-rate-limit": "^8.0.1",
+    "ffmpeg-static": "^5.3.0",
     "gsap": "^3.14.2",
     "html5-qrcode": "^2.3.8",
     "input-otp": "^1.2.4",

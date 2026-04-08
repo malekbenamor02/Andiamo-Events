@@ -149,7 +149,9 @@ export interface HeroImage {
   posterPath?: string;
   /** R2 derivatives from Sharp pipeline (stored for responsive hero srcset / AVIF). */
   thumbUrl?: string;
+  thumbPath?: string;
   midUrl?: string;
+  midPath?: string;
   avifUrl?: string;
   srcMobile?: string;
 }
