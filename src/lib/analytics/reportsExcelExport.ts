@@ -242,9 +242,6 @@ function formatPasses(order: any): string {
       .map((p: any) => `${p.pass_type} ×${p.quantity} @ ${p.price} TND`)
       .join(' | ');
   }
-  if (order.pass_type) {
-    return `${order.pass_type} ×${order.quantity ?? 1}`;
-  }
   return '—';
 }
 
@@ -407,19 +404,6 @@ async function fetchEventPassTypeNames(eventId: string): Promise<string[]> {
 
 type RosterRow = { id: string; full_name: string; phone: string };
 
-/** DB may not have migrations applied; PostgREST / Postgres errors vary by version. */
-function isMissingRelationError(err: { message?: string; code?: string } | null): boolean {
-  if (!err) return false;
-  const m = (err.message || '').toLowerCase();
-  const c = err.code || '';
-  return (
-    m.includes('does not exist') ||
-    (m.includes('schema cache') && m.includes('ambassador_events')) ||
-    c === '42P01' ||
-    c === 'PGRST205'
-  );
-}
-
 async function fetchAmbassadorsByIds(orderedIds: string[]): Promise<RosterRow[]> {
   if (orderedIds.length === 0) return [];
   const { data: amRows, error: amError } = await supabase
@@ -459,30 +443,9 @@ async function fetchAllAmbassadorsRoster(): Promise<RosterRow[]> {
   }));
 }
 
-/**
- * Event roster from ambassador_events when the table exists; otherwise all ambassadors (DB without that migration).
- */
 async function fetchAmbassadorRosterForExport(eventId: string | null): Promise<RosterRow[]> {
-  if (!eventId) {
-    return fetchAllAmbassadorsRoster();
-  }
-  const { data: links, error: linksError } = await supabase
-    .from('ambassador_events')
-    .select('ambassador_id')
-    .eq('event_id', eventId);
-  if (linksError) {
-    if (isMissingRelationError(linksError)) {
-      return fetchAllAmbassadorsRoster();
-    }
-    throw new Error(supabaseErrorMessage(linksError));
-  }
-  const ids = Array.from(
-    new Set((links || []).map((r: { ambassador_id?: string }) => r.ambassador_id).filter(Boolean) as string[])
-  );
-  if (ids.length === 0) {
-    return [];
-  }
-  return fetchAmbassadorsByIds(ids);
+  void eventId;
+  return fetchAllAmbassadorsRoster();
 }
 
 async function resolvePassTypeColumns(

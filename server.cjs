@@ -1491,12 +1491,17 @@ app.post('/api/scanner-logout', (req, res) => {
 app.patch('/api/admin/scan-system-config', requireAdminAuth, requireSuperAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const v = req.body && req.body.scan_enabled;
+    const v = req.body && (req.body.scan_enabled ?? req.body.enabled);
+    if (!(v === true || v === false || v === 'true' || v === 'false')) {
+      return res.status(400).json({ error: 'Invalid payload: scan_enabled/enabled must be boolean' });
+    }
     const scan_enabled = v === true || v === 'true';
     const db = supabaseService || supabase;
-    const { data: cfg } = await db.from('scan_system_config').select('id').limit(1).single();
-    if (!cfg) return res.status(500).json({ error: 'Config not found' });
-    const { error } = await db.from('scan_system_config').update({ scan_enabled, updated_by: req.admin.id, updated_at: new Date().toISOString() }).eq('id', cfg.id);
+    const nowIso = new Date().toISOString();
+    const { error } = await db
+      .from('scan_system_config')
+      .update({ scan_enabled, updated_by: req.admin.id, updated_at: nowIso })
+      .not('id', 'is', null);
     if (error) return res.status(500).json({ error: 'Update failed' });
     return res.json({ success: true, enabled: scan_enabled });
   } catch (e) { return res.status(500).json({ error: 'Server error' }); }
@@ -1507,7 +1512,12 @@ app.get('/api/admin/scan-system-config', requireAdminAuth, requireSuperAdmin, as
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const db = supabaseService || supabase;
-    const { data: r, error } = await db.from('scan_system_config').select('scan_enabled, updated_at, updated_by').limit(1).single();
+    const { data: rows, error } = await db
+      .from('scan_system_config')
+      .select('scan_enabled, updated_at, updated_by')
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    const r = rows?.[0] || null;
     if (error || !r) return res.json({ enabled: false, updated_at: null, updated_by: null });
     let name = null;
     if (r.updated_by) {
@@ -1784,7 +1794,16 @@ app.get('/api/admin/scanners/:id/statistics', requireAdminAuth, requireSuperAdmi
     (rows || []).forEach(r => { if (byStatus[r.scan_result] != null) byStatus[r.scan_result]++; });
     const qids = (rows || []).map(r => r.qr_ticket_id).filter(Boolean);
     let byPass = {}; if (qids.length) { const { data: qr } = await db.from('qr_tickets').select('id, pass_type').in('id', qids); (qr || []).forEach(q => { byPass[q.pass_type] = (byPass[q.pass_type] || 0) + 1; }); }
-    return res.json({ total, byStatus, byPass });
+    let remaining_valid_passes = null;
+    if (event_id && /^[0-9a-f-]{36}$/i.test(event_id)) {
+      const { count: remainingCount } = await db
+        .from('qr_tickets')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', event_id)
+        .eq('ticket_status', 'VALID');
+      remaining_valid_passes = remainingCount || 0;
+    }
+    return res.json({ total, byStatus, byPass, remaining_valid_passes });
   } catch (e) { return res.status(500).json({ error: 'Server error' }); }
 });
 
@@ -1874,15 +1893,40 @@ app.get('/api/admin/scan-statistics', requireAdminAuth, requireSuperAdmin, async
     const total = (rows || []).length;
     const byStatus = { valid: 0, invalid: 0, already_scanned: 0, wrong_event: 0 };
     const byScanner = {};
+    const byScannerStatus = {};
     (rows || []).forEach(r => {
       if (byStatus[r.scan_result] != null) byStatus[r.scan_result]++;
       if (r.scanner_id) byScanner[r.scanner_id] = (byScanner[r.scanner_id] || 0) + 1;
+      if (r.scanner_id) {
+        if (!byScannerStatus[r.scanner_id]) {
+          byScannerStatus[r.scanner_id] = { total: 0, valid: 0, invalid: 0, already_scanned: 0, wrong_event: 0 };
+        }
+        byScannerStatus[r.scanner_id].total += 1;
+        if (byScannerStatus[r.scanner_id][r.scan_result] != null) {
+          byScannerStatus[r.scanner_id][r.scan_result] += 1;
+        }
+      }
     });
     const hasQrCol = rows && rows[0] && ('qr_ticket_id' in rows[0]);
     const qids = hasQrCol ? (rows || []).map(r => r.qr_ticket_id).filter(Boolean) : [];
     let byPass = {};
     if (qids.length) { const { data: qr } = await db.from('qr_tickets').select('id, pass_type').in('id', qids); (qr || []).forEach(q => { byPass[q.pass_type] = (byPass[q.pass_type] || 0) + 1; }); }
-    return res.json({ total, byStatus, byPass, byScanner });
+    const scannerIds = Object.keys(byScannerStatus);
+    const scannerNames = {};
+    if (scannerIds.length) {
+      const { data: scannerRows } = await db.from('scanners').select('id, name').in('id', scannerIds);
+      (scannerRows || []).forEach((s) => { scannerNames[s.id] = s.name; });
+    }
+    let remaining_valid_passes = null;
+    if (event_id && /^[0-9a-f-]{36}$/i.test(event_id)) {
+      const { count: remainingCount } = await db
+        .from('qr_tickets')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', event_id)
+        .eq('ticket_status', 'VALID');
+      remaining_valid_passes = remainingCount || 0;
+    }
+    return res.json({ total, byStatus, byPass, byScanner, byScannerStatus, scannerNames, remaining_valid_passes });
   } catch (e) {
     console.error('[/api/admin/scan-statistics]', e);
     return res.status(500).json({ error: 'Server error' });
@@ -3784,10 +3828,31 @@ app.get('/api/sms-balance', requireAdminAuth, async (req, res) => {
     // Parse response
     let balanceData = responseData.data;
     if (typeof balanceData === 'string') {
+      const rawStr = balanceData.trim();
+      if (/^\s*<(!DOCTYPE|html)/i.test(rawStr)) {
+        return res.status(200).json({
+          success: true,
+          balance: null,
+          currency: null,
+          message: 'Unable to fetch balance from SMS provider',
+          configured: true,
+          error:
+            'The SMS provider returned a web page instead of data. Check WINSMS_API_KEY, provider status, or try again later.',
+          rawResponse: rawStr.length > 400 ? `${rawStr.slice(0, 400)}…` : rawStr
+        });
+      }
       try {
         balanceData = JSON.parse(balanceData);
       } catch (e) {
-        // Keep as string if JSON parse fails
+        return res.status(200).json({
+          success: true,
+          balance: null,
+          currency: null,
+          message: 'Unable to fetch balance from SMS provider',
+          configured: true,
+          error: 'The SMS provider returned an unexpected response (not JSON).',
+          rawResponse: rawStr.length > 400 ? `${rawStr.slice(0, 400)}…` : rawStr
+        });
       }
     }
 
@@ -3868,13 +3933,8 @@ app.post('/api/send-order-confirmation-sms', logSecurityRequest, smsLimiter, asy
       return res.status(400).json({ success: false, error: 'Order does not have an ambassador assigned' });
     }
 
-    // Get order access token for single URL with all QR codes
-    const apiBase = process.env.VITE_API_URL || process.env.API_URL || 'https://andiamoevents.com';
-    let qrCodeUrl = null;
-    
-    if (order.qr_access_token) {
-      qrCodeUrl = `${apiBase}/api/qr-codes/${order.qr_access_token}`;
-    }
+    // Order-level QR access URL has been removed.
+    const qrCodeUrl = null;
 
     // Prepare passes array for SMS template helper
     let passes = [];
@@ -5876,8 +5936,6 @@ app.post('/api/admin/events', requireAdminAuth, async (req, res) => {
       city: payload.city ?? null,
       description: payload.description ?? null,
       poster_url: payload.poster_url ?? null,
-      ticket_link: payload.ticket_link ?? null,
-      whatsapp_link: payload.whatsapp_link ?? null,
       event_status: payload.event_status === 'completed' || payload.event_status === 'cancelled' || payload.event_status === 'active'
         ? payload.event_status
         : 'active',
@@ -5931,8 +5989,6 @@ app.patch('/api/admin/events/:id', requireAdminAuth, async (req, res) => {
       city: payload.city ?? null,
       description: payload.description ?? null,
       poster_url: payload.poster_url ?? null,
-      ticket_link: payload.ticket_link ?? null,
-      whatsapp_link: payload.whatsapp_link ?? null,
       event_status: normalizedStatus,
       event_type: eventType,
       gallery_images: payload.gallery_images ?? [],
@@ -6340,7 +6396,7 @@ app.get('/api/ambassadors/active', async (req, res) => {
     
     let query = supabase
       .from('ambassadors')
-      .select('id, full_name, phone, email, city, ville, status, commission_rate')
+      .select('id, full_name, phone, email, city, ville, status')
       .eq('status', 'approved')
       .eq('city', normalizedCity);
 
@@ -8203,6 +8259,17 @@ app.get('/api/email-delivery-logs/:orderId', requireAdminAuth, async (req, res) 
 app.get('/api/qr-codes/:accessToken', logSecurityRequest, qrCodeAccessLimiter, async (req, res) => {
   try {
     const { accessToken } = req.params;
+    void accessToken;
+    return res.status(410).send(`
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><title>Link Unavailable</title></head>
+      <body style="font-family:Arial,sans-serif;text-align:center;padding:50px;">
+        <h1 style="color:#e74c3c;">Link Unavailable</h1>
+        <p>Order-level QR access links are no longer supported.</p>
+      </body>
+      </html>
+    `);
     
     if (!supabase) {
       return res.status(500).json({ error: 'Supabase not configured' });
@@ -9045,31 +9112,7 @@ async function generateTicketsAndSendEmail(orderId) {
     const { v4: uuidv4 } = require('uuid');
     const QRCode = require('qrcode');
 
-    // Generate single access token for order (for SMS URL with all QR codes)
-    const orderAccessToken = uuidv4();
-    
-    // Calculate expiration date: event date + 1 day (or 30 days if no event date)
-    let urlExpiresAt = null;
-    if (order.events?.date) {
-      const eventDate = new Date(order.events.date);
-      eventDate.setDate(eventDate.getDate() + 1); // Event date + 1 day
-      urlExpiresAt = eventDate.toISOString();
-    } else {
-      // Fallback: 30 days from now if no event date
-      const fallbackDate = new Date();
-      fallbackDate.setDate(fallbackDate.getDate() + 30);
-      urlExpiresAt = fallbackDate.toISOString();
-    }
-
-    // Update order with access token
-    await dbClient
-      .from('orders')
-      .update({
-        qr_access_token: orderAccessToken,
-        qr_url_accessed: false,
-        qr_url_expires_at: urlExpiresAt
-      })
-      .eq('id', orderId);
+    // Order-level QR access token fields were removed from orders table.
 
     // Create tickets and generate QR codes
     const tickets = [];

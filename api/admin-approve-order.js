@@ -454,30 +454,7 @@ export default async (req, res) => {
         const { v4: uuidv4 } = await import('uuid');
         const QRCode = await import('qrcode');
         
-        // Generate order access token
-        const orderAccessToken = uuidv4();
-        
-        // Calculate expiration date
-        let urlExpiresAt = null;
-        if (fullOrder.events?.date) {
-          const eventDate = new Date(fullOrder.events.date);
-          eventDate.setDate(eventDate.getDate() + 1);
-          urlExpiresAt = eventDate.toISOString();
-        } else {
-          const fallbackDate = new Date();
-          fallbackDate.setDate(fallbackDate.getDate() + 30);
-          urlExpiresAt = fallbackDate.toISOString();
-        }
-        
-        // Update order with access token
-        await dbClient
-          .from('orders')
-          .update({
-            qr_access_token: orderAccessToken,
-            qr_url_accessed: false,
-            qr_url_expires_at: urlExpiresAt
-          })
-          .eq('id', orderId);
+        // Order-level QR access token fields were removed from orders table.
         
         // Generate tickets with QR codes
         const tickets = [];

@@ -542,8 +542,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           passTypesStr = passes.map((p: any) => 
             `${p.pass_type || p.passName || 'Unknown'} Ã—${p.quantity || 1}`
           ).join(', ');
-        } else if (order.pass_type) {
-          passTypesStr = `${order.pass_type} Ã—${order.quantity || 1}`;
         }
 
         // Format dates
@@ -1114,7 +1112,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             p.name ||
             p.passName ||
             p.pass_type ||
-            order.pass_type ||
             (lang === "en" ? "Pass" : "Pass");
           const qty = p.quantity || 0;
           return `${String(label)} x${qty}`;
@@ -1135,11 +1132,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       } else if (total == null) {
         total = subtotalFromPasses;
       }
-    } else {
-      const label =
-        order.pass_type || (lang === "en" ? "Pass" : "Pass");
-      const qty = order.quantity || 0;
-      passesText = `${String(label)} x${qty}`;
     }
 
     const totalText =
@@ -2568,13 +2560,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             quantity: p.quantity,
             price: p.price
           }));
-        } else if (order.pass_type) {
-          // Very old system: single pass_type
-          passes = [{
-            pass_type: order.pass_type,
-            quantity: order.quantity || 1,
-            price: order.total_price / (order.quantity || 1)
-          }];
         }
 
         return {
@@ -2723,7 +2708,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (onlineOrderFilters.passType !== 'all') {
         const pt = onlineOrderFilters.passType;
         filteredData = filteredData.filter((order: any) =>
-          order.pass_type === pt || (order.order_passes && order.order_passes.some((op: any) => op.pass_type === pt))
+          order.order_passes && order.order_passes.some((op: any) => op.pass_type === pt)
         );
       }
       setOnlineOrders(filteredData);
@@ -2801,7 +2786,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       if (filters.passType !== 'all') {
         const pt = filters.passType;
         filteredData = filteredData.filter((order: any) =>
-          order.pass_type === pt || (order.order_passes && order.order_passes.some((op: any) => op.pass_type === pt))
+          order.order_passes && order.order_passes.some((op: any) => op.pass_type === pt)
         );
       }
       setOnlineOrders(filteredData);
@@ -6880,37 +6865,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         const eventsWithPasses = eventRows.map((event: any) => ({
           ...event,
           passes: passesByEventId[event.id] || [],
-          instagram_link: event.whatsapp_link,
         }));
 
         setEvents(eventsWithPasses);
       }
 
-      // Fetch sales for all ambassadors
-      if (ambassadorsData && ambassadorsData.length > 0) {
-        const { data: salesData, error: salesError } = await (supabase as any)
-          .from('clients')
-          .select('ambassador_id, standard_tickets, vip_tickets');
-        if (salesError) {
-          // Only log if it's not a handled error (e.g., table doesn't exist is expected)
-          if (salesError.code !== '42P01' && salesError.code !== 'PGRST116') {
-            console.error('Error fetching ambassador sales:', salesError);
-          }
-          setAmbassadorSales({});
-        } else {
-          // Aggregate sales by ambassador_id
-          const salesMap: Record<string, { standard: number; vip: number }> = {};
-          for (const sale of salesData) {
-            if (!sale.ambassador_id) continue;
-            if (!salesMap[sale.ambassador_id]) salesMap[sale.ambassador_id] = { standard: 0, vip: 0 };
-            salesMap[sale.ambassador_id].standard += sale.standard_tickets || 0;
-            salesMap[sale.ambassador_id].vip += sale.vip_tickets || 0;
-          }
-          setAmbassadorSales(salesMap);
-        }
-      } else {
-        setAmbassadorSales({});
-      }
+      // Legacy clients table has been removed; keep ambassador sales empty here.
+      setAmbassadorSales({});
 
       await Promise.all([
         fetchSalesSettingsData(),
@@ -6987,7 +6948,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             ville: (application.city === 'Sousse' || application.city === 'Tunis') ? (application.ville?.trim() || null) : null,
             password: hashedPassword, // Store hashed password
             status: 'approved',
-            commission_rate: 10,
             updated_at: new Date().toISOString()
           })
           .eq('phone', application.phone_number);
@@ -7005,7 +6965,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             ville: (application.city === 'Sousse' || application.city === 'Tunis') ? (application.ville?.trim() || null) : null,
             password: hashedPassword, // Store hashed password
             status: 'approved',
-            commission_rate: 10,
             created_at: new Date().toISOString()
           })
           .select()
@@ -8286,17 +8245,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
   const handleSaveEvent = async (event: Event, uploadedFile?: File | null): Promise<boolean> => {
     try {
-      // Validate Instagram link
-      if (event.instagram_link && !isInstagramUrl(event.instagram_link)) {
-        toast({
-          title: language === 'en' ? "Invalid Instagram Link" : "Lien Instagram Invalide",
-          description: language === 'en' 
-            ? "Please enter a valid Instagram URL (e.g., https://www.instagram.com/username)" 
-            : "Veuillez entrer une URL Instagram valide (ex: https://www.instagram.com/username)",
-          variant: "destructive",
-        });
-        return false;
-      }
       const isCompleted = event.event_status === 'completed';
       const effectiveEventType = isCompleted ? 'gallery' : (event.event_type || 'upcoming');
 
@@ -8415,8 +8363,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         city: event.city,
         description: event.description,
         poster_url: posterUrl,
-        ticket_link: event.ticket_link,
-        whatsapp_link: event.instagram_link, // Database column is still whatsapp_link, but we use instagram_link in UI
         event_status: normalizedEventStatus,
         event_type: effectiveEventType,
         gallery_images: finalGalleryImages,
@@ -8470,7 +8416,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 gallery_credit: event.gallery_credit?.trim() || null,
                 event_status: normalizedEventStatus,
                 event_type: effectiveEventType,
-                instagram_link: event.instagram_link,
                 updated_at: new Date().toISOString() 
               }
             : e
@@ -8479,7 +8424,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         // For new events, use the data returned from database and add gallery
         const newEvent: Event = {
           ...(newEventData || {}),
-          instagram_link: newEventData?.whatsapp_link || event.instagram_link, // Map from database whatsapp_link to UI instagram_link
           passes: [], // Passes will be created via Pass Stock Management dialog
           gallery_images: finalGalleryImages,
           gallery_videos: finalGalleryVideos,
@@ -8685,7 +8629,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             city: ambassador.city,
             ville: (ambassador.city === 'Sousse' || ambassador.city === 'Tunis') ? (ambassador.ville?.trim() || null) : null,
             status: ambassador.status,
-            commission_rate: ambassador.commission_rate,
             updated_at: new Date().toISOString()
         };
 
@@ -8941,7 +8884,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           ville: (newAmbassadorForm.city === 'Sousse' || newAmbassadorForm.city === 'Tunis') ? newAmbassadorForm.ville.trim() : null,
           password: hashedPassword,
           status: 'approved',
-          commission_rate: 10,
           created_at: new Date().toISOString()
         })
         .select()
@@ -9663,17 +9605,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         const { data: allSponsors } = await supabase.from('sponsors').select('*').order('created_at', { ascending: true });
         if (allSponsors) setSponsors(allSponsors);
         throw sponsorError;
-      }
-      
-      // Delete associated event sponsors
-      const { error: eventSponsorError } = await supabase
-        .from('event_sponsors')
-        .delete()
-        .eq('sponsor_id', sponsorIdToDelete);
-      
-      if (eventSponsorError) {
-        console.error('Error deleting event sponsors:', eventSponsorError);
-        // Don't throw here as the sponsor was already deleted
       }
       
       toast({
@@ -11190,7 +11121,6 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 setPendingGalleryVideos={setPendingGalleryVideos}
                 passValidationErrors={passValidationErrors}
                 setPassValidationErrors={setPassValidationErrors}
-                isInstagramUrl={isInstagramUrl}
                 handleSaveEvent={handleSaveEvent}
                 handleGalleryFileSelect={handleGalleryFileSelect}
                 removeGalleryFile={removeGalleryFile}

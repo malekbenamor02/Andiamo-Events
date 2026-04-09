@@ -22,7 +22,6 @@ interface Ambassador {
   city: string;
   password: string;
   status: string;
-  commission_rate: number;
   approved_by?: string;
   approved_at?: string;
   created_at: string;

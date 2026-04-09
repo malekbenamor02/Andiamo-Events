@@ -3,7 +3,6 @@ import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
 import { 
   Calendar, 
   MapPin, 
-  Users, 
   ExternalLink,
   ArrowLeft
 } from "lucide-react";
@@ -256,15 +255,6 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
               </div>
             </div>
             
-            {event.capacity && (
-              <div className="flex items-start space-x-3 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
-                <Users className="w-5 h-5 text-yellow-400 mt-1 flex-shrink-0" />
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">{t.estimatedCrowd}</p>
-                  <p className="text-white font-semibold">{event.capacity}+</p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </section>
@@ -337,23 +327,6 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
         </section>
       ) : null}
 
-      {event.organizer_contact && (
-        <section className="py-16 bg-gradient-dark">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up">
-              <a
-                href={`https://wa.me/${event.organizer_contact.replace(/[^0-9]/g, '')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold border border-green-500/50 text-green-500/80 hover:border-green-500/70 hover:text-green-500/90 hover:bg-green-500/5 transition-all duration-300"
-              >
-                <ExternalLink className="w-5 h-5 mr-2" />
-                {t.contactOrganizer}
-              </a>
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* Related Events */}
       {relatedEvents.length > 0 && (

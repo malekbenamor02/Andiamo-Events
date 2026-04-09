@@ -256,7 +256,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         const notesData = typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
         if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
           return notesData.all_passes.map((p: any) => ({
-            pass_type: p.passName || p.pass_type || order.pass_type || 'standard',
+            pass_type: p.passName || p.pass_type || 'standard',
             quantity: p.quantity || 0,
             price: p.price || 0
           }));
@@ -264,16 +264,6 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
       } catch (e) {
         console.error('Error parsing order notes:', e);
       }
-    }
-    
-    // Fallback: use order.pass_type and order.quantity (very old system)
-    if (order.pass_type && order.quantity) {
-      const pricePerPass = order.total_price / order.quantity;
-      return [{
-        pass_type: order.pass_type,
-        quantity: order.quantity,
-        price: pricePerPass
-      }];
     }
     
     return [];

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, MapPin, Users, ArrowLeft, CheckCircle, XCircle, Lock } from 'lucide-react';
+import { Calendar, MapPin, ArrowLeft, CheckCircle, XCircle, Lock } from 'lucide-react';
 import { ExpandableText } from '@/components/ui/expandable-text';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -67,10 +67,6 @@ interface Event {
   city: string;
   poster_url?: string;
   passes?: EventPass[];
-  capacity?: number;
-  age_restriction?: number;
-  dress_code?: string;
-  special_notes?: string;
   is_test?: boolean;
   event_status?: string;
   event_type?: string;
@@ -1200,12 +1196,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       <MapPin className="w-4 h-4 mr-2 text-primary" />
                       <span>{event.venue}, {event.city}</span>
                     </div>
-                    {event.capacity && (
-                      <div className="flex items-center">
-                        <Users className="w-4 h-4 mr-2 text-primary" />
-                        <span>{event.capacity} {language === 'en' ? 'spots' : 'places'}</span>
-                      </div>
-                    )}
                   </div>
                 </CardContent>
               </Card>

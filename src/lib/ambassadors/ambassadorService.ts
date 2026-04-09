@@ -30,7 +30,7 @@ export async function getActiveAmbassadorsByLocation(
 ): Promise<Ambassador[]> {
   let query = supabase
     .from('ambassadors')
-    .select('id, full_name, phone, email, city, ville, status, commission_rate')
+    .select('id, full_name, phone, email, city, ville, status')
     .eq('status', 'approved')
     .eq('city', city);
     // Removed .order('full_name') - now using random order
@@ -57,7 +57,7 @@ export async function getActiveAmbassadorsByLocation(
 export async function getAllActiveAmbassadors(): Promise<Ambassador[]> {
   const { data, error } = await supabase
     .from('ambassadors')
-    .select('id, full_name, phone, email, city, ville, status, commission_rate, created_at')
+    .select('id, full_name, phone, email, city, ville, status, created_at')
     .eq('status', 'approved')
     .order('full_name');
   

@@ -644,22 +644,7 @@ export function OnlineOrderDetailsDialog({
                       </div>
                     );
                   } else {
-                    return (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <Label className="text-muted-foreground">{language === "en" ? "Pass Type" : "Type Pass"}</Label>
-                          <p className="font-semibold uppercase">{order.pass_type}</p>
-                        </div>
-                        <div>
-                          <Label className="text-muted-foreground">{language === "en" ? "Quantity" : "Quantité"}</Label>
-                          <p className="font-semibold">{order.quantity}</p>
-                        </div>
-                        <div>
-                          <Label className="text-muted-foreground">{language === "en" ? "Total Price" : "Prix Total"}</Label>
-                          <p className="font-semibold text-lg">{order.total_price?.toFixed(2) || "0.00"} TND</p>
-                        </div>
-                      </div>
-                    );
+                    return null;
                   }
                 })()}
               </CardContent>

@@ -349,12 +349,6 @@ async function fetchAnalyticsData(
     } else {
       const agg = getOrderTicketsAndRevenue(order);
       orderTickets = agg.tickets;
-      const passName = order.pass_type || 'Unknown';
-      const existingPass = passPerformanceMap.get(passName) || { tickets: 0, revenue: 0 };
-      passPerformanceMap.set(passName, {
-        tickets: existingPass.tickets + orderTickets,
-        revenue: existingPass.revenue + agg.revenue
-      });
     }
     
     const reportRevenue = getOrderReportRevenue(order);

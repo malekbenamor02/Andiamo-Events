@@ -19,8 +19,6 @@ export interface Event {
   venue: string;
   city: string;
   poster_url: string;
-  instagram_link?: string;
-  whatsapp_link?: string;
   passes?: EventPass[];
   event_type?: 'upcoming' | 'gallery';
   gallery_images?: string[];
@@ -28,13 +26,7 @@ export interface Event {
   /** Shown on gallery masonry tiles under the logo (“Event by : …”) */
   gallery_credit?: string | null;
   event_status?: 'active' | 'cancelled' | 'completed';
-  age_restriction?: number;
-  dress_code?: string;
-  special_notes?: string;
-  organizer_contact?: string;
-  event_category?: string;
   slug?: string;
-  capacity?: number;
 }
 
 /**
@@ -95,7 +87,6 @@ export const useEvents = () => {
 
           return {
             ...e,
-            instagram_link: e.whatsapp_link, // Map database field to UI field
             passes: passes
           };
         })
@@ -138,13 +129,7 @@ export const useFeaturedEvents = () => {
       // Only events that are not completed (for home "featured" / book now)
       const notCompleted = (filteredData || []).filter((e: any) => e.event_status !== 'completed');
 
-      // Map database whatsapp_link to instagram_link for UI
-      const mappedEvents = notCompleted.map((e: any) => ({
-        ...e,
-        instagram_link: e.whatsapp_link
-      }));
-
-      return mappedEvents;
+      return notCompleted;
     },
     staleTime: 30 * 60 * 1000, // 30 minutes
     gcTime: 60 * 60 * 1000, // 60 minutes
@@ -206,7 +191,6 @@ export const useEventBySlug = (eventSlug: string | undefined) => {
 
       return {
         ...event,
-        instagram_link: event.whatsapp_link,
         passes: passes
       } as Event;
     },

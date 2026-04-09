@@ -541,9 +541,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                           ),
                                         )}
                                       </div>
-                                    ) : (
-                                      <span className="text-xs">{order.pass_type || "N/A"}</span>
-                                    )}
+                                    ) : null}
                                   </TableCell>
 
                                   <TableCell className="py-2 text-center">{order.user_name || "N/A"}</TableCell>
@@ -732,9 +730,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                             <span className="text-muted-foreground">×{px.quantity}</span>
                                           </div>
                                         ))
-                                      ) : (
-                                        <span className="text-xs text-muted-foreground">{order.pass_type || "N/A"}</span>
-                                      )}
+                                      ) : null}
                                     </div>
                                   </div>
 

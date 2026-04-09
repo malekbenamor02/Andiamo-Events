@@ -4,7 +4,6 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { 
   Calendar, 
   MapPin, 
-  Users, 
   ArrowLeft,
   ChevronLeft, 
   ChevronRight, 
@@ -35,18 +34,10 @@ interface Event {
   venue: string;
   city: string;
   poster_url: string;
-  instagram_link?: string; // Changed from whatsapp_link to instagram_link
-  whatsapp_link?: string; // Keep for backward compatibility
   event_type?: 'upcoming' | 'gallery';
   gallery_images?: string[];
   gallery_videos?: string[];
   event_status?: 'active' | 'cancelled' | 'completed';
-  capacity?: number;
-  age_restriction?: number;
-  dress_code?: string;
-  special_notes?: string;
-  organizer_contact?: string;
-  event_category?: string;
   gallery_credit?: string | null;
   is_test?: boolean;
   slug?: string;
@@ -435,15 +426,6 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
               </div>
             </div>
             
-            {event.capacity && (
-              <div className="flex items-start space-x-3 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
-                <Users className="w-5 h-5 text-yellow-400 mt-1 flex-shrink-0" />
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">{t.estimatedCrowd}</p>
-                  <p className="text-white font-semibold">{event.capacity}+</p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </section>

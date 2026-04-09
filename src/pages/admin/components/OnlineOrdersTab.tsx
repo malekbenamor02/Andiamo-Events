@@ -317,22 +317,8 @@ export function OnlineOrdersTab({
                               name: p.pass_type ?? "—",
                               quantity: p.quantity ?? 0,
                             }));
-                          } else if (order.pass_type === "mixed" && order.notes) {
-                            try {
-                              const notesData = typeof order.notes === "string" ? JSON.parse(order.notes) : order.notes;
-                              if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                                passItems = notesData.all_passes.map((p: { quantity?: number; passType?: string }) => ({
-                                  name: p.passType ?? "STANDARD",
-                                  quantity: p.quantity ?? 0,
-                                }));
-                              } else {
-                                passItems = [{ name: order.pass_type ?? "STANDARD", quantity: order.quantity ?? 0 }];
-                              }
-                            } catch {
-                              passItems = [{ name: order.pass_type ?? "STANDARD", quantity: order.quantity ?? 0 }];
-                            }
                           } else {
-                            passItems = [{ name: order.pass_type ?? "STANDARD", quantity: order.quantity ?? 0 }];
+                            passItems = [];
                           }
 
                           const email = order.user_email ?? order.email ?? "N/A";
@@ -535,22 +521,8 @@ export function OnlineOrdersTab({
                         name: p.pass_type ?? "—",
                         quantity: p.quantity ?? 0,
                       }));
-                    } else if (order.pass_type === "mixed" && order.notes) {
-                      try {
-                        const notesData = typeof order.notes === "string" ? JSON.parse(order.notes) : order.notes;
-                        if (notesData?.all_passes && Array.isArray(notesData.all_passes)) {
-                          passItems = notesData.all_passes.map((p: { quantity?: number; passType?: string }) => ({
-                            name: p.passType ?? "STANDARD",
-                            quantity: p.quantity ?? 0,
-                          }));
-                        } else {
-                          passItems = [{ name: order.pass_type ?? "STANDARD", quantity: order.quantity ?? 0 }];
-                        }
-                      } catch {
-                        passItems = [{ name: order.pass_type ?? "STANDARD", quantity: order.quantity ?? 0 }];
-                      }
                     } else {
-                      passItems = [{ name: order.pass_type ?? "STANDARD", quantity: order.quantity ?? 0 }];
+                      passItems = [];
                     }
 
                     const email = order.user_email ?? order.email ?? "N/A";

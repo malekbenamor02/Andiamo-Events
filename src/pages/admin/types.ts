@@ -56,8 +56,6 @@ export interface Event {
   city: string;
   description?: string;
   poster_url?: string;
-  instagram_link?: string;
-  ticket_link?: string;
   /** When true, event is hidden from production; on localhost it still appears in lists (incl. admin selector, labeled). */
   is_test?: boolean;
   event_type?: 'upcoming' | 'gallery'; // New field to distinguish event types
@@ -82,7 +80,6 @@ export interface Ambassador {
   city: string;
   ville?: string;
   status: string;
-  commission_rate: number;
   password?: string;
   created_at: string;
   updated_at: string;

@@ -84,7 +84,6 @@ export interface Ambassador {
   ville?: string | null;
   password?: string;  // Only when creating/updating
   status: AmbassadorStatus;
-  commission_rate: number;
   approved_by?: string | null;
   approved_at?: string | null;
   created_at: string;

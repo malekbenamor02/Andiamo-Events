@@ -1665,7 +1665,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         
         let query = dbClient
           .from('ambassadors')
-          .select('id, full_name, phone, email, city, ville, status, commission_rate')
+          .select('id, full_name, phone, email, city, ville, status')
           .eq('status', 'approved')
           .eq('city', normalizedCity);
 
@@ -2030,8 +2030,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           city: payload.city ?? null,
           description: payload.description ?? null,
           poster_url: payload.poster_url ?? null,
-          ticket_link: payload.ticket_link ?? null,
-          whatsapp_link: payload.whatsapp_link ?? null,
           event_status: payload.event_status === 'completed' || payload.event_status === 'cancelled' || payload.event_status === 'active'
             ? payload.event_status
             : 'active',
@@ -2084,8 +2082,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           city: payload.city ?? null,
           description: payload.description ?? null,
           poster_url: payload.poster_url ?? null,
-          ticket_link: payload.ticket_link ?? null,
-          whatsapp_link: payload.whatsapp_link ?? null,
           event_status: normalizedStatus,
           event_type: eventType,
           gallery_images: payload.gallery_images ?? [],
@@ -2926,15 +2922,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
               urlExpiresAt = fallbackDate.toISOString();
             }
             
-            // Update order with access token
-            await dbClient
-              .from('orders')
-              .update({
-                qr_access_token: orderAccessToken,
-                qr_url_accessed: false,
-                qr_url_expires_at: urlExpiresAt
-              })
-              .eq('id', orderId);
+            // Order-level QR access token fields were removed from orders table.
             
             // Generate tickets with QR codes
             const tickets = [];
@@ -3509,9 +3497,7 @@ We Create Memories`;
             if (passesError || !orderPasses?.length) throw new Error('No passes found');
             const { v4: uuidv4 } = await import('uuid');
             const QRCode = await import('qrcode');
-            const orderAccessToken = uuidv4();
-            let urlExpiresAt = fullOrder.events?.date ? (() => { const d = new Date(fullOrder.events.date); d.setDate(d.getDate() + 1); return d.toISOString(); })() : (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString(); })();
-            await dbClient.from('orders').update({ qr_access_token: orderAccessToken, qr_url_accessed: false, qr_url_expires_at: urlExpiresAt }).eq('id', orderId);
+            // Order-level QR access token fields were removed from orders table.
             const tickets = [];
             const storageClient = supabaseService || supabase;
             for (const pass of orderPasses) {
@@ -8835,10 +8821,31 @@ Billets envoyés par email. We Create Memories`;
         // Parse response
         let balanceData = responseData.data;
         if (typeof balanceData === 'string') {
+          const rawStr = balanceData.trim();
+          if (/^\s*<(!DOCTYPE|html)/i.test(rawStr)) {
+            return res.status(200).json({
+              success: true,
+              balance: null,
+              currency: null,
+              message: 'Unable to fetch balance from SMS provider',
+              configured: true,
+              error:
+                'The SMS provider returned a web page instead of data. Check WINSMS_API_KEY, provider status, or try again later.',
+              rawResponse: rawStr.length > 400 ? `${rawStr.slice(0, 400)}…` : rawStr
+            });
+          }
           try {
             balanceData = JSON.parse(balanceData);
           } catch (e) {
-            // Keep as string if JSON parse fails
+            return res.status(200).json({
+              success: true,
+              balance: null,
+              currency: null,
+              message: 'Unable to fetch balance from SMS provider',
+              configured: true,
+              error: 'The SMS provider returned an unexpected response (not JSON).',
+              rawResponse: rawStr.length > 400 ? `${rawStr.slice(0, 400)}…` : rawStr
+            });
           }
         }
 

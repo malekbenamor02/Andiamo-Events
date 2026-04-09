@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, Users, Clock, DollarSign, Info, Image as ImageIcon, Maximize2, Minimize2, Volume2, VolumeX, Camera, Ticket } from "lucide-react";
+import { Calendar, MapPin, ExternalLink, Play, X, ChevronLeft, ChevronRight, DollarSign, Info, Image as ImageIcon, Maximize2, Minimize2, Volume2, VolumeX, Ticket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1108,18 +1108,6 @@ const Events = ({ language }: EventsProps) => {
                               <MapPin className="w-4 h-4 mr-3 text-green-400 flex-shrink-0" />
                               <span>{selectedEvent.city}</span>
                             </div>
-                            {selectedEvent.capacity && (
-                              <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                                <Users className="w-4 h-4 mr-3 text-green-400 flex-shrink-0" />
-                                <span>{content[language].capacity}: {selectedEvent.capacity}</span>
-                              </div>
-                            )}
-                            {selectedEvent.age_restriction && (
-                              <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                                <Clock className="w-4 h-4 mr-3 text-green-400 flex-shrink-0" />
-                                <span>{content[language].ageRestriction}: {selectedEvent.age_restriction}+</span>
-                              </div>
-                            )}
                           </div>
                         </div>
                         
@@ -1147,24 +1135,6 @@ const Events = ({ language }: EventsProps) => {
                                   : content[language].statusActive}
                               </span>
                             </div>
-                            {selectedEvent.dress_code && (
-                              <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                                <span className="w-2 h-2 bg-orange-400 rounded-full mr-3 flex-shrink-0"></span>
-                                <span className="break-words">{content[language].dressCode}: {selectedEvent.dress_code}</span>
-                              </div>
-                            )}
-                            {selectedEvent.special_notes && (
-                              <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                                <span className="w-2 h-2 bg-orange-400 rounded-full mr-3 flex-shrink-0"></span>
-                                <span className="break-words">{content[language].specialNotes}: {selectedEvent.special_notes}</span>
-                              </div>
-                            )}
-                            {selectedEvent.organizer_contact && (
-                              <div className="flex items-center p-2 bg-background/50 rounded-lg">
-                                <span className="w-2 h-2 bg-orange-400 rounded-full mr-3 flex-shrink-0"></span>
-                                <span className="break-words">{content[language].organizerContact}: {selectedEvent.organizer_contact}</span>
-                              </div>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -1183,19 +1153,6 @@ const Events = ({ language }: EventsProps) => {
                             <ExternalLink className="w-5 h-5 mr-2" />
                             {content[language].bookNow}
                           </Button>
-                          {(selectedEvent.instagram_link || selectedEvent.whatsapp_link) && (
-                            <Button
-                              variant="outline"
-                              className="flex-1 py-6 text-base md:text-lg font-semibold border border-pink-500/50 text-pink-500/80 hover:border-pink-500/70 hover:text-pink-500/90 hover:bg-pink-500/5 flex items-center justify-center gap-2 transition-all duration-300"
-                              onClick={() => window.open(selectedEvent.instagram_link || selectedEvent.whatsapp_link, '_blank')}
-                            >
-                              <Camera className="w-5 h-5 flex-shrink-0" />
-                              <span className="flex flex-col items-start leading-tight">
-                                <span>{language === 'en' ? 'Join' : 'Rejoindre'}</span>
-                                {language === 'en' && <span className="leading-none">Event</span>}
-                              </span>
-                            </Button>
-                          )}
                         </div>
                       )}
                     </>

@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import FileUpload from "@/components/ui/file-upload";
-import { Plus, Edit, Trash2, Save, X, Image, Video, Upload, Package, Calendar as CalendarIcon, MapPin, DollarSign, Instagram, RefreshCw, ArrowLeft, Loader2 } from "lucide-react";
+import { Plus, Edit, Trash2, Save, X, Image, Video, Upload, Package, Calendar as CalendarIcon, MapPin, DollarSign, RefreshCw, ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { getApiBaseUrl } from "@/lib/api-routes";
@@ -38,7 +38,6 @@ export interface EventsTabProps {
   setPendingGalleryVideos: (f: File[]) => void;
   passValidationErrors: Record<string, string>;
   setPassValidationErrors: (v: Record<string, string>) => void;
-  isInstagramUrl: (url: string) => boolean;
   handleSaveEvent: (event: Event, uploadedFile?: File | null) => Promise<boolean>;
   handleGalleryFileSelect: (files: File[], type: 'images' | 'videos') => void;
   removeGalleryFile: (index: number, type: 'images' | 'videos') => void;
@@ -148,38 +147,6 @@ export function EventsTab(p: EventsTabProps) {
                             value={p.editingEvent?.description || ''}
                             onChange={(e) => p.setEditingEvent(prev => ({ ...prev, description: e.target.value }))}
                           />
-                        </div>
-                        <div>
-                          <Label htmlFor="eventInstagramLink" className="flex items-center gap-2">
-                            <Instagram className="w-4 h-4" />
-                            {p.t.eventInstagramLink} *
-                          </Label>
-                          <Input
-                            id="eventInstagramLink"
-                            type="url"
-                            value={p.editingEvent?.instagram_link || ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              p.setEditingEvent(prev => ({ ...prev, instagram_link: value }));
-                            }}
-                            placeholder="https://www.instagram.com/username"
-                            className={p.editingEvent?.instagram_link && !p.isInstagramUrl(p.editingEvent.instagram_link) ? 'border-red-500' : ''}
-                            required
-                          />
-                          {p.editingEvent?.instagram_link && !p.isInstagramUrl(p.editingEvent.instagram_link) && (
-                            <p className="text-sm text-red-500 mt-1">
-                              {p.language === 'en' 
-                                ? 'Must be a valid Instagram URL (e.g., https://www.instagram.com/username)' 
-                                : 'Doit Ãªtre une URL Instagram valide (ex: https://www.instagram.com/username)'}
-                            </p>
-                          )}
-                          {!p.editingEvent?.instagram_link && (
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {p.language === 'en' 
-                                ? 'Must start with https://www.instagram.com/ or https://instagram.com/' 
-                                : 'Doit commencer par https://www.instagram.com/ ou https://instagram.com/'}
-                            </p>
-                          )}
                         </div>
                         <div>
                           <Label htmlFor="eventLifecycle">{p.t.eventStatus}</Label>
@@ -1308,7 +1275,6 @@ export function EventsTab(p: EventsTabProps) {
                               const eventWithPasses: Event = { 
                                 ...eventWithoutPasses,
                                 passes: finalPasses, // Explicitly set passes - this ensures it's not empty
-                                instagram_link: event.instagram_link || event.whatsapp_link
                               };
                               
                               

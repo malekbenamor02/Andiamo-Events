@@ -69,7 +69,6 @@ export interface Ambassador {
   city: string;
   ville?: string;
   status: string;
-  commission_rate: number;
 }
 
 export interface AmbassadorTranslations {

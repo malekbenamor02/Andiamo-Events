@@ -15,8 +15,6 @@ interface Event {
   venue: string;
   city: string;
   poster_url?: string;
-  instagram_link?: string; // Changed from whatsapp_link to instagram_link
-  whatsapp_link?: string; // Keep for backward compatibility with database
   standard_price?: number;
   vip_price?: number;
   slug?: string;
