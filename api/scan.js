@@ -161,7 +161,12 @@ export default async function handler(req, res) {
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
       if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
-      const { data: r, error } = await db.from('scan_system_config').select('scan_enabled, updated_at, updated_by').limit(1).single();
+      const { data: rows, error } = await db
+        .from('scan_system_config')
+        .select('scan_enabled, updated_at, updated_by')
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      const r = rows?.[0] || null;
       if (error || !r) return res.status(200).json({ enabled: false, updated_at: null, updated_by: null, updated_by_name: null });
       let name = null;
       if (r.updated_by) {
@@ -178,11 +183,16 @@ export default async function handler(req, res) {
       if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
       const body = await parseBody(req);
-      const v = body && body.scan_enabled;
+      const v = body && (body.scan_enabled ?? body.enabled);
+      if (!(v === true || v === false || v === 'true' || v === 'false')) {
+        return res.status(400).json({ error: 'Invalid payload: scan_enabled/enabled must be boolean' });
+      }
       const scan_enabled = v === true || v === 'true';
-      const { data: cfg } = await db.from('scan_system_config').select('id').limit(1).single();
-      if (!cfg) return res.status(500).json({ error: 'Config not found' });
-      const { error } = await db.from('scan_system_config').update({ scan_enabled, updated_by: auth.admin.id, updated_at: new Date().toISOString() }).eq('id', cfg.id);
+      const nowIso = new Date().toISOString();
+      const { error } = await db
+        .from('scan_system_config')
+        .update({ scan_enabled, updated_by: auth.admin.id, updated_at: nowIso })
+        .not('id', 'is', null);
       if (error) return res.status(500).json({ error: 'Update failed' });
       return res.status(200).json({ success: true, enabled: scan_enabled });
     }
@@ -331,7 +341,16 @@ export default async function handler(req, res) {
         const { data: qr } = await db.from('qr_tickets').select('id, pass_type').in('id', qids);
         (qr || []).forEach((x) => { byPass[x.pass_type] = (byPass[x.pass_type] || 0) + 1; });
       }
-      return res.status(200).json({ total, byStatus, byPass });
+      let remaining_valid_passes = null;
+      if (event_id && /^[0-9a-f-]{36}$/i.test(event_id)) {
+        const { count: remainingCount } = await db
+          .from('qr_tickets')
+          .select('id', { count: 'exact', head: true })
+          .eq('event_id', event_id)
+          .eq('ticket_status', 'VALID');
+        remaining_valid_passes = remainingCount || 0;
+      }
+      return res.status(200).json({ total, byStatus, byPass, remaining_valid_passes });
     }
 
     // ——— GET /api/admin/scan-history (super_admin) + fallback when qr_ticket_id/scanner_id missing
@@ -416,15 +435,42 @@ export default async function handler(req, res) {
       const total = (rows || []).length;
       const byStatus = { valid: 0, invalid: 0, already_scanned: 0, wrong_event: 0 };
       const byScanner = {};
+      const byScannerStatus = {};
       (rows || []).forEach((r) => {
         if (byStatus[r.scan_result] != null) byStatus[r.scan_result]++;
         if (r.scanner_id) byScanner[r.scanner_id] = (byScanner[r.scanner_id] || 0) + 1;
+        if (r.scanner_id) {
+          if (!byScannerStatus[r.scanner_id]) {
+            byScannerStatus[r.scanner_id] = { total: 0, valid: 0, invalid: 0, already_scanned: 0, wrong_event: 0 };
+          }
+          byScannerStatus[r.scanner_id].total += 1;
+          if (byScannerStatus[r.scanner_id][r.scan_result] != null) {
+            byScannerStatus[r.scanner_id][r.scan_result] += 1;
+          }
+        }
       });
       const hasQrCol = rows?.[0] && ('qr_ticket_id' in rows[0]);
       const qids = hasQrCol ? (rows || []).map((r) => r.qr_ticket_id).filter(Boolean) : [];
       let byPass = {};
       if (qids.length) { const { data: qr } = await db.from('qr_tickets').select('id, pass_type').in('id', qids); (qr || []).forEach((x) => { byPass[x.pass_type] = (byPass[x.pass_type] || 0) + 1; }); }
-      return res.status(200).json({ total, byStatus, byPass, byScanner });
+      let scannerNames = {};
+      const scannerIds = Object.keys(byScannerStatus);
+      if (scannerIds.length) {
+        const { data: scannerRows } = await db.from('scanners').select('id, name').in('id', scannerIds);
+        (scannerRows || []).forEach((s) => {
+          scannerNames[s.id] = s.name;
+        });
+      }
+      let remaining_valid_passes = null;
+      if (event_id && /^[0-9a-f-]{36}$/i.test(event_id)) {
+        const { count: remainingCount } = await db
+          .from('qr_tickets')
+          .select('id', { count: 'exact', head: true })
+          .eq('event_id', event_id)
+          .eq('ticket_status', 'VALID');
+        remaining_valid_passes = remainingCount || 0;
+      }
+      return res.status(200).json({ total, byStatus, byPass, byScanner, byScannerStatus, scannerNames, remaining_valid_passes });
     }
 
     // ——— POST /api/scanner/validate-ticket (requireScannerAuth)

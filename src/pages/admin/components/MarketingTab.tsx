@@ -1,5 +1,5 @@
 /**
- * Admin Dashboard â€” Marketing tab (SMS + Email).
+ * Admin Dashboard — Marketing tab (SMS + Email).
  * Extracted from Dashboard.tsx for maintainability.
  */
 
@@ -20,6 +20,12 @@ import { EmailCampaignLauncher } from "@/components/admin/marketing/EmailCampaig
 import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
 import type { MarketingCampaign } from "@/types/bulk-sms";
 
+function isRenderableSmsBalanceValue(balance: unknown): boolean {
+  if (balance == null || balance === "") return false;
+  if (typeof balance === "string" && /^\s*<(!DOCTYPE|html)/i.test(balance.trim())) return false;
+  return true;
+}
+
 export interface MarketingTabProps {
   language: "en" | "fr";
   marketingSubTab: "sms" | "email";
@@ -27,7 +33,7 @@ export interface MarketingTabProps {
   emailSubscribers: Array<{ id: string; email: string; subscribed_at: string; language?: string }>;
   fetchEmailSubscribers: () => void;
   loadingBalance: boolean;
-  smsBalance: { balance?: unknown } | null;
+  smsBalance: { balance?: unknown; error?: string } | null;
   fetchSmsBalance: () => void;
   testPhoneNumber: string;
   setTestPhoneNumber: (v: string) => void;
@@ -384,31 +390,36 @@ export function MarketingTab(p: MarketingTabProps) {
                           <div className="flex flex-col items-center justify-center py-8 space-y-3">
                             <Loader size="lg" />
                             <p className="text-sm text-muted-foreground font-heading">
-                              {p.language === 'en' ? 'Checking balance...' : 'VÃ©rification du solde...'}
+                              {p.language === 'en' ? 'Checking balance...' : 'Vérification du solde...'}
                             </p>
                           </div>
-                        ) : p.smsBalance?.balance ? (
+                        ) : isRenderableSmsBalanceValue(p.smsBalance?.balance) ? (
                           <>
                             <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border">
                               <div className="flex-1">
-                                <p className="text-sm text-muted-foreground font-heading">{p.language === 'en' ? 'Current Balance' : 'Solde Actuel'}</p>
-                                {typeof p.smsBalance.balance === 'object' ? (
+                                <p className="text-sm text-muted-foreground font-heading">{p.language === 'en' ? 'Current Balance' : 'Solde actuel'}</p>
+                                {typeof p.smsBalance!.balance === 'object' ? (
                                     <div className="mt-1">
                                     <p className="text-2xl font-heading font-bold text-primary">
-                                        {p.smsBalance.balance.balance || p.smsBalance.balance.solde || p.smsBalance.balance.credit || 'N/A'}
+                                        {(p.smsBalance!.balance as { balance?: unknown; solde?: unknown; credit?: unknown }).balance
+                                          ?? (p.smsBalance!.balance as { balance?: unknown; solde?: unknown; credit?: unknown }).solde
+                                          ?? (p.smsBalance!.balance as { balance?: unknown; solde?: unknown; credit?: unknown }).credit
+                                          ?? 'N/A'}
                                       </p>
-                                      {p.smsBalance.balance.balance === 0 || p.smsBalance.balance.solde === 0 || p.smsBalance.balance.credit === 0 ? (
+                                      {(p.smsBalance!.balance as { balance?: number; solde?: number; credit?: number }).balance === 0
+                                        || (p.smsBalance!.balance as { balance?: number; solde?: number; credit?: number }).solde === 0
+                                        || (p.smsBalance!.balance as { balance?: number; solde?: number; credit?: number }).credit === 0 ? (
                                       <p className="text-xs text-red-500 mt-1 font-heading">
-                                          Ã¢Å¡Â Ã¯Â¸Â {p.language === 'en' ? 'Insufficient balance!' : 'Solde insuffisant!'}
+                                          ⚠️ {p.language === 'en' ? 'Insufficient balance!' : 'Solde insuffisant !'}
                                         </p>
                                       ) : null}
                                     </div>
                                   ) : (
                                   <p className="text-2xl font-heading font-bold text-primary mt-1">
-                                      {p.smsBalance.balance}
-                                      {p.smsBalance.balance === '0' || p.smsBalance.balance === 0 ? (
+                                      {p.smsBalance!.balance as React.ReactNode}
+                                      {p.smsBalance!.balance === '0' || p.smsBalance!.balance === 0 ? (
                                         <span className="text-xs text-red-500 ml-2">
-                                          Ã¢Å¡Â Ã¯Â¸Â {p.language === 'en' ? 'Insufficient!' : 'Insuffisant!'}
+                                          ⚠️ {p.language === 'en' ? 'Insufficient!' : 'Insuffisant !'}
                                         </span>
                                       ) : null}
                                   </p>
@@ -423,9 +434,28 @@ export function MarketingTab(p: MarketingTabProps) {
                               className="w-full font-heading"
                             >
                                 <RefreshCw className="w-4 h-4 mr-2" />
-                              {p.language === 'en' ? 'Refresh Balance' : 'Actualiser le Solde'}
+                              {p.language === 'en' ? 'Refresh balance' : 'Actualiser le solde'}
                             </Button>
                           </>
+                        ) : p.smsBalance && (p.smsBalance.error != null || p.smsBalance.balance != null) ? (
+                          <div className="flex flex-col items-center justify-center py-6 space-y-4 text-center">
+                            <p className="text-sm text-destructive font-heading max-w-md">
+                              {p.smsBalance.error ||
+                                (p.language === 'en'
+                                  ? 'The SMS provider did not return a valid balance. Check your API key and try again.'
+                                  : 'Le fournisseur SMS n’a pas renvoyé un solde valide. Vérifiez votre clé API et réessayez.')}
+                            </p>
+                            <Button
+                              onClick={p.fetchSmsBalance}
+                              disabled={p.loadingBalance}
+                              variant="outline"
+                              size="sm"
+                              className="w-full font-heading"
+                            >
+                              <RefreshCw className="w-4 h-4 mr-2" />
+                              {p.language === 'en' ? 'Try again' : 'Réessayer'}
+                            </Button>
+                          </div>
                         ) : (
                           <div className="flex flex-col items-center justify-center py-8 space-y-4">
                             <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
@@ -434,7 +464,7 @@ export function MarketingTab(p: MarketingTabProps) {
                             <p className="text-sm text-muted-foreground text-center font-heading">
                               {p.language === 'en' 
                                 ? 'Click the button below to check your SMS balance' 
-                                : 'Cliquez sur le bouton ci-dessous pour vÃƒÂ©rifier votre solde SMS'}
+                                : 'Cliquez sur le bouton ci-dessous pour vérifier votre solde SMS'}
                             </p>
                             <Button
                               onClick={p.fetchSmsBalance}
@@ -443,7 +473,7 @@ export function MarketingTab(p: MarketingTabProps) {
                               size="lg"
                             >
                               <CreditCard className="w-5 h-5 mr-2" />
-                              {p.language === 'en' ? 'Check SMS Balance' : 'VÃƒÂ©rifier le Solde SMS'}
+                              {p.language === 'en' ? 'Check SMS balance' : 'Vérifier le solde SMS'}
                             </Button>
                           </div>
                         )}
@@ -462,12 +492,12 @@ export function MarketingTab(p: MarketingTabProps) {
                         <p className="text-sm text-foreground/70 mt-2">
                           {p.language === 'en' 
                             ? 'Test SMS functionality with a specific phone number'
-                            : 'Tester la fonctionnalitÃƒÂ© SMS avec un numÃƒÂ©ro de tÃƒÂ©lÃƒÂ©phone spÃƒÂ©cifique'}
+                            : 'Tester la fonctionnalité SMS avec un numéro de téléphone spécifique'}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         <div className="space-y-2">
-                          <Label htmlFor="testPhone">{p.language === 'en' ? 'Phone Number' : 'NumÃƒÂ©ro de TÃƒÂ©lÃƒÂ©phone'} *</Label>
+                          <Label htmlFor="testPhone">{p.language === 'en' ? 'Phone Number' : 'Numéro de Téléphone'} *</Label>
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-muted-foreground font-heading">+216</span>
                             <Input
@@ -494,7 +524,7 @@ export function MarketingTab(p: MarketingTabProps) {
                             className="min-h-[100px] text-sm bg-background text-foreground font-heading"
                           />
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>{p.language === 'en' ? 'Characters' : 'CaractÃƒÂ¨res'}: {p.testSmsMessage.length}</span>
+                            <span>{p.language === 'en' ? 'Characters' : 'Caractères'}: {p.testSmsMessage.length}</span>
                             <span>{p.language === 'en' ? 'Approx. messages' : 'Messages approx.'}: {Math.ceil(p.testSmsMessage.length / 160)}</span>
                           </div>
                         </div>
@@ -526,19 +556,19 @@ export function MarketingTab(p: MarketingTabProps) {
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
                           <Download className="w-5 h-5 text-primary" />
-                          {p.language === 'en' ? 'Export/Import Phone Subscribers' : 'Exporter/Importer AbonnÃ©s'}
+                          {p.language === 'en' ? 'Export/Import Phone Subscribers' : 'Exporter/Importer Abonnés'}
                         </CardTitle>
                         <p className="text-sm text-foreground/70 mt-2">
                           {p.language === 'en' 
                             ? `Export or import phone subscribers from Excel`
-                            : `Exporter ou importer des abonnÃƒÂ©s tÃƒÂ©lÃƒÂ©phone depuis Excel`}
+                            : `Exporter ou importer des abonnés téléphone depuis Excel`}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {/* Subscriber Count */}
                         <div className="p-3 bg-muted/30 rounded-lg border border-border">
                           <div className="text-sm font-semibold text-foreground mb-1">
-                            {p.language === 'en' ? 'Subscribers Count' : "Nombre d'AbonnÃ©s"}
+                            {p.language === 'en' ? 'Subscribers Count' : "Nombre d'Abonnés"}
                           </div>
                           <div className="text-2xl font-bold text-primary">
                             {p.phoneSubscribers.length}
@@ -571,7 +601,7 @@ export function MarketingTab(p: MarketingTabProps) {
                             <DialogContent className="max-w-2xl">
                               <DialogHeader>
                                 <DialogTitle>
-                                  {p.language === 'en' ? 'Import Phone Numbers from Excel' : 'Importer des NumÃƒÂ©ros depuis Excel'}
+                                  {p.language === 'en' ? 'Import Phone Numbers from Excel' : 'Importer des Numéros depuis Excel'}
                                 </DialogTitle>
                               </DialogHeader>
                               <div className="space-y-4">
@@ -587,22 +617,22 @@ export function MarketingTab(p: MarketingTabProps) {
                                         <li>
                                           {p.language === 'en' 
                                             ? 'First column: Phone Number (8 digits, starts with 2, 4, 5, or 9)'
-                                            : 'PremiÃƒÂ¨re colonne: NumÃƒÂ©ro de tÃƒÂ©lÃƒÂ©phone (8 chiffres, commence par 2, 4, 5 ou 9)'}
+                                            : 'Première colonne: Numéro de téléphone (8 chiffres, commence par 2, 4, 5 ou 9)'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'First row should be headers (will be skipped)'
-                                            : 'La premiÃƒÂ¨re ligne doit contenir les en-tÃƒÂªtes (sera ignorÃƒÂ©e)'}
+                                            : 'La première ligne doit contenir les en-têtes (sera ignorée)'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'Duplicate numbers will be automatically skipped'
-                                            : 'Les numÃƒÂ©ros en double seront automatiquement ignorÃƒÂ©s'}
+                                            : 'Les numéros en double seront automatiquement ignorés'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'Subscription time will be set automatically to import time'
-                                            : 'La date d\'abonnement sera dÃƒÂ©finie automatiquement ÃƒÂ  l\'heure d\'importation'}
+                                            : 'La date d\'abonnement sera définie automatiquement à l\'heure d\'importation'}
                                         </li>
                                       </ul>
                                       <div className="mt-3 p-2 bg-background rounded border border-border">
@@ -612,7 +642,7 @@ export function MarketingTab(p: MarketingTabProps) {
                                         <pre className="text-xs text-muted-foreground">
                                           {p.language === 'en' 
                                             ? 'Phone Number\n27169458\n98765432'
-                                            : 'NumÃƒÂ©ro de TÃƒÂ©lÃƒÂ©phone\n27169458\n98765432'}
+                                            : 'Numéro de Téléphone\n27169458\n98765432'}
                                         </pre>
                                       </div>
                                     </div>
@@ -622,7 +652,7 @@ export function MarketingTab(p: MarketingTabProps) {
                                 {/* File Upload */}
                                 <div className="space-y-2">
                                   <Label>
-                                    {p.language === 'en' ? 'Select Excel File (.xlsx)' : 'SÃƒÂ©lectionner un Fichier Excel (.xlsx)'}
+                                    {p.language === 'en' ? 'Select Excel File (.xlsx)' : 'Sélectionner un Fichier Excel (.xlsx)'}
                                   </Label>
                                   <div className="flex items-center gap-2">
                                     <Input
@@ -676,7 +706,7 @@ export function MarketingTab(p: MarketingTabProps) {
                         <p className="text-sm text-foreground/70 mt-2">
                           {p.language === 'en' 
                             ? 'Recent SMS sending history and errors'
-                            : 'Historique rÃƒÂ©cent d\'envoi SMS et erreurs'}
+                            : 'Historique récent d\'envoi SMS et erreurs'}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
@@ -773,9 +803,9 @@ export function MarketingTab(p: MarketingTabProps) {
                                             }
                                           >
                                             {isSuccess
-                                              ? (p.language === 'en' ? 'Sent' : 'EnvoyÃƒÂ©')
+                                              ? (p.language === 'en' ? 'Sent' : 'Envoyé')
                                               : log.status === 'failed'
-                                              ? (p.language === 'en' ? 'Failed' : 'Ãƒâ€°chouÃƒÂ©')
+                                              ? (p.language === 'en' ? 'Failed' : 'Échoué')
                                               : (p.language === 'en' ? 'Pending' : 'En Attente')}
                                           </Badge>
                                           <div className="flex items-center gap-1.5 text-sm font-medium">
@@ -824,9 +854,9 @@ export function MarketingTab(p: MarketingTabProps) {
                                           <details className="mt-2 group">
                                             <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors flex items-center gap-1.5 list-none">
                                               <FileText className="w-3.5 h-3.5" />
-                                              <span>{p.language === 'en' ? 'View API Response' : 'Voir RÃƒÂ©ponse API'}</span>
-                                              <span className="ml-auto text-muted-foreground/50 group-open:hidden">Ã¢â€“Â¼</span>
-                                              <span className="ml-auto text-muted-foreground/50 hidden group-open:inline">Ã¢â€“Â²</span>
+                                              <span>{p.language === 'en' ? 'View API Response' : 'Voir Réponse API'}</span>
+                                              <span className="ml-auto text-muted-foreground/50 group-open:hidden">▼</span>
+                                              <span className="ml-auto text-muted-foreground/50 hidden group-open:inline">▲</span>
                                             </summary>
                                             <div className="mt-2 p-3 bg-muted/50 rounded-md border border-border">
                                               <pre className="text-xs font-mono text-foreground/80 overflow-auto max-h-40 whitespace-pre-wrap break-words">
@@ -925,14 +955,14 @@ export function MarketingTab(p: MarketingTabProps) {
                         <p className="text-sm text-foreground/70 mt-2">
                           {p.language === 'en' 
                             ? `Send emails to all newsletter subscribers`
-                            : `Envoyer des emails ÃƒÂ  tous les abonnÃƒÂ©s newsletter`}
+                            : `Envoyer des emails à tous les abonnés newsletter`}
                         </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {/* Subscriber Count */}
                         <div className="p-3 bg-muted/30 rounded-lg border border-border">
                           <div className="text-sm font-semibold text-foreground mb-1">
-                            {p.language === 'en' ? 'Subscribers Count' : "Nombre d'AbonnÃ©s"}
+                            {p.language === 'en' ? 'Subscribers Count' : "Nombre d'Abonnés"}
                           </div>
                           <div className="text-2xl font-bold text-primary">
                             {p.loadingEmailSubscribers ? (
@@ -944,7 +974,7 @@ export function MarketingTab(p: MarketingTabProps) {
                           <div className="text-xs text-muted-foreground mt-1">
                             {p.language === 'en' 
                               ? 'This email will be sent to all newsletter subscribers'
-                              : 'Cet email sera envoyÃƒÂ© ÃƒÂ  tous les abonnÃƒÂ©s newsletter'}
+                              : 'Cet email sera envoyé à tous les abonnés newsletter'}
                           </div>
                         </div>
 
@@ -990,22 +1020,22 @@ export function MarketingTab(p: MarketingTabProps) {
                                         <li>
                                           {p.language === 'en' 
                                             ? 'First column: Email Address (valid email format required)'
-                                            : 'PremiÃƒÂ¨re colonne: Adresse Email (format email valide requis)'}
+                                            : 'Première colonne: Adresse Email (format email valide requis)'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'First row should be headers (will be skipped)'
-                                            : 'La premiÃƒÂ¨re ligne doit contenir les en-tÃƒÂªtes (sera ignorÃƒÂ©e)'}
+                                            : 'La première ligne doit contenir les en-têtes (sera ignorée)'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'Duplicate emails will be automatically skipped'
-                                            : 'Les emails en double seront automatiquement ignorÃƒÂ©s'}
+                                            : 'Les emails en double seront automatiquement ignorés'}
                                         </li>
                                         <li>
                                           {p.language === 'en' 
                                             ? 'Subscription time will be set automatically to import time'
-                                            : 'La date d\'abonnement sera dÃƒÂ©finie automatiquement ÃƒÂ  l\'heure d\'importation'}
+                                            : 'La date d\'abonnement sera définie automatiquement à l\'heure d\'importation'}
                                         </li>
                                       </ul>
                                       <div className="mt-3 p-2 bg-background rounded border border-border">
@@ -1025,7 +1055,7 @@ export function MarketingTab(p: MarketingTabProps) {
                                 {/* File Upload */}
                                 <div className="space-y-2">
                                   <Label>
-                                    {p.language === 'en' ? 'Select Excel File (.xlsx)' : 'SÃƒÂ©lectionner un Fichier Excel (.xlsx)'}
+                                    {p.language === 'en' ? 'Select Excel File (.xlsx)' : 'Sélectionner un Fichier Excel (.xlsx)'}
                                   </Label>
                                   <div className="flex items-center gap-2">
                                     <Input

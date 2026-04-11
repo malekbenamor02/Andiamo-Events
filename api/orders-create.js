@@ -13,6 +13,7 @@ const requireCjs = createRequire(import.meta.url);
 const { buildOrderConfirmationEmailHtml } = requireCjs('./lib/order-confirmation-email-html.cjs');
 const { fetchAmbassadorSocialLinkFromApplications } = requireCjs('./lib/ambassador-social-link.cjs');
 const { computeOnlinePaymentFees } = requireCjs('./lib/online-payment-fee.cjs');
+const { sendTransactionalEmail } = requireCjs('./lib/transactional-email.cjs');
 
 // --- Basic helpers (shared within this module) ---
 
@@ -1435,17 +1436,18 @@ async function sendOrderConfirmationEmailToRecipient(order, orderPasses, recipie
     // Send email
     // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
     // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
-    console.log(`📧 Creating email transporter for ${recipientType}...`);
-    const emailTransporter = getEmailTransporter();
     console.log(`📧 Sending email to ${recipientType}...`);
-    const emailResult = await emailTransporter.sendMail({
-      from: '"Andiamo Events" <contact@andiamoevents.com>',
-      replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-      to: recipientEmail,
-      subject: subject,
-      html: emailHtml
-    });
-    console.log(`📧 Email sent successfully to ${recipientType}, messageId: ${emailResult.messageId}`);
+    const sendRes = await sendTransactionalEmail(
+      { getEmailTransporter },
+      {
+        from: '"Andiamo Events" <contact@andiamoevents.com>',
+        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+        to: recipientEmail,
+        subject: subject,
+        html: emailHtml,
+      }
+    );
+    console.log(`📧 Email sent successfully to ${recipientType}, via=${sendRes.via}, messageId=${sendRes.messageId || sendRes.info?.messageId}`);
 
     // Update email log
     if (emailLog && dbClient) {

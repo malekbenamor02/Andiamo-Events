@@ -131,8 +131,8 @@ export function EmailCampaignPreview({
             You&apos;re receiving this email from Andiamo Events.
             <br />
             To stop these updates, reply to this message or email{' '}
-            <a href="mailto:support@andiamoevents.com" className="text-[#E21836] font-medium no-underline">
-              support@andiamoevents.com
+            <a href="mailto:contact@andiamoevents.com" className="text-[#E21836] font-medium no-underline">
+              contact@andiamoevents.com
             </a>
             .
           </p>

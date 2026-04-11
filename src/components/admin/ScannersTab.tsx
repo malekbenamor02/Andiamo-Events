@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
 import { format } from "date-fns";
-import { Plus, RefreshCw, Play, Square, User } from "lucide-react";
+import { Plus, RefreshCw, Power, User } from "lucide-react";
 
 interface ScannersTabProps {
   language: "en" | "fr";
@@ -39,6 +39,9 @@ interface Stats {
   byStatus: Record<string, number>;
   byPass: Record<string, number>;
   byScanner?: Record<string, number>;
+  byScannerStatus?: Record<string, { total: number; valid: number; invalid: number; already_scanned: number; wrong_event: number }>;
+  scannerNames?: Record<string, string>;
+  remainingValidPasses?: number | null;
 }
 
 interface ScanRow {
@@ -73,13 +76,21 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
   const [editEmail, setEditEmail] = useState("");
   const [editActive, setEditActive] = useState(true);
   const [editPassword, setEditPassword] = useState("");
+  const [toggleLoading, setToggleLoading] = useState(false);
+  const [configLoading, setConfigLoading] = useState(true);
+  const configReqRef = useRef(0);
+  const validSelectedEventId = !!selectedEventId && /^[0-9a-f-]{36}$/i.test(selectedEventId);
 
   const loadConfig = async () => {
+    const reqId = ++configReqRef.current;
+    setConfigLoading(true);
     const r = await fetcher(API_ROUTES.ADMIN_SCAN_SYSTEM_CONFIG);
+    if (reqId !== configReqRef.current) return;
     if (r.ok) {
       const d = await r.json();
       setConfig({ enabled: d.enabled, updated_at: d.updated_at, updated_by: d.updated_by, updated_by_name: d.updated_by_name ?? null });
     } else setConfig({ enabled: false, updated_at: null, updated_by: null, updated_by_name: null });
+    setConfigLoading(false);
   };
 
   const loadScanners = async () => {
@@ -93,17 +104,31 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
   const loadStats = async () => {
     setLoading(true);
     try {
+      const eventParam = validSelectedEventId ? `?event_id=${selectedEventId}` : "";
       if (selectedId) {
-        const r = await fetcher(`${API_ROUTES.ADMIN_SCANNER_STATISTICS(selectedId)}`);
+        const r = await fetcher(`${API_ROUTES.ADMIN_SCANNER_STATISTICS(selectedId)}${eventParam}`);
         if (r.ok) {
           const d = await r.json();
-          setStats({ total: d.total, byStatus: d.byStatus || {}, byPass: d.byPass || {} });
+          setStats({
+            total: d.total,
+            byStatus: d.byStatus || {},
+            byPass: d.byPass || {},
+            remainingValidPasses: typeof d.remaining_valid_passes === "number" ? d.remaining_valid_passes : null,
+          });
         }
       } else {
-        const r = await fetcher(API_ROUTES.ADMIN_SCAN_STATISTICS);
+        const r = await fetcher(`${API_ROUTES.ADMIN_SCAN_STATISTICS}${eventParam}`);
         if (r.ok) {
           const d = await r.json();
-          setStats({ total: d.total, byStatus: d.byStatus || {}, byPass: d.byPass || {}, byScanner: d.byScanner });
+          setStats({
+            total: d.total,
+            byStatus: d.byStatus || {},
+            byPass: d.byPass || {},
+            byScanner: d.byScanner,
+            byScannerStatus: d.byScannerStatus || {},
+            scannerNames: d.scannerNames || {},
+            remainingValidPasses: typeof d.remaining_valid_passes === "number" ? d.remaining_valid_passes : null,
+          });
         }
       }
     } finally {
@@ -114,7 +139,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
   const loadScans = async () => {
     setLoading(true);
     try {
-      const eventParam = selectedEventId && /^[0-9a-f-]{36}$/i.test(selectedEventId) ? `?event_id=${selectedEventId}` : "";
+      const eventParam = validSelectedEventId ? `?event_id=${selectedEventId}` : "";
       const u = (selectedId ? `${API_ROUTES.ADMIN_SCANNER_SCANS(selectedId)}` : `${API_ROUTES.ADMIN_SCAN_HISTORY}`) + eventParam;
       const r = await fetcher(u);
       if (r.ok) {
@@ -129,14 +154,32 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
   useEffect(() => { loadConfig(); loadScanners(); }, []);
   useEffect(() => { loadStats(); loadScans(); }, [selectedId, selectedEventId]);
 
-  const onStart = async () => {
-    const r = await fetcher(API_ROUTES.ADMIN_SCAN_SYSTEM_CONFIG, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scan_enabled: true }) });
-    if (r.ok) await loadConfig();
-  };
-
-  const onStop = async () => {
-    const r = await fetcher(API_ROUTES.ADMIN_SCAN_SYSTEM_CONFIG, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scan_enabled: false }) });
-    if (r.ok) await loadConfig();
+  const onToggleScan = async () => {
+    if (toggleLoading || !config) return;
+    const prev = config;
+    const nextEnabled = !config.enabled;
+    setToggleLoading(true);
+    setConfig((c) => (c ? { ...c, enabled: nextEnabled } : c));
+    try {
+      const r = await fetcher(API_ROUTES.ADMIN_SCAN_SYSTEM_CONFIG, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scan_enabled: nextEnabled, enabled: nextEnabled }),
+      });
+      if (!r.ok) {
+        setConfig(prev);
+      } else {
+        const d = await r.json().catch(() => null);
+        const resolvedEnabled = typeof d?.enabled === "boolean" ? d.enabled : nextEnabled;
+        setConfig((c) => (c ? { ...c, enabled: resolvedEnabled } : c));
+        // Sync metadata shortly after optimistic update without blocking the button.
+        window.setTimeout(() => {
+          void loadConfig();
+        }, 300);
+      }
+    } finally {
+      setToggleLoading(false);
+    }
   };
 
   const onCreate = async () => {
@@ -162,7 +205,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
     if (r.ok) await loadScanners();
   };
 
-  const t = language === "en" ? { start: "Start Scan", stop: "Stop Scan", status: "Status", on: "ON", off: "OFF", scanners: "Scanners", create: "Create Scanner", name: "Name", email: "Email", password: "Password", active: "Active", actions: "Actions", edit: "Edit", deactivate: "Deactivate", all: "All Scanners", total: "Total", valid: "Valid", invalid: "Invalid", alreadyScanned: "Already scanned", wrongEvent: "Wrong event", history: "History", time: "Time", result: "Result", buyer: "Buyer", pass: "Pass", ambassador: "Ambassador", event: "Event", scanner: "Scanner", noScans: "No scans" } : { start: "Démarrer le scan", stop: "Arrêter le scan", status: "État", on: "ACTIF", off: "INACTIF", scanners: "Scanners", create: "Créer un scanner", name: "Nom", email: "Email", password: "Mot de passe", active: "Actif", actions: "Actions", edit: "Modifier", deactivate: "Désactiver", all: "Tous les scanners", total: "Total", valid: "Valide", invalid: "Invalide", alreadyScanned: "Déjà scanné", wrongEvent: "Mauvais événement", history: "Historique", time: "Heure", result: "Résultat", buyer: "Acheteur", pass: "Pass", ambassador: "Ambassadeur", event: "Événement", scanner: "Scanner", noScans: "Aucun scan" };
+  const t = language === "en" ? { start: "Start Scan", stop: "Stop Scan", toggleScan: "Toggle Scan", status: "Status", on: "ON", off: "OFF", scanners: "Scanners", create: "Create Scanner", name: "Name", email: "Email", password: "Password", active: "Active", actions: "Actions", edit: "Edit", deactivate: "Deactivate", all: "All Scanners", total: "Total", valid: "Valid", invalid: "Invalid", alreadyScanned: "Already scanned", wrongEvent: "Wrong event", history: "History", time: "Time", result: "Result", buyer: "Buyer", pass: "Pass", ambassador: "Ambassador", event: "Event", scanner: "Scanner", noScans: "No scans", remainingValidPasses: "Remaining valid passes", scannerPerformance: "Scanner performance", selectEventHint: "Select an event to see remaining valid passes", processing: "Processing...", remainingVsStatus: "Remaining valid vs scan statuses" } : { start: "Démarrer le scan", stop: "Arrêter le scan", toggleScan: "Basculer le scan", status: "État", on: "ACTIF", off: "INACTIF", scanners: "Scanners", create: "Créer un scanner", name: "Nom", email: "Email", password: "Mot de passe", active: "Actif", actions: "Actions", edit: "Modifier", deactivate: "Désactiver", all: "Tous les scanners", total: "Total", valid: "Valide", invalid: "Invalide", alreadyScanned: "Déjà scanné", wrongEvent: "Mauvais événement", history: "Historique", time: "Heure", result: "Résultat", buyer: "Acheteur", pass: "Pass", ambassador: "Ambassadeur", event: "Événement", scanner: "Scanner", noScans: "Aucun scan", remainingValidPasses: "Pass valides restants", scannerPerformance: "Performance des scanners", selectEventHint: "Sélectionnez un événement pour voir les pass valides restants", processing: "Traitement...", remainingVsStatus: "Pass valides restants vs statuts de scan" };
 
   return (
     <div className="space-y-6">
@@ -175,11 +218,13 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
           <CardTitle className="text-white">{t.status} – {config?.enabled ? t.on : t.off}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
-          <Button onClick={onStart} disabled={config?.enabled === true} className="bg-[#10B981] hover:bg-[#0d9668] text-white">
-            <Play className="w-4 h-4 mr-2" />{t.start}
-          </Button>
-          <Button onClick={onStop} disabled={config?.enabled === false} variant="outline" className="border-[#EF4444] text-[#EF4444] hover:bg-[#EF4444]/10">
-            <Square className="w-4 h-4 mr-2" />{t.stop}
+          <Button
+            onClick={onToggleScan}
+            disabled={configLoading || toggleLoading || !config}
+            className={config?.enabled ? "bg-[#EF4444] hover:bg-[#dc2626] text-white" : "bg-[#10B981] hover:bg-[#0d9668] text-white"}
+          >
+            <Power className="w-4 h-4 mr-2" />
+            {toggleLoading ? t.processing : config?.enabled ? t.stop : t.start}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => { loadConfig(); loadScanners(); loadStats(); loadScans(); }}><RefreshCw className="w-4 h-4" /></Button>
         </CardContent>
@@ -258,8 +303,46 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
                 <p className="text-lg font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.wrong_event ?? 0).toLocaleString()}</p>
               </div>
             </div>
+            <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
+              <p className="text-xs text-[#B0B0B0] mb-1">{t.remainingValidPasses}</p>
+              <p className="text-lg font-bold" style={{ color: "#22C55E" }}>
+                {validSelectedEventId
+                  ? ((stats.remainingValidPasses ?? 0).toLocaleString())
+                  : "—"}
+              </p>
+              {!validSelectedEventId && (
+                <p className="text-xs text-[#7A7A7A] mt-1">{t.selectEventHint}</p>
+              )}
+            </div>
+            {validSelectedEventId && (
+              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
+                <p className="text-xs text-[#B0B0B0] mb-2">{t.remainingVsStatus}</p>
+                <p className="text-xs text-[#B0B0B0]">{t.remainingValidPasses}: <span className="text-[#22C55E] font-semibold">{(stats.remainingValidPasses ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-[#B0B0B0]">{t.valid}: <span className="text-[#10B981] font-semibold">{(stats.byStatus.valid ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-[#B0B0B0]">{t.alreadyScanned}: <span className="text-[#F59E0B] font-semibold">{(stats.byStatus.already_scanned ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-[#B0B0B0]">{t.invalid}: <span className="text-[#EF4444] font-semibold">{(stats.byStatus.invalid ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-[#B0B0B0]">{t.wrongEvent}: <span className="text-[#EF4444] font-semibold">{(stats.byStatus.wrong_event ?? 0).toLocaleString()}</span></p>
+              </div>
+            )}
             {Object.keys(stats.byPass || {}).length > 0 && (
               <p className="text-sm text-[#B0B0B0] pt-1 border-t border-[#2A2A2A]">{language === "en" ? "By pass" : "Par pass"}: {Object.entries(stats.byPass).map(([k, v]) => `${k}: ${v}`).join(", ")}</p>
+            )}
+            {!selectedId && Object.keys(stats.byScannerStatus || {}).length > 0 && (
+              <div className="pt-2 border-t border-[#2A2A2A] space-y-2">
+                <p className="text-sm text-white font-medium">{t.scannerPerformance}</p>
+                <div className="space-y-2">
+                  {Object.entries(stats.byScannerStatus || {})
+                    .sort((a, b) => (b[1]?.total || 0) - (a[1]?.total || 0))
+                    .map(([scannerId, scannerStats]) => (
+                      <div key={scannerId} className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
+                        <p className="text-sm text-white mb-2">{stats.scannerNames?.[scannerId] || scanners.find((s) => s.id === scannerId)?.name || t.scanner}</p>
+                        <p className="text-xs text-[#B0B0B0]">
+                          {t.total}: {(scannerStats.total || 0).toLocaleString()} | {t.valid}: {(scannerStats.valid || 0).toLocaleString()} | {t.alreadyScanned}: {(scannerStats.already_scanned || 0).toLocaleString()} | {t.invalid}: {(scannerStats.invalid || 0).toLocaleString()} | {t.wrongEvent}: {(scannerStats.wrong_event || 0).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>

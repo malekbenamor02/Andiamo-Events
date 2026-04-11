@@ -9,6 +9,7 @@ import https from 'https';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
+const { sendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/transactional-email.cjs'));
 import querystring from 'querystring';
 
 // Import shared CORS utility (using dynamic import for ES modules)
@@ -489,25 +490,29 @@ async function handleOrdersCreate(req, res, supabase, outletSlug) {
   if (order.user_email && process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
     try {
       const nodemailer = (await import('nodemailer')).default;
-      const transport = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST,
-        port: parseInt(process.env.EMAIL_PORT || '587', 10),
-        secure: false,
-        requireTLS: true,
-        auth: { user: process.env.EMAIL_USER.trim(), pass: process.env.EMAIL_PASS }
-      });
+      const getEmailTransporter = () =>
+        nodemailer.createTransport({
+          host: process.env.EMAIL_HOST,
+          port: parseInt(process.env.EMAIL_PORT || '587', 10),
+          secure: false,
+          requireTLS: true,
+          auth: { user: process.env.EMAIL_USER.trim(), pass: process.env.EMAIL_PASS },
+        });
       const on = (order.order_number != null) ? `#${order.order_number}` : order.id.slice(0, 8);
       const passesRows = validatedPasses.map((p) =>
         `<tr><td>${(p.passName || '').replace(/</g, '&lt;')}</td><td style="text-align:center">${p.quantity}</td><td style="text-align:right">${(p.price || 0).toFixed(2)} TND</td></tr>`
       ).join('');
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>Payment Processing – Andiamo Events</title><style>${transactionalEmailDarkStylesCss()}</style></head><body>${emailLogoHeaderHtml()}<div class="email-wrapper"><div class="content-card"><div class="title-section"><h1 class="title">Payment Processing</h1><p class="subtitle">Payment Processing – Andiamo Events</p></div><p class="greeting">Dear <strong>${(order.user_name || 'Valued Customer').replace(/</g, '&lt;')}</strong>,</p><p class="message">Your order has been received via our Point de vente <strong>${(outlet.name || '').replace(/</g, '&lt;')}</strong>.<br><br>Your order is pending approval by our team. Once approved, you will receive a final confirmation email with your tickets (QR codes). Please check your spam folder.</p><div class="order-info-block"><div class="info-row"><div class="info-label">Order Number</div><div class="info-value">${on}</div></div><div class="info-row"><div class="info-label">Point de vente</div><div style="font-size:18px;color:#E21836;font-weight:600">${(outlet.name || '').replace(/</g, '&lt;')}</div></div></div><div class="order-info-block"><h3 style="color:#E21836;margin-bottom:20px;font-size:18px;font-weight:600">Passes Purchased</h3><table class="passes-table"><thead><tr><th>Pass Type</th><th style="text-align:center">Quantity</th><th style="text-align:right">Price</th></tr></thead><tbody>${passesRows}<tr class="total-row"><td colspan="2" style="text-align:right;padding-right:20px"><strong>Total Amount:</strong></td><td style="text-align:right"><strong>${totalPrice.toFixed(2)} TND</strong></td></tr></tbody></table></div><div class="support-section"><p class="support-text">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" style="color:#E21836!important;text-decoration:none;font-weight:500">Contact@andiamoevents.com</a> or on Instagram <a href="https://www.instagram.com/andiamo.events/" target="_blank" style="color:#E21836!important;text-decoration:none;font-weight:500">@andiamo.events</a> or call <a href="tel:28070128" style="color:#E21836!important;text-decoration:none;font-weight:500">28070128</a>.</p></div><div class="closing-section"><p class="slogan">We Create Memories</p><p class="signature">Best regards,<br>The Andiamo Events Team</p></div></div><div class="footer"><p class="footer-text">Developed by <span style="color:#E21836!important">Malek Ben Amor</span></p><div class="footer-links"><a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a><span style="color:#888888">•</span><a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a></div></div></div></body></html>`;
-      await transport.sendMail({
-        from: '"Andiamo Events" <contact@andiamoevents.com>',
-        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-        to: order.user_email,
-        subject: 'Order Received – Pending Approval – Andiamo Events',
-        html
-      });
+      await sendTransactionalEmail(
+        { getEmailTransporter },
+        {
+          from: '"Andiamo Events" <contact@andiamoevents.com>',
+          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+          to: order.user_email,
+          subject: 'Order Received – Pending Approval – Andiamo Events',
+          html,
+        }
+      );
     } catch (emE) { console.warn('POS order email failed:', emE); }
   }
 

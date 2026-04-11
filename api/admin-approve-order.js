@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
 const { buildTicketEmailPdfAttachments } = requireCjs(path.join(__dirname, 'lib/ticket-pdf.cjs'));
+const { sendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/transactional-email.cjs'));
 
 // Helper function to format event time
 function formatEventTime(eventDate) {
@@ -634,16 +635,17 @@ export default async (req, res) => {
         if (fullOrder.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
           try {
             const nodemailer = await import('nodemailer');
-            const transporter = nodemailer.default.createTransport({
-              host: process.env.EMAIL_HOST,
-              port: parseInt(process.env.EMAIL_PORT || '587'),
-              secure: false,
-              auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS,
-              },
-            });
-            
+            const getEmailTransporter = () =>
+              nodemailer.default.createTransport({
+                host: process.env.EMAIL_HOST,
+                port: parseInt(process.env.EMAIL_PORT || '587'),
+                secure: false,
+                auth: {
+                  user: process.env.EMAIL_USER,
+                  pass: process.env.EMAIL_PASS,
+                },
+              });
+
             const emailHtml = `
               <!DOCTYPE html>
               <html>
@@ -761,14 +763,17 @@ export default async (req, res) => {
             // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
             // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
             const pdfAttachmentsApprove = await buildTicketEmailPdfAttachments(fullOrder, tickets, orderPasses);
-            await transporter.sendMail({
-              from: '"Andiamo Events" <contact@andiamoevents.com>',
-              replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-              to: fullOrder.user_email,
-              subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-              html: emailHtml,
-              ...(pdfAttachmentsApprove.length ? { attachments: pdfAttachmentsApprove } : {}),
-            });
+            await sendTransactionalEmail(
+              { getEmailTransporter },
+              {
+                from: '"Andiamo Events" <contact@andiamoevents.com>',
+                replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+                to: fullOrder.user_email,
+                subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+                html: emailHtml,
+                ...(pdfAttachmentsApprove.length ? { attachments: pdfAttachmentsApprove } : {}),
+              }
+            );
             
             // Update tickets to DELIVERED
             const ticketIds = tickets.map(t => t.id);

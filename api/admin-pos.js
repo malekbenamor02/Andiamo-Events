@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
 const { buildTicketEmailPdfAttachments } = requireCjs(path.join(__dirname, 'lib/ticket-pdf.cjs'));
+const { sendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/transactional-email.cjs'));
 const { uploadTicketQrToR2OrSupabase } = requireCjs(path.join(__dirname, 'lib/r2-media.cjs'));
 
 async function verifyAdminAuth(req) {
@@ -420,8 +421,23 @@ async function ordersResendOrderReceived(sb, id, auth, req, res) {
   if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) return res.status(500).json({ error: 'Email not configured' });
   try {
     const nodemailer = (await import('nodemailer')).default;
-    const tr = nodemailer.createTransport({ host: process.env.EMAIL_HOST, port: parseInt(process.env.EMAIL_PORT || '587'), secure: false, auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
-    await tr.sendMail({ from: '"Andiamo Events" <contact@andiamoevents.com>', replyTo: '"Andiamo Events" <contact@andiamoevents.com>', to: order.user_email, subject: 'Order Received – Pending Approval – Andiamo Events', html });
+    const getEmailTransporter = () =>
+      nodemailer.createTransport({
+        host: process.env.EMAIL_HOST,
+        port: parseInt(process.env.EMAIL_PORT || '587'),
+        secure: false,
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+      });
+    await sendTransactionalEmail(
+      { getEmailTransporter },
+      {
+        from: '"Andiamo Events" <contact@andiamoevents.com>',
+        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+        to: order.user_email,
+        subject: 'Order Received – Pending Approval – Andiamo Events',
+        html,
+      }
+    );
     await posAuditLog(sb, { action: 'resend_pos_order_email', performed_by_type: 'admin', performed_by_id: auth.admin.id, performed_by_email: auth.admin.email, pos_outlet_id: order.pos_outlet_id, target_type: 'order', target_id: id, details: { type: 'order_received' }, req });
     return res.status(200).json({ success: true });
   } catch (er) { return res.status(500).json({ error: String(er && er.message) }); }
@@ -456,16 +472,25 @@ async function ordersResendTickets(sb, id, auth, req, res) {
   if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) return res.status(500).json({ error: 'Email not configured' });
   try {
     const nodemailer = (await import('nodemailer')).default;
-    const tr = nodemailer.createTransport({ host: process.env.EMAIL_HOST, port: parseInt(process.env.EMAIL_PORT || '587'), secure: false, auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+    const getEmailTransporter = () =>
+      nodemailer.createTransport({
+        host: process.env.EMAIL_HOST,
+        port: parseInt(process.env.EMAIL_PORT || '587'),
+        secure: false,
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+      });
     const pdfResend = await buildTicketEmailPdfAttachments(order, tickets, orderPasses);
-    await tr.sendMail({
-      from: '"Andiamo Events" <contact@andiamoevents.com>',
-      replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-      to: order.user_email,
-      subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-      html,
-      ...(pdfResend.length ? { attachments: pdfResend } : {}),
-    });
+    await sendTransactionalEmail(
+      { getEmailTransporter },
+      {
+        from: '"Andiamo Events" <contact@andiamoevents.com>',
+        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+        to: order.user_email,
+        subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+        html,
+        ...(pdfResend.length ? { attachments: pdfResend } : {}),
+      }
+    );
     await posAuditLog(sb, { action: 'resend_pos_order_email', performed_by_type: 'admin', performed_by_id: auth.admin.id, performed_by_email: auth.admin.email, pos_outlet_id: order.pos_outlet_id, target_type: 'order', target_id: id, details: { type: 'tickets' }, req });
     return res.status(200).json({ success: true });
   } catch (er) { return res.status(500).json({ error: String(er && er.message) }); }
@@ -612,16 +637,25 @@ async function ordersApprove(sb, id, auth, req, res) {
   if (order.user_email && process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
     try {
       const nodemailer = (await import('nodemailer')).default;
-      const tr = nodemailer.createTransport({ host: process.env.EMAIL_HOST, port: parseInt(process.env.EMAIL_PORT || '587'), secure: false, auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+      const getEmailTransporter = () =>
+        nodemailer.createTransport({
+          host: process.env.EMAIL_HOST,
+          port: parseInt(process.env.EMAIL_PORT || '587'),
+          secure: false,
+          auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+        });
       const pdfPosApprove = await buildTicketEmailPdfAttachments(order, tickets, orderPasses);
-      await tr.sendMail({
-        from: '"Andiamo Events" <contact@andiamoevents.com>',
-        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-        to: order.user_email,
-        subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-        html,
-        ...(pdfPosApprove.length ? { attachments: pdfPosApprove } : {}),
-      });
+      await sendTransactionalEmail(
+        { getEmailTransporter },
+        {
+          from: '"Andiamo Events" <contact@andiamoevents.com>',
+          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+          to: order.user_email,
+          subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+          html,
+          ...(pdfPosApprove.length ? { attachments: pdfPosApprove } : {}),
+        }
+      );
       await sb.from('tickets').update({ status: 'DELIVERED', email_delivery_status: 'sent', delivered_at: new Date().toISOString() }).in('id', tickets.map(t => t.id));
     } catch (er) { console.warn('POS approve email:', er); }
   }

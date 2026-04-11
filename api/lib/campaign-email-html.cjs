@@ -93,7 +93,7 @@ ${transactionalEmailDarkStylesCss()}
       </div>
     </div>
     <div class="footer">
-      <p class="footer-text">You&apos;re receiving this email from Andiamo Events.<br />To stop these updates, reply to this message or email <a href="mailto:support@andiamoevents.com" class="support-email">support@andiamoevents.com</a>.</p>
+      <p class="footer-text">You&apos;re receiving this email from Andiamo Events.<br />To stop these updates, reply to this message or email <a href="mailto:contact@andiamoevents.com" class="support-email">contact@andiamoevents.com</a>.</p>
       <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
       <div class="footer-links">
         <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link">Instagram</a>

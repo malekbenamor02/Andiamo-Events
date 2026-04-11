@@ -42,6 +42,7 @@ const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./api/
 const { buildTicketEmailPdfAttachments } = require('./api/lib/ticket-pdf.cjs');
 const { uploadTicketQrToR2OrSupabase } = require('./api/lib/r2-media.cjs');
 const { computeOnlinePaymentFees } = require('./api/lib/online-payment-fee.cjs');
+const { sendTransactionalEmail } = require('./api/lib/transactional-email.cjs');
 
 // Import centralized SMS template helpers
 const {
@@ -549,12 +550,14 @@ const checkSuspiciousActivity = async (eventType, details, req) => {
         try {
           // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
           // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
-          await transporter.sendMail({
-            from: '"Andiamo Events Security" <contact@andiamoevents.com>',
-            replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-            to: ALERT_EMAIL,
-            subject: `🚨 Security Alert: Suspicious Activity Detected - ${eventType}`,
-            html: `
+          await sendTransactionalEmail(
+            { getEmailTransporter },
+            {
+              from: '"Andiamo Events Security" <contact@andiamoevents.com>',
+              replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+              to: ALERT_EMAIL,
+              subject: `🚨 Security Alert: Suspicious Activity Detected - ${eventType}`,
+              html: `
               ${emailLogoHeaderHtml()}
               <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;padding:16px;background:#101010;color:#F0F0F0;">
               <h2 style="color:#fff;">Security Alert</h2>
@@ -568,8 +571,9 @@ const checkSuspiciousActivity = async (eventType, details, req) => {
               <pre>${JSON.stringify(details, null, 2)}</pre>
               <p><em>This is an automated security alert. Please review the security audit logs.</em></p>
               </div>
-            `
-          });
+            `,
+            }
+          );
         } catch (emailError) {
           console.error('Failed to send security alert email:', emailError);
         }
@@ -781,14 +785,17 @@ app.post('/api/send-email', requireAdminAuth, async (req, res) => {
     
     // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
     // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
-    await transporter.sendMail({
-      from: '"Andiamo Events" <contact@andiamoevents.com>',
-      replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-      to,
-      subject,
-      html,
-    });
-    
+    await sendTransactionalEmail(
+      { getEmailTransporter },
+      {
+        from: '"Andiamo Events" <contact@andiamoevents.com>',
+        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+        to,
+        subject,
+        html,
+      }
+    );
+
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('❌ Email sending failed:', {
@@ -2589,22 +2596,15 @@ app.post('/api/admin/official-invitations/create', requireAdminAuth, requireSupe
     let emailError = null;
     
     try {
-      const transporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST,
-        port: parseInt(process.env.EMAIL_PORT || '587', 10),
-        secure: process.env.EMAIL_PORT === '465',
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS
+      await sendTransactionalEmail(
+        { getEmailTransporter },
+        {
+          from: emailConfig.from,
+          to: emailConfig.to,
+          subject: emailConfig.subject,
+          html: emailConfig.html,
         }
-      });
-
-      await transporter.sendMail({
-        from: emailConfig.from,
-        to: emailConfig.to,
-        subject: emailConfig.subject,
-        html: emailConfig.html
-      });
+      );
 
       emailSent = true;
     } catch (emailErr) {
@@ -2912,22 +2912,15 @@ app.post('/api/admin/official-invitations/:id/resend', requireAdminAuth, require
     let emailError = null;
 
     try {
-      const transporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST,
-        port: parseInt(process.env.EMAIL_PORT || '587', 10),
-        secure: process.env.EMAIL_PORT === '465',
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS
+      await sendTransactionalEmail(
+        { getEmailTransporter },
+        {
+          from: emailConfig.from,
+          to: emailConfig.to,
+          subject: emailConfig.subject,
+          html: emailConfig.html,
         }
-      });
-
-      await transporter.sendMail({
-        from: emailConfig.from,
-        to: emailConfig.to,
-        subject: emailConfig.subject,
-        html: emailConfig.html
-      });
+      );
 
       emailSent = true;
     } catch (emailErr) {
@@ -7903,13 +7896,16 @@ app.post('/api/send-order-completion-email', async (req, res) => {
     // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
     // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
     try {
-      await transporter.sendMail({
-        from: '"Andiamo Events" <contact@andiamoevents.com>',
-        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-        to: order.user_email,
-        subject: '✅ Order Confirmation - Your Pass Purchase is Complete!',
-        html: emailHtml
-      });
+      await sendTransactionalEmail(
+        { getEmailTransporter },
+        {
+          from: '"Andiamo Events" <contact@andiamoevents.com>',
+          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+          to: order.user_email,
+          subject: '✅ Order Confirmation - Your Pass Purchase is Complete!',
+          html: emailHtml,
+        }
+      );
 
       // Update email log to sent
       if (emailLog) {
@@ -8152,13 +8148,16 @@ app.post('/api/resend-order-completion-email', requireAdminAuth, async (req, res
     // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
     // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
     try {
-      await transporter.sendMail({
-        from: '"Andiamo Events" <contact@andiamoevents.com>',
-        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-        to: order.user_email,
-        subject: '✅ Order Confirmation - Your Pass Purchase is Complete!',
-        html: emailHtml
-      });
+      await sendTransactionalEmail(
+        { getEmailTransporter },
+        {
+          from: '"Andiamo Events" <contact@andiamoevents.com>',
+          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+          to: order.user_email,
+          subject: '✅ Order Confirmation - Your Pass Purchase is Complete!',
+          html: emailHtml,
+        }
+      );
 
       if (emailLog) {
         await supabase
@@ -8697,14 +8696,16 @@ async function sendOrderConfirmationEmailToRecipient(order, orderPasses, recipie
     // Send email
     // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
     // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
-    const emailTransporter = getEmailTransporter();
-    await emailTransporter.sendMail({
-      from: '"Andiamo Events" <contact@andiamoevents.com>',
-      replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-      to: recipientEmail,
-      subject: subject,
-      html: emailHtml
-    });
+    await sendTransactionalEmail(
+      { getEmailTransporter },
+      {
+        from: '"Andiamo Events" <contact@andiamoevents.com>',
+        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+        to: recipientEmail,
+        subject: subject,
+        html: emailHtml,
+      }
+    );
 
     // Update email log
     if (emailLog && supabase) {
@@ -9474,20 +9475,22 @@ ${transactionalEmailDarkStylesCss()}
         });
         
         const pdfAttachments = await buildTicketEmailPdfAttachments(order, tickets, orderPasses);
-        const emailResult = await transporter.sendMail({
-          from: '"Andiamo Events" <contact@andiamoevents.com>',
-          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-          to: order.user_email,
-          subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-          html: emailHtml,
-          ...(pdfAttachments.length ? { attachments: pdfAttachments } : {}),
-        });
+        const emailResult = await sendTransactionalEmail(
+          { getEmailTransporter },
+          {
+            from: '"Andiamo Events" <contact@andiamoevents.com>',
+            replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+            to: order.user_email,
+            subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+            html: emailHtml,
+            ...(pdfAttachments.length ? { attachments: pdfAttachments } : {}),
+          }
+        );
 
         console.log('✅ Email sent successfully:', {
-          messageId: emailResult.messageId,
+          messageId: emailResult.messageId || emailResult.info?.messageId,
           to: order.user_email,
-          accepted: emailResult.accepted,
-          rejected: emailResult.rejected
+          via: emailResult.via,
         });
 
         // Update tickets to DELIVERED
@@ -10761,18 +10764,22 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLi
       // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
       console.log('📤 Sending email to:', order.user_email);
       const pdfAttachmentsResend = await buildTicketEmailPdfAttachments(order, tickets, passes);
-      const emailResult = await transporter.sendMail({
-        from: '"Andiamo Events" <contact@andiamoevents.com>',
-        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-        to: order.user_email,
-        subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-        html: emailHtml,
-        ...(pdfAttachmentsResend.length ? { attachments: pdfAttachmentsResend } : {}),
-      });
+      const emailResult = await sendTransactionalEmail(
+        { getEmailTransporter },
+        {
+          from: '"Andiamo Events" <contact@andiamoevents.com>',
+          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+          to: order.user_email,
+          subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+          html: emailHtml,
+          ...(pdfAttachmentsResend.length ? { attachments: pdfAttachmentsResend } : {}),
+        }
+      );
 
       console.log('✅ Email sent successfully:', {
-        messageId: emailResult.messageId,
-        to: order.user_email
+        messageId: emailResult.messageId || emailResult.info?.messageId,
+        to: order.user_email,
+        via: emailResult.via,
       });
 
       emailSent = true;

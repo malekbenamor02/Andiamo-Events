@@ -4,6 +4,7 @@
  */
 const ExcelJS = require('exceljs');
 const { getBaseEmailHtml } = require('./api/lib/career-email-base-html.cjs');
+const { sendTransactionalEmail } = require('./api/lib/transactional-email.cjs');
 
 const CAREER_SETTINGS_KEY = 'career_applications_settings';
 
@@ -101,7 +102,7 @@ function buildCareerAdminNotificationEmail(params) {
   }
 
   const applicantSummaryHtml = applicantLines.length
-    ? `<div style="margin-bottom: 16px; font-size: 14px; color: #1A1A1A;">${applicantLines.join(
+    ? `<div style="margin-bottom: 16px; font-size: 14px; color: #E8E8E8;">${applicantLines.join(
         ''
       )}</div>`
     : '';
@@ -149,7 +150,7 @@ function buildCareerAdminNotificationEmail(params) {
           <td style="padding: 8px 12px; font-size: 13px; color: #666666; border-bottom: 1px solid rgba(0,0,0,0.05);">
             ${label}
           </td>
-          <td style="padding: 8px 12px; font-size: 13px; color: #1A1A1A; border-bottom: 1px solid rgba(0,0,0,0.05);">
+          <td style="padding: 8px 12px; font-size: 13px; color: #F0F0F0; border-bottom: 1px solid rgba(0,0,0,0.05);">
             ${valueHtml}
           </td>
         </tr>
@@ -192,7 +193,7 @@ function buildCareerAdminNotificationEmail(params) {
     ${applicantSummaryHtml}
 
     <div style="margin-top: 12px;">
-      <div style="font-size: 15px; font-weight: 600; margin: 18px 0 8px; color: #1A1A1A;">
+      <div style="font-size: 15px; font-weight: 600; margin: 18px 0 8px; color: #F0F0F0;">
         Application details
       </div>
       <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
@@ -569,10 +570,11 @@ function registerCareerRoutes(app, deps) {
       // Send personalized confirmation email (plan §6.1: same design as ambassador emails)
       const toEmail = emailVal || formData.email_address || (emailField && formData[emailField.field_key]) || null;
       if (toEmail && getEmailTransporter) {
-        const transporter = getEmailTransporter();
         const candidateName = (formData.full_name || formData.name || 'Candidate').split(' ')[0] || 'Candidate';
         const mailOpts = buildCareerConfirmationEmail(candidateName, domain.name, toEmail);
-        transporter.sendMail(mailOpts).catch((err) => console.error('Career confirmation email failed:', err));
+        sendTransactionalEmail({ getEmailTransporter }, mailOpts).catch((err) =>
+          console.error('Career confirmation email failed:', err)
+        );
       }
 
       // Notify admins about the new application
@@ -583,7 +585,6 @@ function registerCareerRoutes(app, deps) {
             (e) => typeof e === 'string' && e.includes('@')
           );
           if (adminEmails.length > 0) {
-            const transporter = getEmailTransporter();
             const createdAt = new Date().toISOString();
             const applicantName =
               formData.full_name || formData.name || formData.FullName || undefined;
@@ -626,9 +627,9 @@ function registerCareerRoutes(app, deps) {
                 fields: fieldsForEmail,
                 adminApplicationUrl: adminUrl,
               });
-              transporter
-                .sendMail(mailOpts)
-                .catch((err) => console.error('Career admin notification email failed:', err));
+              sendTransactionalEmail({ getEmailTransporter }, mailOpts).catch((err) =>
+                console.error('Career admin notification email failed:', err)
+              );
             }
           }
         } catch (err) {
@@ -1413,9 +1414,10 @@ function registerCareerRoutes(app, deps) {
         const candidateName = (formData.full_name || formData.name || 'Candidate').split(' ')[0] || 'Candidate';
         const domainName = domain?.name || 'our team';
         if (toEmail) {
-          const transporter = getEmailTransporter();
           const mailOpts = buildCareerApprovalEmail(candidateName, domainName, toEmail);
-          transporter.sendMail(mailOpts).catch((err) => console.error('Career approval email failed:', err));
+          sendTransactionalEmail({ getEmailTransporter }, mailOpts).catch((err) =>
+            console.error('Career approval email failed:', err)
+          );
         }
       }
 

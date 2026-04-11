@@ -40,6 +40,7 @@ const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot
 );
 
 const { uploadTicketQrToR2OrSupabase } = requireFromRoot(path.join(__dirname, 'lib', 'r2-media.cjs'));
+const { sendTransactionalEmail } = requireFromRoot(path.join(__dirname, 'lib', 'transactional-email.cjs'));
 
 let _createOfficialInvitationEmailHTML = null;
 function getCreateOfficialInvitationEmailHTML() {
@@ -482,7 +483,7 @@ function buildCampaignEmailPlainText(subject, body, recipientDisplay = 'Subscrib
     'The Andiamo Events Team',
     '',
     '—',
-    "You're receiving this email from Andiamo Events. To stop these updates, reply or email support@andiamoevents.com.",
+    "You're receiving this email from Andiamo Events. To stop these updates, reply or email contact@andiamoevents.com.",
     'Developed by Malek Ben Amor — https://www.instagram.com/malekbenamor.dev/ — https://malekbenamor.dev/'
   );
   return lines.join('\n');
@@ -742,12 +743,13 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
     try {
       if (campaign.type === 'email') {
         const nodemailer = await import('nodemailer');
-        const transporter = nodemailer.default.createTransport({
-          host: process.env.EMAIL_HOST,
-          port: parseInt(process.env.EMAIL_PORT || '587'),
-          secure: false,
-          auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-        });
+        const getEmailTransporter = () =>
+          nodemailer.default.createTransport({
+            host: process.env.EMAIL_HOST,
+            port: parseInt(process.env.EMAIL_PORT || '587'),
+            secure: false,
+            auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+          });
         const recipientDisplay = rec.recipient_value && rec.recipient_value.includes('@')
           ? (rec.recipient_value.split('@')[0] || 'Subscriber').replace(/[^a-zA-Z0-9._-]/g, ' ') || 'Subscriber'
           : 'Subscriber';
@@ -767,27 +769,34 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
           campaign.cta_url,
           campaign.cta_label
         );
-        const mailInfo = await transporter.sendMail({
-          from: '"Andiamo Events" <contact@andiamoevents.com>',
-          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-          to: rec.recipient_value,
-          subject: subj,
-          text,
-          html,
-          headers: {
-            'List-Unsubscribe': '<mailto:support@andiamoevents.com?subject=Unsubscribe>'
+        const mailInfo = await sendTransactionalEmail(
+          { getEmailTransporter },
+          {
+            from: '"Andiamo Events" <contact@andiamoevents.com>',
+            replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+            to: rec.recipient_value,
+            subject: subj,
+            text,
+            html,
+            headers: {
+              'List-Unsubscribe': '<mailto:contact@andiamoevents.com?subject=Unsubscribe>',
+            },
           }
-        });
+        );
         console.log('[marketing-email]', {
           campaign_id: campaignId,
           to: rec.recipient_value,
-          messageId: mailInfo.messageId,
-          accepted: mailInfo.accepted,
-          rejected: mailInfo.rejected,
-          response: mailInfo.response
+          via: mailInfo.via,
+          messageId: mailInfo.messageId || mailInfo.info?.messageId,
+          accepted: mailInfo.info?.accepted,
+          rejected: mailInfo.info?.rejected,
+          response: mailInfo.info?.response,
         });
-        if (smtpListContainsRecipient(mailInfo.rejected, rec.recipient_value)) {
-          throw new Error(`SMTP rejected recipient: ${(mailInfo.rejected || []).join('; ')}`);
+        if (
+          mailInfo.via === 'smtp' &&
+          smtpListContainsRecipient(mailInfo.info?.rejected, rec.recipient_value)
+        ) {
+          throw new Error(`SMTP rejected recipient: ${(mailInfo.info.rejected || []).join('; ')}`);
         }
         await dbClient.from('marketing_campaign_recipients').update({ status: 'sent', sent_at: now }).eq('id', rec.id);
         sentCount++;
@@ -1938,27 +1947,30 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         }
         
         const nodemailer = await import('nodemailer');
-        
-        const transporter = nodemailer.default.createTransport({
-          host: process.env.EMAIL_HOST,
-          port: parseInt(process.env.EMAIL_PORT || '587'),
-          secure: false,
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
-          },
-        });
-        
+        const getEmailTransporter = () =>
+          nodemailer.default.createTransport({
+            host: process.env.EMAIL_HOST,
+            port: parseInt(process.env.EMAIL_PORT || '587'),
+            secure: false,
+            auth: {
+              user: process.env.EMAIL_USER,
+              pass: process.env.EMAIL_PASS,
+            },
+          });
+
         // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
         // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
         // Always enforce the correct sender address, ignoring any "from" field in the request.
-        await transporter.sendMail({
-          from: '"Andiamo Events" <contact@andiamoevents.com>',
-          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-          to,
-          subject,
-          html,
-        });
+        await sendTransactionalEmail(
+          { getEmailTransporter },
+          {
+            from: '"Andiamo Events" <contact@andiamoevents.com>',
+            replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+            to,
+            subject,
+            html,
+          }
+        );
         
         res.setHeader('Content-Type', 'application/json');
         return res.status(200).json({ success: true });
@@ -3073,15 +3085,16 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             if (fullOrder.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
               try {
                 const nodemailer = await import('nodemailer');
-                const transporter = nodemailer.default.createTransport({
-                  host: process.env.EMAIL_HOST,
-                  port: parseInt(process.env.EMAIL_PORT || '587'),
-                  secure: false,
-                  auth: {
-                    user: process.env.EMAIL_USER,
-                    pass: process.env.EMAIL_PASS,
-                  },
-                });
+                const getEmailTransporter = () =>
+                  nodemailer.default.createTransport({
+                    host: process.env.EMAIL_HOST,
+                    port: parseInt(process.env.EMAIL_PORT || '587'),
+                    secure: false,
+                    auth: {
+                      user: process.env.EMAIL_USER,
+                      pass: process.env.EMAIL_PASS,
+                    },
+                  });
                 const emailHtml = getBuildOnlineTicketEmailHtml()({
                   customerName: fullOrder.user_name,
                   orderNumber: fullOrder.order_number,
@@ -3098,14 +3111,17 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                 // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
                 // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
                 const pdfAttachmentsMisc1 = await getBuildTicketEmailPdfAttachments()(fullOrder, tickets, orderPasses);
-                await transporter.sendMail({
-                  from: '"Andiamo Events" <contact@andiamoevents.com>',
-                  replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-                  to: fullOrder.user_email,
-                  subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-                  html: emailHtml,
-                  ...(pdfAttachmentsMisc1.length ? { attachments: pdfAttachmentsMisc1 } : {}),
-                });
+                await sendTransactionalEmail(
+                  { getEmailTransporter },
+                  {
+                    from: '"Andiamo Events" <contact@andiamoevents.com>',
+                    replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+                    to: fullOrder.user_email,
+                    subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+                    html: emailHtml,
+                    ...(pdfAttachmentsMisc1.length ? { attachments: pdfAttachmentsMisc1 } : {}),
+                  }
+                );
                 
                 // Update tickets to DELIVERED
                 const ticketIds = tickets.map(t => t.id);
@@ -3556,7 +3572,13 @@ We Create Memories`;
             if (fullOrder.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
               try {
                 const nodemailer = await import('nodemailer');
-                const transporter = nodemailer.default.createTransport({ host: process.env.EMAIL_HOST, port: parseInt(process.env.EMAIL_PORT || '587'), secure: false, auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
+                const getEmailTransporter = () =>
+                  nodemailer.default.createTransport({
+                    host: process.env.EMAIL_HOST,
+                    port: parseInt(process.env.EMAIL_PORT || '587'),
+                    secure: false,
+                    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+                  });
                 const emailHtml = getBuildOnlineTicketEmailHtml()({
                   customerName: fullOrder.user_name,
                   orderNumber: fullOrder.order_number,
@@ -3571,14 +3593,17 @@ We Create Memories`;
                   ticketsByPassType,
                 });
                 const pdfAttachmentsMisc2 = await getBuildTicketEmailPdfAttachments()(fullOrder, tickets, orderPasses);
-                await transporter.sendMail({
-                  from: '"Andiamo Events" <contact@andiamoevents.com>',
-                  replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-                  to: fullOrder.user_email,
-                  subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-                  html: emailHtml,
-                  ...(pdfAttachmentsMisc2.length ? { attachments: pdfAttachmentsMisc2 } : {}),
-                });
+                await sendTransactionalEmail(
+                  { getEmailTransporter },
+                  {
+                    from: '"Andiamo Events" <contact@andiamoevents.com>',
+                    replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+                    to: fullOrder.user_email,
+                    subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+                    html: emailHtml,
+                    ...(pdfAttachmentsMisc2.length ? { attachments: pdfAttachmentsMisc2 } : {}),
+                  }
+                );
                 await dbClient.from('tickets').update({ status: 'DELIVERED', email_delivery_status: 'sent', delivered_at: new Date().toISOString() }).in('id', tickets.map(t => t.id));
                 await dbClient.from('email_delivery_logs').insert({ order_id: orderId, email_type: 'ticket_delivery', recipient_email: fullOrder.user_email, recipient_name: fullOrder.user_name, subject: 'Your Digital Tickets Are Ready - Andiamo Events', status: 'sent', sent_at: new Date().toISOString() });
                 ticketResult.emailSent = true;
@@ -4310,27 +4335,31 @@ Billets envoyés par email. We Create Memories`;
         if (order.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
           try {
             const nodemailer = await import('nodemailer');
-            const transporter = nodemailer.default.createTransport({
-              host: process.env.EMAIL_HOST,
-              port: parseInt(process.env.EMAIL_PORT || '587'),
-              secure: false,
-              auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS,
-              },
-            });
-            
+            const getEmailTransporter = () =>
+              nodemailer.default.createTransport({
+                host: process.env.EMAIL_HOST,
+                port: parseInt(process.env.EMAIL_PORT || '587'),
+                secure: false,
+                auth: {
+                  user: process.env.EMAIL_USER,
+                  pass: process.env.EMAIL_PASS,
+                },
+              });
+
             // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
             // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
             const pdfAttachmentsMiscResend = await getBuildTicketEmailPdfAttachments()(order, tickets, passes);
-            await transporter.sendMail({
-              from: '"Andiamo Events" <contact@andiamoevents.com>',
-              replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-              to: order.user_email,
-              subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-              html: emailHtml,
-              ...(pdfAttachmentsMiscResend.length ? { attachments: pdfAttachmentsMiscResend } : {}),
-            });
+            await sendTransactionalEmail(
+              { getEmailTransporter },
+              {
+                from: '"Andiamo Events" <contact@andiamoevents.com>',
+                replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+                to: order.user_email,
+                subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+                html: emailHtml,
+                ...(pdfAttachmentsMiscResend.length ? { attachments: pdfAttachmentsMiscResend } : {}),
+              }
+            );
             
             emailSent = true;
             
@@ -6265,23 +6294,27 @@ Billets envoyés par email. We Create Memories`;
         
         try {
           const nodemailer = (await import('nodemailer')).default;
-          const transporter = nodemailer.createTransport({
-            host: process.env.EMAIL_HOST,
-            port: parseInt(process.env.EMAIL_PORT || '587', 10),
-            secure: process.env.EMAIL_PORT === '465',
-            auth: {
-              user: process.env.EMAIL_USER,
-              pass: process.env.EMAIL_PASS
+          const getEmailTransporter = () =>
+            nodemailer.createTransport({
+              host: process.env.EMAIL_HOST,
+              port: parseInt(process.env.EMAIL_PORT || '587', 10),
+              secure: process.env.EMAIL_PORT === '465',
+              auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS,
+              },
+            });
+
+          await sendTransactionalEmail(
+            { getEmailTransporter },
+            {
+              from: emailConfig.from,
+              to: emailConfig.to,
+              subject: emailConfig.subject,
+              html: emailConfig.html,
             }
-          });
-          
-          await transporter.sendMail({
-            from: emailConfig.from,
-            to: emailConfig.to,
-            subject: emailConfig.subject,
-            html: emailConfig.html
-          });
-          
+          );
+
           emailSent = true;
         } catch (emailErr) {
           console.error('Error sending invitation email:', emailErr);
@@ -6496,23 +6529,27 @@ Billets envoyés par email. We Create Memories`;
         
         try {
           const nodemailer = (await import('nodemailer')).default;
-          const transporter = nodemailer.createTransport({
-            host: process.env.EMAIL_HOST,
-            port: parseInt(process.env.EMAIL_PORT || '587', 10),
-            secure: process.env.EMAIL_PORT === '465',
-            auth: {
-              user: process.env.EMAIL_USER,
-              pass: process.env.EMAIL_PASS
+          const getEmailTransporter = () =>
+            nodemailer.createTransport({
+              host: process.env.EMAIL_HOST,
+              port: parseInt(process.env.EMAIL_PORT || '587', 10),
+              secure: process.env.EMAIL_PORT === '465',
+              auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS,
+              },
+            });
+
+          await sendTransactionalEmail(
+            { getEmailTransporter },
+            {
+              from: emailConfig.from,
+              to: emailConfig.to,
+              subject: emailConfig.subject,
+              html: emailConfig.html,
             }
-          });
-          
-          await transporter.sendMail({
-            from: emailConfig.from,
-            to: emailConfig.to,
-            subject: emailConfig.subject,
-            html: emailConfig.html
-          });
-          
+          );
+
           emailSent = true;
         } catch (emailErr) {
           console.error('Error resending invitation email:', emailErr);
