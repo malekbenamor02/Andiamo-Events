@@ -1836,15 +1836,15 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           if (detailsVal === '') detailsVal = null;
         }
 
-        let emailVal = null;
-        if (email != null && String(email).trim() !== '') {
-          const emailTrimmed = String(email).trim();
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-          if (!emailRegex.test(emailTrimmed)) {
-            return res.status(400).json({ error: 'Invalid email format.' });
-          }
-          emailVal = emailTrimmed;
+        if (email == null || String(email).trim() === '') {
+          return res.status(400).json({ error: 'Email is required.' });
         }
+        const emailTrimmed = String(email).trim();
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(emailTrimmed)) {
+          return res.status(400).json({ error: 'Invalid email format.' });
+        }
+        const emailVal = emailTrimmed;
 
         const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
         const shouldBypassRecaptcha = recaptchaToken === 'localhost-bypass-token' || !RECAPTCHA_SECRET_KEY;

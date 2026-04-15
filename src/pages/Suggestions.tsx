@@ -133,7 +133,9 @@ const Suggestions = ({ language }: SuggestionsProps) => {
       next.details = language === "en" ? `Details must be at most ${DETAILS_MAX} characters.` : `Les détails doivent faire au plus ${DETAILS_MAX} caractères.`;
     }
     const email = formData.email.trim();
-    if (email && !EMAIL_REGEX.test(email)) {
+    if (!email) {
+      next.email = language === "en" ? "Email is required." : "L'email est requis.";
+    } else if (!EMAIL_REGEX.test(email)) {
       next.email = language === "en" ? "Invalid email format." : "Format d'email invalide.";
     }
     setErrors(next);
@@ -180,7 +182,7 @@ const Suggestions = ({ language }: SuggestionsProps) => {
           suggestion_type: formData.suggestion_type,
           title: formData.title.trim(),
           details: formData.details.trim() || undefined,
-          email: formData.email.trim() || undefined,
+          email: formData.email.trim(),
           recaptchaToken,
         }),
       });
@@ -224,7 +226,7 @@ const Suggestions = ({ language }: SuggestionsProps) => {
       titlePlaceholder: "e.g. concert name, artist name, or venue",
       detailsLabel: "Details (optional)",
       detailsPlaceholder: "Any extra context...",
-      emailLabel: "Email (optional)",
+      emailLabel: "Email",
       emailPlaceholder: "your@email.com",
       submit: "Submit suggestion",
       submitting: "Sending...",
@@ -243,7 +245,7 @@ const Suggestions = ({ language }: SuggestionsProps) => {
       titlePlaceholder: "ex. nom du concert, artiste ou lieu",
       detailsLabel: "Détails (optionnel)",
       detailsPlaceholder: "Contexte supplémentaire...",
-      emailLabel: "Email (optionnel)",
+      emailLabel: "Email",
       emailPlaceholder: "votre@email.com",
       submit: "Envoyer la suggestion",
       submitting: "Envoi...",
@@ -343,6 +345,22 @@ const Suggestions = ({ language }: SuggestionsProps) => {
             </div>
 
             <div>
+              <Label htmlFor="email" className="text-sm font-medium">
+                {t.emailLabel} *
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData((d) => ({ ...d, email: e.target.value }))}
+                placeholder={t.emailPlaceholder}
+                className="mt-2"
+              />
+              {errors.email && <p className="text-sm text-destructive mt-1">{errors.email}</p>}
+            </div>
+
+            <div>
               <Label htmlFor="details" className="text-sm font-medium">
                 {t.detailsLabel}
               </Label>
@@ -357,21 +375,6 @@ const Suggestions = ({ language }: SuggestionsProps) => {
               />
               <p className="text-xs text-muted-foreground mt-1">{formData.details.length}/{DETAILS_MAX}</p>
               {errors.details && <p className="text-sm text-destructive mt-1">{errors.details}</p>}
-            </div>
-
-            <div>
-              <Label htmlFor="email" className="text-sm font-medium">
-                {t.emailLabel}
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData((d) => ({ ...d, email: e.target.value }))}
-                placeholder={t.emailPlaceholder}
-                className="mt-2"
-              />
-              {errors.email && <p className="text-sm text-destructive mt-1">{errors.email}</p>}
             </div>
 
             <Button type="submit" className="btn-gradient w-full" disabled={isSubmitting}>
