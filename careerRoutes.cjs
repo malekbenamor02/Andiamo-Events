@@ -1355,9 +1355,15 @@ function registerCareerRoutes(app, deps) {
     }
   });
 
+  // Keep static routes (e.g. /compare, /export) from being captured as :id.
+  const RESERVED_CAREER_APPLICATION_SEGMENTS = new Set(['compare', 'export']);
+
   // —— Admin: single application + audit log ———————————————————————————————
-  app.get('/api/admin/careers/applications/:id', requireAdminAuth, async (req, res) => {
+  app.get('/api/admin/careers/applications/:id', requireAdminAuth, async (req, res, next) => {
     try {
+      if (RESERVED_CAREER_APPLICATION_SEGMENTS.has(String(req.params.id || '').toLowerCase())) {
+        return next();
+      }
       if (!db) return res.status(500).json({ error: 'Not configured' });
       const adminId = req.admin?.id ? String(req.admin.id) : null;
       const { data: application, error: ae } = await db.from('career_applications').select('*').eq('id', req.params.id).maybeSingle();
@@ -1532,65 +1538,181 @@ function registerCareerRoutes(app, deps) {
       const { data: domains } = await db.from('career_domains').select('id, name').in('id', domainIds);
       const domainMap = (domains || []).reduce((acc, d) => { acc[d.id] = d; return acc; }, {});
 
-      const allKeys = new Set(['id', 'domain', 'status', 'created_at']);
-      list.forEach((a) => Object.keys(a.form_data || {}).forEach((k) => allKeys.add(k)));
-      const formKeys = [...allKeys].filter((k) => !['id', 'domain', 'status', 'created_at'].includes(k)).sort();
-      const headers = ['id', 'domain', 'status', 'created_at', ...formKeys];
+      const formKeysSet = new Set();
+      list.forEach((a) => Object.keys(a.form_data || {}).forEach((k) => formKeysSet.add(k)));
+      const formKeys = [...formKeysSet].sort();
+      const headers = ['domain', 'status', ...formKeys, 'created_at'];
+
+      const csvEscape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+      const prettifyHeader = (key) => String(key || '').replace(/_/g, ' ');
+      const normalizeUrl = (value) => {
+        const raw = String(value ?? '').trim();
+        if (!raw) return null;
+        if (/^https?:\/\//i.test(raw)) return raw;
+        if (/^www\./i.test(raw)) return `https://${raw}`;
+        return null;
+      };
+      const isLikelyUrl = (value) => normalizeUrl(value) !== null;
+      const toCompactText = (value, max = 140) => {
+        const compact = String(value ?? '').replace(/\s+/g, ' ').trim();
+        if (compact.length <= max) return compact;
+        return `${compact.slice(0, max - 1)}…`;
+      };
+      const formatCreatedAt = (value) => {
+        if (!value) return '';
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return String(value);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+      };
+      const linkLabelForKey = (key) => {
+        const k = String(key || '').toLowerCase();
+        if (k.includes('instagram')) return 'Open Instagram';
+        if (k.includes('linkedin')) return 'Open LinkedIn';
+        if (k.includes('portfolio') || k.includes('website')) return 'Open Portfolio';
+        if (k.includes('cv') || k.includes('resume') || k.includes('document')) return 'Open File';
+        return 'Open Link';
+      };
+      const isLongTextField = (key) => {
+        const k = String(key || '').toLowerCase();
+        return k.includes('cover') || k.includes('motivation') || k.includes('about') || k.includes('bio');
+      };
+      const getColumnWidth = (key) => {
+        const k = String(key || '').toLowerCase();
+        if (k === 'domain') return 28;
+        if (k === 'status') return 14;
+        if (k === 'created_at') return 20;
+        if (k.includes('email')) return 28;
+        if (k.includes('phone')) return 18;
+        if (k.includes('name')) return 22;
+        if (k.includes('cover') || k.includes('motivation') || k.includes('about') || k.includes('bio')) return 44;
+        if (k.includes('instagram') || k.includes('linkedin') || k.includes('link') || k.includes('url')) return 20;
+        return 20;
+      };
+      const stamp = (() => {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        return `${yyyy}${mm}${dd}-${hh}${min}${ss}`;
+      })();
 
       if (format === 'csv') {
-        const rows = [headers.join(',')];
+        const rows = [headers.map(csvEscape).join(',')];
         for (const a of list) {
           const row = [
-            a.id,
             (domainMap[a.career_domain_id] || {}).name || '',
             a.status,
-            a.created_at,
             ...formKeys.map((k) => {
               const v = (a.form_data || {})[k];
-              const s = v != null ? String(v).replace(/"/g, '""') : '';
-              return `"${s}"`;
+              return v != null ? String(v) : '';
             }),
+            formatCreatedAt(a.created_at),
           ];
-          rows.push(row.join(','));
+          rows.push(row.map(csvEscape).join(','));
         }
         res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', 'attachment; filename=career-applications.csv');
+        res.setHeader('Content-Disposition', `attachment; filename=career-applications-${stamp}.csv`);
         return res.send(rows.join('\n'));
       }
 
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'Andiamo Events';
       const sheet = workbook.addWorksheet('Applications', { views: [{ state: 'frozen', ySplit: 1 }] });
-      const headerRow = sheet.addRow(headers);
+      const detailsSheet = workbook.addWorksheet('Cover Letters', { views: [{ state: 'frozen', ySplit: 1 }] });
+      const headerRow = sheet.addRow(headers.map(prettifyHeader));
+      sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE21836' } };
       headerRow.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
       headerRow.height = 24;
+      const detailsHeaders = ['domain', 'status', 'full_name', 'field', 'cover_letter', 'created_at'];
+      const detailsHeaderRow = detailsSheet.addRow(detailsHeaders);
+      detailsHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      detailsHeaderRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE21836' } };
+      detailsHeaderRow.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      detailsHeaderRow.height = 24;
+      detailsSheet.columns = [
+        { width: 28 },
+        { width: 14 },
+        { width: 22 },
+        { width: 20 },
+        { width: 90 },
+        { width: 20 },
+      ];
+      const border = {
+        top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+      };
       for (let col = 1; col <= headers.length; col++) {
-        sheet.getCell(1, col).border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        sheet.getCell(1, col).border = border;
       }
-      for (const a of list) {
+      for (let col = 1; col <= detailsHeaders.length; col++) {
+        detailsSheet.getCell(1, col).border = border;
+      }
+
+      for (const [index, a] of list.entries()) {
         const row = sheet.addRow([
-          a.id,
           (domainMap[a.career_domain_id] || {}).name || '',
           a.status,
-          a.created_at,
           ...formKeys.map((k) => (a.form_data || {})[k] ?? ''),
+          formatCreatedAt(a.created_at),
         ]);
-        row.alignment = { vertical: 'middle', wrapText: true };
+        row.height = 20;
+        row.alignment = { vertical: 'top', wrapText: false };
+        if (index % 2 === 1) {
+          row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        }
+
+        // Convert URL-like values to clickable labels.
         for (let col = 1; col <= headers.length; col++) {
-          row.getCell(col).border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+          const key = headers[col - 1];
+          if (!formKeys.includes(key)) continue;
+          const rawValue = (a.form_data || {})[key];
+          if (rawValue == null || rawValue === '') continue;
+          if (isLikelyUrl(rawValue)) {
+            const url = normalizeUrl(rawValue);
+            row.getCell(col).value = { text: linkLabelForKey(key), hyperlink: url, tooltip: String(rawValue) };
+            row.getCell(col).font = { color: { argb: 'FF2563EB' }, underline: true };
+          } else if (isLongTextField(key)) {
+            const detailsRow = detailsSheet.addRow([
+              (domainMap[a.career_domain_id] || {}).name || '',
+              a.status || '',
+              (a.form_data || {}).full_name || (a.form_data || {}).name || '',
+              key,
+              String(rawValue),
+              formatCreatedAt(a.created_at),
+            ]);
+            detailsRow.alignment = { vertical: 'top', wrapText: true };
+            detailsRow.height = 44;
+            for (let c = 1; c <= detailsHeaders.length; c++) {
+              detailsRow.getCell(c).border = border;
+            }
+            const detailsRowIndex = detailsRow.number;
+            row.getCell(col).value = { text: 'View full cover letter', hyperlink: `#'Cover Letters'!E${detailsRowIndex}` };
+            row.getCell(col).font = { color: { argb: 'FF2563EB' }, underline: true };
+          } else {
+            row.getCell(col).value = toCompactText(rawValue);
+          }
+        }
+
+        for (let col = 1; col <= headers.length; col++) {
+          row.getCell(col).border = border;
         }
       }
-      sheet.columns = [
-        { width: 38 },
-        { width: 22 },
-        { width: 12 },
-        { width: 22 },
-        ...formKeys.map(() => ({ width: 18 })),
-      ];
+      sheet.columns = headers.map((key) => ({ width: getColumnWidth(key) }));
+      detailsSheet.getColumn(5).alignment = { vertical: 'top', wrapText: true };
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', 'attachment; filename=career-applications.xlsx');
+      res.setHeader('Content-Disposition', `attachment; filename=career-applications-${stamp}.xlsx`);
       await workbook.xlsx.write(res);
       res.end();
     } catch (e) {
