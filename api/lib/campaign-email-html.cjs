@@ -32,7 +32,7 @@ function sanitizeCampaignCtaLabel(raw, fallback = 'Book now') {
 // Official campaign email template — structured for readability; lighter promo signals than heavy “deal” layouts (Primary vs Promotions is decided by Gmail).
 function buildCampaignEmailHtml(subject, body, recipientDisplay = 'Subscriber', headerImageUrl = null, ctaUrl = null, ctaLabel = null) {
   const content = String(body || '').replace(/\n/g, '<br>');
-  const emailSubject = subject || 'Newsletter Update';
+  const emailSubject = subject || 'Update from Andiamo Events';
   const safeHeaderUrl = normalizeMarketingHeaderImageUrl(headerImageUrl);
   const headerImageBlock = safeHeaderUrl
     ? `<div class="campaign-header-image" style="text-align:center;margin:0 0 28px;">
@@ -90,15 +90,6 @@ ${transactionalEmailDarkStylesCss()}
       <div class="closing-section">
         <p class="slogan">We Create Memories</p>
         <p class="signature">Best regards,<br>The Andiamo Events Team</p>
-      </div>
-    </div>
-    <div class="footer">
-      <p class="footer-text">You&apos;re receiving this email from Andiamo Events.<br />To stop these updates, reply to this message or email <a href="mailto:contact@andiamoevents.com" class="support-email">contact@andiamoevents.com</a>.</p>
-      <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
-      <div class="footer-links">
-        <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link">Instagram</a>
-        <span style="color: #888888;">&bull;</span>
-        <a href="https://malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link">Website</a>
       </div>
     </div>
   </div>

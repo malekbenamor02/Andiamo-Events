@@ -466,7 +466,7 @@ function parseMarketingDailyEmailCap(raw) {
 
 /** Plain-text part for multipart/alternative — helps inbox classification vs HTML-only blasts (Gmail tab placement is not guaranteed). */
 function buildCampaignEmailPlainText(subject, body, recipientDisplay = 'Subscriber', ctaUrl = null, ctaLabel = null) {
-  const emailSubject = subject || 'Newsletter Update';
+  const emailSubject = subject || 'Update from Andiamo Events';
   const safeCtaUrl = normalizeMarketingHeaderImageUrl(ctaUrl);
   const safeCtaLabel = safeCtaUrl ? sanitizeCampaignCtaLabel(ctaLabel, 'Book now') : '';
   const lines = [emailSubject, '', String(body || '').trim(), ''];
@@ -480,11 +480,7 @@ function buildCampaignEmailPlainText(subject, body, recipientDisplay = 'Subscrib
     'We Create Memories',
     '',
     'Best regards,',
-    'The Andiamo Events Team',
-    '',
-    '—',
-    "You're receiving this email from Andiamo Events. To stop these updates, reply or email contact@andiamoevents.com.",
-    'Developed by Malek Ben Amor — https://www.instagram.com/malekbenamor.dev/ — https://malekbenamor.dev/'
+    'The Andiamo Events Team'
   );
   return lines.join('\n');
 }
@@ -777,10 +773,7 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
             to: rec.recipient_value,
             subject: subj,
             text,
-            html,
-            headers: {
-              'List-Unsubscribe': '<mailto:contact@andiamoevents.com?subject=Unsubscribe>',
-            },
+            html
           }
         );
         console.log('[marketing-email]', {

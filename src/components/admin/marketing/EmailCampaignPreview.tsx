@@ -24,6 +24,8 @@ export interface EmailCampaignPreviewProps {
   headerImageUrl?: string;
   ctaUrl?: string;
   ctaLabel?: string;
+  showImage?: boolean;
+  showButton?: boolean;
 }
 
 export function EmailCampaignPreview({
@@ -31,13 +33,15 @@ export function EmailCampaignPreview({
   body,
   headerImageUrl,
   ctaUrl,
-  ctaLabel
+  ctaLabel,
+  showImage = true,
+  showButton = true
 }: EmailCampaignPreviewProps) {
-  const emailSubject = subject.trim() || 'Newsletter Update';
+  const emailSubject = subject.trim() || 'Update from Andiamo Events';
   const content = body.replace(/\n/g, '<br>');
-  const showCta = Boolean(ctaUrl?.trim());
+  const showCta = showButton && Boolean(ctaUrl?.trim());
   const btnText = (ctaLabel || 'Book now').trim() || 'Book now';
-  const hasHeader = Boolean(headerImageUrl?.trim());
+  const hasHeader = showImage && Boolean(headerImageUrl?.trim());
 
   return (
     <div className="rounded-lg border border-border overflow-hidden bg-white text-[#1A1A1A] max-h-[min(70vh,640px)] overflow-y-auto min-w-0">
@@ -47,7 +51,7 @@ export function EmailCampaignPreview({
             <p className="text-[22px] font-semibold text-[#1A1A1A] mb-2">Andiamo Events</p>
             <p className="text-[15px] text-[#555]">{emailSubject}</p>
           </div>
-          {hasHeader ? (
+          {showImage && hasHeader ? (
             <div className="flex justify-center mb-7 min-w-0">
               <img
                 src={headerImageUrl!.trim()}
@@ -59,7 +63,7 @@ export function EmailCampaignPreview({
                 }}
               />
             </div>
-          ) : (
+          ) : showImage ? (
             <div className="text-center mb-7">
               <div
                 className="mx-auto flex flex-col items-center justify-center rounded-[10px] border-2 border-dashed border-[#c4c4c4] bg-[#ebebeb] text-[#737373] px-3 py-4"
@@ -78,7 +82,7 @@ export function EmailCampaignPreview({
                 </span>
               </div>
             </div>
-          )}
+          ) : null}
           <div
             className="text-base text-[#333] mb-5 leading-relaxed"
             dangerouslySetInnerHTML={{ __html: content || '&nbsp;' }}
@@ -124,41 +128,6 @@ export function EmailCampaignPreview({
               <br />
               The Andiamo Events Team
             </p>
-          </div>
-        </div>
-        <div className="mt-10 mb-8 px-5 pt-10 text-center text-xs text-[#999999] leading-relaxed border-t border-black/10">
-          <p className="mb-5">
-            You&apos;re receiving this email from Andiamo Events.
-            <br />
-            To stop these updates, reply to this message or email{' '}
-            <a href="mailto:contact@andiamoevents.com" className="text-[#E21836] font-medium no-underline">
-              contact@andiamoevents.com
-            </a>
-            .
-          </p>
-          <p className="mb-5">
-            Developed by <span className="text-[#E21836]">Malek Ben Amor</span>
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-2 text-[13px] text-[#999999]">
-            <a
-              href="https://www.instagram.com/malekbenamor.dev/"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[#999999] hover:text-[#E21836] no-underline"
-            >
-              Instagram
-            </a>
-            <span className="text-[#999999]" aria-hidden>
-              &bull;
-            </span>
-            <a
-              href="https://malekbenamor.dev/"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[#999999] hover:text-[#E21836] no-underline"
-            >
-              Website
-            </a>
           </div>
         </div>
       </div>

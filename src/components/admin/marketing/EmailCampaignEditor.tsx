@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
 import { useToast } from '@/hooks/use-toast';
 import { uploadImage } from '@/lib/upload';
@@ -26,6 +27,8 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
   const [headerImageUrl, setHeaderImageUrl] = useState('');
   const [ctaUrl, setCtaUrl] = useState('');
   const [ctaLabel, setCtaLabel] = useState('');
+  const [enableImage, setEnableImage] = useState(true);
+  const [enableButton, setEnableButton] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -45,6 +48,8 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           posterHint: 'Optional — JPG, PNG, WebP (max 5 MB)',
           ctaLink: 'Button link',
           ctaLabel: 'Button label',
+          enableImage: 'Enable image',
+          enableButton: 'Enable button',
           save: 'Save',
           create: 'Create draft',
           preview: 'Preview',
@@ -64,6 +69,8 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           posterHint: 'Optionnel — JPG, PNG, WebP (max 5 Mo)',
           ctaLink: 'Lien du bouton',
           ctaLabel: 'Texte du bouton',
+          enableImage: "Activer l'image",
+          enableButton: 'Activer le bouton',
           save: 'Enregistrer',
           create: 'Créer brouillon',
           preview: 'Aperçu',
@@ -84,6 +91,8 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
       setHeaderImageUrl('');
       setCtaUrl('');
       setCtaLabel('');
+      setEnableImage(true);
+      setEnableButton(true);
       setLoading(false);
       return;
     }
@@ -102,6 +111,8 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           setHeaderImageUrl(c.header_image_url || '');
           setCtaUrl(c.cta_url || '');
           setCtaLabel(c.cta_label || '');
+          setEnableImage(Boolean(c.header_image_url));
+          setEnableButton(Boolean(c.cta_url));
         }
       } catch (e: unknown) {
         if (!cancelled) {
@@ -127,6 +138,8 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
     setHeaderImageUrl(typeof c.header_image_url === 'string' ? c.header_image_url : '');
     setCtaUrl(typeof c.cta_url === 'string' ? c.cta_url : '');
     setCtaLabel(typeof c.cta_label === 'string' ? c.cta_label : '');
+    setEnableImage(Boolean(c.header_image_url));
+    setEnableButton(Boolean(c.cta_url));
   }
 
   const handleCreateDraft = async () => {
@@ -142,9 +155,9 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           name: name.trim() ? name.trim().slice(0, 500) : null,
           subject: (subject.trim() || 'Untitled').slice(0, 500),
           body,
-          header_image_url: headerImageUrl.trim() ? headerImageUrl.trim() : null,
-          cta_url: ctaUrl.trim() ? ctaUrl.trim() : null,
-          cta_label: ctaUrl.trim() ? (ctaLabel.trim() || null) : null
+          header_image_url: enableImage && headerImageUrl.trim() ? headerImageUrl.trim() : null,
+          cta_url: enableButton && ctaUrl.trim() ? ctaUrl.trim() : null,
+          cta_label: enableButton && ctaUrl.trim() ? (ctaLabel.trim() || null) : null
         })
       });
       const data = await res.json();
@@ -190,9 +203,9 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           name: name.trim() ? name.trim().slice(0, 500) : null,
           subject: subject.trim(),
           body,
-          header_image_url: headerImageUrl.trim() ? headerImageUrl.trim() : null,
-          cta_url: ctaUrl.trim() ? ctaUrl.trim() : null,
-          cta_label: ctaUrl.trim() ? (ctaLabel.trim() || null) : null
+          header_image_url: enableImage && headerImageUrl.trim() ? headerImageUrl.trim() : null,
+          cta_url: enableButton && ctaUrl.trim() ? ctaUrl.trim() : null,
+          cta_label: enableButton && ctaUrl.trim() ? (ctaLabel.trim() || null) : null
         })
       });
       const data = await res.json();
@@ -246,6 +259,19 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                 <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="…" />
               </div>
               <div className="space-y-2">
+                <div className="flex items-center justify-between rounded-md border border-border p-3">
+                  <Label htmlFor="campaign-enable-image">{t.enableImage}</Label>
+                  <Switch
+                    id="campaign-enable-image"
+                    checked={enableImage}
+                    onCheckedChange={(checked) => {
+                      setEnableImage(checked);
+                      if (!checked) setHeaderImageUrl('');
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
                 <Label className="flex items-center gap-2">
                   <ImagePlus className="w-4 h-4" />
                   {t.poster}
@@ -255,7 +281,7 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                   <Input
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/gif"
-                    disabled={uploading}
+                    disabled={uploading || !enableImage}
                     className="max-w-xs"
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
@@ -279,12 +305,28 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                       setHeaderImageUrl(r.url);
                     }}
                   />
-                  {headerImageUrl ? (
+                  {headerImageUrl && enableImage ? (
                     <Button type="button" variant="outline" size="sm" onClick={() => setHeaderImageUrl('')}>
                       <X className="w-4 h-4 mr-1" />
                       {language === 'en' ? 'Remove' : 'Retirer'}
                     </Button>
                   ) : null}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between rounded-md border border-border p-3">
+                  <Label htmlFor="campaign-enable-button">{t.enableButton}</Label>
+                  <Switch
+                    id="campaign-enable-button"
+                    checked={enableButton}
+                    onCheckedChange={(checked) => {
+                      setEnableButton(checked);
+                      if (!checked) {
+                        setCtaUrl('');
+                        setCtaLabel('');
+                      }
+                    }}
+                  />
                 </div>
               </div>
               <div className="space-y-2">
@@ -295,6 +337,7 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                   onChange={(e) => setCtaUrl(e.target.value)}
                   placeholder="https://…"
                   className="font-mono text-sm"
+                  disabled={!enableButton}
                 />
               </div>
               <div className="space-y-2">
@@ -303,7 +346,7 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                   value={ctaLabel}
                   onChange={(e) => setCtaLabel(e.target.value)}
                   placeholder={language === 'en' ? 'Book now' : 'Réserver'}
-                  disabled={!ctaUrl.trim()}
+                  disabled={!enableButton || !ctaUrl.trim()}
                 />
               </div>
               <div className="space-y-2">
@@ -329,9 +372,11 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
               <EmailCampaignPreview
                 subject={subject}
                 body={body}
-                headerImageUrl={headerImageUrl}
-                ctaUrl={ctaUrl}
+                headerImageUrl={enableImage ? headerImageUrl : ''}
+                ctaUrl={enableButton ? ctaUrl : ''}
                 ctaLabel={ctaLabel}
+                showImage={enableImage}
+                showButton={enableButton}
               />
             </div>
           </div>
