@@ -92,6 +92,14 @@ ${transactionalEmailDarkStylesCss()}
         <p class="signature">Best regards,<br>The Andiamo Events Team</p>
       </div>
     </div>
+    <div class="footer">
+      <p class="footer-text">Developed by <span style="color: #E21836 !important;">Malek Ben Amor</span></p>
+      <div class="footer-links">
+        <a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link">Instagram</a>
+        <span style="color: #888888;">&bull;</span>
+        <a href="https://malekbenamor.dev/" target="_blank" rel="noopener noreferrer" class="footer-link">Website</a>
+      </div>
+    </div>
   </div>
 </body>
 </html>`;

@@ -480,7 +480,9 @@ function buildCampaignEmailPlainText(subject, body, recipientDisplay = 'Subscrib
     'We Create Memories',
     '',
     'Best regards,',
-    'The Andiamo Events Team'
+    'The Andiamo Events Team',
+    '',
+    'Developed by Malek Ben Amor — https://www.instagram.com/malekbenamor.dev/ — https://malekbenamor.dev/'
   );
   return lines.join('\n');
 }

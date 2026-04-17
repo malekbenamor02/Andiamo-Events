@@ -129,6 +129,32 @@ export function EmailCampaignPreview({
               The Andiamo Events Team
             </p>
           </div>
+          <div className="mt-10 mb-8 px-5 pt-10 text-center text-xs text-[#999999] leading-relaxed border-t border-black/10">
+            <p className="mb-5">
+              Developed by <span className="text-[#E21836]">Malek Ben Amor</span>
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2 text-[13px] text-[#999999]">
+              <a
+                href="https://www.instagram.com/malekbenamor.dev/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[#999999] hover:text-[#E21836] no-underline"
+              >
+                Instagram
+              </a>
+              <span className="text-[#999999]" aria-hidden>
+                &bull;
+              </span>
+              <a
+                href="https://malekbenamor.dev/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[#999999] hover:text-[#E21836] no-underline"
+              >
+                Website
+              </a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
