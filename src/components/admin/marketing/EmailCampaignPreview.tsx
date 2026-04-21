@@ -10,6 +10,10 @@ const HERO_HEIGHT = 273;
 /** Admin preview only — caps tall posters so the pane stays usable (sent email unchanged). */
 const PREVIEW_HERO_MAX_HEIGHT = 'min(300px, 42vh)';
 
+const OUTER_BG = '#fcfcfc';
+const INNER_BG = '#bbbbc4';
+const SUPPORT_BG = '#e8e9ed';
+
 function esc(s: string) {
   return s
     .replace(/&/g, '&amp;')
@@ -46,16 +50,16 @@ export function EmailCampaignPreview({
   return (
     <div
       className="rounded-lg border overflow-hidden max-h-[min(70vh,640px)] overflow-y-auto min-w-0"
-      style={{ backgroundColor: '#EAF2FF', borderColor: '#c5d4ef' }}
+      style={{ backgroundColor: OUTER_BG, borderColor: '#d1d1d1' }}
     >
-      <div className="max-w-[600px] w-full min-w-0 mx-auto" style={{ backgroundColor: '#EAF2FF' }}>
+      <div className="max-w-[600px] w-full min-w-0 mx-auto" style={{ backgroundColor: OUTER_BG }}>
         <div
-          className="mx-4 sm:mx-5 mb-6 rounded-xl px-6 sm:px-7 py-9 border min-w-0 text-[#F0F4FF]"
-          style={{ backgroundColor: '#0000FF', borderColor: 'rgba(255,255,255,0.45)' }}
+          className="mx-4 sm:mx-5 mb-6 rounded-xl px-6 sm:px-7 py-9 border min-w-0 text-[#111111]"
+          style={{ backgroundColor: INNER_BG, borderColor: 'rgba(0,0,0,0.12)' }}
         >
-          <div className="mb-7 pb-5 border-b border-white/35 text-center">
-            <p className="text-[22px] font-semibold text-[#FFFFFE] mb-2">Andiamo Events</p>
-            <p className="text-[15px] text-[#C7D2FE]">{emailSubject}</p>
+          <div className="mb-7 pb-5 border-b border-black/12 text-center">
+            <p className="text-[22px] font-semibold text-[#111111] mb-2">Andiamo Events</p>
+            <p className="text-[15px] text-[#555555]">{emailSubject}</p>
           </div>
           {showImage && hasHeader ? (
             <div className="flex justify-center mb-7 min-w-0">
@@ -74,8 +78,8 @@ export function EmailCampaignPreview({
               <div
                 className="mx-auto flex flex-col items-center justify-center rounded-[10px] border-2 border-dashed text-[#555555] px-3 py-4"
                 style={{
-                  backgroundColor: '#E2ECFF',
-                  borderColor: '#b8c9e8',
+                  backgroundColor: SUPPORT_BG,
+                  borderColor: '#a8a8b0',
                   width: '100%',
                   maxWidth: HERO_WIDTH,
                   minHeight: HERO_HEIGHT,
@@ -92,7 +96,7 @@ export function EmailCampaignPreview({
             </div>
           ) : null}
           <div
-            className="text-base text-[#F0F4FF] mb-5 leading-relaxed"
+            className="text-base text-[#111111] mb-5 leading-relaxed"
             dangerouslySetInnerHTML={{ __html: content || '&nbsp;' }}
           />
           {showCta ? (
@@ -109,7 +113,7 @@ export function EmailCampaignPreview({
           ) : null}
           <div
             className="mt-7 rounded-md border-l-[3px] border-[rgba(226,24,54,0.3)] px-6 py-5"
-            style={{ backgroundColor: '#E2ECFF' }}
+            style={{ backgroundColor: SUPPORT_BG }}
           >
             <p className="text-sm text-[#374151] leading-relaxed m-0">
               Need assistance? Contact us at{' '}
@@ -132,35 +136,35 @@ export function EmailCampaignPreview({
               .
             </p>
           </div>
-          <div className="mt-9 pt-7 border-t border-white/35 text-center">
-            <p className="text-[22px] italic text-[#FCA5A5] font-light mb-5">We Create Memories</p>
-            <p className="text-base text-[#C7D2FE] leading-relaxed m-0">
+          <div className="mt-9 pt-7 border-t border-black/12 text-center">
+            <p className="text-[22px] italic text-[#E21836] font-light mb-5">We Create Memories</p>
+            <p className="text-base text-[#555555] leading-relaxed m-0">
               Best regards,
               <br />
               The Andiamo Events Team
             </p>
           </div>
-          <div className="mt-7 pt-6 text-center text-xs text-[#C7D2FE] leading-relaxed border-t border-white/35">
+          <div className="mt-7 pt-6 text-center text-xs text-[#555555] leading-relaxed border-t border-black/12">
             <p className="mb-2.5 m-0">
-              Developed by <span className="text-[#FCA5A5]">Malek Ben Amor</span>
+              Developed by <span className="text-[#E21836]">Malek Ben Amor</span>
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-2 text-[13px] text-[#C7D2FE]">
+            <div className="flex flex-wrap items-center justify-center gap-2 text-[13px] text-[#555555]">
               <a
                 href="https://www.instagram.com/malekbenamor.dev/"
                 target="_blank"
                 rel="noreferrer"
-                className="text-[#C7D2FE] hover:text-[#FCA5A5] no-underline"
+                className="text-[#555555] hover:text-[#E21836] no-underline"
               >
                 Instagram
               </a>
-              <span className="text-[#C7D2FE]" aria-hidden>
+              <span className="text-[#555555]" aria-hidden>
                 &bull;
               </span>
               <a
                 href="https://malekbenamor.dev/"
                 target="_blank"
                 rel="noreferrer"
-                className="text-[#C7D2FE] hover:text-[#FCA5A5] no-underline"
+                className="text-[#555555] hover:text-[#E21836] no-underline"
               >
                 Website
               </a>
