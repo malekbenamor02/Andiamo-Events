@@ -9,7 +9,6 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
-const { buildTicketEmailPdfAttachments } = requireCjs(path.join(__dirname, 'lib/ticket-pdf.cjs'));
 const { sendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/transactional-email.cjs'));
 
 // Helper function to format event time
@@ -696,7 +695,7 @@ export default async (req, res) => {
                       <p class="subtitle">Order Confirmation - Andiamo Events</p>
                     </div>
                     <p class="greeting">Dear <strong>${fullOrder.user_name || 'Valued Customer'}</strong>,</p>
-                    <p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.</p>
+                    <p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are shown below.</p>
                     <div class="order-info-block">
                       <div class="info-row">
                         <div class="info-label">Order Number</div>
@@ -762,7 +761,6 @@ export default async (req, res) => {
             
             // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
             // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
-            const pdfAttachmentsApprove = await buildTicketEmailPdfAttachments(fullOrder, tickets, orderPasses);
             await sendTransactionalEmail(
               { getEmailTransporter },
               {
@@ -771,7 +769,6 @@ export default async (req, res) => {
                 to: fullOrder.user_email,
                 subject: 'Your Digital Tickets Are Ready - Andiamo Events',
                 html: emailHtml,
-                ...(pdfAttachmentsApprove.length ? { attachments: pdfAttachmentsApprove } : {}),
               }
             );
             

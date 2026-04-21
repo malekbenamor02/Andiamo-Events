@@ -126,7 +126,7 @@ ${transactionalEmailDarkStylesCss()}
         <p class="subtitle">Order Confirmation - Andiamo Events</p>
       </div>
       <p class="greeting">Dear <strong>${escapeHtml(customerName || 'Valued Customer')}</strong>,</p>
-      <p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are shown below, and a printable PDF is attached (one page per ticket) so you can save or print them easily.</p>
+      <p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are shown below.</p>
       <div class="order-info-block">
         <div class="info-row">
           <div class="info-label">Order Number</div>
