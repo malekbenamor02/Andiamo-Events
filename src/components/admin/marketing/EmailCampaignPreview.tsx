@@ -44,12 +44,18 @@ export function EmailCampaignPreview({
   const hasHeader = showImage && Boolean(headerImageUrl?.trim());
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden bg-white text-[#1A1A1A] max-h-[min(70vh,640px)] overflow-y-auto min-w-0">
-      <div className="max-w-[600px] w-full min-w-0 mx-auto bg-white">
-        <div className="mx-4 sm:mx-5 mb-6 rounded-lg px-6 sm:px-7 py-9 border border-[#e8e8e8] min-w-0">
-          <div className="mb-7 pb-5 border-b border-[#eee] text-center">
-            <p className="text-[22px] font-semibold text-[#1A1A1A] mb-2">Andiamo Events</p>
-            <p className="text-[15px] text-[#555]">{emailSubject}</p>
+    <div
+      className="rounded-lg border overflow-hidden max-h-[min(70vh,640px)] overflow-y-auto min-w-0"
+      style={{ backgroundColor: '#EAF2FF', borderColor: '#c5d4ef' }}
+    >
+      <div className="max-w-[600px] w-full min-w-0 mx-auto" style={{ backgroundColor: '#EAF2FF' }}>
+        <div
+          className="mx-4 sm:mx-5 mb-6 rounded-xl px-6 sm:px-7 py-9 border min-w-0 text-[#F0F4FF]"
+          style={{ backgroundColor: '#0000FF', borderColor: 'rgba(255,255,255,0.45)' }}
+        >
+          <div className="mb-7 pb-5 border-b border-white/35 text-center">
+            <p className="text-[22px] font-semibold text-[#FFFFFE] mb-2">Andiamo Events</p>
+            <p className="text-[15px] text-[#C7D2FE]">{emailSubject}</p>
           </div>
           {showImage && hasHeader ? (
             <div className="flex justify-center mb-7 min-w-0">
@@ -66,8 +72,10 @@ export function EmailCampaignPreview({
           ) : showImage ? (
             <div className="text-center mb-7">
               <div
-                className="mx-auto flex flex-col items-center justify-center rounded-[10px] border-2 border-dashed border-[#c4c4c4] bg-[#ebebeb] text-[#737373] px-3 py-4"
+                className="mx-auto flex flex-col items-center justify-center rounded-[10px] border-2 border-dashed text-[#555555] px-3 py-4"
                 style={{
+                  backgroundColor: '#E2ECFF',
+                  borderColor: '#b8c9e8',
                   width: '100%',
                   maxWidth: HERO_WIDTH,
                   minHeight: HERO_HEIGHT,
@@ -84,7 +92,7 @@ export function EmailCampaignPreview({
             </div>
           ) : null}
           <div
-            className="text-base text-[#333] mb-5 leading-relaxed"
+            className="text-base text-[#F0F4FF] mb-5 leading-relaxed"
             dangerouslySetInnerHTML={{ __html: content || '&nbsp;' }}
           />
           {showCta ? (
@@ -99,8 +107,11 @@ export function EmailCampaignPreview({
               </a>
             </div>
           ) : null}
-          <div className="mt-7 rounded border-l-[3px] border-[rgba(226,24,54,0.3)] bg-[#E8E8E8] px-6 py-5">
-            <p className="text-sm text-[#666666] leading-relaxed m-0">
+          <div
+            className="mt-7 rounded-md border-l-[3px] border-[rgba(226,24,54,0.3)] px-6 py-5"
+            style={{ backgroundColor: '#E2ECFF' }}
+          >
+            <p className="text-sm text-[#374151] leading-relaxed m-0">
               Need assistance? Contact us at{' '}
               <a href="mailto:Contact@andiamoevents.com" className="text-[#E21836] font-medium no-underline">
                 Contact@andiamoevents.com
@@ -121,35 +132,35 @@ export function EmailCampaignPreview({
               .
             </p>
           </div>
-          <div className="mt-9 pt-7 border-t border-[#eee] text-center">
-            <p className="text-[22px] italic text-[#E21836] font-light mb-5">We Create Memories</p>
-            <p className="text-base text-[#666666] leading-relaxed m-0">
+          <div className="mt-9 pt-7 border-t border-white/35 text-center">
+            <p className="text-[22px] italic text-[#FCA5A5] font-light mb-5">We Create Memories</p>
+            <p className="text-base text-[#C7D2FE] leading-relaxed m-0">
               Best regards,
               <br />
               The Andiamo Events Team
             </p>
           </div>
-          <div className="mt-10 mb-8 px-5 pt-10 text-center text-xs text-[#999999] leading-relaxed border-t border-black/10">
-            <p className="mb-5">
-              Developed by <span className="text-[#E21836]">Malek Ben Amor</span>
+          <div className="mt-7 pt-6 text-center text-xs text-[#C7D2FE] leading-relaxed border-t border-white/35">
+            <p className="mb-2.5 m-0">
+              Developed by <span className="text-[#FCA5A5]">Malek Ben Amor</span>
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-2 text-[13px] text-[#999999]">
+            <div className="flex flex-wrap items-center justify-center gap-2 text-[13px] text-[#C7D2FE]">
               <a
                 href="https://www.instagram.com/malekbenamor.dev/"
                 target="_blank"
                 rel="noreferrer"
-                className="text-[#999999] hover:text-[#E21836] no-underline"
+                className="text-[#C7D2FE] hover:text-[#FCA5A5] no-underline"
               >
                 Instagram
               </a>
-              <span className="text-[#999999]" aria-hidden>
+              <span className="text-[#C7D2FE]" aria-hidden>
                 &bull;
               </span>
               <a
                 href="https://malekbenamor.dev/"
                 target="_blank"
                 rel="noreferrer"
-                className="text-[#999999] hover:text-[#E21836] no-underline"
+                className="text-[#C7D2FE] hover:text-[#FCA5A5] no-underline"
               >
                 Website
               </a>

@@ -39,10 +39,10 @@ const { createOfficialInvitationEmailHTML } = require('./api/lib/official-invita
 const { buildOrderConfirmationEmailHtml } = require('./api/lib/order-confirmation-email-html.cjs');
 const { fetchAmbassadorSocialLinkFromApplications } = require('./api/lib/ambassador-social-link.cjs');
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./api/lib/email-branding.cjs');
-const { buildTicketEmailPdfAttachments } = require('./api/lib/ticket-pdf.cjs');
 const { uploadTicketQrToR2OrSupabase } = require('./api/lib/r2-media.cjs');
 const { computeOnlinePaymentFees } = require('./api/lib/online-payment-fee.cjs');
 const { sendTransactionalEmail } = require('./api/lib/transactional-email.cjs');
+const { buildCampaignEmailHtml } = require('./api/lib/campaign-email-html.cjs');
 
 // Import centralized SMS template helpers
 const {
@@ -755,13 +755,61 @@ app.use('/api/send-email', emailLimiter);
 
 app.post('/api/send-email', requireAdminAuth, async (req, res) => {
   try {
-    const { to, subject, html } = req.body;
-    
+    const {
+      to,
+      subject,
+      html,
+      campaignTemplate,
+      emailBody,
+      headerImageUrl,
+      ctaUrl,
+      ctaLabel,
+    } = req.body;
+
+    const htmlTrim = typeof html === 'string' ? html.trim() : '';
+    const emailBodyTrim = emailBody != null ? String(emailBody).trim() : '';
+    const templateFlagOn =
+      campaignTemplate === true ||
+      campaignTemplate === 'true' ||
+      campaignTemplate === 1 ||
+      campaignTemplate === '1';
+    /** Official campaign layout when flag set, or when client omits raw html but sends emailBody (avoids stale/cached JS). */
+    const useCampaignTemplate = Boolean(
+      (templateFlagOn && emailBodyTrim) || (!htmlTrim && emailBodyTrim)
+    );
+
+    let resolvedHtml = htmlTrim;
+
+    if (useCampaignTemplate) {
+      if (!emailBodyTrim) {
+        return res.status(400).json({
+          error: 'Missing email body',
+          details: 'emailBody (message text) is required for the campaign template',
+        });
+      }
+      const recipientDisplay =
+        typeof to === 'string' && to.includes('@')
+          ? (to.split('@')[0] || 'Subscriber').replace(/[^a-zA-Z0-9._-]/g, ' ') || 'Subscriber'
+          : 'Subscriber';
+      resolvedHtml = buildCampaignEmailHtml(
+        subject,
+        emailBody,
+        recipientDisplay,
+        headerImageUrl || null,
+        ctaUrl || null,
+        ctaLabel || null
+      );
+      console.log('[send-email] built campaign HTML (andiamo:campaign-email)', {
+        subjectLen: String(subject || '').length,
+        via: 'campaign-template',
+      });
+    }
+
     // Validate required fields
-    if (!to || !subject || !html) {
-      return res.status(400).json({ 
-        error: 'Missing required fields', 
-        details: 'to, subject, and html are required' 
+    if (!to || !subject || !resolvedHtml) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'to, subject, and html are required (or set campaignTemplate: true with emailBody)',
       });
     }
 
@@ -792,7 +840,7 @@ app.post('/api/send-email', requireAdminAuth, async (req, res) => {
         replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
         to,
         subject,
-        html,
+        html: resolvedHtml,
       }
     );
 
@@ -9379,7 +9427,7 @@ ${transactionalEmailDarkStylesCss()}
                 <p class="greeting">Dear <strong>${order.user_name || 'Valued Customer'}</strong>,</p>
                 
                 <p class="message">
-                  We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are ready and attached below.
+                  We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are shown below.
                 </p>
                 
                 <div class="order-info-block">
@@ -9474,7 +9522,6 @@ ${transactionalEmailDarkStylesCss()}
           htmlLength: emailHtml.length
         });
         
-        const pdfAttachments = await buildTicketEmailPdfAttachments(order, tickets, orderPasses);
         const emailResult = await sendTransactionalEmail(
           { getEmailTransporter },
           {
@@ -9483,7 +9530,6 @@ ${transactionalEmailDarkStylesCss()}
             to: order.user_email,
             subject: 'Your Digital Tickets Are Ready - Andiamo Events',
             html: emailHtml,
-            ...(pdfAttachments.length ? { attachments: pdfAttachments } : {}),
           }
         );
 
@@ -10763,7 +10809,6 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLi
       // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
       // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
       console.log('📤 Sending email to:', order.user_email);
-      const pdfAttachmentsResend = await buildTicketEmailPdfAttachments(order, tickets, passes);
       const emailResult = await sendTransactionalEmail(
         { getEmailTransporter },
         {
@@ -10772,7 +10817,6 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLi
           to: order.user_email,
           subject: 'Your Digital Tickets Are Ready - Andiamo Events',
           html: emailHtml,
-          ...(pdfAttachmentsResend.length ? { attachments: pdfAttachmentsResend } : {}),
         }
       );
 

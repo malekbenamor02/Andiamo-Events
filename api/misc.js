@@ -22,13 +22,6 @@ function getBuildOnlineTicketEmailHtml() {
   return _buildOnlineTicketEmailHtml;
 }
 
-let _buildTicketEmailPdfAttachments = null;
-function getBuildTicketEmailPdfAttachments() {
-  if (_buildTicketEmailPdfAttachments) return _buildTicketEmailPdfAttachments;
-  _buildTicketEmailPdfAttachments = requireFromRoot(path.join(__dirname, 'lib', 'ticket-pdf.cjs')).buildTicketEmailPdfAttachments;
-  return _buildTicketEmailPdfAttachments;
-}
-
 const {
   buildCampaignEmailHtml,
   normalizeMarketingHeaderImageUrl,
@@ -240,14 +233,28 @@ function checkSuggestionsRateLimit(ip) {
 
 // Helper to parse request body
 async function parseBody(req) {
-  if (req.body) {
-    return req.body;
-  } else {
-    let body = '';
-    for await (const chunk of req) {
-      body += chunk.toString();
+  const b = req.body;
+  if (b !== undefined && b !== null) {
+    if (typeof b === 'string' && b.trim()) {
+      try {
+        return JSON.parse(b);
+      } catch {
+        return {};
+      }
     }
+    if (typeof b === 'object' && !Array.isArray(b) && Object.keys(b).length > 0) {
+      return b;
+    }
+  }
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk.toString();
+  }
+  if (!body.trim()) return {};
+  try {
     return JSON.parse(body);
+  } catch {
+    return {};
   }
 }
 
@@ -1916,12 +1923,60 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         }
         
         const bodyData = await parseBody(req);
-        const { to, subject, html, from } = bodyData;
-        
-        if (!to || !subject || !html) {
-          return res.status(400).json({ 
-            error: 'Missing required fields', 
-            details: 'to, subject, and html are required' 
+        const {
+          to,
+          subject,
+          html,
+          from,
+          campaignTemplate,
+          emailBody,
+          headerImageUrl,
+          ctaUrl,
+          ctaLabel,
+        } = bodyData;
+
+        const htmlTrim = typeof html === 'string' ? html.trim() : '';
+        const emailBodyTrim = emailBody != null ? String(emailBody).trim() : '';
+        const templateFlagOn =
+          campaignTemplate === true ||
+          campaignTemplate === 'true' ||
+          campaignTemplate === 1 ||
+          campaignTemplate === '1';
+        const useCampaignTemplate = Boolean(
+          (templateFlagOn && emailBodyTrim) || (!htmlTrim && emailBodyTrim)
+        );
+
+        let resolvedHtml = htmlTrim;
+
+        if (useCampaignTemplate) {
+          if (!emailBodyTrim) {
+            return res.status(400).json({
+              error: 'Missing email body',
+              details: 'emailBody (message text) is required for the campaign template',
+            });
+          }
+          const recipientDisplay =
+            typeof to === 'string' && to.includes('@')
+              ? (to.split('@')[0] || 'Subscriber').replace(/[^a-zA-Z0-9._-]/g, ' ') || 'Subscriber'
+              : 'Subscriber';
+          resolvedHtml = buildCampaignEmailHtml(
+            subject,
+            emailBody,
+            recipientDisplay,
+            headerImageUrl || null,
+            ctaUrl || null,
+            ctaLabel || null
+          );
+          console.log('[send-email] built campaign HTML (andiamo:campaign-email)', {
+            subjectLen: String(subject || '').length,
+            via: 'campaign-template',
+          });
+        }
+
+        if (!to || !subject || !resolvedHtml) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            details: 'to, subject, and html are required (or set campaignTemplate: true with emailBody)',
           });
         }
 
@@ -1963,7 +2018,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
             to,
             subject,
-            html,
+            html: resolvedHtml,
           }
         );
         
@@ -3105,7 +3160,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                 });
                 // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
                 // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
-                const pdfAttachmentsMisc1 = await getBuildTicketEmailPdfAttachments()(fullOrder, tickets, orderPasses);
                 await sendTransactionalEmail(
                   { getEmailTransporter },
                   {
@@ -3114,7 +3168,6 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                     to: fullOrder.user_email,
                     subject: 'Your Digital Tickets Are Ready - Andiamo Events',
                     html: emailHtml,
-                    ...(pdfAttachmentsMisc1.length ? { attachments: pdfAttachmentsMisc1 } : {}),
                   }
                 );
                 
@@ -3587,7 +3640,6 @@ We Create Memories`;
                   subtotalAmount,
                   ticketsByPassType,
                 });
-                const pdfAttachmentsMisc2 = await getBuildTicketEmailPdfAttachments()(fullOrder, tickets, orderPasses);
                 await sendTransactionalEmail(
                   { getEmailTransporter },
                   {
@@ -3596,7 +3648,6 @@ We Create Memories`;
                     to: fullOrder.user_email,
                     subject: 'Your Digital Tickets Are Ready - Andiamo Events',
                     html: emailHtml,
-                    ...(pdfAttachmentsMisc2.length ? { attachments: pdfAttachmentsMisc2 } : {}),
                   }
                 );
                 await dbClient.from('tickets').update({ status: 'DELIVERED', email_delivery_status: 'sent', delivered_at: new Date().toISOString() }).in('id', tickets.map(t => t.id));
@@ -4343,7 +4394,6 @@ Billets envoyés par email. We Create Memories`;
 
             // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
             // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
-            const pdfAttachmentsMiscResend = await getBuildTicketEmailPdfAttachments()(order, tickets, passes);
             await sendTransactionalEmail(
               { getEmailTransporter },
               {
@@ -4352,7 +4402,6 @@ Billets envoyés par email. We Create Memories`;
                 to: order.user_email,
                 subject: 'Your Digital Tickets Are Ready - Andiamo Events',
                 html: emailHtml,
-                ...(pdfAttachmentsMiscResend.length ? { attachments: pdfAttachmentsMiscResend } : {}),
               }
             );
             

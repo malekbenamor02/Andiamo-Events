@@ -30,7 +30,7 @@ Files:
 Not generated here (still inline in code — similar visual family as 01/03):
   • POS pending + ticket emails: api/pos.js, api/admin-pos.js
   • Admin approve tickets: api/admin-approve-order.js
-  • Admin Dashboard marketing composer: src/pages/admin/Dashboard.tsx (buildMarketingEmailHtml)
+  • Admin Dashboard test/bulk newsletter: POST /api/send-email with campaignTemplate + emailBody → api/lib/campaign-email-html.cjs
   • Career admin “new application” email: careerRoutes.cjs (buildCareerAdminNotificationEmail)
 
 -------------------------------------------------------------------
