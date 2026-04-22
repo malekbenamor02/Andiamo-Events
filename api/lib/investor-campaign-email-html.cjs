@@ -122,6 +122,9 @@ function buildInvestorVanguardEmailHtml(opts) {
             <br>
             All Rights Reserved.
           </p>
+          <p style="margin:14px 0 0 0;font-size:11px;line-height:1.5;color:#525252;font-family:Arial,Helvetica,sans-serif;">
+            Developed by <a href="${escapeAttr(devUrl)}" target="_blank" rel="noopener noreferrer" style="color:#a3a3a3;text-decoration:underline;">${esc(devName)}</a>
+          </p>
         </td></tr>
       </table>
     </td></tr>

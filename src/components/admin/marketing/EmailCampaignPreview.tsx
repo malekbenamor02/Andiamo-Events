@@ -151,6 +151,12 @@ export function EmailCampaignPreview({
               <br />
               All Rights Reserved.
             </p>
+            <p className="mt-3 text-[11px] text-zinc-500">
+              Developed by{' '}
+              <a href="https://malekbenamor.dev" target="_blank" rel="noreferrer" className="text-zinc-400 underline">
+                Malek Ben Amor
+              </a>
+            </p>
           </div>
         </div>
       </div>
