@@ -135,6 +135,7 @@ export interface EmailSourceSelection {
   approved_ambassadors: boolean;
   ambassador_applications: boolean;
   aio_events_submissions: boolean;
+  investors: boolean;
 }
 
 export interface EmailSourceFilters {
@@ -143,6 +144,7 @@ export interface EmailSourceFilters {
   approved_ambassadors: ApprovedAmbassadorsFilters;
   ambassador_applications: AmbassadorApplicationsFilters;
   aio_events_submissions: AioEventsFilters;
+  investors: Record<string, unknown>;
 }
 
 export interface EmailAddressWithMetadata {
@@ -171,6 +173,7 @@ export interface EmailCountsResponse {
   approved_ambassadors?: { total: number; withEmail: number };
   ambassador_applications?: { total: number; withEmail: number; byStatus?: Record<string, number> };
   aio_events_submissions?: { total: number; withEmail: number };
+  investors?: { total: number; withEmail: number };
 }
 
 // Marketing campaigns
@@ -190,6 +193,10 @@ export interface MarketingCampaign {
   daily_email_cap?: number | null;
   cta_url?: string | null;
   cta_label?: string | null;
+  email_template?: 'standard' | 'investor_vanguard' | string;
+  attach_poster?: boolean;
+  poster_attachment_url?: string | null;
+  sender_profile?: 'default' | 'investor' | string;
   counts?: { total: number; sent: number; failed: number; pending: number };
 }
 

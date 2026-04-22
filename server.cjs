@@ -4523,6 +4523,8 @@ async function forwardToMisc(req, res) {
 
 app.get('/api/admin/email-addresses/counts', requireAdminAuth, (req, res) => forwardToMisc(req, res));
 app.get('/api/admin/email-addresses/sources', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.get('/api/admin/investor-contacts', requireAdminAuth, (req, res) => forwardToMisc(req, res));
+app.put('/api/admin/investor-contacts', requireAdminAuth, (req, res) => forwardToMisc(req, res));
 app.get('/api/admin/order-qr-tickets', requireAdminAuth, (req, res) => {
   req.url = req.originalUrl || req.url;
   return forwardToMisc(req, res);

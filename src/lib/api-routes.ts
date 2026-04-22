@@ -49,6 +49,7 @@ export const API_ROUTES = {
   // Bulk Email (Admin) - same source/filter model as SMS
   ADMIN_EMAIL_ADDRESSES_COUNTS: '/api/admin/email-addresses/counts',
   ADMIN_EMAIL_ADDRESSES_SOURCES: '/api/admin/email-addresses/sources',
+  ADMIN_INVESTOR_CONTACTS: '/api/admin/investor-contacts',
 
   // Marketing campaigns (bulk email/SMS in batches)
   MARKETING_CAMPAIGNS: '/api/marketing/campaigns',

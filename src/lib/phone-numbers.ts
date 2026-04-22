@@ -101,7 +101,8 @@ export function getEmailSourceDisplayName(source: keyof EmailSourceSelection, la
     newsletter_subscribers: { en: 'Newsletter Subscribers', fr: 'Abonnés Newsletter' },
     approved_ambassadors: { en: 'Approved Ambassadors', fr: 'Ambassadeurs Approuvés' },
     ambassador_applications: { en: 'Ambassador Applications', fr: 'Candidatures Ambassadeurs' },
-    aio_events_submissions: { en: 'AIO Events Submissions', fr: 'Soumissions AIO Events' }
+    aio_events_submissions: { en: 'AIO Events Submissions', fr: 'Soumissions AIO Events' },
+    investors: { en: 'Investor contacts', fr: 'Contacts investisseurs' }
   };
   return names[source]?.[language] || source;
 }

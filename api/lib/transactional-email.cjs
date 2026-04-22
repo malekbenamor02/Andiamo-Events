@@ -107,8 +107,10 @@ function postJson(url, apiKey, body) {
   });
 }
 
-async function sendViaBrevoApi(mailOptions) {
-  const apiKey = process.env.BREVO_API_KEY;
+async function sendViaBrevoApi(mailOptions, apiKeyOverride) {
+  const apiKey =
+    (typeof apiKeyOverride === 'string' && apiKeyOverride.trim() !== '' ? apiKeyOverride.trim() : null) ||
+    process.env.BREVO_API_KEY;
   if (!apiKey) throw new Error('BREVO_API_KEY not set');
 
   const { name: fromName, email: fromEmail } = parseFrom(mailOptions.from);
@@ -155,10 +157,13 @@ async function sendViaBrevoApi(mailOptions) {
  * @param {object} mailOptions nodemailer-compatible sendMail options
  */
 async function sendTransactionalEmail(deps, mailOptions) {
-  const apiKey = process.env.BREVO_API_KEY;
-  if (apiKey) {
+  const { brevoApiKey, ...mailRest } = mailOptions || {};
+  const effectiveKey =
+    (typeof brevoApiKey === 'string' && brevoApiKey.trim() !== '' ? brevoApiKey.trim() : null) ||
+    process.env.BREVO_API_KEY;
+  if (effectiveKey) {
     try {
-      const apiRes = await sendViaBrevoApi(mailOptions);
+      const apiRes = await sendViaBrevoApi(mailRest, brevoApiKey);
       return { via: 'brevo-api', messageId: apiRes.messageId };
     } catch (e) {
       console.error('[transactional-email] Brevo API failed, using SMTP:', e.message || e);
@@ -176,7 +181,7 @@ async function sendTransactionalEmail(deps, mailOptions) {
 
   const extra = brevoSmtpExtraHeaders();
   const merged = {
-    ...mailOptions,
+    ...mailRest,
     headers: {
       ...extra,
       ...(mailOptions.headers || {}),

@@ -35,6 +35,17 @@ function getEmailLogoUrl() {
   return `${origin}/email-assets/logo-white.png`;
 }
 
+/** Black logo for light backgrounds (e.g. investor institutional template). Override with EMAIL_LOGO_BLACK_URL or INVESTOR_EMAIL_LOGO_URL. */
+function getEmailLogoBlackUrl() {
+  const override =
+    process.env.INVESTOR_EMAIL_LOGO_URL || process.env.EMAIL_LOGO_BLACK_URL;
+  if (override != null && String(override).trim() !== '') {
+    return String(override).trim();
+  }
+  const origin = getPublicSiteOrigin().replace(/\/$/, '');
+  return `${origin}/email-assets/logo-black.png`;
+}
+
 function escapeAttr(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -372,6 +383,7 @@ function emailLogoHeaderHtml() {
 module.exports = {
   getPublicSiteOrigin,
   getEmailLogoUrl,
+  getEmailLogoBlackUrl,
   emailLogoHeaderHtml,
   transactionalEmailDarkStylesCss,
   invitationEmailDarkStylesCss,

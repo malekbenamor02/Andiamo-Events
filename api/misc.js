@@ -28,6 +28,11 @@ const {
   sanitizeCampaignCtaLabel,
 } = requireFromRoot(path.join(__dirname, 'lib', 'campaign-email-html.cjs'));
 
+const {
+  buildInvestorVanguardEmailHtml,
+  buildInvestorVanguardEmailPlainText,
+} = requireFromRoot(path.join(__dirname, 'lib', 'investor-campaign-email-html.cjs'));
+
 const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot(
   path.join(__dirname, 'lib', 'online-payment-fee.cjs')
 );
@@ -235,6 +240,14 @@ function checkSuggestionsRateLimit(ip) {
 async function parseBody(req) {
   const b = req.body;
   if (b !== undefined && b !== null) {
+    if (Buffer.isBuffer(b)) {
+      try {
+        const t = b.toString('utf8');
+        return t.trim() ? JSON.parse(t) : {};
+      } catch {
+        return {};
+      }
+    }
     if (typeof b === 'string' && b.trim()) {
       try {
         return JSON.parse(b);
@@ -575,6 +588,119 @@ function marketingInterEmailDelayMs(campaign, skipInterEmailDelay) {
   return 1000;
 }
 
+const MARKETING_ATTACHMENT_MAX_BYTES = Math.min(
+  15 * 1024 * 1024,
+  Math.max(1024, parseInt(process.env.MARKETING_ATTACHMENT_MAX_BYTES || '9437184', 10) || 9437184)
+);
+
+async function fetchMarketingPosterAttachment(urlStr) {
+  const { URL } = await import('url');
+  const u = normalizeMarketingHeaderImageUrl(urlStr);
+  if (!u) throw new Error('Invalid poster attachment URL');
+  const parsed = new URL(u);
+  if (parsed.protocol !== 'https:') throw new Error('Poster URL must use https');
+  const https = await import('https');
+  const chunks = [];
+  let total = 0;
+  await new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || 443,
+        path: parsed.pathname + (parsed.search || ''),
+        method: 'GET',
+        timeout: 28000,
+        headers: { 'User-Agent': 'Andiamo-Events-Marketing/1.0' },
+      },
+      (res) => {
+        if (!res.statusCode || res.statusCode >= 400) {
+          reject(new Error(`Poster fetch HTTP ${res.statusCode || 'unknown'}`));
+          return;
+        }
+        res.on('data', (chunk) => {
+          total += chunk.length;
+          if (total > MARKETING_ATTACHMENT_MAX_BYTES) {
+            res.destroy();
+            reject(new Error('Poster file exceeds size limit'));
+          } else {
+            chunks.push(chunk);
+          }
+        });
+        res.on('end', () => resolve());
+      }
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Poster fetch timeout'));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+  const buf = Buffer.concat(chunks);
+  let filename = 'poster';
+  const seg = parsed.pathname.split('/').filter(Boolean).pop();
+  if (seg && /^[a-zA-Z0-9._-]+$/.test(seg) && seg.length <= 200) filename = seg;
+  else if (seg) filename = String(seg).slice(0, 80).replace(/[^a-zA-Z0-9._-]/g, '_') || 'poster';
+  return { buffer: buf, filename };
+}
+
+/** Investor-style delivery: dedicated From + optional BREVO_API_KEY_INVESTORS. */
+function isInvestorMarketingSend(campaign) {
+  if (!campaign || campaign.type !== 'email') return false;
+  if (sanitizeEmailTemplate(campaign.email_template) === 'investor_vanguard') return true;
+  return String(campaign.sender_profile || '').trim() === 'investor';
+}
+
+function marketingEmailEnvelope(campaign) {
+  const defaultFrom = '"Andiamo Events" <contact@andiamoevents.com>';
+  if (isInvestorMarketingSend(campaign)) {
+    const envFrom = process.env.MARKETING_INVESTOR_FROM && String(process.env.MARKETING_INVESTOR_FROM).trim();
+    const from = envFrom || '"Andiamo Events" <investors@andiamoevents.com>';
+    const rt = process.env.MARKETING_INVESTOR_REPLY_TO && String(process.env.MARKETING_INVESTOR_REPLY_TO).trim();
+    return { from, replyTo: rt || from };
+  }
+  return { from: defaultFrom, replyTo: defaultFrom };
+}
+
+function brevoApiKeyForCampaign(campaign) {
+  if (isInvestorMarketingSend(campaign)) {
+    const inv = process.env.BREVO_API_KEY_INVESTORS && String(process.env.BREVO_API_KEY_INVESTORS).trim();
+    if (inv) return inv;
+  }
+  return process.env.BREVO_API_KEY;
+}
+
+function sanitizeEmailTemplate(raw) {
+  const s = String(raw ?? 'standard')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return s === 'investor_vanguard' ? 'investor_vanguard' : 'standard';
+}
+
+/** Institutional template always uses investor mailbox + Brevo investor key (cannot mix with contact@). */
+function sanitizeSenderProfile(raw, emailTemplate) {
+  const tpl = sanitizeEmailTemplate(emailTemplate);
+  if (tpl === 'investor_vanguard') return 'investor';
+  const s = String(raw || '').trim();
+  if (s === 'investor') return 'investor';
+  if (s === 'default') return 'default';
+  return 'default';
+}
+
+/** Normalize row shape from PostgREST (snake_case) or accidental camelCase. */
+function normalizeMarketingCampaignRow(row) {
+  if (!row || typeof row !== 'object') return row;
+  const o = { ...row };
+  if (o.email_template == null && o.emailTemplate != null) o.email_template = o.emailTemplate;
+  if (o.sender_profile == null && o.senderProfile != null) o.sender_profile = o.senderProfile;
+  if (o.attach_poster == null && o.attachPoster != null) o.attach_poster = o.attachPoster;
+  if (o.poster_attachment_url == null && o.posterAttachmentUrl != null) {
+    o.poster_attachment_url = o.posterAttachmentUrl;
+  }
+  return o;
+}
+
 /** Resolve email recipients from source toggles + filters (same rules as POST /marketing/campaigns). */
 async function collectMarketingEmailRecipientsFromSources(dbClient, sourcesConfig, filtersConfig) {
   const filters = filtersConfig || {};
@@ -625,6 +751,15 @@ async function collectMarketingEmailRecipientsFromSources(dbClient, sourcesConfi
     const { data: d } = await q;
     if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmailForMarketing(r.email) })).filter(r => r.value));
   }
+  if (sourcesConfig.investors?.enabled) {
+    const { data: inv } = await dbClient.from('investor_contacts').select('email').not('email', 'is', null);
+    if (inv) {
+      inv.forEach((row) => {
+        const v = normalizeCampaignEmailForMarketing(row.email);
+        if (v) allEmails.push({ value: v });
+      });
+    }
+  }
   const seen = new Set();
   const recipients = [];
   allEmails.forEach((p) => {
@@ -654,14 +789,24 @@ function smtpListContainsRecipient(smtpList, recipientRaw) {
  */
 async function processMarketingCampaignSendBatch(dbClient, campaignId, options = {}) {
   const skipInterEmailDelay = options.skipInterEmailDelay === true;
-  const { data: campaign, error: campErr } = await dbClient
+  const { data: rawCampaign, error: campErr } = await dbClient
     .from('marketing_campaigns')
-    .select('id, type, subject, body, status, batch_size, delay_minutes, header_image_url, daily_email_cap, cta_url, cta_label')
+    .select('*')
     .eq('id', campaignId)
     .single();
 
-  if (campErr || !campaign) {
+  if (campErr || !rawCampaign) {
     return { ok: false, statusCode: 404, error: 'Campaign not found' };
+  }
+  const campaign = normalizeMarketingCampaignRow(rawCampaign);
+  if (campaign.type === 'email') {
+    console.log('[marketing-email] send-batch campaign row', {
+      id: campaignId,
+      email_template: campaign.email_template,
+      sender_profile: campaign.sender_profile,
+      will_use_investor_html: sanitizeEmailTemplate(campaign.email_template) === 'investor_vanguard',
+      will_use_investor_mailbox: isInvestorMarketingSend(campaign),
+    });
   }
   const sendable = ['scheduled', 'sending'].includes(campaign.status);
   if (!sendable) {
@@ -742,6 +887,33 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
 
   const interDelayMs = marketingInterEmailDelayMs(campaign, skipInterEmailDelay);
 
+  let posterAttachment = null;
+  if (campaign.type === 'email' && campaign.attach_poster && campaign.poster_attachment_url) {
+    try {
+      posterAttachment = await fetchMarketingPosterAttachment(campaign.poster_attachment_url);
+    } catch (e) {
+      console.error('[marketing-email] poster fetch failed:', e.message || e);
+    }
+  } else if (campaign.type === 'email' && campaign.attach_poster && !campaign.poster_attachment_url) {
+    console.warn('[marketing-email] attach_poster is true but poster_attachment_url is empty', {
+      campaign_id: campaignId,
+    });
+  }
+  if (
+    campaign.type === 'email' &&
+    campaign.attach_poster &&
+    campaign.poster_attachment_url &&
+    (!posterAttachment || !posterAttachment.buffer || !posterAttachment.buffer.length)
+  ) {
+    console.warn('[marketing-email] attachment will be skipped (fetch failed or empty buffer)', {
+      campaign_id: campaignId,
+    });
+  }
+  const investorTpl =
+    campaign.type === 'email' && sanitizeEmailTemplate(campaign.email_template) === 'investor_vanguard';
+  const envelope = campaign.type === 'email' ? marketingEmailEnvelope(campaign) : null;
+  const brevoKeyOpt = campaign.type === 'email' ? brevoApiKeyForCampaign(campaign) : null;
+
   for (let i = 0; i < pending.length; i++) {
     if (Date.now() >= deadline) break;
     const rec = pending[i];
@@ -759,32 +931,46 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
           ? (rec.recipient_value.split('@')[0] || 'Subscriber').replace(/[^a-zA-Z0-9._-]/g, ' ') || 'Subscriber'
           : 'Subscriber';
         const subj = campaign.subject || 'Newsletter';
-        const html = buildCampaignEmailHtml(
-          subj,
-          campaign.body,
-          recipientDisplay,
-          campaign.header_image_url,
-          campaign.cta_url,
-          campaign.cta_label
-        );
-        const text = buildCampaignEmailPlainText(
-          subj,
-          campaign.body,
-          recipientDisplay,
-          campaign.cta_url,
-          campaign.cta_label
-        );
-        const mailInfo = await sendTransactionalEmail(
-          { getEmailTransporter },
-          {
-            from: '"Andiamo Events" <contact@andiamoevents.com>',
-            replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-            to: rec.recipient_value,
-            subject: subj,
-            text,
-            html
-          }
-        );
+        const html = investorTpl
+          ? buildInvestorVanguardEmailHtml({
+              subject: subj,
+              body: campaign.body,
+              headerImageUrl: campaign.header_image_url,
+              ctaUrl: campaign.cta_url,
+              ctaLabel: campaign.cta_label,
+            })
+          : buildCampaignEmailHtml(
+              subj,
+              campaign.body,
+              recipientDisplay,
+              campaign.header_image_url,
+              campaign.cta_url,
+              campaign.cta_label
+            );
+        const text = investorTpl
+          ? buildInvestorVanguardEmailPlainText(subj, campaign.body, campaign.cta_url, campaign.cta_label)
+          : buildCampaignEmailPlainText(
+              subj,
+              campaign.body,
+              recipientDisplay,
+              campaign.cta_url,
+              campaign.cta_label
+            );
+        const attachments =
+          posterAttachment && posterAttachment.buffer && posterAttachment.buffer.length
+            ? [{ filename: posterAttachment.filename, content: posterAttachment.buffer }]
+            : undefined;
+        const mailPayload = {
+          from: envelope.from,
+          replyTo: envelope.replyTo,
+          to: rec.recipient_value,
+          subject: subj,
+          text,
+          html,
+          ...(attachments ? { attachments } : {}),
+          ...(brevoKeyOpt ? { brevoApiKey: brevoKeyOpt } : {}),
+        };
+        const mailInfo = await sendTransactionalEmail({ getEmailTransporter }, mailPayload);
         console.log('[marketing-email]', {
           campaign_id: campaignId,
           to: rec.recipient_value,
@@ -7132,6 +7318,14 @@ Billets envoyés par email. We Create Memories`;
         const { count: aioWithEmail } = await dbClient.from('aio_events_submissions').select('*', { count: 'exact', head: true }).not('email', 'is', null);
         counts.aio_events_submissions = { total: aioTotal || 0, withEmail: aioWithEmail || 0 };
 
+        const invTotalRes = await dbClient.from('investor_contacts').select('*', { count: 'exact', head: true });
+        const invWithRes = await dbClient.from('investor_contacts').select('*', { count: 'exact', head: true }).not('email', 'is', null);
+        if (!invTotalRes.error && !invWithRes.error) {
+          counts.investors = { total: invTotalRes.count || 0, withEmail: invWithRes.count || 0 };
+        } else {
+          counts.investors = { total: 0, withEmail: 0 };
+        }
+
         return res.json({ success: true, data: counts });
       } catch (error) {
         console.error('Error fetching email counts:', error);
@@ -7326,6 +7520,25 @@ Billets envoyés par email. We Create Memories`;
           }
         }
 
+        if (sourcesConfig.investors?.enabled) {
+          const { data, error } = await dbClient.from('investor_contacts').select('id, email, created_at').not('email', 'is', null);
+          if (!error && data) {
+            const emails = data
+              .filter((r) => r.email)
+              .map((r) => ({
+                email: normalizeEmail(r.email),
+                source: 'investors',
+                sourceId: r.id,
+                city: null,
+                ville: null,
+                metadata: includeMetadata === 'true' ? { created_at: r.created_at } : undefined,
+              }))
+              .filter((p) => p.email);
+            allEmails.push(...emails);
+            sourceCounts.investors = emails.length;
+          }
+        }
+
         const { unique, duplicates } = deduplicateEmails(allEmails);
 
         return res.json({
@@ -7347,6 +7560,94 @@ Billets envoyés par email. We Create Memories`;
           success: false,
           error: error.message || 'Failed to fetch email addresses'
         });
+      }
+    }
+
+    // ============================================
+    // GET /api/admin/investor-contacts — list saved investor emails for marketing source
+    // ============================================
+    if (path === '/api/admin/investor-contacts' && method === 'GET') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+          return res.status(500).json({ success: false, error: 'Supabase not configured' });
+        }
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+        const dbClient = process.env.SUPABASE_SERVICE_ROLE_KEY
+          ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+          : supabase;
+        const { data, error } = await dbClient
+          .from('investor_contacts')
+          .select('id, email, created_at')
+          .order('created_at', { ascending: true });
+        if (error) {
+          return res.status(500).json({ success: false, error: error.message });
+        }
+        return res.json({ success: true, data: { contacts: data || [] } });
+      } catch (err) {
+        console.error('Error investor-contacts GET:', err);
+        return res.status(500).json({ success: false, error: err.message });
+      }
+    }
+
+    // ============================================
+    // PUT /api/admin/investor-contacts — replace list (normalized, deduped)
+    // ============================================
+    if (path === '/api/admin/investor-contacts' && method === 'PUT') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false
+          });
+        }
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(500).json({ success: false, error: 'Supabase service role not configured' });
+        }
+        const bodyData = await parseBody(req);
+        const rawList = Array.isArray(bodyData.emails) ? bodyData.emails : [];
+        const seen = new Set();
+        const emails = [];
+        for (const raw of rawList) {
+          const v = normalizeCampaignEmailForMarketing(typeof raw === 'string' ? raw : String(raw));
+          if (v && !seen.has(v)) {
+            seen.add(v);
+            emails.push(v);
+          }
+        }
+        const { createClient } = await import('@supabase/supabase-js');
+        const dbClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+        for (;;) {
+          const { data: chunk } = await dbClient.from('investor_contacts').select('id').limit(400);
+          if (!chunk || chunk.length === 0) break;
+          const ids = chunk.map((r) => r.id);
+          await dbClient.from('investor_contacts').delete().in('id', ids);
+        }
+        if (emails.length) {
+          const rows = emails.map((e) => ({ email: e }));
+          const batch = 400;
+          for (let i = 0; i < rows.length; i += batch) {
+            const slice = rows.slice(i, i + batch);
+            const { error: insErr } = await dbClient.from('investor_contacts').insert(slice);
+            if (insErr) {
+              return res.status(500).json({ success: false, error: insErr.message || 'Insert failed' });
+            }
+          }
+        }
+        return res.json({ success: true, data: { count: emails.length } });
+      } catch (err) {
+        console.error('Error investor-contacts PUT:', err);
+        return res.status(500).json({ success: false, error: err.message });
       }
     }
 
@@ -8070,9 +8371,22 @@ Billets envoyés par email. We Create Memories`;
           return res.status(500).json({ success: false, error: insError.message || 'Failed to save recipients' });
         }
 
+        const { data: snapRaw } = await dbClient.from('marketing_campaigns').select('*').eq('id', campaignId).single();
+        const snap = snapRaw ? normalizeMarketingCampaignRow(snapRaw) : null;
         return res.json({
           success: true,
-          data: { campaign_id: campaignId, total_recipients: recipients.length, status: 'scheduled' }
+          data: {
+            campaign_id: campaignId,
+            total_recipients: recipients.length,
+            status: 'scheduled',
+            campaign_snapshot: snap
+              ? {
+                  email_template: snap.email_template,
+                  sender_profile: snap.sender_profile,
+                  is_investor_send: isInvestorMarketingSend(snap),
+                }
+              : null,
+          },
         });
       } catch (error) {
         console.error('Error launch campaign:', error);
@@ -8131,7 +8445,7 @@ Billets envoyés par email. We Create Memories`;
         }
 
         // Email draft template: no recipients yet
-        if (type === 'email' && mode === 'draft') {
+        if (type === 'email' && String(mode || '').trim().toLowerCase() === 'draft') {
           const subj = subject != null ? String(subject).trim() : '';
           const bod = body != null ? String(body) : '';
           if (!subj) {
@@ -8141,6 +8455,12 @@ Billets envoyés par email. We Create Memories`;
           const ctaUrl = normalizeMarketingHeaderImageUrl(rawCtaUrl);
           const ctaLabel = ctaUrl ? sanitizeCampaignCtaLabel(rawCtaLabel, 'Book now') : null;
           const nameTrimmed = name != null && String(name).trim() !== '' ? String(name).trim().slice(0, 500) : null;
+          const emailTemplate = sanitizeEmailTemplate(bodyData.email_template);
+          const senderProfile = sanitizeSenderProfile(bodyData.sender_profile, emailTemplate);
+          const attachPoster = Boolean(bodyData.attach_poster);
+          const posterAttachmentUrl = attachPoster
+            ? normalizeMarketingHeaderImageUrl(bodyData.poster_attachment_url)
+            : null;
           const insertPayload = {
             type: 'email',
             name: nameTrimmed,
@@ -8154,22 +8474,29 @@ Billets envoyés par email. We Create Memories`;
             header_image_url: headerImageUrl,
             daily_email_cap: null,
             cta_url: ctaUrl,
-            cta_label: ctaLabel
+            cta_label: ctaLabel,
+            email_template: emailTemplate,
+            attach_poster: attachPoster,
+            poster_attachment_url: posterAttachmentUrl,
+            sender_profile: senderProfile,
           };
-          const draftSelect =
-            'id, type, name, subject, body, status, batch_size, period, delay_minutes, batch_delay_minutes, header_image_url, daily_email_cap, cta_url, cta_label, created_at, updated_at';
           const { data: campaign, error: campError } = await dbClient
             .from('marketing_campaigns')
             .insert(insertPayload)
-            .select(draftSelect)
+            .select('*')
             .single();
           if (campError || !campaign) {
             console.error('Failed to create draft campaign:', campError);
             return res.status(500).json({ success: false, error: campError?.message || 'Failed to create draft' });
           }
+          console.log('[marketing] draft created', {
+            campaign_id: campaign.id,
+            email_template: campaign.email_template,
+            sender_profile: campaign.sender_profile,
+          });
           return res.json({
             success: true,
-            data: { campaign_id: campaign.id, status: 'draft', campaign }
+            data: { campaign_id: campaign.id, status: 'draft', campaign: normalizeMarketingCampaignRow(campaign) },
           });
         }
 
@@ -8230,7 +8557,15 @@ Billets envoyés par email. We Create Memories`;
           header_image_url: headerImageUrl,
           daily_email_cap: type === 'email' ? dailyEmailCap : null,
           cta_url: type === 'email' ? ctaUrl : null,
-          cta_label: type === 'email' ? ctaLabel : null
+          cta_label: type === 'email' ? ctaLabel : null,
+          ...(type === 'email'
+            ? {
+                email_template: 'standard',
+                attach_poster: false,
+                poster_attachment_url: null,
+                sender_profile: 'default',
+              }
+            : {}),
         };
 
         const { data: campaign, error: campError } = await dbClient
@@ -8367,6 +8702,15 @@ Billets envoyés par email. We Create Memories`;
             const { data: d } = await q;
             if (d) allEmails.push(...d.map(r => ({ value: normalizeCampaignEmail(r.email) })).filter(r => r.value));
           }
+          if (sourcesConfig.investors?.enabled) {
+            const { data: inv } = await dbClient.from('investor_contacts').select('email').not('email', 'is', null);
+            if (inv) {
+              inv.forEach((row) => {
+                const v = normalizeCampaignEmail(row.email);
+                if (v) allEmails.push({ value: v });
+              });
+            }
+          }
           const seen = new Set();
           allEmails.forEach(p => {
             if (p.value && !seen.has(p.value)) {
@@ -8437,7 +8781,9 @@ Billets envoyés par email. We Create Memories`;
 
         const { data: campaigns, error } = await dbClient
           .from('marketing_campaigns')
-          .select('id, type, name, subject, body, status, batch_size, period, created_at, delay_minutes, batch_delay_minutes, header_image_url, daily_email_cap, cta_url, cta_label')
+          .select(
+            'id, type, name, subject, body, status, batch_size, period, created_at, delay_minutes, batch_delay_minutes, header_image_url, daily_email_cap, cta_url, cta_label, email_template, attach_poster, poster_attachment_url, sender_profile'
+          )
           .order('created_at', { ascending: false })
           .limit(100);
 
@@ -8497,7 +8843,9 @@ Billets envoyés par email. We Create Memories`;
 
         const { data: c, error } = await dbClient
           .from('marketing_campaigns')
-          .select('id, type, name, subject, body, status, batch_size, period, created_at, updated_at, delay_minutes, batch_delay_minutes, header_image_url, daily_email_cap, cta_url, cta_label')
+          .select(
+            'id, type, name, subject, body, status, batch_size, period, created_at, updated_at, delay_minutes, batch_delay_minutes, header_image_url, daily_email_cap, cta_url, cta_label, email_template, attach_poster, poster_attachment_url, sender_profile'
+          )
           .eq('id', campaignId)
           .single();
 
@@ -8630,7 +8978,18 @@ Billets envoyés par email. We Create Memories`;
           return res.status(404).json({ success: false, error: 'Campaign not found' });
         }
 
-        const contentKeys = ['subject', 'body', 'name', 'header_image_url', 'cta_url', 'cta_label'];
+        const contentKeys = [
+          'subject',
+          'body',
+          'name',
+          'header_image_url',
+          'cta_url',
+          'cta_label',
+          'email_template',
+          'attach_poster',
+          'poster_attachment_url',
+          'sender_profile',
+        ];
         const hasContentPatch = contentKeys.some((k) => bodyData[k] !== undefined);
 
         if (hasContentPatch) {
@@ -8652,7 +9011,9 @@ Billets envoyés par email. We Create Memories`;
           }
           const { data: current, error: curErr } = await dbClient
             .from('marketing_campaigns')
-            .select('subject, body, name, header_image_url, cta_url, cta_label')
+            .select(
+              'subject, body, name, header_image_url, cta_url, cta_label, email_template, attach_poster, poster_attachment_url, sender_profile'
+            )
             .eq('id', campaignId)
             .single();
           if (curErr || !current) {
@@ -8681,6 +9042,31 @@ Billets envoyés par email. We Create Memories`;
           } else if (bodyData.cta_label !== undefined && current.cta_url) {
             patch.cta_label = sanitizeCampaignCtaLabel(bodyData.cta_label, 'Book now');
           }
+          if (bodyData.email_template !== undefined) {
+            patch.email_template = sanitizeEmailTemplate(bodyData.email_template);
+          }
+          if (bodyData.sender_profile !== undefined) {
+            const tpl = patch.email_template !== undefined ? patch.email_template : current.email_template;
+            patch.sender_profile = sanitizeSenderProfile(bodyData.sender_profile, tpl);
+          }
+          if (bodyData.attach_poster !== undefined) {
+            patch.attach_poster = Boolean(bodyData.attach_poster);
+            if (!patch.attach_poster) patch.poster_attachment_url = null;
+          }
+          if (bodyData.poster_attachment_url !== undefined) {
+            const ap =
+              patch.attach_poster !== undefined ? patch.attach_poster : current.attach_poster;
+            if (ap) {
+              patch.poster_attachment_url = normalizeMarketingHeaderImageUrl(bodyData.poster_attachment_url);
+            } else if (patch.attach_poster === undefined) {
+              patch.poster_attachment_url = null;
+            }
+          }
+          const effectiveTemplate =
+            patch.email_template !== undefined ? patch.email_template : current.email_template;
+          if (sanitizeEmailTemplate(effectiveTemplate) === 'investor_vanguard') {
+            patch.sender_profile = 'investor';
+          }
           const nextSubject = patch.subject !== undefined ? patch.subject : current.subject;
           if (!nextSubject || !String(nextSubject).trim()) {
             return res.status(400).json({ success: false, error: 'subject cannot be empty' });
@@ -8690,7 +9076,7 @@ Billets envoyés par email. We Create Memories`;
             return res.status(500).json({ success: false, error: upErr.message });
           }
           const draftSelect =
-            'id, type, name, subject, body, status, batch_size, period, delay_minutes, batch_delay_minutes, header_image_url, daily_email_cap, cta_url, cta_label, created_at, updated_at';
+            'id, type, name, subject, body, status, batch_size, period, delay_minutes, batch_delay_minutes, header_image_url, daily_email_cap, cta_url, cta_label, email_template, attach_poster, poster_attachment_url, sender_profile, created_at, updated_at';
           const { data: savedRow, error: loadSavedErr } = await dbClient
             .from('marketing_campaigns')
             .select(draftSelect)

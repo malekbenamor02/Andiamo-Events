@@ -48,7 +48,8 @@ const defaultEmailSourceFilters: EmailSourceFilters = {
   newsletter_subscribers: { city: null, dateFrom: null, dateTo: null },
   approved_ambassadors: { city: null, ville: null },
   ambassador_applications: { status: [], city: null, ville: null },
-  aio_events_submissions: { city: null, ville: null, status: [], event_id: null }
+  aio_events_submissions: { city: null, ville: null, status: [], event_id: null },
+  investors: {}
 };
 
 interface BulkEmailSelectorProps {
@@ -74,7 +75,8 @@ export function BulkEmailSelector({
     newsletter_subscribers: false,
     approved_ambassadors: false,
     ambassador_applications: false,
-    aio_events_submissions: false
+    aio_events_submissions: false,
+    investors: false
   });
 
   const [sourceFilters, setSourceFilters] = useState<EmailSourceFilters>(defaultEmailSourceFilters);
@@ -351,12 +353,26 @@ export function BulkEmailSelector({
       if (!data.success) {
         throw new Error(data.error || 'Launch failed');
       }
+      const snap = data.data?.campaign_snapshot as
+        | { email_template?: string; sender_profile?: string; is_investor_send?: boolean }
+        | undefined;
+      const snapLine =
+        snap &&
+        (language === 'en'
+          ? ` DB template: ${snap.email_template ?? '—'}, sender: ${snap.sender_profile ?? '—'}, investor send: ${snap.is_investor_send ? 'yes' : 'no'}.`
+          : ` Modèle BDD : ${snap.email_template ?? '—'}, expéditeur : ${snap.sender_profile ?? '—'}, envoi investisseur : ${snap.is_investor_send ? 'oui' : 'non'}.`);
+      const cronHint =
+        language === 'en'
+          ? ' Sends use the URL in Supabase marketing-email-tick (MARKETING_CRON_URL)—that server must run the same code as this admin.'
+          : ' L’envoi utilise MARKETING_CRON_URL (fonction marketing-email-tick)—ce serveur doit avoir le même code que cet admin.';
       toast({
         title: language === 'en' ? 'Launched' : 'Lancé',
         description:
-          language === 'en'
+          (language === 'en'
             ? `Scheduled: ${data.data?.total_recipients ?? ''} recipients. Sends automatically on each cron run, with a delay between each email, respecting your daily cap (continues next UTC day if needed).`
-            : `Planifié : ${data.data?.total_recipients ?? ''} destinataires. Envoi automatique à chaque cron, avec délai entre chaque email et respect du plafond journalier (reprise le jour UTC suivant si besoin).`
+            : `Planifié : ${data.data?.total_recipients ?? ''} destinataires. Envoi automatique à chaque cron, avec délai entre chaque email et respect du plafond journalier (reprise le jour UTC suivant si besoin).`) +
+          (snapLine || '') +
+          cronHint,
       });
       onLaunchComplete?.();
     } catch (e: unknown) {
@@ -499,9 +515,12 @@ export function BulkEmailSelector({
             <Label className="text-base font-semibold">{t.selectSources}</Label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(Object.keys(selectedSources) as (keyof EmailSourceSelection)[]).map(sourceKey => {
-                const count = sourceKey === 'newsletter_subscribers'
-                  ? (sourceCounts.newsletter_subscribers?.withEmail ?? 0)
-                  : (sourceCounts[sourceKey] as { withEmail?: number } | undefined)?.withEmail ?? 0;
+                const count =
+                  sourceKey === 'newsletter_subscribers'
+                    ? (sourceCounts.newsletter_subscribers?.withEmail ?? 0)
+                    : sourceKey === 'investors'
+                      ? (sourceCounts.investors?.withEmail ?? 0)
+                      : (sourceCounts[sourceKey] as { withEmail?: number } | undefined)?.withEmail ?? 0;
                 return (
                   <div key={sourceKey} className="flex items-start space-x-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
                     <Checkbox

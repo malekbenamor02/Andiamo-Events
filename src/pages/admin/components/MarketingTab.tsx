@@ -19,11 +19,106 @@ import { EmailCampaignEditor } from "@/components/admin/marketing/EmailCampaignE
 import { EmailCampaignLauncher } from "@/components/admin/marketing/EmailCampaignLauncher";
 import { API_ROUTES, buildFullApiUrl } from "@/lib/api-routes";
 import type { MarketingCampaign } from "@/types/bulk-sms";
+import { useToast } from "@/hooks/use-toast";
 
 function isRenderableSmsBalanceValue(balance: unknown): boolean {
   if (balance == null || balance === "") return false;
   if (typeof balance === "string" && /^\s*<(!DOCTYPE|html)/i.test(balance.trim())) return false;
   return true;
+}
+
+function InvestorContactsAdmin({ language }: { language: "en" | "fr" }) {
+  const { toast } = useToast();
+  const [raw, setRaw] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(buildFullApiUrl(API_ROUTES.ADMIN_INVESTOR_CONTACTS), {
+          credentials: "include",
+          cache: "no-store"
+        });
+        const data = await res.json();
+        if (!cancelled && data.success && Array.isArray(data.data?.contacts)) {
+          setRaw(data.data.contacts.map((c: { email: string }) => c.email).join("\n"));
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const save = async () => {
+    const emails = raw
+      .split(/[\n,;]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    setSaving(true);
+    try {
+      const res = await fetch(buildFullApiUrl(API_ROUTES.ADMIN_INVESTOR_CONTACTS), {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Failed");
+      toast({
+        title: language === "en" ? "Saved" : "Enregistré",
+        description:
+          language === "en"
+            ? `${data.data?.count ?? emails.length} investor email(s) stored.`
+            : `${data.data?.count ?? emails.length} e-mail(s) investisseur enregistré(s).`
+      });
+    } catch (e: unknown) {
+      toast({
+        title: language === "en" ? "Error" : "Erreur",
+        description: (e as Error).message,
+        variant: "destructive"
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card className="border-primary/15">
+      <CardHeader>
+        <CardTitle className="text-base">
+          {language === "en" ? "Investor email list" : "Liste e-mails investisseurs"}
+        </CardTitle>
+        <CardDescription>
+          {language === "en"
+            ? "Used as a source when launching a campaign with “Investor contacts” checked. One email per line."
+            : "Source lors du lancement si « Contacts investisseurs » est coché. Une adresse par ligne."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          <Loader size="md" />
+        ) : (
+          <Textarea
+            value={raw}
+            onChange={(e) => setRaw(e.target.value)}
+            className="min-h-[120px] font-mono text-sm"
+            placeholder="investor@example.com"
+          />
+        )}
+        <Button type="button" className="btn-gradient" disabled={saving || loading} onClick={() => void save()}>
+          {saving ? <Loader size="sm" className="mr-2" /> : null}
+          {language === "en" ? "Save list" : "Enregistrer la liste"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
 
 export interface MarketingTabProps {
@@ -942,6 +1037,9 @@ export function MarketingTab(p: MarketingTabProps) {
                       setLaunchDraftId(null);
                     }}
                   />
+                </div>
+                <div className="px-2 max-w-3xl">
+                  <InvestorContactsAdmin language={p.language} />
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full px-2">
                   {/* Email Subscribers Card */}

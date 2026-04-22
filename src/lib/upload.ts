@@ -88,3 +88,9 @@ export const uploadCareerDocument = async (file: File): Promise<UploadResult> =>
   const filePath = `${timestamp}-${safeName}`;
   return uploadToBucket(file, 'career-documents', filePath, CACHE_CONTROL_DEFAULT);
 };
+
+/** PDF or image for marketing email attachments (Brevo). Public URL in `images` bucket. */
+export const uploadMarketingEmailAttachment = async (file: File): Promise<UploadResult> => {
+  const filePath = makeStoragePath(file, 'marketing-email-attachments');
+  return uploadToBucket(file, 'images', filePath, CACHE_CONTROL_IMMUTABLE_PUBLIC);
+};
