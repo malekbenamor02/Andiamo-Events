@@ -38,6 +38,27 @@ function parseReplyTo(replyTo) {
   return { name: name || undefined, email };
 }
 
+function normalizeHeaderName(name) {
+  return String(name || '')
+    .trim()
+    .toLowerCase();
+}
+
+function sanitizeCustomHeaders(headers, options = {}) {
+  const out = {};
+  const suppressListUnsubscribe = options.suppressListUnsubscribe === true;
+  for (const [rawKey, rawVal] of Object.entries(headers || {})) {
+    const key = String(rawKey || '').trim();
+    if (!key) continue;
+    const norm = normalizeHeaderName(key);
+    if (suppressListUnsubscribe && (norm === 'list-unsubscribe' || norm === 'list-unsubscribe-post')) {
+      continue;
+    }
+    out[key] = rawVal;
+  }
+  return out;
+}
+
 function isBrevoSmtpHost() {
   const h = (process.env.EMAIL_HOST || '').toLowerCase();
   return h.includes('brevo.com') || h.includes('sendinblue.com');
@@ -119,10 +140,12 @@ async function sendViaBrevoApi(mailOptions, apiKeyOverride) {
   const to = normalizeRecipients(mailOptions.to);
   if (!to.length) throw new Error('No recipients');
 
-  const customHeaders =
+  const customHeaders = sanitizeCustomHeaders(
     mailOptions.headers && typeof mailOptions.headers === 'object' && !Array.isArray(mailOptions.headers)
       ? mailOptions.headers
-      : {};
+      : {},
+    { suppressListUnsubscribe: mailOptions.suppressListUnsubscribe === true }
+  );
   const body = {
     sender: { name: fromName || 'Andiamo Events', email: fromEmail },
     to,
@@ -180,11 +203,14 @@ async function sendTransactionalEmail(deps, mailOptions) {
   }
 
   const extra = brevoSmtpExtraHeaders();
+  const cleanedHeaders = sanitizeCustomHeaders(mailOptions.headers || {}, {
+    suppressListUnsubscribe: mailOptions.suppressListUnsubscribe === true,
+  });
   const merged = {
     ...mailRest,
     headers: {
       ...extra,
-      ...(mailOptions.headers || {}),
+      ...cleanedHeaders,
     },
   };
   const info = await transporter.sendMail(merged);

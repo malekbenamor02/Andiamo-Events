@@ -670,6 +670,18 @@ function brevoApiKeyForCampaign(campaign) {
   return process.env.BREVO_API_KEY;
 }
 
+function isTruthyEnv(v) {
+  const s = String(v ?? '')
+    .trim()
+    .toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+}
+
+/** Attachments are disabled by default for investor sends to reduce promo/spam signals. */
+function shouldAllowInvestorAttachments() {
+  return isTruthyEnv(process.env.MARKETING_INVESTOR_ALLOW_ATTACHMENTS);
+}
+
 function sanitizeEmailTemplate(raw) {
   const s = String(raw ?? 'standard')
     .trim()
@@ -956,8 +968,16 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
               campaign.cta_url,
               campaign.cta_label
             );
+        const isInvestorSend = isInvestorMarketingSend(campaign);
+        const allowInvestorAttachments = !isInvestorSend || shouldAllowInvestorAttachments();
+        if (isInvestorSend && campaign.attach_poster && !allowInvestorAttachments) {
+          console.log('[marketing-email] investor attachment suppressed for deliverability', {
+            campaign_id: campaignId,
+            env_override: 'MARKETING_INVESTOR_ALLOW_ATTACHMENTS=1',
+          });
+        }
         const attachments =
-          posterAttachment && posterAttachment.buffer && posterAttachment.buffer.length
+          allowInvestorAttachments && posterAttachment && posterAttachment.buffer && posterAttachment.buffer.length
             ? [{ filename: posterAttachment.filename, content: posterAttachment.buffer }]
             : undefined;
         const mailPayload = {
@@ -967,6 +987,7 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
           subject: subj,
           text,
           html,
+          suppressListUnsubscribe: isInvestorSend,
           ...(attachments ? { attachments } : {}),
           ...(brevoKeyOpt ? { brevoApiKey: brevoKeyOpt } : {}),
         };
