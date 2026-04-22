@@ -1,6 +1,6 @@
 'use strict';
 
-const { getPublicSiteOrigin, escapeAttr, getEmailLogoBlackUrl } = require('./email-branding.cjs');
+const { escapeAttr, getEmailLogoBlackUrl } = require('./email-branding.cjs');
 const {
   normalizeMarketingHeaderImageUrl,
   sanitizeCampaignCtaLabel,
@@ -14,22 +14,6 @@ function esc(s) {
     .replace(/"/g, '&quot;');
 }
 
-function investorFooterSocialUrls() {
-  const li = (
-    process.env.INVESTOR_EMAIL_SOCIAL_LINKEDIN || 'https://www.linkedin.com/company/andiamoevents/'
-  ).trim();
-  const ig = (
-    process.env.INVESTOR_EMAIL_SOCIAL_INSTAGRAM || 'https://www.instagram.com/andiamo.events/'
-  ).trim();
-  const web = (process.env.INVESTOR_EMAIL_SOCIAL_WEB || 'https://www.andiamoevents.com/').trim();
-  return { instagram: ig, linkedin: li, web };
-}
-
-function investorSocialIconSrc(filename) {
-  const origin = getPublicSiteOrigin().replace(/\/$/, '');
-  return `${origin}/email-assets/${filename}`;
-}
-
 /**
  * Institutional investor email — table layout, inline styles (no Tailwind/JS in clients).
  * Styling kept calm (system fonts, minimal “marketing” patterns) to reduce Gmail Promotions signals.
@@ -41,11 +25,7 @@ function buildInvestorVanguardEmailHtml(opts) {
   const safeHeader = normalizeMarketingHeaderImageUrl(opts.headerImageUrl);
   const safeCta = normalizeMarketingHeaderImageUrl(opts.ctaUrl);
   const ctaLabel = safeCta ? sanitizeCampaignCtaLabel(opts.ctaLabel, 'Learn more') : '';
-  const { instagram, linkedin, web } = investorFooterSocialUrls();
   const logoBlackUrl = normalizeMarketingHeaderImageUrl(getEmailLogoBlackUrl());
-  const iconLi = investorSocialIconSrc('social-linkedin.svg');
-  const iconIg = investorSocialIconSrc('social-instagram.svg');
-  const iconWeb = investorSocialIconSrc('social-web.svg');
   const devUrl = (process.env.INVESTOR_EMAIL_DEV_URL || 'https://malekbenamor.dev').trim();
   const devName = (process.env.INVESTOR_EMAIL_DEV_NAME || 'Malek Ben Amor').trim();
 
@@ -72,14 +52,6 @@ function buildInvestorVanguardEmailHtml(opts) {
   </tr></table>
 </td></tr>`
     : '';
-
-  const socialRow = `<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;">
-  <tr>
-    <td style="padding:0 12px;"><a href="${escapeAttr(linkedin)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;"><img src="${escapeAttr(iconLi)}" alt="LinkedIn" width="28" height="28" style="display:block;border:0;" /></a></td>
-    <td style="padding:0 12px;"><a href="${escapeAttr(instagram)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;"><img src="${escapeAttr(iconIg)}" alt="Instagram" width="28" height="28" style="display:block;border:0;" /></a></td>
-    <td style="padding:0 12px;"><a href="${escapeAttr(web)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;"><img src="${escapeAttr(iconWeb)}" alt="Website" width="28" height="28" style="display:block;border:0;" /></a></td>
-  </tr>
-</table>`;
 
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
@@ -116,7 +88,6 @@ function buildInvestorVanguardEmailHtml(opts) {
           </table>
         </td></tr>
         <tr><td align="center" style="padding:32px 40px 28px 40px;background-color:#09090b;">
-          ${socialRow}
           <p style="margin:20px 0 0 0;font-size:11px;line-height:1.5;color:#737373;font-family:Arial,Helvetica,sans-serif;">
             © 2026 Born to lead - andiamo events
             <br>
@@ -137,7 +108,6 @@ function buildInvestorVanguardEmailPlainText(subject, body, ctaUrl = null, ctaLa
   const subj = String(subject || '').trim() || 'Andiamo Events';
   const safeCta = normalizeMarketingHeaderImageUrl(ctaUrl);
   const safeLabel = safeCta ? sanitizeCampaignCtaLabel(ctaLabel, 'Learn more') : '';
-  const { instagram, linkedin, web } = investorFooterSocialUrls();
   const devUrl = (process.env.INVESTOR_EMAIL_DEV_URL || 'https://malekbenamor.dev').trim();
   const devName = (process.env.INVESTOR_EMAIL_DEV_NAME || 'Malek Ben Amor').trim();
   const lines = [subj, '', String(body || '').trim(), ''];
@@ -145,9 +115,6 @@ function buildInvestorVanguardEmailPlainText(subject, body, ctaUrl = null, ctaLa
   lines.push(
     'Need assistance?',
     'Contact us at Contact@andiamoevents.com or in our Instagram page @andiamo.events or contact with 28070128.',
-    `LinkedIn: ${linkedin}`,
-    `Instagram: ${instagram}`,
-    `Web: ${web}`,
     '',
     '© 2026 Born to lead - andiamo events',
     'All Rights Reserved.',
