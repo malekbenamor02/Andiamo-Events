@@ -113,15 +113,20 @@ export function EmailCampaignPreview({
                 <span className="truncate">{esc((posterAttachmentLabel || posterAttachmentUrl).trim())}</span>
               </p>
             ) : null}
-            <p className="mt-8 text-sm text-zinc-600 leading-relaxed">
-              <a href="mailto:contact@andiamoevents.com" className="text-zinc-900 underline">
-                contact@andiamoevents.com
-              </a>
-              <span className="text-zinc-400"> · </span>
-              <a href="tel:+21628070128" className="text-zinc-900 underline">
-                +216 28 070 128
-              </a>
-            </p>
+            <div className="mt-8 rounded border border-zinc-200 border-l-4 border-l-zinc-900 bg-zinc-50 px-6 py-5">
+              <p className="m-0 mb-2.5 text-[13px] font-semibold uppercase tracking-wide text-zinc-900">
+                Need assistance?
+              </p>
+              <p className="m-0 text-sm leading-relaxed text-zinc-600">
+                <a href="mailto:contact@andiamoevents.com" className="text-zinc-900 underline">
+                  contact@andiamoevents.com
+                </a>
+                <span className="text-zinc-400"> · </span>
+                <a href="tel:+21628070128" className="text-zinc-900 underline">
+                  +216 28 070 128
+                </a>
+              </p>
+            </div>
           </div>
           <div className="bg-zinc-900 px-8 py-8 text-center">
             <div className="flex justify-center items-center gap-6">

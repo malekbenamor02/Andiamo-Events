@@ -107,11 +107,16 @@ function buildInvestorVanguardEmailHtml(opts) {
         </td></tr>
         ${ctaRow}
         <tr><td style="padding:28px 40px 32px 40px;font-family:Arial,Helvetica,sans-serif;">
-          <p style="margin:0;font-size:14px;line-height:1.65;color:#52525b;">
-            <a href="mailto:contact@andiamoevents.com" style="color:#09090b;text-decoration:underline;">contact@andiamoevents.com</a>
-            <span style="color:#a1a1aa;"> · </span>
-            <a href="tel:+21628070128" style="color:#09090b;text-decoration:underline;">+216&nbsp;28&nbsp;070&nbsp;128</a>
-          </p>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#fafafa;border:1px solid #e4e4e7;border-left:4px solid #09090b;border-radius:4px;">
+            <tr><td style="padding:20px 24px;">
+              <p style="margin:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#09090b;">Need assistance?</p>
+              <p style="margin:0;font-size:14px;line-height:1.65;color:#52525b;">
+                <a href="mailto:contact@andiamoevents.com" style="color:#09090b;text-decoration:underline;">contact@andiamoevents.com</a>
+                <span style="color:#a1a1aa;"> · </span>
+                <a href="tel:+21628070128" style="color:#09090b;text-decoration:underline;">+216&nbsp;28&nbsp;070&nbsp;128</a>
+              </p>
+            </td></tr>
+          </table>
         </td></tr>
         <tr><td align="center" style="padding:32px 40px 28px 40px;background-color:#09090b;">
           ${socialRow}
@@ -139,6 +144,7 @@ function buildInvestorVanguardEmailPlainText(subject, body, ctaUrl = null, ctaLa
   const lines = [subj, '', String(body || '').trim(), ''];
   if (safeCta) lines.push(`${safeLabel}: ${safeCta}`, '');
   lines.push(
+    'Need assistance?',
     `contact@andiamoevents.com · +216 28 070 128`,
     `LinkedIn: ${linkedin}`,
     `Instagram: ${instagram}`,
