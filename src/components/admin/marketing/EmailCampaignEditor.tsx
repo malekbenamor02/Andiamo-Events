@@ -515,7 +515,7 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                       <div className="flex flex-wrap items-center gap-2">
                         <Input
                           type="file"
-                          accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                          accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/gif,.doc,.docx"
                           disabled={uploadingAttachment}
                           className="max-w-xs"
                           onChange={async (e) => {
