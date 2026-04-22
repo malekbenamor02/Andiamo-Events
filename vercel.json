@@ -376,6 +376,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/investor-contacts",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/marketing/cron/email-campaigns",
       "destination": "/api/misc.js"
     },

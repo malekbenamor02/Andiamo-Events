@@ -32,6 +32,23 @@ function InvestorContactsAdmin({ language }: { language: "en" | "fr" }) {
   const [raw, setRaw] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const readJsonResponse = async (res: Response) => {
+    const text = await res.text();
+    let data: any = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      const fallbackMessage =
+        language === "en"
+          ? "Server returned a non-JSON response. Check API route configuration."
+          : "Le serveur a renvoye une reponse non JSON. Verifiez la configuration des routes API.";
+      throw new Error(res.ok ? fallbackMessage : `HTTP ${res.status}: ${fallbackMessage}`);
+    }
+    if (!res.ok) {
+      throw new Error(data?.error || `HTTP ${res.status}`);
+    }
+    return data;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +58,7 @@ function InvestorContactsAdmin({ language }: { language: "en" | "fr" }) {
           credentials: "include",
           cache: "no-store"
         });
-        const data = await res.json();
+        const data = await readJsonResponse(res);
         if (!cancelled && data.success && Array.isArray(data.data?.contacts)) {
           setRaw(data.data.contacts.map((c: { email: string }) => c.email).join("\n"));
         }
@@ -69,7 +86,7 @@ function InvestorContactsAdmin({ language }: { language: "en" | "fr" }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emails })
       });
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (!data.success) throw new Error(data.error || "Failed");
       toast({
         title: language === "en" ? "Saved" : "Enregistré",
