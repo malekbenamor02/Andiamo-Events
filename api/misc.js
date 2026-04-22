@@ -930,7 +930,7 @@ async function processMarketingCampaignSendBatch(dbClient, campaignId, options =
         const recipientDisplay = rec.recipient_value && rec.recipient_value.includes('@')
           ? (rec.recipient_value.split('@')[0] || 'Subscriber').replace(/[^a-zA-Z0-9._-]/g, ' ') || 'Subscriber'
           : 'Subscriber';
-        const subj = campaign.subject || 'Newsletter';
+        const subj = campaign.subject || (investorTpl ? 'Andiamo Events' : 'Newsletter');
         const html = investorTpl
           ? buildInvestorVanguardEmailHtml({
               subject: subj,

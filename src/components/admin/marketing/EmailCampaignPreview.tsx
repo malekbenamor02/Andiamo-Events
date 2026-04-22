@@ -59,6 +59,10 @@ export function EmailCampaignPreview({
   const showCta = showButton && Boolean(ctaUrl?.trim());
   const btnText = (ctaLabel || 'Learn more').trim() || 'Learn more';
   const hasHeader = showImage && Boolean(headerImageUrl?.trim());
+  const investorSubject = subject.trim() || 'Andiamo Events';
+  const linkedinUrl = 'https://www.linkedin.com/company/andiamoevents/';
+  const instagramUrl = 'https://www.instagram.com/andiamo.events/';
+  const webUrl = 'https://www.andiamoevents.com/';
 
   if (templateVariant === 'investor_vanguard') {
     return (
@@ -88,7 +92,7 @@ export function EmailCampaignPreview({
             </div>
           ) : null}
           <div className="px-8 py-8">
-            <h2 className="text-2xl sm:text-3xl font-bold text-zinc-900 leading-tight mb-4">{esc(emailSubject)}</h2>
+            <h2 className="text-xl sm:text-2xl font-semibold text-zinc-900 leading-tight mb-4">{esc(investorSubject)}</h2>
             <div
               className="text-zinc-600 text-base leading-relaxed mb-6"
               dangerouslySetInnerHTML={{ __html: content || '&nbsp;' }}
@@ -98,9 +102,9 @@ export function EmailCampaignPreview({
                 href={ctaUrl!.trim()}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center justify-center px-8 py-3.5 bg-zinc-900 text-white text-xs font-bold tracking-widest uppercase rounded-sm no-underline"
+                className="inline-flex items-center justify-center px-7 py-3 bg-zinc-900 text-white text-[15px] font-semibold rounded no-underline"
               >
-                {esc(btnText)}&nbsp;&nbsp;→
+                {esc(btnText)}
               </a>
             ) : null}
             {attachPoster && (posterAttachmentLabel.trim() || posterAttachmentUrl.trim()) ? (
@@ -109,18 +113,35 @@ export function EmailCampaignPreview({
                 <span className="truncate">{esc((posterAttachmentLabel || posterAttachmentUrl).trim())}</span>
               </p>
             ) : null}
-            <div className="mt-8 border-l-4 border-zinc-900 bg-zinc-50 p-4">
-              <p className="text-sm font-bold text-zinc-600 mb-1">Need assistance?</p>
-              <p className="text-sm text-zinc-600 italic">Contact@andiamoevents.com — @andiamo.events — 28070128</p>
-            </div>
-            <div className="mt-8 pt-6 border-t border-zinc-100">
-              <p className="text-sm text-zinc-500 mb-3">Respectfully,</p>
-              <p className="font-bold text-zinc-900">Mouayed Chakir</p>
-              <p className="text-xs uppercase tracking-widest text-zinc-400 font-medium">Co-founder</p>
-            </div>
+            <p className="mt-8 text-sm text-zinc-600 leading-relaxed">
+              <a href="mailto:contact@andiamoevents.com" className="text-zinc-900 underline">
+                contact@andiamoevents.com
+              </a>
+              <span className="text-zinc-400"> · </span>
+              <a href="tel:+21628070128" className="text-zinc-900 underline">
+                +216 28 070 128
+              </a>
+            </p>
           </div>
-          <div className="bg-zinc-900 px-8 py-8 text-center text-zinc-500 text-[10px] uppercase tracking-widest">
-            © {new Date().getUTCFullYear()} Andiamo Events
+          <div className="bg-zinc-900 px-8 py-8 text-center">
+            <div className="flex justify-center items-center gap-6">
+              <a href={linkedinUrl} target="_blank" rel="noreferrer" className="inline-block">
+                <img src="/email-assets/social-linkedin.svg" alt="LinkedIn" className="w-7 h-7" width={28} height={28} />
+              </a>
+              <a href={instagramUrl} target="_blank" rel="noreferrer" className="inline-block">
+                <img src="/email-assets/social-instagram.svg" alt="Instagram" className="w-7 h-7" width={28} height={28} />
+              </a>
+              <a href={webUrl} target="_blank" rel="noreferrer" className="inline-block">
+                <img src="/email-assets/social-web.svg" alt="Website" className="w-7 h-7" width={28} height={28} />
+              </a>
+            </div>
+            <p className="mt-5 text-[11px] text-zinc-500">© {new Date().getUTCFullYear()} Andiamo Events</p>
+            <p className="mt-3 text-[11px] text-zinc-500">
+              Developed by{' '}
+              <a href="https://malekbenamor.dev" target="_blank" rel="noreferrer" className="text-zinc-400 underline">
+                Malek Ben Amor
+              </a>
+            </p>
           </div>
         </div>
       </div>
