@@ -274,11 +274,7 @@ export function BulkEmailSelector({
       const totalRecipients = createData.data.total_recipients || 0;
 
       toast({
-        title: language === 'en' ? 'Campaign scheduled' : 'Campagne planifiée',
-        description:
-          language === 'en'
-            ? `${totalRecipients} recipients queued. Sending runs on your Supabase cron (marketing-email-tick), up to your daily cap (UTC), then continues the next day. Track progress in Campaign results.`
-            : `${totalRecipients} destinataires en file. Envoi via le cron Supabase (marketing-email-tick), plafond journalier UTC, puis le lendemain. Suivez l’avancement dans Résultats des campagnes.`,
+        title: language === 'en' ? 'Campaign started successfully' : 'Campagne démarrée avec succès',
         variant: 'default'
       });
 
@@ -353,26 +349,8 @@ export function BulkEmailSelector({
       if (!data.success) {
         throw new Error(data.error || 'Launch failed');
       }
-      const snap = data.data?.campaign_snapshot as
-        | { email_template?: string; sender_profile?: string; is_investor_send?: boolean }
-        | undefined;
-      const snapLine =
-        snap &&
-        (language === 'en'
-          ? ` DB template: ${snap.email_template ?? '—'}, sender: ${snap.sender_profile ?? '—'}, investor send: ${snap.is_investor_send ? 'yes' : 'no'}.`
-          : ` Modèle BDD : ${snap.email_template ?? '—'}, expéditeur : ${snap.sender_profile ?? '—'}, envoi investisseur : ${snap.is_investor_send ? 'oui' : 'non'}.`);
-      const cronHint =
-        language === 'en'
-          ? ' Sends use the URL in Supabase marketing-email-tick (MARKETING_CRON_URL)—that server must run the same code as this admin.'
-          : ' L’envoi utilise MARKETING_CRON_URL (fonction marketing-email-tick)—ce serveur doit avoir le même code que cet admin.';
       toast({
-        title: language === 'en' ? 'Launched' : 'Lancé',
-        description:
-          (language === 'en'
-            ? `Scheduled: ${data.data?.total_recipients ?? ''} recipients. Sends automatically on each cron run, with a delay between each email, respecting your daily cap (continues next UTC day if needed).`
-            : `Planifié : ${data.data?.total_recipients ?? ''} destinataires. Envoi automatique à chaque cron, avec délai entre chaque email et respect du plafond journalier (reprise le jour UTC suivant si besoin).`) +
-          (snapLine || '') +
-          cronHint,
+        title: language === 'en' ? 'Campaign started successfully' : 'Campagne démarrée avec succès',
       });
       onLaunchComplete?.();
     } catch (e: unknown) {

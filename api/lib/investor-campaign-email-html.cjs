@@ -41,7 +41,6 @@ function buildInvestorVanguardEmailHtml(opts) {
   const safeHeader = normalizeMarketingHeaderImageUrl(opts.headerImageUrl);
   const safeCta = normalizeMarketingHeaderImageUrl(opts.ctaUrl);
   const ctaLabel = safeCta ? sanitizeCampaignCtaLabel(opts.ctaLabel, 'Learn more') : '';
-  const year = new Date().getUTCFullYear();
   const { instagram, linkedin, web } = investorFooterSocialUrls();
   const logoBlackUrl = normalizeMarketingHeaderImageUrl(getEmailLogoBlackUrl());
   const iconLi = investorSocialIconSrc('social-linkedin.svg');
@@ -111,9 +110,7 @@ function buildInvestorVanguardEmailHtml(opts) {
             <tr><td style="padding:20px 24px;">
               <p style="margin:0 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#09090b;">Need assistance?</p>
               <p style="margin:0;font-size:14px;line-height:1.65;color:#52525b;">
-                <a href="mailto:contact@andiamoevents.com" style="color:#09090b;text-decoration:underline;">contact@andiamoevents.com</a>
-                <span style="color:#a1a1aa;"> · </span>
-                <a href="tel:+21628070128" style="color:#09090b;text-decoration:underline;">+216&nbsp;28&nbsp;070&nbsp;128</a>
+                Contact us at <a href="mailto:Contact@andiamoevents.com" style="color:#09090b;text-decoration:underline;">Contact@andiamoevents.com</a> or in our Instagram page <a href="https://www.instagram.com/andiamo.events/" target="_blank" rel="noopener noreferrer" style="color:#09090b;text-decoration:underline;">@andiamo.events</a> or contact with <a href="tel:28070128" style="color:#09090b;text-decoration:underline;">28070128</a>.
               </p>
             </td></tr>
           </table>
@@ -121,10 +118,9 @@ function buildInvestorVanguardEmailHtml(opts) {
         <tr><td align="center" style="padding:32px 40px 28px 40px;background-color:#09090b;">
           ${socialRow}
           <p style="margin:20px 0 0 0;font-size:11px;line-height:1.5;color:#737373;font-family:Arial,Helvetica,sans-serif;">
-            © ${year} Andiamo Events
-          </p>
-          <p style="margin:14px 0 0 0;font-size:11px;line-height:1.5;color:#525252;font-family:Arial,Helvetica,sans-serif;">
-            Developed by <a href="${escapeAttr(devUrl)}" target="_blank" rel="noopener noreferrer" style="color:#a3a3a3;text-decoration:underline;">${esc(devName)}</a>
+            © 2026 Born to lead - andiamo events
+            <br>
+            All Rights Reserved.
           </p>
         </td></tr>
       </table>
@@ -145,10 +141,13 @@ function buildInvestorVanguardEmailPlainText(subject, body, ctaUrl = null, ctaLa
   if (safeCta) lines.push(`${safeLabel}: ${safeCta}`, '');
   lines.push(
     'Need assistance?',
-    `contact@andiamoevents.com · +216 28 070 128`,
+    'Contact us at Contact@andiamoevents.com or in our Instagram page @andiamo.events or contact with 28070128.',
     `LinkedIn: ${linkedin}`,
     `Instagram: ${instagram}`,
     `Web: ${web}`,
+    '',
+    '© 2026 Born to lead - andiamo events',
+    'All Rights Reserved.',
     '',
     `Developed by ${devName}: ${devUrl}`
   );

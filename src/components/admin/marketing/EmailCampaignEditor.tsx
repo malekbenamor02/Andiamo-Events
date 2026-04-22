@@ -38,10 +38,9 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
   const [headerImageUrl, setHeaderImageUrl] = useState('');
   const [ctaUrl, setCtaUrl] = useState('');
   const [ctaLabel, setCtaLabel] = useState('');
-  const [enableImage, setEnableImage] = useState(true);
-  const [enableButton, setEnableButton] = useState(true);
+  const [enableImage, setEnableImage] = useState(false);
+  const [enableButton, setEnableButton] = useState(false);
   const [emailTemplate, setEmailTemplate] = useState<'standard' | 'investor_vanguard'>('standard');
-  const [senderProfile, setSenderProfile] = useState<'default' | 'investor'>('default');
   const [attachPoster, setAttachPoster] = useState(false);
   const [posterAttachmentUrl, setPosterAttachmentUrl] = useState('');
   const [posterAttachmentLabel, setPosterAttachmentLabel] = useState('');
@@ -65,26 +64,20 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           posterHint: 'Shown below the logo in the email — JPG, PNG, WebP (max 5 MB).',
           ctaLink: 'Button link',
           ctaLabel: 'Button label',
-          sectionLayout: 'Layout & who sends',
-          sectionLayoutHint: 'Pick the visual template and which mailbox is used when the message is delivered.',
+          sectionLayout: 'Email type',
           sectionContent: 'What to include in the email',
-          sectionContentHint: 'Turn each block on or off. Optional fields only apply when the switch is on.',
+          sectionContentHint: '',
           rowHero: 'Banner image in the message',
-          rowHeroDesc: 'Large image under the header (newsletter hero or investor visual).',
+          rowHeroDesc: '',
           rowCta: 'Action button',
-          rowCtaDesc: 'Optional button under the text (link + label).',
+          rowCtaDesc: '',
           rowAttach: 'File attachment',
-          rowAttachDesc: 'Each recipient gets this file attached (PDF or image, max 10 MB). Upload from your computer.',
+          rowAttachDesc: '',
           attachPickFile: 'Choose file',
           attachRemove: 'Remove file',
-          template: 'Visual layout',
-          templateStandard: 'Standard — newsletter style (main Andiamo look)',
-          templateInvestor: 'Institutional — investor update (clean layout)',
-          senderProfile: 'Mailbox for this campaign',
-          senderDefault: 'Main Andiamo address (newsletters & general)',
-          senderInvestor: 'Dedicated investor address (set up on the server for investor mail)',
-          senderInvestorHelp:
-            'Your hosting team links this to the verified investor mailbox (for example investors@yourdomain).',
+          template: 'Email type',
+          templateStandard: 'Standard',
+          templateInvestor: 'Investors',
           save: 'Save',
           create: 'Create draft',
           preview: 'Preview',
@@ -104,26 +97,20 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           posterHint: 'Sous le logo dans l’e-mail — JPG, PNG, WebP (max 5 Mo).',
           ctaLink: 'Lien du bouton',
           ctaLabel: 'Texte du bouton',
-          sectionLayout: 'Mise en page et expéditeur',
-          sectionLayoutHint: 'Modèle visuel et boîte utilisée à l’envoi.',
+          sectionLayout: 'Type d’email',
           sectionContent: 'Contenu de l’e-mail',
-          sectionContentHint: 'Activez ou désactivez chaque bloc. Les champs optionnels s’affichent seulement si l’option est activée.',
+          sectionContentHint: '',
           rowHero: 'Image bannière dans le message',
-          rowHeroDesc: 'Grande image sous l’en-tête.',
+          rowHeroDesc: '',
           rowCta: 'Bouton d’action',
-          rowCtaDesc: 'Bouton optionnel sous le texte (lien + libellé).',
+          rowCtaDesc: '',
           rowAttach: 'Pièce jointe',
-          rowAttachDesc: 'Chaque destinataire reçoit ce fichier (PDF ou image, max 10 Mo). Téléversement depuis votre ordinateur.',
+          rowAttachDesc: '',
           attachPickFile: 'Choisir un fichier',
           attachRemove: 'Retirer le fichier',
-          template: 'Mise en page visuelle',
-          templateStandard: 'Standard — style newsletter Andiamo',
-          templateInvestor: 'Institutionnel — mise à jour investisseurs',
-          senderProfile: 'Boîte d’envoi pour cette campagne',
-          senderDefault: 'Adresse principale Andiamo (newsletters & général)',
-          senderInvestor: 'Adresse investisseurs dédiée (configurée sur le serveur)',
-          senderInvestorHelp:
-            'L’équipe technique associe ceci à la boîte investisseurs vérifiée (ex. investors@votredomaine).',
+          template: 'Type d’email',
+          templateStandard: 'Standard',
+          templateInvestor: 'Investisseurs',
           save: 'Enregistrer',
           create: 'Créer brouillon',
           preview: 'Aperçu',
@@ -144,10 +131,9 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
       setHeaderImageUrl('');
       setCtaUrl('');
       setCtaLabel('');
-      setEnableImage(true);
-      setEnableButton(true);
+      setEnableImage(false);
+      setEnableButton(false);
       setEmailTemplate('standard');
-      setSenderProfile('default');
       setAttachPoster(false);
       setPosterAttachmentUrl('');
       setPosterAttachmentLabel('');
@@ -173,9 +159,6 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           setEnableButton(Boolean(c.cta_url));
           const tplLoaded = normalizeEmailTemplateLabel(c.email_template);
           setEmailTemplate(tplLoaded);
-          setSenderProfile(
-            tplLoaded === 'investor_vanguard' || c.sender_profile === 'investor' ? 'investor' : 'default'
-          );
           setAttachPoster(Boolean(c.attach_poster));
           setPosterAttachmentUrl(typeof c.poster_attachment_url === 'string' ? c.poster_attachment_url : '');
           {
@@ -212,9 +195,6 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
     setEnableButton(Boolean(c.cta_url));
     const tplLoaded = normalizeEmailTemplateLabel(c.email_template);
     setEmailTemplate(tplLoaded);
-    setSenderProfile(
-      tplLoaded === 'investor_vanguard' || c.sender_profile === 'investor' ? 'investor' : 'default'
-    );
     setAttachPoster(Boolean(c.attach_poster));
     setPosterAttachmentUrl(typeof c.poster_attachment_url === 'string' ? c.poster_attachment_url : '');
     {
@@ -242,7 +222,7 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           cta_url: enableButton && ctaUrl.trim() ? ctaUrl.trim() : null,
           cta_label: enableButton && ctaUrl.trim() ? (ctaLabel.trim() || null) : null,
           email_template: emailTemplate,
-          sender_profile: senderProfile,
+          sender_profile: intendedTemplate === 'investor_vanguard' ? 'investor' : 'default',
           attach_poster: attachPoster,
           poster_attachment_url: attachPoster && posterAttachmentUrl.trim() ? posterAttachmentUrl.trim() : null
         })
@@ -312,7 +292,7 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
           cta_url: enableButton && ctaUrl.trim() ? ctaUrl.trim() : null,
           cta_label: enableButton && ctaUrl.trim() ? (ctaLabel.trim() || null) : null,
           email_template: emailTemplate,
-          sender_profile: senderProfile,
+          sender_profile: intendedTemplate === 'investor_vanguard' ? 'investor' : 'default',
           attach_poster: attachPoster,
           poster_attachment_url: attachPoster && posterAttachmentUrl.trim() ? posterAttachmentUrl.trim() : null
         })
@@ -378,15 +358,12 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
               <div className="rounded-lg border border-border bg-muted/15 p-4 space-y-4">
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">{t.sectionLayout}</h3>
-                  <p className="text-xs text-muted-foreground mt-1 mb-3">{t.sectionLayoutHint}</p>
                   <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.template}</Label>
                   <Select
                     value={emailTemplate}
                     onValueChange={(v) => {
                       const tpl = v === 'investor_vanguard' ? 'investor_vanguard' : 'standard';
                       setEmailTemplate(tpl);
-                      if (tpl === 'investor_vanguard') setSenderProfile('investor');
-                      else setSenderProfile('default');
                     }}
                   >
                     <SelectTrigger className="mt-1.5">
@@ -398,32 +375,11 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                     </SelectContent>
                   </Select>
                 </div>
-                {emailTemplate === 'investor_vanguard' ? (
-                  <div className="space-y-2 pt-1">
-                    <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {t.senderProfile}
-                    </Label>
-                    <Select
-                      value={senderProfile}
-                      onValueChange={(v) => setSenderProfile(v === 'investor' ? 'investor' : 'default')}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="default">{t.senderDefault}</SelectItem>
-                        <SelectItem value="investor">{t.senderInvestor}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{t.senderInvestorHelp}</p>
-                  </div>
-                ) : null}
               </div>
 
               <div className="rounded-lg border border-border p-4 space-y-4">
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">{t.sectionContent}</h3>
-                  <p className="text-xs text-muted-foreground mt-1">{t.sectionContentHint}</p>
                 </div>
 
                 <div className="rounded-md border border-border bg-card p-3 space-y-3">
@@ -432,7 +388,6 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                       <Label htmlFor="campaign-enable-image" className="text-sm font-medium">
                         {t.rowHero}
                       </Label>
-                      <p className="text-xs text-muted-foreground">{t.rowHeroDesc}</p>
                     </div>
                     <Switch
                       id="campaign-enable-image"
@@ -496,7 +451,6 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                       <Label htmlFor="campaign-enable-button" className="text-sm font-medium">
                         {t.rowCta}
                       </Label>
-                      <p className="text-xs text-muted-foreground">{t.rowCtaDesc}</p>
                     </div>
                     <Switch
                       id="campaign-enable-button"
@@ -542,7 +496,6 @@ export function EmailCampaignEditor({ language, campaignId, onClose, onSaved }: 
                       <Label htmlFor="campaign-attach-poster" className="text-sm font-medium">
                         {t.rowAttach}
                       </Label>
-                      <p className="text-xs text-muted-foreground">{t.rowAttachDesc}</p>
                     </div>
                     <Switch
                       id="campaign-attach-poster"

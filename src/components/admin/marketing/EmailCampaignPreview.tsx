@@ -118,13 +118,19 @@ export function EmailCampaignPreview({
                 Need assistance?
               </p>
               <p className="m-0 text-sm leading-relaxed text-zinc-600">
-                <a href="mailto:contact@andiamoevents.com" className="text-zinc-900 underline">
-                  contact@andiamoevents.com
+                Contact us at{' '}
+                <a href="mailto:Contact@andiamoevents.com" className="text-zinc-900 underline">
+                  Contact@andiamoevents.com
+                </a>{' '}
+                or in our Instagram page{' '}
+                <a href="https://www.instagram.com/andiamo.events/" target="_blank" rel="noreferrer" className="text-zinc-900 underline">
+                  @andiamo.events
+                </a>{' '}
+                or contact with{' '}
+                <a href="tel:28070128" className="text-zinc-900 underline">
+                  28070128
                 </a>
-                <span className="text-zinc-400"> · </span>
-                <a href="tel:+21628070128" className="text-zinc-900 underline">
-                  +216 28 070 128
-                </a>
+                .
               </p>
             </div>
           </div>
@@ -140,12 +146,10 @@ export function EmailCampaignPreview({
                 <img src="/email-assets/social-web.svg" alt="Website" className="w-7 h-7" width={28} height={28} />
               </a>
             </div>
-            <p className="mt-5 text-[11px] text-zinc-500">© {new Date().getUTCFullYear()} Andiamo Events</p>
-            <p className="mt-3 text-[11px] text-zinc-500">
-              Developed by{' '}
-              <a href="https://malekbenamor.dev" target="_blank" rel="noreferrer" className="text-zinc-400 underline">
-                Malek Ben Amor
-              </a>
+            <p className="mt-5 text-[11px] leading-relaxed text-zinc-500">
+              © 2026 Born to lead - andiamo events
+              <br />
+              All Rights Reserved.
             </p>
           </div>
         </div>
