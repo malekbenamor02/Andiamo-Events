@@ -10257,16 +10257,16 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     <div
       className={cn(
         "min-h-screen min-w-0",
-        // Site Navigation is fixed h-16 (z-50); offset so content is not hidden underneath.
-        isMobile ? "pt-14 pb-24" : "pt-20",
+        // Site Navigation is fixed h-16 (z-50); match desktop offset to navbar height.
+        isMobile ? "pt-14 pb-24" : "pt-16",
       )}
-      style={{ backgroundColor: '#1A1A1A' }}
+      style={{ backgroundColor: 'hsl(var(--background))' }}
     >
       {/* Mobile top bar */}
       {isMobile && (
         <header
           className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between gap-2 px-3 sm:px-4 h-14 border-b shrink-0"
-          style={{ background: '#1A1A1A', borderColor: '#2A2A2A' }}
+          style={{ background: 'hsl(var(--background))', borderColor: 'hsl(var(--border))' }}
         >
           <Button
             variant="ghost"
@@ -10283,7 +10283,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           <div
             className="flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-2"
           >
-            <span className="text-xs font-medium truncate w-full text-center" style={{ color: '#B8B8B8' }}>
+            <span className="text-xs font-medium truncate w-full text-center text-muted-foreground">
               {language === 'en' ? 'Current:' : 'Actuel :'}
             </span>
             <span className="text-base font-semibold truncate w-full text-center" style={{ color: '#E21836' }}>
@@ -10299,7 +10299,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {activeTab === "settings" && t.settings}
             </span>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0 text-xs font-medium" style={{ color: '#B8B8B8' }}>
+          <div className="flex items-center gap-1.5 shrink-0 text-xs font-medium text-muted-foreground">
             <AdminSessionCountdown
               session={sessionCountdown}
               language={language}
@@ -10330,7 +10330,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   onClick={() => handleBottomNavSelect(tab.key)}
                   className="shrink-0 relative flex flex-col items-center justify-center gap-1 px-2.5 py-2 rounded-xl transition-all duration-200 overflow-hidden"
                   style={{
-                    color: isActive ? '#E21836' : '#B0B0B0',
+                    color: isActive ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))',
                     background: isActive ? 'rgba(226, 24, 54, 0.12)' : 'rgba(255, 255, 255, 0.03)',
                     border: isActive ? '1px solid rgba(226, 24, 54, 0.45)' : '1px solid rgba(255, 255, 255, 0.07)',
                     boxShadow: isActive
@@ -10366,13 +10366,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         <SheetContent
           side="left"
           className="w-[280px] p-0 border-r flex flex-col"
-          style={{ background: '#1A1A1A', borderColor: '#2A2A2A' }}
+          style={{ background: 'hsl(var(--background))', borderColor: 'hsl(var(--border))' }}
         >
-          <SheetHeader className="p-4 border-b text-left" style={{ borderColor: '#2A2A2A' }}>
-            <SheetTitle style={{ color: '#FFFFFF' }}>
+          <SheetHeader className="p-4 border-b text-left" style={{ borderColor: 'hsl(var(--border))' }}>
+            <SheetTitle className="text-foreground">
               {language === 'en' ? 'Switch tab' : 'Changer d\'onglet'}
             </SheetTitle>
-            <p className="text-sm mt-1" style={{ color: '#B0B0B0' }}>
+            <p className="text-sm mt-1 text-muted-foreground">
               {language === 'en' ? 'Tap a tab below to view it' : 'Appuyez sur un onglet ci-dessous'}
             </p>
           </SheetHeader>
@@ -10543,7 +10543,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
             </div>
           </nav>
           {currentAdminRole !== 'super_admin' && (
-            <div className="p-4 border-t" style={{ borderColor: '#2A2A2A' }}>
+            <div className="p-4 border-t" style={{ borderColor: 'hsl(var(--border))' }}>
               <Button variant="outline" onClick={handleLogout} className="w-full flex items-center gap-2">
                 <LogOut className="w-4 h-4" />
                 <span>{t.logout}</span>
@@ -10592,7 +10592,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   >
                     {t.title}
                   </h1>
-                  <p style={{ color: '#B0B0B0' }}>
+                  <p className="text-muted-foreground">
                     {t.subtitle}
                   </p>
                 </div>
@@ -10613,7 +10613,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   <Label
                     htmlFor="event-selector"
                     className="text-sm font-medium shrink-0"
-                    style={{ color: "#B0B0B0" }}
+                    style={{ color: "hsl(var(--muted-foreground))" }}
                   >
                     {language === "en"
                       ? "Filter by Event:"
@@ -10624,9 +10624,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                       id="event-selector"
                       className="text-sm px-3 py-2 rounded-md border max-w-[300px] min-w-0 truncate"
                       style={{
-                        background: "#1F1F1F",
-                        borderColor: "#2A2A2A",
-                        color: "#B0B0B0",
+                        background: "hsl(var(--card))",
+                        borderColor: "hsl(var(--border))",
+                        color: "hsl(var(--muted-foreground))",
                       }}
                     >
                       {language === "en" ? "No events" : "Aucun événement"}
@@ -10640,9 +10640,9 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                         id="event-selector"
                         className="w-[170px] sm:w-[300px] min-w-0"
                         style={{
-                          background: "#1F1F1F",
-                          borderColor: "#2A2A2A",
-                          color: "#FFFFFF",
+                          background: "hsl(var(--card))",
+                          borderColor: "hsl(var(--border))",
+                          color: "hsl(var(--foreground))",
                         }}
                       >
                         <SelectValue

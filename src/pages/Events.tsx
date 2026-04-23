@@ -536,7 +536,7 @@ const Events = ({ language }: EventsProps) => {
                 return (
                 <Card 
                   key={event.id} 
-                  className={`upcoming-event-card glass group overflow-hidden cursor-pointer w-full max-w-md transition-all duration-300 ease-out hover:shadow-2xl hover:shadow-primary/20 ${
+                  className={`upcoming-event-card glass group overflow-hidden cursor-pointer w-full max-w-md h-[360px] flex flex-col transition-all duration-300 ease-out hover:shadow-2xl hover:shadow-primary/20 ${
                     scrollAnimatedEvents.has(event.id) 
                       ? 'animate-in slide-in-from-bottom-4 fade-in duration-700' 
                       : 'opacity-0 translate-y-8'
@@ -574,19 +574,21 @@ const Events = ({ language }: EventsProps) => {
                       
                     </div>
                   </div>
-                  <CardHeader className="p-4 relative z-0">
-                    <h3 className="text-xl font-bold text-primary group-hover:text-primary transition-colors duration-300 line-clamp-2 animate-in slide-in-from-left-4 duration-500 delay-200">{event.name}</h3>
-                    <div className="space-y-2 text-sm">
+                  <CardHeader className="p-4 relative z-0 flex-1 flex flex-col">
+                    <h3 className="text-xl font-bold text-primary group-hover:text-primary transition-colors duration-300 line-clamp-2 h-[3.75rem] leading-7 animate-in slide-in-from-left-4 duration-500 delay-200">
+                      {event.name}
+                    </h3>
+                    <div className="space-y-2 text-sm h-[4.75rem]">
                       <div className="flex items-center text-muted-foreground group-hover:text-foreground transition-colors duration-300 animate-in slide-in-from-left-4 duration-500 delay-300">
                         <Calendar className="w-4 h-4 mr-2 animate-pulse" />
-                        <span>{formatDate(event.date)}</span>
+                        <span className="line-clamp-1 leading-5">{formatDate(event.date)}</span>
                       </div>
                       <div className="flex items-center text-muted-foreground group-hover:text-foreground transition-colors duration-300 animate-in slide-in-from-left-4 duration-500 delay-400">
                         <MapPin className="w-4 h-4 mr-2 animate-pulse" />
-                        <span>{event.venue}, {event.city}</span>
+                        <span className="line-clamp-1 leading-5">{event.venue}, {event.city}</span>
                       </div>
                       {event.passes && event.passes.length > 0 ? (
-                        <div className="mt-1 space-y-1.5 animate-in slide-in-from-left-4 duration-500 delay-500">
+                        <div className="mt-auto pt-2 space-y-1.5 animate-in slide-in-from-left-4 duration-500 delay-500">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-primary/80">
                             {content[language].passesHeading}
                           </p>
@@ -660,11 +662,11 @@ const Events = ({ language }: EventsProps) => {
                     }}
                   >
                     {/* Premium Card with Glass Effect */}
-                    <div className="relative h-[420px] md:h-[480px] bg-gradient-to-br from-card/40 via-card/30 to-card/20 backdrop-blur-xl border border-primary/20 rounded-2xl overflow-hidden group-hover:border-primary/40 transition-all duration-500">
+                    <div className="relative h-[420px] md:h-[480px] bg-gradient-to-br from-card/80 via-card/70 to-card/60 dark:from-card/40 dark:via-card/30 dark:to-card/20 backdrop-blur-xl border border-primary/20 rounded-2xl overflow-hidden group-hover:border-primary/40 transition-all duration-500">
                       {/* Poster Image Layer */}
                       <div className="relative h-3/4 overflow-hidden">
                         {/* Gradient overlay for text readability - always visible */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-10"></div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-transparent dark:from-black/80 dark:via-black/40 dark:to-transparent z-10"></div>
                         
                         {/* Image - only opacity changes, no scale transforms */}
                         <img
@@ -678,7 +680,7 @@ const Events = ({ language }: EventsProps) => {
                         />
                         
                         {/* Hover Overlay - Smooth fade, not too strong */}
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-opacity duration-300 z-[15] pointer-events-none"></div>
+                        <div className="absolute inset-0 bg-transparent group-hover:bg-transparent dark:group-hover:bg-black/20 transition-opacity duration-300 z-[15] pointer-events-none"></div>
                         
                         {/* Media Count Badge */}
                         {mediaCount > 0 && (
@@ -699,20 +701,20 @@ const Events = ({ language }: EventsProps) => {
                       </div>
                       
                       {/* Card Content - Always readable with explicit colors */}
-                      <div className="absolute bottom-0 left-0 right-0 p-5 z-20 bg-gradient-to-t from-black/90 via-black/70 to-transparent">
-                        <h3 className="text-lg md:text-xl font-bold text-white mb-2 line-clamp-2 transition-colors duration-300 group-hover:text-primary">
+                      <div className="absolute bottom-0 left-0 right-0 p-5 z-20 h-[136px] md:h-[150px] bg-card/95 dark:bg-gradient-to-t dark:from-black/90 dark:via-black/70 dark:to-transparent">
+                        <h3 className="text-lg md:text-xl font-bold text-foreground dark:text-white mb-2 h-[3.5rem] md:h-[3.75rem] leading-7 line-clamp-2 transition-colors duration-300 group-hover:text-primary">
                           {event.name}
                         </h3>
                         
-                        <div className="space-y-2">
-                          <div className="flex items-center text-sm text-white/90 group-hover:text-white transition-colors duration-300">
+                        <div className="space-y-2 h-[3rem] md:h-[3.25rem]">
+                          <div className="flex items-center text-sm text-muted-foreground dark:text-white/90 dark:group-hover:text-white transition-colors duration-300">
                             <Calendar className="w-4 h-4 mr-2 text-primary" />
-                            <span className="truncate">{formatDate(event.date)}</span>
+                            <span className="line-clamp-1">{formatDate(event.date)}</span>
                           </div>
                           
-                          <div className="flex items-center text-sm text-white/90 group-hover:text-white transition-colors duration-300">
+                          <div className="flex items-center text-sm text-muted-foreground dark:text-white/90 dark:group-hover:text-white transition-colors duration-300">
                             <MapPin className="w-4 h-4 mr-2 text-accent" />
-                            <span className="truncate">{event.city}</span>
+                            <span className="line-clamp-1">{event.city}</span>
                           </div>
                         </div>
                       </div>
@@ -743,7 +745,7 @@ const Events = ({ language }: EventsProps) => {
           {/* Full Screen Gallery View (Mobile) */}
           {isFullScreenGallery && (
             <div 
-              className="fixed inset-0 z-[60] bg-black flex items-center justify-center"
+              className="fixed inset-0 z-[60] bg-background/95 flex items-center justify-center"
               onTouchStart={onTouchStart}
               onTouchMove={onTouchMove}
               onTouchEnd={onTouchEnd}
@@ -752,7 +754,7 @@ const Events = ({ language }: EventsProps) => {
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 z-10"
+                className="absolute top-4 right-4 bg-card/85 hover:bg-card text-foreground backdrop-blur-sm border border-border transition-all duration-200 z-10"
                 onClick={() => setIsFullScreenGallery(false)}
               >
                 <X className="w-6 h-6" />
@@ -762,7 +764,7 @@ const Events = ({ language }: EventsProps) => {
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute top-4 left-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 z-10"
+                className="absolute top-4 left-4 bg-card/85 hover:bg-card text-foreground backdrop-blur-sm border border-border transition-all duration-200 z-10"
                 onClick={() => setIsFullScreenGallery(false)}
               >
                 <Minimize2 className="w-6 h-6" />
@@ -770,7 +772,7 @@ const Events = ({ language }: EventsProps) => {
 
               {/* Media Counter */}
               {allMedia.length > 1 && (
-                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black/60 text-white px-4 py-2 rounded-full backdrop-blur-sm z-10">
+                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-card/90 text-foreground px-4 py-2 rounded-full backdrop-blur-sm z-10 border border-border">
                   {currentMediaIndex + 1} / {allMedia.length}
                 </div>
               )}
@@ -802,7 +804,7 @@ const Events = ({ language }: EventsProps) => {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 z-10"
+                    className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-card/85 hover:bg-card text-foreground backdrop-blur-sm border border-border transition-all duration-200 z-10"
                     onClick={previousMedia}
                   >
                     <ChevronLeft className="w-8 h-8" />
@@ -810,7 +812,7 @@ const Events = ({ language }: EventsProps) => {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 z-10"
+                    className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-card/85 hover:bg-card text-foreground backdrop-blur-sm border border-border transition-all duration-200 z-10"
                     onClick={nextMedia}
                   >
                     <ChevronRight className="w-8 h-8" />
@@ -827,8 +829,8 @@ const Events = ({ language }: EventsProps) => {
                       onClick={() => goToMedia(index)}
                       className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition-all duration-200 flex-shrink-0 ${
                         index === currentMediaIndex 
-                          ? 'border-white shadow-lg shadow-white/50 scale-110' 
-                          : 'border-white/30 hover:border-white/60 opacity-70 hover:opacity-100'
+                          ? 'border-primary shadow-lg shadow-primary/30 scale-110' 
+                          : 'border-border/40 hover:border-border opacity-70 hover:opacity-100'
                       }`}
                     >
                       {media.type === 'video' ? (
@@ -1341,7 +1343,7 @@ const Events = ({ language }: EventsProps) => {
       {/* Premium Lightbox Modal with Fade-out UI */}
       {lightboxOpen && selectedEvent && (
         <div 
-          className="fixed inset-0 z-[70] bg-black/98 backdrop-blur-xl flex items-center justify-center"
+          className="fixed inset-0 z-[70] bg-background/95 backdrop-blur-xl flex items-center justify-center"
           onClick={closeLightbox}
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
@@ -1353,7 +1355,7 @@ const Events = ({ language }: EventsProps) => {
             <Button
               variant="ghost"
               size="icon"
-              className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-primary/30 transition-all duration-300 hover:scale-110 z-30"
+              className="absolute top-4 right-4 bg-card/85 hover:bg-card text-foreground backdrop-blur-md border border-primary/30 transition-all duration-300 hover:scale-110 z-30"
               onClick={(e) => {
                 e.stopPropagation();
                 closeLightbox();
@@ -1375,7 +1377,7 @@ const Events = ({ language }: EventsProps) => {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute left-4 md:left-8 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-primary/30 transition-all duration-300 hover:scale-110 z-30 hover:border-primary/60"
+                  className="absolute left-4 md:left-8 top-1/2 transform -translate-y-1/2 bg-card/85 hover:bg-card text-foreground backdrop-blur-md border border-primary/30 transition-all duration-300 hover:scale-110 z-30 hover:border-primary/60"
                   onClick={(e) => {
                     e.stopPropagation();
                     previousLightbox();
@@ -1389,7 +1391,7 @@ const Events = ({ language }: EventsProps) => {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute right-4 md:right-8 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-primary/30 transition-all duration-300 hover:scale-110 z-30 hover:border-primary/60"
+                  className="absolute right-4 md:right-8 top-1/2 transform -translate-y-1/2 bg-card/85 hover:bg-card text-foreground backdrop-blur-md border border-primary/30 transition-all duration-300 hover:scale-110 z-30 hover:border-primary/60"
                   onClick={(e) => {
                     e.stopPropagation();
                     nextLightbox();
@@ -1426,7 +1428,7 @@ const Events = ({ language }: EventsProps) => {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="absolute bottom-4 right-4 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm border border-white/20 transition-all duration-200 hover:scale-110 z-30"
+                      className="absolute bottom-4 right-4 bg-card/85 hover:bg-card text-foreground backdrop-blur-sm border border-border transition-all duration-200 hover:scale-110 z-30"
                       onClick={(e) => {
                         e.stopPropagation();
                         setVideoMuted(!videoMuted);
@@ -1463,7 +1465,7 @@ const Events = ({ language }: EventsProps) => {
                     className={`w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border-2 transition-all duration-200 flex-shrink-0 ${
                       isActive 
                         ? 'border-primary shadow-lg shadow-primary/50 scale-110 ring-2 ring-primary/50' 
-                        : 'border-white/30 hover:border-white/60 opacity-70 hover:opacity-100 hover:scale-105'
+                        : 'border-border/40 hover:border-border opacity-70 hover:opacity-100 hover:scale-105'
                     }`}
                   >
                     {media.type === 'video' ? (

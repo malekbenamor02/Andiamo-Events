@@ -50,10 +50,10 @@ const CounterSection = ({ language }: CounterSectionProps) => {
     <section id="counter-section" className="py-20 bg-gradient-dark">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <h2 className="text-4xl font-heading font-black mb-4 text-white uppercase">
+          <h2 className="text-4xl font-heading font-black mb-4 text-foreground uppercase">
             {language === 'en' ? 'Our Impact' : 'Notre Impact'}
           </h2>
-          <p className="text-xl text-white/80 uppercase">
+          <p className="text-xl text-muted-foreground uppercase">
             {language === 'en'
               ? 'Join thousands of party-goers across Tunisia'
               : 'Rejoignez des milliers de fêtards à travers la Tunisie'}
@@ -64,7 +64,7 @@ const CounterSection = ({ language }: CounterSectionProps) => {
             <div className="text-5xl md:text-6xl font-heading font-bold text-primary mb-2">
               {counters.events.toLocaleString()}+
             </div>
-            <p className="text-xl text-white/80">
+            <p className="text-xl text-muted-foreground">
               {language === 'en' ? 'Events' : 'Événements'}
             </p>
           </div>
@@ -72,7 +72,7 @@ const CounterSection = ({ language }: CounterSectionProps) => {
             <div className="text-5xl md:text-6xl font-heading font-bold text-primary mb-2">
               {counters.members.toLocaleString()}+
             </div>
-            <p className="text-xl text-white/80">
+            <p className="text-xl text-muted-foreground">
               {language === 'en' ? 'Members' : 'Membres'}
             </p>
           </div>
@@ -80,7 +80,7 @@ const CounterSection = ({ language }: CounterSectionProps) => {
             <div className="text-5xl md:text-6xl font-heading font-bold text-primary mb-2">
               {counters.followers.toLocaleString()}+
             </div>
-            <p className="text-xl text-white/80">
+            <p className="text-xl text-muted-foreground">
               {language === 'en' ? 'Followers' : 'Abonnés'}
             </p>
           </div>

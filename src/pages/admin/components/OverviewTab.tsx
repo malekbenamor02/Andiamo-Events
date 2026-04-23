@@ -85,10 +85,10 @@ export function OverviewTab({
       {/* Welcome Header */}
       <div>
         <Card
-          className="shadow-xl"
+          className="shadow-xl bg-card border-border"
           style={{
-            backgroundColor: "#1F1F1F",
-            borderColor: "#2A2A2A",
+            backgroundColor: "hsl(var(--card))",
+            borderColor: "hsl(var(--border))",
           }}
         >
           <CardContent className="p-8">
@@ -98,14 +98,14 @@ export function OverviewTab({
                   {language === "en" ? "Welcome Back!" : "Bon Retour !"}
                 </h2>
                 {adminName ? (
-                  <p className="text-base font-heading font-medium" style={{ color: "#E8E8E8" }}>
+                  <p className="text-base font-heading font-medium text-foreground/90">
                     {language === "en" ? "Signed in as " : "Connecté en tant que "}
-                    <span className="font-semibold" style={{ color: "#FFFFFF" }}>
+                    <span className="font-semibold text-foreground">
                       {adminName}
                     </span>
                   </p>
                 ) : null}
-                <p className="text-lg font-heading" style={{ color: "#B0B0B0" }}>
+                <p className="text-lg font-heading text-muted-foreground">
                   {language === "en"
                     ? "Here's what's happening with your events today"
                     : "Voici ce qui se passe avec vos événements aujourd'hui"}
@@ -115,7 +115,7 @@ export function OverviewTab({
               {showFinancialKpis ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-start gap-x-10 gap-y-3">
                 <div className="text-center">
-                  <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
+                  <p className="text-sm font-heading text-muted-foreground">
                     {language === "en" ? "Total Revenue" : "Revenus Totaux"}
                   </p>
                   <p className="text-lg font-bold font-heading" style={{ color: "#E21836" }}>
@@ -124,7 +124,7 @@ export function OverviewTab({
                 </div>
 
                 <div className="text-center">
-                  <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
+                  <p className="text-sm font-heading text-muted-foreground">
                     {language === "en" ? "Paid Revenue" : "Revenus Payés"}
                   </p>
                   <p className="text-lg font-bold font-heading" style={{ color: "#10B981" }}>
@@ -133,7 +133,7 @@ export function OverviewTab({
                 </div>
 
                 <div className="text-center">
-                  <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
+                  <p className="text-sm font-heading text-muted-foreground">
                     {language === "en" ? "Pending Revenue" : "Revenus en Attente"}
                   </p>
                   <p className="text-lg font-bold font-heading" style={{ color: "#F59E0B" }}>
@@ -142,7 +142,7 @@ export function OverviewTab({
                 </div>
 
                 <div className="text-center">
-                  <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
+                  <p className="text-sm font-heading text-muted-foreground">
                     {language === "en" ? "Sold Tickets" : "Billets Vendus"}
                   </p>
                   <p className="text-lg font-bold font-heading" style={{ color: "#E21836" }}>
@@ -161,12 +161,12 @@ export function OverviewTab({
         {/* Pending Applications Card */}
         <Card
           className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
-          style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
+          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "#2A2A2A";
+            e.currentTarget.style.borderColor = "hsl(var(--border))";
           }}
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl" />
@@ -177,13 +177,13 @@ export function OverviewTab({
               </div>
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-heading" style={{ color: "#B0B0B0" }}>
+              <p className="text-sm font-heading text-muted-foreground">
                 {t.pendingApplications}
               </p>
               <p className="text-3xl font-bold font-heading" style={{ color: "#F59E0B" }}>
                 {pendingApplications.length}
               </p>
-              <p className="text-xs font-heading" style={{ color: "#B0B0B0" }}>
+              <p className="text-xs font-heading text-muted-foreground">
                 {language === "en" ? "Awaiting review" : "En attente de révision"}
               </p>
             </div>
@@ -219,12 +219,12 @@ export function OverviewTab({
         {/* Approved Applications Card */}
         <Card
           className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
-          style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
+          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "#2A2A2A";
+            e.currentTarget.style.borderColor = "hsl(var(--border))";
           }}
         >
           <div
@@ -280,12 +280,12 @@ export function OverviewTab({
         {/* Total Events Card */}
         <Card
           className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
-          style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
+          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "#2A2A2A";
+            e.currentTarget.style.borderColor = "hsl(var(--border))";
           }}
         >
           <div
@@ -341,12 +341,12 @@ export function OverviewTab({
         {/* Ambassador Orders Pending Card */}
         <Card
           className="group relative overflow-hidden transform transition-all duration-700 ease-out hover:scale-105 hover:shadow-xl"
-          style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
+          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "#2A2A2A";
+            e.currentTarget.style.borderColor = "hsl(var(--border))";
           }}
         >
           <div
@@ -397,12 +397,12 @@ export function OverviewTab({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card
           className="hover:shadow-lg transition-all duration-300"
-          style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
+          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "#2A2A2A";
+            e.currentTarget.style.borderColor = "hsl(var(--border))";
           }}
         >
           <CardHeader>
@@ -422,12 +422,12 @@ export function OverviewTab({
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={activityChartData} margin={{ top: 8, right: 30, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" />
-                  <XAxis dataKey="name" stroke="#B0B0B0" tick={{ fill: "#B0B0B0", fontSize: 12 }} />
-                  <YAxis yAxisId="left" stroke="#B0B0B0" tick={{ fill: "#B0B0B0", fontSize: 12 }} />
-                  <YAxis yAxisId="right" orientation="right" stroke="#B0B0B0" tick={{ fill: "#B0B0B0", fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
                   <RechartsTooltip
-                    contentStyle={{ background: "#1F1F1F", border: "1px solid #2A2A2A", borderRadius: 8 }}
+                    contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
                     labelStyle={{ color: "#fff" }}
                     formatter={(value: number, name: string) => {
                       const labels: Record<string, string> = {
@@ -546,17 +546,17 @@ export function OverviewTab({
       {/* Quick Actions & Upcoming Events */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card
-          className="hover:shadow-lg transition-all duration-300"
-          style={{ backgroundColor: "#1F1F1F", borderColor: "#2A2A2A" }}
+          className="hover:shadow-lg transition-all duration-300 bg-card border-border"
+          style={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.borderColor = "#3A3A3A";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "#2A2A2A";
+            e.currentTarget.style.borderColor = "hsl(var(--border))";
           }}
         >
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-heading" style={{ color: "#FFFFFF" }}>
+            <CardTitle className="flex items-center gap-2 font-heading text-foreground">
               <Target className="w-5 h-5" style={{ color: "#E21836" }} />
               {language === "en" ? "Quick Actions" : "Actions Rapides"}
             </CardTitle>
@@ -566,7 +566,7 @@ export function OverviewTab({
               <Button
                 onClick={() => setActiveTab("events")}
                 className="w-full justify-start font-heading"
-                style={{ backgroundColor: "#E21836", color: "#FFFFFF", border: "none" }}
+                style={{ backgroundColor: "#E21836", color: "hsl(var(--primary-foreground))", border: "none" }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = "#C4162F";
                 }}
@@ -581,18 +581,8 @@ export function OverviewTab({
             {!isMobile && (
               <Button
                 onClick={() => setActiveTab("applications")}
-                className="w-full justify-start font-heading"
-                style={{ backgroundColor: "#1F1F1F", color: "#FFFFFF", borderColor: "#2A2A2A" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#252525";
-                  e.currentTarget.style.borderColor = "#3A3A3A";
-                  e.currentTarget.style.color = "#E21836";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#1F1F1F";
-                  e.currentTarget.style.borderColor = "#2A2A2A";
-                  e.currentTarget.style.color = "#FFFFFF";
-                }}
+                variant="outline"
+                className="w-full justify-start font-heading border-border bg-card text-foreground hover:bg-accent hover:text-primary"
               >
                 <FileText className="w-4 h-4 mr-2" />
                 {language === "en" ? "Review Applications" : "Examiner les Candidatures"}
@@ -601,18 +591,8 @@ export function OverviewTab({
             {!isMobile && (
               <Button
                 onClick={() => setActiveTab("ambassadors")}
-                className="w-full justify-start font-heading"
-                style={{ backgroundColor: "#1F1F1F", color: "#FFFFFF", borderColor: "#2A2A2A" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#252525";
-                  e.currentTarget.style.borderColor = "#3A3A3A";
-                  e.currentTarget.style.color = "#E21836";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#1F1F1F";
-                  e.currentTarget.style.borderColor = "#2A2A2A";
-                  e.currentTarget.style.color = "#FFFFFF";
-                }}
+                variant="outline"
+                className="w-full justify-start font-heading border-border bg-card text-foreground hover:bg-accent hover:text-primary"
               >
                 <Users className="w-4 h-4 mr-2" />
                 {language === "en" ? "Manage Ambassadors" : "Gérer les Ambassadeurs"}
@@ -620,18 +600,8 @@ export function OverviewTab({
             )}
             <Button
               onClick={() => setActiveTab("tickets")}
-              className="w-full justify-start font-heading"
-              style={{ backgroundColor: "#1F1F1F", color: "#FFFFFF", borderColor: "#2A2A2A" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "#252525";
-                e.currentTarget.style.borderColor = "#3A3A3A";
-                e.currentTarget.style.color = "#E21836";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "#1F1F1F";
-                e.currentTarget.style.borderColor = "#2A2A2A";
-                e.currentTarget.style.color = "#FFFFFF";
-              }}
+              variant="outline"
+              className="w-full justify-start font-heading border-border bg-card text-foreground hover:bg-accent hover:text-primary"
             >
               <Ticket className="w-4 h-4 mr-2" />
               {language === "en" ? "View Ticket Sales" : "Voir les Ventes de Billets"}

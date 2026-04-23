@@ -9,24 +9,9 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-lg border text-card-foreground shadow-sm transition-all duration-300",
+      "rounded-lg border border-border bg-card text-card-foreground shadow-sm transition-all duration-300",
       className
     )}
-    style={{
-      background: '#1F1F1F',
-      borderColor: '#2A2A2A',
-      ...(props.style || {})
-    }}
-    onMouseEnter={(e) => {
-      if (!className?.includes('hover:')) {
-        e.currentTarget.style.borderColor = '#3A3A3A';
-      }
-    }}
-    onMouseLeave={(e) => {
-      if (!className?.includes('hover:')) {
-        e.currentTarget.style.borderColor = '#2A2A2A';
-      }
-    }}
     {...props}
   />
 ))

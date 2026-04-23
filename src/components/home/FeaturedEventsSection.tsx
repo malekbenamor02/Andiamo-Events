@@ -55,7 +55,7 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
           {featuredEvents.map(event => (
             <div 
               key={event.id} 
-              className="bg-card rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:scale-105 hover:shadow-xl cursor-pointer group w-[320px] min-w-[320px] max-w-xs flex-shrink-0"
+              className="bg-card rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:scale-105 hover:shadow-xl cursor-pointer group w-[320px] min-w-[320px] max-w-xs h-[420px] flex flex-col flex-shrink-0"
             >
               <div className="relative">
                 <img
@@ -68,17 +68,17 @@ const FeaturedEventsSection = ({ language }: FeaturedEventsSectionProps) => {
                   height={288}
                 />
               </div>
-              <div className="p-4">
-                <h3 className="text-xl font-bold text-primary mb-2">{event.name}</h3>
+              <div className="p-4 flex-1 flex flex-col">
+                <h3 className="text-xl font-bold text-primary mb-2 line-clamp-2 min-h-[3.5rem]">{event.name}</h3>
                 <div className="flex items-center text-sm text-muted-foreground space-x-4 mb-2">
                   <div className="flex items-center">
                     <Calendar className="w-4 h-4 mr-1" />
-                    {formatDateTimeLong(event.date, language)}
+                    <span className="line-clamp-1">{formatDateTimeLong(event.date, language)}</span>
                   </div>
                 </div>
                 <div className="flex items-center text-sm text-muted-foreground mb-2">
                   <MapPin className="w-4 h-4 mr-1" />
-                  {event.venue}, {event.city}
+                  <span className="line-clamp-1">{event.venue}, {event.city}</span>
                 </div>
                 {((event.standard_price && Number(event.standard_price) > 0) || (event.vip_price && Number(event.vip_price) > 0)) && (
                   <div className="mb-3">

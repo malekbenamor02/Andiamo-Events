@@ -310,7 +310,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center min-h-screen bg-black">
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center min-h-screen bg-background">
         <LoadingScreen 
           size="fullscreen" 
           text={t.loading}
@@ -389,7 +389,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
                   variant="ghost"
                   size="icon"
                   onClick={() => navigate('/events')}
-                  className="bg-black/40 hover:bg-black/60 text-white backdrop-blur-sm border border-white/20"
+                  className="bg-background/70 hover:bg-background/85 text-foreground backdrop-blur-sm border border-border"
                   aria-label={language === 'en' ? 'Back to events' : 'Retour aux événements'}
                 >
                   <ArrowLeft className="w-5 h-5" />
@@ -414,7 +414,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
               <Calendar className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
               <div>
                 <p className="text-sm text-muted-foreground mb-1">{t.eventDate}</p>
-                <p className="text-white font-semibold">{formatDate(event.date)}</p>
+                <p className="text-foreground font-semibold">{formatDate(event.date)}</p>
               </div>
             </div>
             
@@ -422,7 +422,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
               <MapPin className="w-5 h-5 text-pink-400 mt-1 flex-shrink-0" />
               <div>
                 <p className="text-sm text-muted-foreground mb-1">{t.location}</p>
-                <p className="text-white font-semibold">{event.venue}, {event.city}</p>
+                <p className="text-foreground font-semibold">{event.venue}, {event.city}</p>
               </div>
             </div>
             
@@ -535,7 +535,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
             role="dialog"
             aria-modal="true"
             aria-label={language === "en" ? "Image gallery" : "Galerie"}
-            className="fixed inset-0 z-[100] flex items-center justify-center overscroll-none bg-black/98 backdrop-blur-xl"
+            className="fixed inset-0 z-[100] flex items-center justify-center overscroll-none bg-background/95 backdrop-blur-xl"
             style={{ touchAction: "none" }}
             onPointerDown={(e) => {
               if (e.target === e.currentTarget) closeLightbox();
@@ -545,7 +545,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute top-4 right-4 z-10 border border-white/20 bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
+              className="absolute top-4 right-4 z-10 border border-border bg-card/80 text-foreground backdrop-blur-sm hover:bg-card"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={closeLightbox}
             >
@@ -558,7 +558,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="absolute left-4 top-1/2 z-10 -translate-y-1/2 transform border border-white/20 bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
+                  className="absolute left-4 top-1/2 z-10 -translate-y-1/2 transform border border-border bg-card/80 text-foreground backdrop-blur-sm hover:bg-card"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -571,7 +571,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="absolute right-4 top-1/2 z-10 -translate-y-1/2 transform border border-white/20 bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
+                  className="absolute right-4 top-1/2 z-10 -translate-y-1/2 transform border border-border bg-card/80 text-foreground backdrop-blur-sm hover:bg-card"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -581,7 +581,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
                   <ChevronRight className="h-8 w-8" />
                 </Button>
 
-                <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 transform rounded-full bg-black/60 px-4 py-2 text-white backdrop-blur-sm">
+                <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 transform rounded-full bg-card/85 px-4 py-2 text-foreground backdrop-blur-sm border border-border">
                   {lightboxIndex + 1} / {allMedia.length}
                 </div>
               </>
@@ -607,7 +607,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute bottom-4 right-4 border border-white/20 bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
+                    className="absolute bottom-4 right-4 border border-border bg-card/80 text-foreground backdrop-blur-sm hover:bg-card"
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();

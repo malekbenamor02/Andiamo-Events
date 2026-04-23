@@ -37,7 +37,7 @@ const TeamSection = ({ language }: TeamSectionProps) => {
     <section className="py-20 bg-gradient-dark">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <h2 className="text-4xl font-heading font-black mb-4 text-white uppercase">{t.title}</h2>
+          <h2 className="text-4xl font-heading font-black mb-4 text-foreground dark:text-white uppercase">{t.title}</h2>
           <p className="text-lg text-white/80 uppercase font-bold">{t.subtitle}</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">

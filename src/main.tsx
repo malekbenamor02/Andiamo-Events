@@ -1,6 +1,7 @@
 // Global styles must load before App so a failed import still gets theme fonts/colors.
 import './index.css'
 import { createRoot } from 'react-dom/client'
+import { ThemeProvider } from 'next-themes'
 import App from './App.tsx'
 import { humanizeAppError } from './lib/network-error-message'
 import { initSentry, Sentry } from './lib/sentry'
@@ -433,6 +434,13 @@ createRoot(root).render(
     }}
     onError={(error) => Sentry.captureException(error)}
   >
-    <App />
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="dark"
+      enableSystem={false}
+      storageKey="andiamo-theme-mode"
+    >
+      <App />
+    </ThemeProvider>
   </Sentry.ErrorBoundary>
 );

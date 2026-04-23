@@ -73,8 +73,8 @@ export function AdminSessionCountdown({
   if (variant === "mobile") {
     return (
       <>
-        <Clock className="w-3.5 h-3.5" style={{ color: "#E21836" }} />
-        <span>
+        <Clock className="w-3.5 h-3.5 text-primary" />
+        <span className="text-foreground">
           {h}h {m}m
         </span>
       </>
@@ -83,14 +83,9 @@ export function AdminSessionCountdown({
 
   return (
     <div
-      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg shrink-0"
-      style={{
-        background: "#1F1F1F",
-        border: "1px solid #2A2A2A",
-        color: "#B8B8B8",
-      }}
+      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg shrink-0 bg-card/95 border border-border text-foreground shadow-sm"
     >
-      <Clock className="w-4 h-4 animate-pulse" style={{ color: "#E21836" }} />
+      <Clock className="w-4 h-4 animate-pulse text-primary" />
       <span className="text-sm font-medium">
         {language === "en" ? "Session:" : "Session:"} {h}h {m}m {s}s
       </span>

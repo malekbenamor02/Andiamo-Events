@@ -72,6 +72,7 @@ import { trackPageView } from "./lib/ga";
 import { trackMetaPageView } from "./lib/meta";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
+import { useTheme } from "next-themes";
 
 // In-app browsers (Instagram, Facebook, etc.) use WebViews that can tear down native
 // objects; Vercel Speed Insights' button metadata code then throws "Java object is gone".
@@ -96,7 +97,17 @@ const queryClient = new QueryClient({
   },
 });
 
-const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggleLanguage: () => void }) => {
+const AppContent = ({
+  language,
+  toggleLanguage,
+  theme,
+  toggleTheme,
+}: {
+  language: 'en' | 'fr';
+  toggleLanguage: () => void;
+  theme: "dark" | "light";
+  toggleTheme: () => void;
+}) => {
   const location = useLocation();
   const shouldShowPhonePopup = usePhoneCapture(location.pathname);
   const [isPhonePopupOpen, setIsPhonePopupOpen] = useState(false);
@@ -137,7 +148,14 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
         )}
       <MaintenanceMode language={language}>
         <div className="min-h-screen bg-background flex flex-col">
-          {!isScanner && !isPos && <Navigation language={language} toggleLanguage={toggleLanguage} />}
+          {!isScanner && !isPos && (
+            <Navigation
+              language={language}
+              toggleLanguage={toggleLanguage}
+              theme={theme}
+              toggleTheme={toggleTheme}
+            />
+          )}
           <ErrorBoundary embedded language={language}>
           <Suspense fallback={<LoadingScreen />}>
             <Routes>
@@ -197,9 +215,14 @@ const AppContent = ({ language, toggleLanguage }: { language: 'en' | 'fr'; toggl
 
 const App = () => {
   const [language, setLanguage] = useState<'en' | 'fr'>('en');
+  const { theme, setTheme } = useTheme();
   
   const toggleLanguage = () => {
     setLanguage(prev => prev === 'en' ? 'fr' : 'en');
+  };
+
+  const toggleTheme = () => {
+    setTheme(theme === "light" ? "dark" : "light");
   };
 
   return (
@@ -211,7 +234,12 @@ const App = () => {
           <Analytics />
           {!isInAppBrowser && <SpeedInsights />}
           <BrowserRouter>
-            <AppContent language={language} toggleLanguage={toggleLanguage} />
+            <AppContent
+              language={language}
+              toggleLanguage={toggleLanguage}
+              theme={theme === "light" ? "light" : "dark"}
+              toggleTheme={toggleTheme}
+            />
           </BrowserRouter>
         </TooltipProvider>
       </QueryClientProvider>

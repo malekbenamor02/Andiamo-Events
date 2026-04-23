@@ -27,23 +27,17 @@ export function EmailCampaignLauncher({
 
   const draftSelectKey = [...drafts.map((d) => d.id)].sort().join(',') || 'none';
 
-  const hasEmailCampaigns = useMemo(() => campaigns.some((c) => c.type === 'email'), [campaigns]);
-
   const t =
     language === 'en'
       ? {
           title: 'Launch email campaign',
           pick: 'Choose a saved draft',
           hint: 'Pick a template you created above, then select recipients and daily cap.',
-          emptyDrafts:
-            'No drafts right now. Save a new campaign with “Create draft” above, or note: launched / completed campaigns only appear under Campaign results—not in this list.',
         }
       : {
           title: 'Lancer une campagne email',
           pick: 'Choisir un brouillon',
           hint: 'Sélectionnez un modèle créé ci-dessus, puis les destinataires et le plafond journalier.',
-          emptyDrafts:
-            'Aucun brouillon. Enregistrez une campagne avec « Créer brouillon » ci-dessus. Les campagnes lancées ou terminées sont dans Résultats des campagnes, pas dans cette liste.',
         };
 
   return (
@@ -72,9 +66,6 @@ export function EmailCampaignLauncher({
               ))}
             </SelectContent>
           </Select>
-          {drafts.length === 0 && hasEmailCampaigns ? (
-            <p className="text-xs text-muted-foreground leading-relaxed">{t.emptyDrafts}</p>
-          ) : null}
         </div>
         {selectedDraftId ? (
           <BulkEmailSelector

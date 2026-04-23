@@ -176,9 +176,14 @@ const Footer = ({ language }: FooterProps) => {
               className="inline-flex mb-4 w-full max-w-md justify-center sm:justify-start focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-sm"
             >
               <img
-                src="/logo.svg"
+                src="/email-assets/logo-black.png"
                 alt="Andiamo Events Logo"
-                className="h-auto w-full max-w-[min(100%,260px)] sm:max-w-[min(100%,280px)] max-h-28 sm:max-h-36 object-contain object-center sm:object-left"
+                className="h-auto w-full max-w-[min(100%,260px)] sm:max-w-[min(100%,280px)] max-h-28 sm:max-h-36 object-contain object-center sm:object-left dark:hidden"
+              />
+              <img
+                src="/email-assets/logo-white.png"
+                alt="Andiamo Events Logo"
+                className="hidden h-auto w-full max-w-[min(100%,260px)] sm:max-w-[min(100%,280px)] max-h-28 sm:max-h-36 object-contain object-center sm:object-left dark:block"
               />
             </RouterLink>
             <p className="text-muted-foreground mb-6 max-w-md text-sm sm:text-base text-center sm:text-left">

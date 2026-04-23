@@ -213,9 +213,9 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
         <h2 className="text-2xl font-bold">{t.scanners}</h2>
       </div>
 
-      <Card className="bg-[#1F1F1F] border-[#2A2A2A]">
+      <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-white">{t.status} – {config?.enabled ? t.on : t.off}</CardTitle>
+          <CardTitle className="text-foreground">{t.status} – {config?.enabled ? t.on : t.off}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <Button
@@ -230,29 +230,29 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
         </CardContent>
       </Card>
 
-      <Card className="bg-[#1F1F1F] border-[#2A2A2A]">
+      <Card className="bg-card border-border">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-white">{t.scanners}</CardTitle>
+          <CardTitle className="text-foreground">{t.scanners}</CardTitle>
           <Button onClick={() => setCreateOpen(true)} className="bg-[#E21836] hover:bg-[#c4142e]"><Plus className="w-4 h-4 mr-2" />{t.create}</Button>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow className="border-[#2A2A2A]">
-                <TableHead className="text-[#B0B0B0]">{t.name}</TableHead>
-                <TableHead className="text-[#B0B0B0]">{t.email}</TableHead>
-                <TableHead className="text-[#B0B0B0]">{t.active}</TableHead>
-                <TableHead className="text-[#B0B0B0]">{t.actions}</TableHead>
+              <TableRow className="border-border">
+                <TableHead className="text-muted-foreground">{t.name}</TableHead>
+                <TableHead className="text-muted-foreground">{t.email}</TableHead>
+                <TableHead className="text-muted-foreground">{t.active}</TableHead>
+                <TableHead className="text-muted-foreground">{t.actions}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {scanners.map((s) => (
-                <TableRow key={s.id} className="border-[#2A2A2A]">
-                  <TableCell className="text-white">{s.name}</TableCell>
-                  <TableCell className="text-[#B0B0B0]">{s.email}</TableCell>
+                <TableRow key={s.id} className="border-border">
+                  <TableCell className="text-foreground">{s.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{s.email}</TableCell>
                   <TableCell><span className={s.is_active ? "text-[#10B981]" : "text-[#EF4444]"}>{s.is_active ? "✓" : "✗"}</span></TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" className="text-[#B0B0B0] hover:text-white mr-2" onClick={() => { setEditScanner(s); setEditName(s.name); setEditEmail(s.email); setEditActive(s.is_active); setEditPassword(""); setEditOpen(true); }}>{t.edit}</Button>
+                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground mr-2" onClick={() => { setEditScanner(s); setEditName(s.name); setEditEmail(s.email); setEditActive(s.is_active); setEditPassword(""); setEditOpen(true); }}>{t.edit}</Button>
                     {s.is_active && <Button variant="ghost" size="sm" className="text-[#EF4444]" onClick={() => onDeactivate(s)}>{t.deactivate}</Button>}
                   </TableCell>
                 </TableRow>
@@ -263,9 +263,9 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
       </Card>
 
       <div className="flex items-center gap-2">
-        <Label className="text-[#B0B0B0]">{language === "en" ? "View" : "Vue"}:</Label>
+        <Label className="text-muted-foreground">{language === "en" ? "View" : "Vue"}:</Label>
         <Select value={selectedId ?? "all"} onValueChange={(v) => setSelectedId(v === "all" ? null : v)}>
-          <SelectTrigger className="w-[220px] bg-[#252525] border-[#2A2A2A] text-white">
+          <SelectTrigger className="w-[220px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -276,67 +276,67 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
       </div>
 
       {stats && (
-        <Card className="bg-[#1F1F1F] border-[#2A2A2A]">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-white text-base">{language === "en" ? "Scan summary" : "Résumé des scans"}</CardTitle>
+            <CardTitle className="text-foreground text-base">{language === "en" ? "Scan summary" : "Résumé des scans"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
-                <p className="text-xs text-[#B0B0B0] mb-1">{t.total}</p>
+              <div className="rounded-lg bg-muted/40 border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-1">{t.total}</p>
                 <p className="text-lg font-bold" style={{ color: "#E21836" }}>{(stats.total ?? 0).toLocaleString()}</p>
               </div>
-              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
-                <p className="text-xs text-[#B0B0B0] mb-1">{t.valid}</p>
+              <div className="rounded-lg bg-muted/40 border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-1">{t.valid}</p>
                 <p className="text-lg font-bold" style={{ color: "#10B981" }}>{(stats.byStatus.valid ?? 0).toLocaleString()}</p>
               </div>
-              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
-                <p className="text-xs text-[#B0B0B0] mb-1">{t.alreadyScanned}</p>
+              <div className="rounded-lg bg-muted/40 border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-1">{t.alreadyScanned}</p>
                 <p className="text-lg font-bold" style={{ color: "#F59E0B" }}>{(stats.byStatus.already_scanned ?? 0).toLocaleString()}</p>
               </div>
-              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
-                <p className="text-xs text-[#B0B0B0] mb-1">{t.invalid}</p>
+              <div className="rounded-lg bg-muted/40 border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-1">{t.invalid}</p>
                 <p className="text-lg font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.invalid ?? 0).toLocaleString()}</p>
               </div>
-              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
-                <p className="text-xs text-[#B0B0B0] mb-1">{t.wrongEvent}</p>
+              <div className="rounded-lg bg-muted/40 border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-1">{t.wrongEvent}</p>
                 <p className="text-lg font-bold" style={{ color: "#EF4444" }}>{(stats.byStatus.wrong_event ?? 0).toLocaleString()}</p>
               </div>
             </div>
-            <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
-              <p className="text-xs text-[#B0B0B0] mb-1">{t.remainingValidPasses}</p>
+            <div className="rounded-lg bg-muted/40 border border-border p-3">
+              <p className="text-xs text-muted-foreground mb-1">{t.remainingValidPasses}</p>
               <p className="text-lg font-bold" style={{ color: "#22C55E" }}>
                 {validSelectedEventId
                   ? ((stats.remainingValidPasses ?? 0).toLocaleString())
                   : "—"}
               </p>
               {!validSelectedEventId && (
-                <p className="text-xs text-[#7A7A7A] mt-1">{t.selectEventHint}</p>
+                <p className="text-xs text-muted-foreground/80 mt-1">{t.selectEventHint}</p>
               )}
             </div>
             {validSelectedEventId && (
-              <div className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
-                <p className="text-xs text-[#B0B0B0] mb-2">{t.remainingVsStatus}</p>
-                <p className="text-xs text-[#B0B0B0]">{t.remainingValidPasses}: <span className="text-[#22C55E] font-semibold">{(stats.remainingValidPasses ?? 0).toLocaleString()}</span></p>
-                <p className="text-xs text-[#B0B0B0]">{t.valid}: <span className="text-[#10B981] font-semibold">{(stats.byStatus.valid ?? 0).toLocaleString()}</span></p>
-                <p className="text-xs text-[#B0B0B0]">{t.alreadyScanned}: <span className="text-[#F59E0B] font-semibold">{(stats.byStatus.already_scanned ?? 0).toLocaleString()}</span></p>
-                <p className="text-xs text-[#B0B0B0]">{t.invalid}: <span className="text-[#EF4444] font-semibold">{(stats.byStatus.invalid ?? 0).toLocaleString()}</span></p>
-                <p className="text-xs text-[#B0B0B0]">{t.wrongEvent}: <span className="text-[#EF4444] font-semibold">{(stats.byStatus.wrong_event ?? 0).toLocaleString()}</span></p>
+              <div className="rounded-lg bg-muted/40 border border-border p-3">
+                <p className="text-xs text-muted-foreground mb-2">{t.remainingVsStatus}</p>
+                <p className="text-xs text-muted-foreground">{t.remainingValidPasses}: <span className="text-[#22C55E] font-semibold">{(stats.remainingValidPasses ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-muted-foreground">{t.valid}: <span className="text-[#10B981] font-semibold">{(stats.byStatus.valid ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-muted-foreground">{t.alreadyScanned}: <span className="text-[#F59E0B] font-semibold">{(stats.byStatus.already_scanned ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-muted-foreground">{t.invalid}: <span className="text-[#EF4444] font-semibold">{(stats.byStatus.invalid ?? 0).toLocaleString()}</span></p>
+                <p className="text-xs text-muted-foreground">{t.wrongEvent}: <span className="text-[#EF4444] font-semibold">{(stats.byStatus.wrong_event ?? 0).toLocaleString()}</span></p>
               </div>
             )}
             {Object.keys(stats.byPass || {}).length > 0 && (
-              <p className="text-sm text-[#B0B0B0] pt-1 border-t border-[#2A2A2A]">{language === "en" ? "By pass" : "Par pass"}: {Object.entries(stats.byPass).map(([k, v]) => `${k}: ${v}`).join(", ")}</p>
+              <p className="text-sm text-muted-foreground pt-1 border-t border-border">{language === "en" ? "By pass" : "Par pass"}: {Object.entries(stats.byPass).map(([k, v]) => `${k}: ${v}`).join(", ")}</p>
             )}
             {!selectedId && Object.keys(stats.byScannerStatus || {}).length > 0 && (
-              <div className="pt-2 border-t border-[#2A2A2A] space-y-2">
-                <p className="text-sm text-white font-medium">{t.scannerPerformance}</p>
+              <div className="pt-2 border-t border-border space-y-2">
+                <p className="text-sm text-foreground font-medium">{t.scannerPerformance}</p>
                 <div className="space-y-2">
                   {Object.entries(stats.byScannerStatus || {})
                     .sort((a, b) => (b[1]?.total || 0) - (a[1]?.total || 0))
                     .map(([scannerId, scannerStats]) => (
-                      <div key={scannerId} className="rounded-lg bg-[#252525] border border-[#2A2A2A] p-3">
-                        <p className="text-sm text-white mb-2">{stats.scannerNames?.[scannerId] || scanners.find((s) => s.id === scannerId)?.name || t.scanner}</p>
-                        <p className="text-xs text-[#B0B0B0]">
+                      <div key={scannerId} className="rounded-lg bg-muted/40 border border-border p-3">
+                        <p className="text-sm text-foreground mb-2">{stats.scannerNames?.[scannerId] || scanners.find((s) => s.id === scannerId)?.name || t.scanner}</p>
+                        <p className="text-xs text-muted-foreground">
                           {t.total}: {(scannerStats.total || 0).toLocaleString()} | {t.valid}: {(scannerStats.valid || 0).toLocaleString()} | {t.alreadyScanned}: {(scannerStats.already_scanned || 0).toLocaleString()} | {t.invalid}: {(scannerStats.invalid || 0).toLocaleString()} | {t.wrongEvent}: {(scannerStats.wrong_event || 0).toLocaleString()}
                         </p>
                       </div>
@@ -348,34 +348,34 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
         </Card>
       )}
 
-      <Card className="bg-[#1F1F1F] border-[#2A2A2A]">
-        <CardHeader><CardTitle className="text-white">{t.history}</CardTitle></CardHeader>
+      <Card className="bg-card border-border">
+        <CardHeader><CardTitle className="text-foreground">{t.history}</CardTitle></CardHeader>
         <CardContent>
-          {loading ? <p className="text-[#B0B0B0]">Loading…</p> : (
+          {loading ? <p className="text-muted-foreground">Loading…</p> : (
             <Table>
               <TableHeader>
-                <TableRow className="border-[#2A2A2A]">
-                  <TableHead className="text-[#B0B0B0]">{t.time}</TableHead>
-                  <TableHead className="text-[#B0B0B0]">{t.result}</TableHead>
-                  <TableHead className="text-[#B0B0B0]">{t.buyer}</TableHead>
-                  <TableHead className="text-[#B0B0B0]">{t.pass}</TableHead>
-                  <TableHead className="text-[#B0B0B0]">{t.ambassador}</TableHead>
-                  <TableHead className="text-[#B0B0B0]">{t.event}</TableHead>
-                  {!selectedId && <TableHead className="text-[#B0B0B0]">{t.scanner}</TableHead>}
+                <TableRow className="border-border">
+                  <TableHead className="text-muted-foreground">{t.time}</TableHead>
+                  <TableHead className="text-muted-foreground">{t.result}</TableHead>
+                  <TableHead className="text-muted-foreground">{t.buyer}</TableHead>
+                  <TableHead className="text-muted-foreground">{t.pass}</TableHead>
+                  <TableHead className="text-muted-foreground">{t.ambassador}</TableHead>
+                  <TableHead className="text-muted-foreground">{t.event}</TableHead>
+                  {!selectedId && <TableHead className="text-muted-foreground">{t.scanner}</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {scans.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-center text-[#B0B0B0]">{t.noScans}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground">{t.noScans}</TableCell></TableRow>
                 ) : scans.map((r) => (
-                  <TableRow key={r.id} className="border-[#2A2A2A]">
-                    <TableCell className="text-white">{r.scan_time ? format(new Date(r.scan_time), "PPp") : "—"}</TableCell>
+                  <TableRow key={r.id} className="border-border">
+                    <TableCell className="text-foreground">{r.scan_time ? format(new Date(r.scan_time), "PPp") : "—"}</TableCell>
                     <TableCell><span className={r.scan_result === "valid" ? "text-[#10B981]" : r.scan_result === "already_scanned" ? "text-[#F59E0B]" : "text-[#EF4444]"}>{r.scan_result}</span></TableCell>
-                    <TableCell className="text-[#B0B0B0]">{r.buyer_name || "—"}</TableCell>
-                    <TableCell className="text-[#B0B0B0]">{r.pass_type || "—"}</TableCell>
-                    <TableCell className="text-[#B0B0B0]">{r.ambassador_name || "—"}</TableCell>
-                    <TableCell className="text-[#B0B0B0]">{r.event_name || "—"}</TableCell>
-                    {!selectedId && <TableCell className="text-[#B0B0B0]">{r.scanner_name || "—"}</TableCell>}
+                    <TableCell className="text-muted-foreground">{r.buyer_name || "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.pass_type || "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.ambassador_name || "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.event_name || "—"}</TableCell>
+                    {!selectedId && <TableCell className="text-muted-foreground">{r.scanner_name || "—"}</TableCell>}
                   </TableRow>
                 ))}
               </TableBody>
@@ -385,35 +385,35 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
       </Card>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="bg-[#1F1F1F] border-[#2A2A2A]">
-          <DialogHeader><DialogTitle className="text-white">{t.create}</DialogTitle></DialogHeader>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader><DialogTitle className="text-foreground">{t.create}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <Label className="text-[#B0B0B0]">{t.name}</Label>
-            <Input className="bg-[#252525] border-[#2A2A2A] text-white" value={createName} onChange={e => setCreateName(e.target.value)} />
-            <Label className="text-[#B0B0B0]">{t.email}</Label>
-            <Input className="bg-[#252525] border-[#2A2A2A] text-white" type="email" value={createEmail} onChange={e => setCreateEmail(e.target.value)} />
-            <Label className="text-[#B0B0B0]">{t.password} (min 8)</Label>
-            <Input className="bg-[#252525] border-[#2A2A2A] text-white" type="password" value={createPassword} onChange={e => setCreatePassword(e.target.value)} />
+            <Label className="text-muted-foreground">{t.name}</Label>
+            <Input value={createName} onChange={e => setCreateName(e.target.value)} />
+            <Label className="text-muted-foreground">{t.email}</Label>
+            <Input type="email" value={createEmail} onChange={e => setCreateEmail(e.target.value)} />
+            <Label className="text-muted-foreground">{t.password} (min 8)</Label>
+            <Input type="password" value={createPassword} onChange={e => setCreatePassword(e.target.value)} />
             <Button className="w-full bg-[#E21836] hover:bg-[#c4142e]" onClick={onCreate}>Create</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="bg-[#1F1F1F] border-[#2A2A2A]">
-          <DialogHeader><DialogTitle className="text-white">{t.edit}</DialogTitle></DialogHeader>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader><DialogTitle className="text-foreground">{t.edit}</DialogTitle></DialogHeader>
           {editScanner && (
             <div className="space-y-3">
-              <Label className="text-[#B0B0B0]">{t.name}</Label>
-              <Input className="bg-[#252525] border-[#2A2A2A] text-white" value={editName} onChange={e => setEditName(e.target.value)} />
-              <Label className="text-[#B0B0B0]">{t.email}</Label>
-              <Input className="bg-[#252525] border-[#2A2A2A] text-white" type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} />
+              <Label className="text-muted-foreground">{t.name}</Label>
+              <Input value={editName} onChange={e => setEditName(e.target.value)} />
+              <Label className="text-muted-foreground">{t.email}</Label>
+              <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} />
               <div className="flex items-center gap-2">
                 <Switch checked={editActive} onCheckedChange={setEditActive} />
-                <Label className="text-[#B0B0B0]">{t.active}</Label>
+                <Label className="text-muted-foreground">{t.active}</Label>
               </div>
-              <Label className="text-[#B0B0B0]">{t.password} (leave blank to keep)</Label>
-              <Input className="bg-[#252525] border-[#2A2A2A] text-white" type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="••••••••" />
+              <Label className="text-muted-foreground">{t.password} (leave blank to keep)</Label>
+              <Input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="••••••••" />
               <Button className="w-full bg-[#E21836] hover:bg-[#c4142e]" onClick={onEdit}>Save</Button>
             </div>
           )}

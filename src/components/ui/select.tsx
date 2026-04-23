@@ -21,20 +21,6 @@ const SelectTrigger = React.forwardRef<
       "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
       className
     )}
-    style={{
-      background: '#252525',
-      borderColor: '#2A2A2A',
-      color: '#FFFFFF',
-      ...(props.style || {})
-    }}
-    onFocus={(e) => {
-      e.currentTarget.style.borderColor = '#E21836';
-      e.currentTarget.style.boxShadow = '0 0 0 2px rgba(226, 24, 54, 0.25)';
-    }}
-    onBlur={(e) => {
-      e.currentTarget.style.borderColor = '#2A2A2A';
-      e.currentTarget.style.boxShadow = '';
-    }}
     {...props}
   >
     {children}
@@ -95,12 +81,6 @@ const SelectContent = React.forwardRef<
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
         className
       )}
-      style={{
-        background: '#1F1F1F',
-        borderColor: '#2A2A2A',
-        color: '#FFFFFF',
-        ...(props.style || {})
-      }}
       position={position}
       side={side}
       sideOffset={sideOffset}
@@ -142,19 +122,9 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-primary/20 focus:text-primary data-[highlighted]:bg-primary/20 data-[highlighted]:text-primary data-[state=checked]:bg-primary/20 data-[state=checked]:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-foreground outline-none focus:bg-primary/20 focus:text-primary data-[highlighted]:bg-primary/20 data-[highlighted]:text-primary data-[state=checked]:bg-primary/20 data-[state=checked]:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className
     )}
-    style={{
-      color: '#FFFFFF',
-      ...(props.style || {})
-    }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.backgroundColor = 'rgba(226, 24, 54, 0.1)';
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.backgroundColor = 'transparent';
-    }}
     {...props}
   >
     <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">

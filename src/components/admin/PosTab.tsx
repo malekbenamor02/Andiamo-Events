@@ -414,16 +414,16 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
         <h2 className="text-2xl font-bold flex items-center gap-2" style={{ color: "#E21836" }}><Store className="w-7 h-7" />{t.title}</h2>
       </div>
       <Tabs value={subTab} onValueChange={setSubTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 gap-1 h-auto flex-wrap bg-[#1F1F1F] border-[#2A2A2A]">
-          <TabsTrigger value="orders" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><ShoppingCart className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.orders}</span></TabsTrigger>
-          <TabsTrigger value="statistics" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><BarChart3 className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.statistics}</span></TabsTrigger>
-          <TabsTrigger value="outlets" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><Building2 className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.outlets}</span></TabsTrigger>
-          <TabsTrigger value="users" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><Users className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.users}</span></TabsTrigger>
-          <TabsTrigger value="audit" className="data-[state=active]:bg-[#E21836] data-[state=active]:text-white"><Activity className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.audit}</span></TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 gap-1 h-auto flex-wrap bg-card border border-border">
+          <TabsTrigger value="orders" className="text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><ShoppingCart className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.orders}</span></TabsTrigger>
+          <TabsTrigger value="statistics" className="text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><BarChart3 className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.statistics}</span></TabsTrigger>
+          <TabsTrigger value="outlets" className="text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><Building2 className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.outlets}</span></TabsTrigger>
+          <TabsTrigger value="users" className="text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><Users className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.users}</span></TabsTrigger>
+          <TabsTrigger value="audit" className="text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"><Activity className="w-4 h-4 mr-1" /><span className="hidden sm:inline">{t.audit}</span></TabsTrigger>
         </TabsList>
 
         <TabsContent value="outlets" className="mt-4">
-          <Card className="bg-[#1F1F1F] border-[#2A2A2A]">
+          <Card className="bg-card border-border">
             <CardHeader className="flex flex-row justify-between">
               <CardTitle style={{ color: "#E21836" }}>{t.outlets}</CardTitle>
               <div className="flex gap-2">
@@ -432,19 +432,19 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
               </div>
             </CardHeader>
             <CardContent>
-              {outlets.length === 0 ? <p className="text-[#B0B0B0]">{t.noOutlets}</p> : (
+              {outlets.length === 0 ? <p className="text-muted-foreground">{t.noOutlets}</p> : (
                 <Table>
-                  <TableHeader><TableRow className="border-[#2A2A2A]">
-                    <TableHead className="text-[#B0B0B0]">{t.name}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.slug}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.link}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.actions}</TableHead>
+                  <TableHeader><TableRow className="border-border">
+                    <TableHead className="text-muted-foreground">{t.name}</TableHead>
+                    <TableHead className="text-muted-foreground">{t.slug}</TableHead>
+                    <TableHead className="text-muted-foreground">{t.link}</TableHead>
+                    <TableHead className="text-muted-foreground">{t.actions}</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
                     {outlets.map(o => (
-                      <TableRow key={o.id} className="border-[#2A2A2A]">
-                        <TableCell className="text-white">{o.name}</TableCell>
-                        <TableCell className="text-[#B0B0B0]">{o.slug}</TableCell>
+                      <TableRow key={o.id} className="border-border">
+                        <TableCell className="text-foreground">{o.name}</TableCell>
+                        <TableCell className="text-muted-foreground">{o.slug}</TableCell>
                         <TableCell><Button variant="ghost" size="sm" onClick={() => copyLink(o.slug)}><Copy className="w-4 h-4" /></Button></TableCell>
                         <TableCell>
                           <Button variant="ghost" size="sm" className="mr-1" onClick={() => { setEditOutlet(o); setForm({ name: o.name, slug: o.slug, is_active: o.is_active }); }}>{t.edit}</Button>
@@ -460,12 +460,12 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
         </TabsContent>
 
         <TabsContent value="users" className="mt-4">
-          <Card className="bg-[#1F1F1F] border-[#2A2A2A]">
+          <Card className="bg-card border-border">
             <CardHeader className="flex flex-row justify-between flex-wrap gap-2">
               <CardTitle style={{ color: "#E21836" }}>{t.users}</CardTitle>
               <div className="flex gap-2 flex-wrap">
                 <Select value={outletFilter === "__none__" ? "__all__" : outletFilter} onValueChange={setOutletFilter}>
-                  <SelectTrigger className="w-[200px] bg-[#252525] border-[#2A2A2A] text-white"><SelectValue placeholder={t.outlet} /></SelectTrigger>
+                  <SelectTrigger className="w-[200px]"><SelectValue placeholder={t.outlet} /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">{language === "en" ? "All" : "Tous"}</SelectItem>
                     {outlets.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
@@ -476,19 +476,19 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
               </div>
             </CardHeader>
             <CardContent>
-              {users.length === 0 ? <p className="text-[#B0B0B0]">{t.noUsers}</p> : (
+              {users.length === 0 ? <p className="text-muted-foreground">{t.noUsers}</p> : (
                 <Table>
-                  <TableHeader><TableRow className="border-[#2A2A2A]">
-                    <TableHead className="text-[#B0B0B0]">{t.name}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.email}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.active}</TableHead>
-                    <TableHead className="text-[#B0B0B0]">{t.actions}</TableHead>
+                  <TableHeader><TableRow className="border-border">
+                    <TableHead className="text-muted-foreground">{t.name}</TableHead>
+                    <TableHead className="text-muted-foreground">{t.email}</TableHead>
+                    <TableHead className="text-muted-foreground">{t.active}</TableHead>
+                    <TableHead className="text-muted-foreground">{t.actions}</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
                     {users.map(u => (
-                      <TableRow key={u.id} className="border-[#2A2A2A]">
-                        <TableCell className="text-white">{u.name}</TableCell>
-                        <TableCell className="text-[#B0B0B0]">{u.email}</TableCell>
+                      <TableRow key={u.id} className="border-border">
+                        <TableCell className="text-foreground">{u.name}</TableCell>
+                        <TableCell className="text-muted-foreground">{u.email}</TableCell>
                         <TableCell><span className={u.is_active && !u.is_paused ? "text-[#10B981]" : "text-[#EF4444]"}>{u.is_active && !u.is_paused ? "✓" : "✗"}</span></TableCell>
                         <TableCell>
                           <Button variant="ghost" size="sm" className="mr-1" onClick={() => { setEditUser(u); setForm({ name: u.name, email: u.email, is_active: (u.is_active && !u.is_paused) ? "1" : "0", password: "" }); }}>{t.edit}</Button>
@@ -504,19 +504,19 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
         </TabsContent>
 
         <TabsContent value="orders" className="mt-4">
-          <Card className="bg-[#1F1F1F] border-[#2A2A2A]">
+          <Card className="bg-card border-border">
             <CardHeader className="flex flex-row justify-between flex-wrap gap-2">
               <CardTitle style={{ color: "#E21836" }}>{t.orders}</CardTitle>
               <div className="flex gap-2 flex-wrap">
                 <Select value={outletFilter === "__none__" ? "__all__" : outletFilter} onValueChange={setOutletFilter}>
-                  <SelectTrigger className="w-[160px] bg-[#252525] border-[#2A2A2A] text-white"><SelectValue placeholder={t.outlet} /></SelectTrigger>
+                  <SelectTrigger className="w-[160px]"><SelectValue placeholder={t.outlet} /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">{language === "en" ? "All" : "Tous"}</SelectItem>
                     {outlets.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={orderStatusFilter} onValueChange={setOrderStatusFilter}>
-                  <SelectTrigger className="w-[180px] bg-[#252525] border-[#2A2A2A] text-white"><SelectValue placeholder={t.status} /></SelectTrigger>
+                  <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.status} /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">{language === "en" ? "All" : "Tous"}</SelectItem>
                     <SelectItem value="PENDING_ADMIN_APPROVAL">PENDING_ADMIN_APPROVAL</SelectItem>
@@ -526,46 +526,46 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                   </SelectContent>
                 </Select>
                 <Select value={orderEventFilter} onValueChange={setOrderEventFilter}>
-                  <SelectTrigger className="w-[180px] bg-[#252525] border-[#2A2A2A] text-white"><SelectValue placeholder={t.event} /></SelectTrigger>
+                  <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.event} /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">{language === "en" ? "All events" : "Tous"}</SelectItem>
                     {events.map(ev => <SelectItem key={ev.id} value={ev.id}>{ev.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Input type="date" className="w-[140px] bg-[#252525] border-[#2A2A2A] text-white" value={orderFrom} onChange={e => setOrderFrom(e.target.value)} />
-                <Input type="date" className="w-[140px] bg-[#252525] border-[#2A2A2A] text-white" value={orderTo} onChange={e => setOrderTo(e.target.value)} />
+                <Input type="date" className="w-[140px]" value={orderFrom} onChange={e => setOrderFrom(e.target.value)} />
+                <Input type="date" className="w-[140px]" value={orderTo} onChange={e => setOrderTo(e.target.value)} />
                 <Button size="sm" variant="ghost" onClick={loadOrders}><RefreshCw className="w-4 h-4" /></Button>
               </div>
             </CardHeader>
             <CardContent>
-              {loading && <p className="text-[#B0B0B0] flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />...</p>}
+              {loading && <p className="text-muted-foreground flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />...</p>}
               {ordersLoading ? (
-                <p className="text-[#B0B0B0] flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />{language === "en" ? "Loading orders…" : "Chargement des commandes…"}</p>
+                <p className="text-muted-foreground flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />{language === "en" ? "Loading orders…" : "Chargement des commandes…"}</p>
               ) : orders.length === 0 ? (
-                <p className="text-[#B0B0B0]">{t.noOrders}</p>
+                <p className="text-muted-foreground">{t.noOrders}</p>
               ) : (
                 <>
                   {/* Desktop: keep original table view */}
                   <div className="hidden md:block">
                     <Table>
                       <TableHeader>
-                        <TableRow className="border-[#2A2A2A]">
-                          <TableHead className="text-[#B0B0B0]">#</TableHead>
-                          <TableHead className="text-[#B0B0B0]">{t.customer}</TableHead>
-                          <TableHead className="text-[#B0B0B0]">{t.total}</TableHead>
-                          <TableHead className="text-[#B0B0B0]">{t.status}</TableHead>
-                          <TableHead className="text-[#B0B0B0]">{t.outlet}</TableHead>
-                          <TableHead className="text-[#B0B0B0]">{t.actions}</TableHead>
+                        <TableRow className="border-border">
+                          <TableHead className="text-muted-foreground">#</TableHead>
+                          <TableHead className="text-muted-foreground">{t.customer}</TableHead>
+                          <TableHead className="text-muted-foreground">{t.total}</TableHead>
+                          <TableHead className="text-muted-foreground">{t.status}</TableHead>
+                          <TableHead className="text-muted-foreground">{t.outlet}</TableHead>
+                          <TableHead className="text-muted-foreground">{t.actions}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {orders.map((o) => (
-                          <TableRow key={o.id} className="border-[#2A2A2A]">
-                            <TableCell className="text-white">{o.order_number ?? o.id.slice(0, 8)}</TableCell>
-                            <TableCell className="text-[#B0B0B0]">
+                          <TableRow key={o.id} className="border-border">
+                            <TableCell className="text-foreground">{o.order_number ?? o.id.slice(0, 8)}</TableCell>
+                            <TableCell className="text-muted-foreground">
                               {o.user_name} — {o.user_phone}
                             </TableCell>
-                            <TableCell className="text-[#B0B0B0]">{o.total_price} DT</TableCell>
+                            <TableCell className="text-muted-foreground">{o.total_price} DT</TableCell>
                             <TableCell>
                               {(() => {
                                 const s = o.status;
@@ -583,12 +583,12 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                                 return (
                                   <span className="inline-flex items-center gap-1.5" title={s}>
                                     <span className={`w-2 h-2 rounded-full shrink-0 ${conf.dot}`} />
-                                    <span className="text-[#B0B0B0]">{conf.label}</span>
+                                    <span className="text-muted-foreground">{conf.label}</span>
                                   </span>
                                 );
                               })()}
                             </TableCell>
-                            <TableCell className="text-[#B0B0B0]">{(o.pos_outlets as { name?: string })?.name || "—"}</TableCell>
+                            <TableCell className="text-muted-foreground">{(o.pos_outlets as { name?: string })?.name || "—"}</TableCell>
                             <TableCell>
                               <Button
                                 variant="ghost"
@@ -673,15 +673,15 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                               : { dot: "bg-[#888]", label: s };
 
                     return (
-                      <Card key={o.id} className="bg-[#1F1F1F] border-[#2A2A2A]">
+                      <Card key={o.id} className="bg-card border-border">
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-xs" style={{ color: "#B0B0B0" }}>
+                              <p className="text-xs text-muted-foreground">
                                 #{o.order_number ?? o.id.slice(0, 8)}
                               </p>
-                              <p className="text-sm font-semibold" style={{ color: "#FFFFFF" }}>
-                                {o.user_name} <span className="font-normal" style={{ color: "#B0B0B0" }}>— {o.user_phone}</span>
+                              <p className="text-sm font-semibold text-foreground">
+                                {o.user_name} <span className="font-normal text-muted-foreground">— {o.user_phone}</span>
                               </p>
                             </div>
 
@@ -690,24 +690,24 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                               title={s}
                             >
                               <span className={`w-2 h-2 rounded-full shrink-0 ${conf.dot}`} />
-                              <span className="text-[#B0B0B0]">{conf.label}</span>
+                              <span className="text-muted-foreground">{conf.label}</span>
                             </span>
                           </div>
 
                           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
-                              <p className="text-xs" style={{ color: "#B0B0B0" }}>
+                              <p className="text-xs text-muted-foreground">
                                 {t.total}
                               </p>
-                              <p className="text-sm font-semibold" style={{ color: "#B0B0B0" }}>
+                              <p className="text-sm font-semibold text-muted-foreground">
                                 {o.total_price} DT
                               </p>
                             </div>
                             <div>
-                              <p className="text-xs" style={{ color: "#B0B0B0" }}>
+                              <p className="text-xs text-muted-foreground">
                                 {t.outlet}
                               </p>
-                              <p className="text-sm font-semibold" style={{ color: "#B0B0B0" }}>
+                              <p className="text-sm font-semibold text-muted-foreground">
                                 {(o.pos_outlets as { name?: string })?.name || "—"}
                               </p>
                             </div>
@@ -789,64 +789,64 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
         </TabsContent>
 
         <TabsContent value="statistics" className="mt-4">
-          <Card className="bg-[#1F1F1F] border-[#2A2A2A]">
+          <Card className="bg-card border-border">
             <CardHeader className="flex flex-row justify-between flex-wrap gap-2">
               <CardTitle style={{ color: "#E21836" }} className="flex items-center gap-2"><BarChart3 className="w-5 h-5" />{t.statistics}</CardTitle>
               <div className="flex flex-wrap gap-2 items-center">
                 <Select value={statsOutletFilter} onValueChange={setStatsOutletFilter}>
-                  <SelectTrigger className="w-[180px] bg-[#252525] border-[#2A2A2A] text-white"><SelectValue placeholder={t.outlet} /></SelectTrigger>
+                  <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.outlet} /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">{language === "en" ? "All outlets" : "Tous"}</SelectItem>
                     {outlets.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Input type="date" className="w-[140px] bg-[#252525] border-[#2A2A2A] text-white" value={statsFrom} onChange={e => setStatsFrom(e.target.value)} placeholder="From" />
-                <Input type="date" className="w-[140px] bg-[#252525] border-[#2A2A2A] text-white" value={statsTo} onChange={e => setStatsTo(e.target.value)} placeholder="To" />
+                <Input type="date" className="w-[140px]" value={statsFrom} onChange={e => setStatsFrom(e.target.value)} placeholder="From" />
+                <Input type="date" className="w-[140px]" value={statsTo} onChange={e => setStatsTo(e.target.value)} placeholder="To" />
                 <Button size="sm" variant="ghost" onClick={loadStats} disabled={statsLoading}>{statsLoading ? <Loader size="sm" className="[background:#E21836]" /> : <RefreshCw className="w-4 h-4" />}</Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              {statsLoading ? <p className="text-[#B0B0B0] flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />Loading…</p> : stats ? (
+              {statsLoading ? <p className="text-muted-foreground flex items-center gap-2"><Loader size="sm" className="[background:#E21836]" />Loading…</p> : stats ? (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
-                      <p className="text-[#B0B0B0] text-sm">{t.totalOrders}</p>
-                      <p className="text-2xl font-bold text-white">{stats.totalOrders}</p>
+                    <div className="p-4 rounded-lg bg-muted/40 border border-border">
+                      <p className="text-muted-foreground text-sm">{t.totalOrders}</p>
+                      <p className="text-2xl font-bold text-foreground">{stats.totalOrders}</p>
                     </div>
-                    <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
-                      <p className="text-[#B0B0B0] text-sm">{t.totalRevenue} ({language === "en" ? "paid only" : "payé uniquement"})</p>
+                    <div className="p-4 rounded-lg bg-muted/40 border border-border">
+                      <p className="text-muted-foreground text-sm">{t.totalRevenue} ({language === "en" ? "paid only" : "payé uniquement"})</p>
                       <p className="text-2xl font-bold text-[#E21836]">{(stats.totalRevenue ?? 0).toFixed(2)} DT</p>
                     </div>
                   </div>
                   <div>
                     <p className="text-[#E21836] font-semibold mb-2">{language === "en" ? "By status" : "Par statut"}</p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
-                        <p className="text-[#B0B0B0] text-sm">{t.paidOrders}</p>
-                        <p className="text-xl font-bold text-white">{stats.paidOrders ?? 0}</p>
-                        <p className="text-[#B0B0B0] text-sm mt-0.5">{t.paidTickets}</p>
-                        <p className="text-lg font-bold text-white">{stats.paidTickets ?? 0}</p>
-                        <p className="text-[#B0B0B0] text-sm mt-0.5">{t.paidRevenue}</p>
+                      <div className="p-4 rounded-lg bg-muted/40 border border-border">
+                        <p className="text-muted-foreground text-sm">{t.paidOrders}</p>
+                        <p className="text-xl font-bold text-foreground">{stats.paidOrders ?? 0}</p>
+                        <p className="text-muted-foreground text-sm mt-0.5">{t.paidTickets}</p>
+                        <p className="text-lg font-bold text-foreground">{stats.paidTickets ?? 0}</p>
+                        <p className="text-muted-foreground text-sm mt-0.5">{t.paidRevenue}</p>
                         <p className="text-lg font-bold text-[#10B981]">{(stats.paidRevenue ?? 0).toFixed(2)} DT</p>
                       </div>
-                      <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
-                        <p className="text-[#B0B0B0] text-sm">{t.pendingOrders}</p>
-                        <p className="text-xl font-bold text-white">{stats.pendingOrders ?? 0}</p>
-                        <p className="text-[#B0B0B0] text-sm mt-0.5">{t.pendingTickets}</p>
-                        <p className="text-lg font-bold text-white">{stats.pendingTickets ?? 0}</p>
-                        <p className="text-[#B0B0B0] text-sm mt-0.5">{t.pendingRevenue}</p>
+                      <div className="p-4 rounded-lg bg-muted/40 border border-border">
+                        <p className="text-muted-foreground text-sm">{t.pendingOrders}</p>
+                        <p className="text-xl font-bold text-foreground">{stats.pendingOrders ?? 0}</p>
+                        <p className="text-muted-foreground text-sm mt-0.5">{t.pendingTickets}</p>
+                        <p className="text-lg font-bold text-foreground">{stats.pendingTickets ?? 0}</p>
+                        <p className="text-muted-foreground text-sm mt-0.5">{t.pendingRevenue}</p>
                         <p className="text-lg font-bold text-[#F59E0B]">{(stats.pendingRevenue ?? 0).toFixed(2)} DT</p>
                       </div>
-                      <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
-                        <p className="text-[#B0B0B0] text-sm">{t.rejectedOrders}</p>
+                      <div className="p-4 rounded-lg bg-muted/40 border border-border">
+                        <p className="text-muted-foreground text-sm">{t.rejectedOrders}</p>
                         <p className="text-xl font-bold text-[#EF4444]">{stats.rejectedOrders ?? 0}</p>
-                        <p className="text-[#B0B0B0] text-sm mt-0.5">{t.rejectedTickets}</p>
+                        <p className="text-muted-foreground text-sm mt-0.5">{t.rejectedTickets}</p>
                         <p className="text-lg font-bold text-[#EF4444]">{stats.rejectedTickets ?? 0}</p>
                       </div>
-                      <div className="p-4 rounded-lg bg-[#252525] border border-[#2A2A2A]">
-                        <p className="text-[#B0B0B0] text-sm">{t.removedOrders}</p>
+                      <div className="p-4 rounded-lg bg-muted/40 border border-border">
+                        <p className="text-muted-foreground text-sm">{t.removedOrders}</p>
                         <p className="text-xl font-bold text-[#6B7280]">{stats.removedOrders ?? 0}</p>
-                        <p className="text-[#B0B0B0] text-sm mt-0.5">{t.removedTickets}</p>
+                        <p className="text-muted-foreground text-sm mt-0.5">{t.removedTickets}</p>
                         <p className="text-lg font-bold text-[#6B7280]">{stats.removedTickets ?? 0}</p>
                       </div>
                     </div>
@@ -856,10 +856,10 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                       <p className="text-[#E21836] font-semibold mb-2">{t.daily} ({language === "en" ? "paid only" : "payés uniquement"})</p>
                       <ResponsiveContainer width="100%" height={240}>
                         <LineChart data={stats.daily}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" />
-                          <XAxis dataKey="date" stroke="#B0B0B0" tick={{ fill: "#B0B0B0" }} />
-                          <YAxis stroke="#B0B0B0" tick={{ fill: "#B0B0B0" }} />
-                          <Tooltip contentStyle={{ background: "#1F1F1F", border: "1px solid #2A2A2A" }} labelStyle={{ color: "#fff" }} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                          <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                          <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                          <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} labelStyle={{ color: "hsl(var(--foreground))" }} />
                           <Legend />
                           <Line type="monotone" dataKey="orders" stroke="#E21836" name={language === "en" ? "Paid orders" : "Commandes payées"} strokeWidth={2} />
                           <Line type="monotone" dataKey="revenue" stroke="#10B981" name={language === "en" ? "Paid revenue (DT)" : "Chiffre payé (DT)"} strokeWidth={2} />
@@ -871,16 +871,16 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                     <div>
                       <p className="text-[#E21836] font-semibold mb-2">{t.byOutlet} ({language === "en" ? "paid only" : "payés uniquement"})</p>
                       <Table>
-                        <TableHeader><TableRow className="border-[#2A2A2A]">
-                          <TableHead className="text-[#B0B0B0]">{t.outlet}</TableHead>
-                          <TableHead className="text-[#B0B0B0]">{t.paidOrders}</TableHead>
-                          <TableHead className="text-[#B0B0B0]">{t.paidRevenue}</TableHead>
+                        <TableHeader><TableRow className="border-border">
+                          <TableHead className="text-muted-foreground">{t.outlet}</TableHead>
+                          <TableHead className="text-muted-foreground">{t.paidOrders}</TableHead>
+                          <TableHead className="text-muted-foreground">{t.paidRevenue}</TableHead>
                         </TableRow></TableHeader>
                         <TableBody>
                           {stats.byOutlet.map((x: { outlet_id: string; outlet_name: string; total_orders: number; total_revenue: number }) => (
-                            <TableRow key={x.outlet_id || x.outlet_name} className="border-[#2A2A2A]">
-                              <TableCell className="text-white">{x.outlet_name}</TableCell>
-                              <TableCell className="text-[#B0B0B0]">{x.total_orders}</TableCell>
+                            <TableRow key={x.outlet_id || x.outlet_name} className="border-border">
+                              <TableCell className="text-foreground">{x.outlet_name}</TableCell>
+                              <TableCell className="text-muted-foreground">{x.total_orders}</TableCell>
                               <TableCell className="text-[#E21836]">{x.total_revenue.toFixed(2)} DT</TableCell>
                             </TableRow>
                           ))}
@@ -893,10 +893,10 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                       <p className="text-[#E21836] font-semibold mb-2">{t.byPassType} ({language === "en" ? "paid tickets only" : "billets payés uniquement"})</p>
                       <ResponsiveContainer width="100%" height={220}>
                         <BarChart data={Object.entries(stats.byPassType).map(([k, v]) => ({ name: k, count: v }))} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" />
-                          <XAxis dataKey="name" stroke="#B0B0B0" tick={{ fill: "#B0B0B0" }} />
-                          <YAxis stroke="#B0B0B0" tick={{ fill: "#B0B0B0" }} />
-                          <Tooltip contentStyle={{ background: "#1F1F1F", border: "1px solid #2A2A2A" }} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                          <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                          <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                          <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
                           <Bar dataKey="count" fill="#E21836" name={language === "en" ? "Paid tickets" : "Billets payés"} radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -907,42 +907,42 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                       <p className="text-[#E21836] font-semibold mb-2">{t.byStatus}</p>
                       <div className="flex flex-wrap gap-2">
                         {Object.entries(stats.byStatus).map(([k, v]) => (
-                          <span key={k} className="px-3 py-1.5 rounded-lg bg-[#252525] border border-[#2A2A2A] text-[#B0B0B0] text-sm">{k}: <strong className="text-white">{v}</strong></span>
+                          <span key={k} className="px-3 py-1.5 rounded-lg bg-muted/40 border border-border text-muted-foreground text-sm">{k}: <strong className="text-foreground">{v}</strong></span>
                         ))}
                       </div>
                     </div>
                   )}
                   {!stats.daily?.length && !stats.byOutlet?.length && Object.keys(stats.byPassType || {}).length === 0 && Object.keys(stats.byStatus || {}).length === 0 && (
-                    <p className="text-[#B0B0B0]">{language === "en" ? "No data for the selected filters" : "Aucune donnée pour les filtres choisis"}</p>
+                    <p className="text-muted-foreground">{language === "en" ? "No data for the selected filters" : "Aucune donnée pour les filtres choisis"}</p>
                   )}
                 </>
-              ) : <p className="text-[#B0B0B0]">—</p>}
+              ) : <p className="text-muted-foreground">—</p>}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="audit" className="mt-4">
-          <Card className="bg-[#1F1F1F] border-[#2A2A2A]">
+          <Card className="bg-card border-border">
             <CardHeader className="flex flex-row justify-between">
               <CardTitle style={{ color: "#E21836" }}>{t.audit}</CardTitle>
               <Button size="sm" variant="ghost" onClick={loadAudit}><RefreshCw className="w-4 h-4" /></Button>
             </CardHeader>
             <CardContent>
-              {audit.length === 0 ? <p className="text-[#B0B0B0]">{t.noAudit}</p> : (
+              {audit.length === 0 ? <p className="text-muted-foreground">{t.noAudit}</p> : (
                 <Table>
-                  <TableHeader><TableRow className="border-[#2A2A2A]">
-                    <TableHead className="text-[#B0B0B0]">Time</TableHead>
-                    <TableHead className="text-[#B0B0B0]">Action</TableHead>
-                    <TableHead className="text-[#B0B0B0]">By</TableHead>
-                    <TableHead className="text-[#B0B0B0]">Target</TableHead>
+                  <TableHeader><TableRow className="border-border">
+                    <TableHead className="text-muted-foreground">Time</TableHead>
+                    <TableHead className="text-muted-foreground">Action</TableHead>
+                    <TableHead className="text-muted-foreground">By</TableHead>
+                    <TableHead className="text-muted-foreground">Target</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
                     {audit.map(a => (
-                      <TableRow key={a.id} className="border-[#2A2A2A]">
-                        <TableCell className="text-[#B0B0B0]">{format(new Date(a.created_at), "PPp")}</TableCell>
-                        <TableCell className="text-white">{a.action}</TableCell>
-                        <TableCell className="text-[#B0B0B0]">{a.performed_by_email} ({a.performed_by_type})</TableCell>
-                        <TableCell className="text-[#B0B0B0]">{a.target_type} {a.target_id?.slice(0, 8)}</TableCell>
+                      <TableRow key={a.id} className="border-border">
+                        <TableCell className="text-muted-foreground">{format(new Date(a.created_at), "PPp")}</TableCell>
+                        <TableCell className="text-foreground">{a.action}</TableCell>
+                        <TableCell className="text-muted-foreground">{a.performed_by_email} ({a.performed_by_type})</TableCell>
+                        <TableCell className="text-muted-foreground">{a.target_type} {a.target_id?.slice(0, 8)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

@@ -636,10 +636,10 @@ const Application = ({ language }: ApplicationProps) => {
         className="w-full max-w-4xl mx-auto text-center py-16 px-4 md:px-0 transform transition-all duration-1000 ease-out relative z-10"
       >
         <div className="flex flex-col items-center gap-6">
-          <h1 className="text-5xl md:text-6xl font-heading font-bold mb-3" style={{ color: '#FFFFFF' }}>
+          <h1 className="text-5xl md:text-6xl font-heading font-bold mb-3 text-foreground">
             {t.heroTitle}
           </h1>
-          <p className="text-xl md:text-2xl max-w-3xl mx-auto leading-relaxed" style={{ color: '#B0B0B0' }}>
+          <p className="text-xl md:text-2xl max-w-3xl mx-auto leading-relaxed text-muted-foreground">
             {t.heroSubtitle}
           </p>
         </div>
@@ -650,17 +650,17 @@ const Application = ({ language }: ApplicationProps) => {
         className="w-full max-w-4xl mx-auto mb-12 transform transition-all duration-1000 ease-out relative z-10"
       >
         <Card 
-          className="shadow-2xl overflow-hidden"
+          className="shadow-2xl overflow-hidden bg-card border-border"
           style={{
-            backgroundColor: '#1F1F1F',
-            borderColor: '#2A2A2A'
+            backgroundColor: 'hsl(var(--card))',
+            borderColor: 'hsl(var(--border))'
           }}
         >
               <div 
                 className="relative p-6 border-b"
                 style={{
-                  backgroundColor: '#1F1F1F',
-                  borderColor: '#2A2A2A'
+                  backgroundColor: 'hsl(var(--card))',
+                  borderColor: 'hsl(var(--border))'
                 }}
               >
                 <CardHeader className="text-center pb-0 relative z-10">
@@ -679,33 +679,20 @@ const Application = ({ language }: ApplicationProps) => {
                   <Button 
                     asChild 
                     variant="outline" 
-                    className="w-full"
-                    style={{
-                      backgroundColor: '#1F1F1F',
-                      borderColor: '#2A2A2A',
-                      color: '#FFFFFF'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#E21836';
-                      e.currentTarget.style.color = '#E21836';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#2A2A2A';
-                      e.currentTarget.style.color = '#FFFFFF';
-                    }}
+                    className="w-full border-border bg-card text-foreground hover:border-primary hover:text-primary"
                   >
                     <Link to="/ambassador/auth">{t.login}</Link>
                   </Button>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  <p className="text-sm mb-4" style={{ color: '#B0B0B0' }}>
+                  <p className="text-sm mb-4 text-muted-foreground">
                     {language === 'en' ? 'Fields marked * are required' : 'Les champs marqués * sont obligatoires'}
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="fullName" className="text-sm font-medium" style={{ color: '#FFFFFF' }}>
-                        {t.fullName} <span style={{ color: '#B0B0B0' }}>*</span>
+                      <Label htmlFor="fullName" className="text-sm font-medium text-foreground">
+                        {t.fullName} <span className="text-muted-foreground">*</span>
                       </Label>
                       <Input 
                         id="fullName" 
@@ -744,27 +731,18 @@ const Application = ({ language }: ApplicationProps) => {
                         }}
                         required
                       >
-                        <SelectTrigger 
-                          className="h-12 w-full"
-                          style={{
-                            backgroundColor: '#252525',
-                            borderColor: '#2A2A2A',
-                            color: '#FFFFFF'
-                          }}
-                        >
+                        <SelectTrigger className="h-12 w-full">
                           <SelectValue placeholder={language === 'en' ? 'Select a city' : 'Sélectionner une ville'} />
                         </SelectTrigger>
                         <SelectContent 
                           className="z-[9999]" 
                           position="popper"
-                          style={{ backgroundColor: '#1F1F1F', borderColor: '#2A2A2A' }}
                         >
                           {CITIES.map((city) => (
                             <SelectItem 
                               key={city} 
                               value={city}
-                              className="focus:bg-[#E21836]/20 focus:text-[#E21836] data-[highlighted]:bg-[#E21836]/20 data-[highlighted]:text-[#E21836]"
-                              style={{ color: '#B0B0B0' }}
+                              className="focus:bg-primary/20 focus:text-primary data-[highlighted]:bg-primary/20 data-[highlighted]:text-primary"
                             >
                               {city}
                             </SelectItem>
@@ -785,27 +763,18 @@ const Application = ({ language }: ApplicationProps) => {
                           }}
                           required
                         >
-                          <SelectTrigger 
-                            className="h-12 w-full"
-                            style={{
-                              backgroundColor: '#252525',
-                              borderColor: '#2A2A2A',
-                              color: '#FFFFFF'
-                            }}
-                          >
+                          <SelectTrigger className="h-12 w-full">
                             <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
                           </SelectTrigger>
                           <SelectContent 
                             className="z-[9999]" 
                             position="popper"
-                            style={{ backgroundColor: '#1F1F1F', borderColor: '#2A2A2A' }}
                           >
                             {SOUSSE_VILLES.map((ville) => (
                               <SelectItem 
                                 key={ville} 
                                 value={ville}
-                                className="focus:bg-[#E21836]/20 focus:text-[#E21836] data-[highlighted]:bg-[#E21836]/20 data-[highlighted]:text-[#E21836]"
-                                style={{ color: '#B0B0B0' }}
+                                className="focus:bg-primary/20 focus:text-primary data-[highlighted]:bg-primary/20 data-[highlighted]:text-primary"
                               >
                                 {ville}
                               </SelectItem>
@@ -827,27 +796,18 @@ const Application = ({ language }: ApplicationProps) => {
                           }}
                           required
                         >
-                          <SelectTrigger 
-                            className="h-12 w-full"
-                            style={{
-                              backgroundColor: '#252525',
-                              borderColor: '#2A2A2A',
-                              color: '#FFFFFF'
-                            }}
-                          >
+                          <SelectTrigger className="h-12 w-full">
                             <SelectValue placeholder={language === 'en' ? 'Select a neighborhood' : 'Sélectionner un quartier'} />
                           </SelectTrigger>
                           <SelectContent 
                             className="z-[9999]" 
                             position="popper"
-                            style={{ backgroundColor: '#1F1F1F', borderColor: '#2A2A2A' }}
                           >
                             {TUNIS_VILLES.map((ville) => (
                               <SelectItem 
                                 key={ville} 
                                 value={ville}
-                                className="focus:bg-[#E21836]/20 focus:text-[#E21836] data-[highlighted]:bg-[#E21836]/20 data-[highlighted]:text-[#E21836]"
-                                style={{ color: '#B0B0B0' }}
+                                className="focus:bg-primary/20 focus:text-primary data-[highlighted]:bg-primary/20 data-[highlighted]:text-primary"
                               >
                                 {ville}
                               </SelectItem>
@@ -899,7 +859,7 @@ const Application = ({ language }: ApplicationProps) => {
                         placeholder="https://www.instagram.com/username"
                         className="h-12"
                       />
-                      <p className="text-xs" style={{ color: '#B0B0B0' }}>
+                      <p className="text-xs text-muted-foreground">
                         {language === 'en' 
                           ? 'Must start with https://www.instagram.com/ or https://instagram.com/' 
                           : 'Doit commencer par https://www.instagram.com/ ou https://instagram.com/'}
@@ -940,20 +900,7 @@ const Application = ({ language }: ApplicationProps) => {
                     <Button 
                       asChild 
                       variant="outline" 
-                      className="w-full hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
-                      style={{
-                        backgroundColor: '#1F1F1F',
-                        borderColor: '#2A2A2A',
-                        color: '#FFFFFF'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = '#E21836';
-                        e.currentTarget.style.color = '#E21836';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = '#2A2A2A';
-                        e.currentTarget.style.color = '#FFFFFF';
-                      }}
+                      className="w-full hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border-border bg-card text-foreground hover:border-primary hover:text-primary"
                     >
                       <Link to="/ambassador/auth">{t.login}</Link>
                     </Button>

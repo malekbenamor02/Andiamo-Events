@@ -111,10 +111,10 @@ export function AdminDesktopSidebarRail({
 
   return (
     <div
-      className="hidden lg:block shrink-0 sticky top-20 self-start h-[calc(100vh-5rem)] min-h-0 w-3 overflow-visible relative z-30"
+      className="hidden lg:block shrink-0 sticky top-16 self-start h-[calc(100vh-4rem)] min-h-0 w-3 overflow-visible relative z-30"
       style={{
         /* Fixed layout width: flyout overlays main content so tabs don’t shift when opening/closing. */
-        borderRight: "1px solid #2A2A2A",
+        borderRight: "1px solid hsl(var(--border))",
       }}
       onMouseEnter={handleDesktopSidebarEnter}
       onMouseLeave={handleDesktopSidebarLeave}
@@ -122,7 +122,7 @@ export function AdminDesktopSidebarRail({
       <div
         className="absolute left-0 top-0 bottom-0 w-3 flex items-center justify-center pointer-events-none z-10"
         style={{
-          background: "rgba(26, 26, 26, 0.85)",
+          background: "hsl(var(--background) / 0.85)",
           opacity: sidebarNavVisible ? 0 : 1,
           transition: "opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1)",
         }}
@@ -133,8 +133,8 @@ export function AdminDesktopSidebarRail({
       <div
         className="absolute left-0 top-0 z-20 h-full w-64 min-h-0 flex flex-col overflow-hidden motion-reduce:transition-none"
         style={{
-          background: "#1A1A1A",
-          borderRight: "1px solid #2A2A2A",
+          background: "hsl(var(--background))",
+          borderRight: "1px solid hsl(var(--border))",
           transform: sidebarNavVisible ? "translate3d(0,0,0)" : "translate3d(-100%,0,0)",
           transition:
             "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.32s cubic-bezier(0.22, 1, 0.36, 1)",
@@ -142,8 +142,8 @@ export function AdminDesktopSidebarRail({
           pointerEvents: sidebarNavVisible ? "auto" : "none",
         }}
       >
-        <div className="p-4 border-b shrink-0" style={{ borderColor: "#2A2A2A" }}>
-          <h2 className="text-lg font-semibold" style={{ color: "#FFFFFF" }}>
+        <div className="p-4 border-b shrink-0" style={{ borderColor: "hsl(var(--border))" }}>
+          <h2 className="text-lg font-semibold text-foreground">
             Navigation
           </h2>
         </div>
@@ -495,7 +495,7 @@ export function AdminDesktopSidebarRail({
             )}
           </div>
         </div>
-        <div className="p-4 border-t border-border/20 shrink-0" style={{ background: "#1A1A1A" }}>
+        <div className="p-4 border-t border-border/20 shrink-0" style={{ background: "hsl(var(--background))" }}>
           <Button
             variant="outline"
             onClick={() => void handleLogout()}

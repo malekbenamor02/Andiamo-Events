@@ -130,7 +130,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center min-h-screen bg-black">
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center min-h-screen bg-background">
         <LoadingScreen 
           size="fullscreen" 
           text={t.loading}
@@ -214,7 +214,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
                   variant="ghost"
                   size="icon"
                   onClick={() => navigate('/events')}
-                  className="bg-black/40 hover:bg-black/60 text-white backdrop-blur-sm border border-white/20"
+                  className="bg-background/70 hover:bg-background/85 text-foreground backdrop-blur-sm border border-border"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </Button>
@@ -243,7 +243,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
               <Calendar className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
               <div>
                 <p className="text-sm text-muted-foreground mb-1">{t.eventDate}</p>
-                <p className="text-white font-semibold">{formatDate(event.date)}</p>
+                <p className="text-foreground font-semibold">{formatDate(event.date)}</p>
               </div>
             </div>
             
@@ -251,7 +251,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
               <MapPin className="w-5 h-5 text-pink-400 mt-1 flex-shrink-0" />
               <div>
                 <p className="text-sm text-muted-foreground mb-1">{t.location}</p>
-                <p className="text-white font-semibold">{event.venue}, {event.city}</p>
+                <p className="text-foreground font-semibold">{event.venue}, {event.city}</p>
               </div>
             </div>
             

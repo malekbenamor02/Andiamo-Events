@@ -318,8 +318,8 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       {/* Animated Background Elements */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-64 h-64 rounded-full bg-primary/20 blur-3xl animate-float" />
-        <div className="absolute bottom-1/3 right-1/4 w-48 h-48 rounded-full bg-secondary/20 blur-3xl animate-float delay-1000" />
-        <div className="absolute top-1/2 right-1/3 w-32 h-32 rounded-full bg-accent/10 blur-3xl animate-float delay-2000" />
+        <div className="absolute bottom-1/3 right-1/4 w-48 h-48 rounded-full bg-primary/16 blur-3xl animate-float delay-1000" />
+        <div className="absolute top-1/2 right-1/3 w-32 h-32 rounded-full bg-primary/10 blur-3xl animate-float delay-2000" />
         <div className="absolute inset-0 opacity-[0.05]" style={{
           backgroundImage: `radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)`,
           backgroundSize: '20px 20px',
@@ -329,11 +329,11 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
       <div className="w-full max-w-sm relative z-10 animate-in fade-in zoom-in-95 duration-700">
         <Card className="glass border-border/50 shadow-2xl">
           <CardHeader className="text-center pt-6 pb-3 relative">
-            <div className="mx-auto w-12 h-12 bg-gradient-to-r from-primary via-secondary to-accent rounded-full flex items-center justify-center mb-3 relative overflow-hidden animate-pulse-glow">
+            <div className="mx-auto w-12 h-12 bg-primary rounded-full flex items-center justify-center mb-3 relative overflow-hidden animate-pulse-glow">
               <Lock className="w-6 h-6 text-primary-foreground relative z-10" />
               <Sparkles className="absolute top-0.5 right-0.5 w-3 h-3 text-white/80 animate-spin-slow" />
             </div>
-            <CardTitle className="text-2xl font-heading font-bold text-gradient-neon mb-1">
+            <CardTitle className="text-2xl font-heading font-bold text-primary mb-1">
               {t[language].title}
             </CardTitle>
             <CardDescription className="text-muted-foreground text-xs">
@@ -362,11 +362,10 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     autoComplete="email"
-                    className="w-full pl-10 h-10 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
+                    className="w-full h-10 bg-white dark:bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
                     placeholder="admin@andiamoevents.com"
                   />
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <div className="absolute inset-0 rounded-md pointer-events-none opacity-0 group-hover:opacity-10 transition-opacity duration-300 bg-gradient-to-r from-primary/20 to-secondary/20" />
+                  <div className="absolute inset-0 rounded-md pointer-events-none opacity-0 group-hover:opacity-10 transition-opacity duration-300 bg-primary/20" />
                 </div>
               </div>
               
@@ -383,10 +382,9 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     autoComplete="current-password"
-                    className="w-full pr-10 pl-10 h-10 bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
+                    className="w-full pr-10 h-10 bg-white dark:bg-input border-border focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-300 group"
                     placeholder="••••••••"
                   />
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Button
                     type="button"
                     variant="ghost"
@@ -400,7 +398,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                       <Eye className="h-4 w-4" />
                     )}
                   </Button>
-                  <div className="absolute inset-0 rounded-md pointer-events-none opacity-0 group-hover:opacity-10 transition-opacity duration-300 bg-gradient-to-r from-primary/20 to-secondary/20" />
+                  <div className="absolute inset-0 rounded-md pointer-events-none opacity-0 group-hover:opacity-10 transition-opacity duration-300 bg-primary/20" />
                 </div>
               </div>
               
@@ -417,7 +415,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
               
               <Button
                 type="submit"
-                className="w-full h-10 btn-gradient text-base font-semibold relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
+                className="w-full h-10 bg-primary hover:bg-primary/90 text-primary-foreground text-base font-semibold relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300"
                 disabled={loading || (!RECAPTCHA_SITE_KEY && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && !window.location.hostname.startsWith('192.168.') && !window.location.hostname.startsWith('10.0.') && !window.location.hostname.startsWith('172.'))}
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
@@ -433,7 +431,7 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
                     </>
                   )}
                 </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-secondary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="absolute inset-0 bg-primary/25 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <div className="absolute inset-0 bg-[length:200%_200%] animate-shimmer opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ backgroundImage: 'linear-gradient(to right, transparent 0%, rgba(255,255,255,0.1) 30%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.1) 70%, transparent 100%)' }} />
               </Button>
             </form>

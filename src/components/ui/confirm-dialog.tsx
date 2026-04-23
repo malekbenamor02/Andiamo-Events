@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import Loader from "@/components/ui/Loader";
 
-const dialogClass = "bg-[#1F1F1F] border-[#2A2A2A] text-white";
+const dialogClass = "bg-card border-border text-foreground";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -51,9 +51,9 @@ export function ConfirmDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={dialogClass}>
         <DialogHeader>
-          <DialogTitle className="text-white">{title}</DialogTitle>
+          <DialogTitle className="text-foreground">{title}</DialogTitle>
           {description && (
-            <DialogDescription className="text-[#B0B0B0]">
+            <DialogDescription className="text-muted-foreground">
               {description}
             </DialogDescription>
           )}
@@ -62,7 +62,7 @@ export function ConfirmDialog({
           <Button
             type="button"
             variant="outline"
-            className="border-[#2A2A2A] text-[#B0B0B0] hover:bg-[#2A2A2A] hover:text-white"
+            className="border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             onClick={handleCancel}
             disabled={confirmLoading}
           >
@@ -72,8 +72,8 @@ export function ConfirmDialog({
             type="button"
             className={
               variant === "danger"
-                ? "bg-[#E21836] hover:bg-[#c4142e] text-white"
-                : "bg-[#E21836] hover:bg-[#c4142e] text-white"
+                ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                : "bg-primary hover:bg-primary/90 text-primary-foreground"
             }
             onClick={handleConfirm}
             disabled={confirmLoading}

@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Instagram, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigationContent } from "@/hooks/useSiteContent";
 
 interface NavigationProps {
   language: 'en' | 'fr';
   toggleLanguage: () => void;
+  theme: "dark" | "light";
+  toggleTheme: () => void;
 }
 
 interface NavigationContent {
@@ -26,7 +28,15 @@ interface ContactInfo {
 // Desktop: one slot that cycles Contact / Suggestions with smooth animation
 const CYCLE_MS = 3500;
 
-function AnimatedContactSuggestionsSlot({ language, isActive }: { language: 'en' | 'fr'; isActive: (path: string) => boolean }) {
+function AnimatedContactSuggestionsSlot({
+  language,
+  isActive,
+  inactiveLinkClass,
+}: {
+  language: 'en' | 'fr';
+  isActive: (path: string) => boolean;
+  inactiveLinkClass: string;
+}) {
   const [index, setIndex] = useState(0);
   const contact = language === 'en' ? { name: "Contact", href: "/contact" } : { name: "Contact", href: "/contact" };
   const suggestions = language === 'en' ? { name: "Suggestions", href: "/suggestions" } : { name: "Suggestions", href: "/suggestions" };
@@ -48,7 +58,7 @@ function AnimatedContactSuggestionsSlot({ language, isActive }: { language: 'en'
           to={item.href}
           className={`absolute inset-0 flex items-center text-sm font-medium transition-all duration-500 ease-in-out ${
             i === index ? 'opacity-100 translate-y-0' : 'opacity-0 pointer-events-none -translate-y-2'
-          } ${active ? 'text-primary' : 'text-white hover:text-primary'}`}
+          } ${active ? 'text-primary' : inactiveLinkClass}`}
           style={{ transform: i === index ? 'translateY(0)' : 'translateY(-8px)' }}
         >
           {item.name}
@@ -58,10 +68,12 @@ function AnimatedContactSuggestionsSlot({ language, isActive }: { language: 'en'
   );
 }
 
-const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
+const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: NavigationProps) => {
   const [navigationContent, setNavigationContent] = useState<NavigationContent>({});
   const [contactInfo, setContactInfo] = useState<ContactInfo>({});
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  // Start with white logo, then switch after background detection.
+  const [useBlackLogo, setUseBlackLogo] = useState(false);
   const location = useLocation();
 
   const { data: siteContent } = useNavigationContent();
@@ -71,6 +83,94 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
       if (siteContent.contact_info) setContactInfo(siteContent.contact_info as ContactInfo);
     }
   }, [siteContent]);
+
+  useEffect(() => {
+    // Always start white on first paint / route change.
+    setUseBlackLogo(false);
+
+    let rafId = 0;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const parseRgb = (color: string): [number, number, number, number] | null => {
+      const match = color.match(/rgba?\(([^)]+)\)/i);
+      if (!match) return null;
+      const parts = match[1].split(",").map((p) => p.trim());
+      if (parts.length < 3) return null;
+      const r = Number(parts[0]);
+      const g = Number(parts[1]);
+      const b = Number(parts[2]);
+      const a = parts[3] === undefined ? 1 : Number(parts[3]);
+      if ([r, g, b, a].some((v) => Number.isNaN(v))) return null;
+      return [r, g, b, a];
+    };
+
+    const getEffectiveBackground = (element: Element | null): [number, number, number] => {
+      let current: Element | null = element;
+      while (current && current !== document.documentElement) {
+        const parsed = parseRgb(window.getComputedStyle(current).backgroundColor);
+        if (parsed && parsed[3] > 0.05) {
+          return [parsed[0], parsed[1], parsed[2]];
+        }
+        current = current.parentElement;
+      }
+      return [255, 255, 255];
+    };
+
+    const hasPassedHeroSection = () => {
+      if (location.pathname !== "/") return true;
+      const main = document.getElementById("main-content");
+      const hero = main?.querySelector("section");
+      if (!hero) {
+        // Fallback for any timing/layout race on first paint.
+        return window.scrollY > Math.max(200, window.innerHeight * 0.55);
+      }
+      const heroBottom = hero.getBoundingClientRect().bottom;
+      return heroBottom <= 64;
+    };
+
+    const updateLogoByBackground = () => {
+      // While hero is visible, always keep white logo in all modes.
+      if (!hasPassedHeroSection()) {
+        setUseBlackLogo(false);
+        return;
+      }
+
+      const sampleX = Math.min(120, Math.max(0, window.innerWidth - 1));
+      // Sample below the navbar to read page background, not nav background.
+      const sampleY = Math.min(92, Math.max(0, window.innerHeight - 1));
+      const target = document.elementFromPoint(sampleX, sampleY);
+      const [r, g, b] = getEffectiveBackground(target);
+      const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+
+      // After hero: theme-aware thresholds + hysteresis to avoid flicker.
+      setUseBlackLogo((prev) => {
+        if (theme === "light") {
+          if (prev) return luminance > 0.58;
+          return luminance > 0.66;
+        }
+        // In dark mode, switch to black only on very bright backgrounds.
+        if (prev) return luminance > 0.76;
+        return luminance > 0.84;
+      });
+    };
+
+    const queueUpdate = () => {
+      cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(updateLogoByBackground);
+    };
+
+    // Keep white logo briefly, then detect.
+    timeoutId = setTimeout(queueUpdate, 90);
+    window.addEventListener("scroll", queueUpdate, { passive: true });
+    window.addEventListener("resize", queueUpdate);
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", queueUpdate);
+      window.removeEventListener("resize", queueUpdate);
+    };
+  }, [theme, location.pathname]);
 
   // Mobile: separate Contact and Suggestions links (7 items)
   const navigationMobile = {
@@ -116,19 +216,28 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  const instagramClick = () => {
-    window.open("https://www.instagram.com/andiamo.events/", "_blank");
-  };
-
   const toggleMenu = () => {
     setIsMenuOpen(prev => !prev);
   };
 
   const desktopItems = desktopNavItems[language];
+  const isLightMode = theme === "light";
+  const themeLabel = isLightMode ? "Light" : "Dark";
+  const mobileMenuButtonClass =
+    isLightMode && !useBlackLogo
+      ? "md:hidden p-2 text-white hover:text-white transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-white/25 bg-black/25 hover:bg-black/40 active:scale-95"
+      : "md:hidden p-2 text-foreground hover:text-primary transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-card/60 active:scale-95";
+  const inactiveDesktopLinkClass =
+    isLightMode && useBlackLogo
+      ? "text-foreground hover:text-primary"
+      : "text-white/90 hover:text-primary";
+  const logoSrc = isLightMode && useBlackLogo
+    ? "/email-assets/logo-black.png"
+    : "/email-assets/logo-white.png";
 
   return (
     <>
-      <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
+      <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
@@ -138,7 +247,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
               aria-label="Go to home"
             >
               <img
-                src="/logo.svg"
+                src={logoSrc}
                 alt="Andiamo Events Logo"
                 className="block h-7 w-36 shrink-0 object-contain object-left sm:h-8 sm:w-40"
               />
@@ -148,7 +257,12 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
             <div className="hidden md:flex items-center space-x-8">
               {desktopItems.map((item, i) =>
                 'type' in item && item.type === 'contact_suggestions' ? (
-                  <AnimatedContactSuggestionsSlot key="contact-suggestions" language={language} isActive={isActive} />
+                  <AnimatedContactSuggestionsSlot
+                    key="contact-suggestions"
+                    language={language}
+                    isActive={isActive}
+                    inactiveLinkClass={inactiveDesktopLinkClass}
+                  />
                 ) : (
                   <Link
                     key={'href' in item ? item.href : i}
@@ -156,7 +270,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
                     className={`text-sm font-medium transition-colors ${
                       isActive('href' in item ? item.href : '/')
                         ? "text-primary"
-                        : "text-white hover:text-primary"
+                        : inactiveDesktopLinkClass
                     }`}
                   >
                     {'name' in item ? item.name : ''}
@@ -166,21 +280,27 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
             </div>
 
             {/* Desktop Actions */}
-            <div className="hidden md:flex items-center space-x-4">
+            <div className="hidden md:flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={toggleLanguage}
-                className="btn-language"
+                className="h-8 min-w-[44px] px-3 rounded-xl text-sm font-medium border border-white/35 bg-black/30 text-white hover:bg-black/45 hover:border-white/50 hover:text-white"
               >
                 {language.toUpperCase()}
               </Button>
               <Button
-                onClick={instagramClick}
-                className="btn-gradient"
+                variant="ghost"
+                size="sm"
+                onClick={toggleTheme}
+                className="h-8 p-0 hover:bg-transparent flex items-center"
               >
-                <Instagram className="w-4 h-4 mr-2" />
-                Instagram
+                <span className="theme-switch-shell on-dark">
+                  <span className={`theme-switch-track ${isLightMode ? "is-light" : "is-dark"}`}>
+                    <span className={`theme-switch-thumb ${isLightMode ? "is-light" : "is-dark"}`} />
+                  </span>
+                  <span className="theme-switch-label">{themeLabel}</span>
+                </span>
               </Button>
             </div>
 
@@ -188,7 +308,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
             <button
               type="button"
               onClick={toggleMenu}
-              className="md:hidden p-2 text-white hover:text-primary transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-white/10 active:scale-95"
+              className={mobileMenuButtonClass}
               style={{
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent',
@@ -221,7 +341,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
         <>
           {/* Backdrop */}
           <div
-            className="md:hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[80] animate-fade-in"
+            className="md:hidden fixed inset-0 bg-foreground/30 backdrop-blur-sm z-[80] animate-fade-in"
             onClick={() => setIsMenuOpen(false)}
             onTouchEnd={(e) => {
               e.preventDefault();
@@ -266,7 +386,7 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
                     className={`block px-4 py-3.5 rounded-md text-base font-medium transition-all duration-300 ${
                       isActive(item.href)
                         ? "text-primary bg-card"
-                        : "text-white hover:text-primary hover:bg-card/50"
+                        : "text-foreground hover:text-primary hover:bg-card/50"
                     }`}
                     style={{
                       animation: `slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${index * 0.05}s both`,
@@ -287,19 +407,25 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
                     onClick={() => {
                       toggleLanguage();
                     }}
-                    className="w-full justify-start hover:bg-card/50 transition-all duration-300 text-white"
+                    className="w-full justify-start hover:bg-card/50 transition-all duration-300 text-foreground"
                   >
                     {language.toUpperCase()}
                   </Button>
                   <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
-                      instagramClick();
+                      toggleTheme();
                       setIsMenuOpen(false);
                     }}
-                    className="w-full btn-gradient transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-lg"
+                    className="w-full h-auto justify-start px-0 hover:bg-transparent"
                   >
-                    <Instagram className="w-4 h-4 mr-2" />
-                    Instagram
+                    <span className="theme-switch-shell">
+                      <span className={`theme-switch-track ${isLightMode ? "is-light" : "is-dark"}`}>
+                        <span className={`theme-switch-thumb ${isLightMode ? "is-light" : "is-dark"}`} />
+                      </span>
+                      <span className="theme-switch-label">{themeLabel}</span>
+                    </span>
                   </Button>
                 </div>
               </div>
@@ -343,6 +469,87 @@ const Navigation = ({ language, toggleLanguage }: NavigationProps) => {
         .animate-fade-in {
           animation: fadeIn 0.3s ease-out;
         }
+
+        .theme-switch-shell {
+          display: inline-flex;
+          flex-direction: row;
+          align-items: center;
+          justify-content: center;
+          gap: 0.45rem;
+          min-width: 0;
+          line-height: 1;
+        }
+
+        .theme-switch-track {
+          width: 56px;
+          height: 28px;
+          border-radius: 9999px;
+          border: 1px solid hsl(var(--border) / 0.85);
+          background: hsl(var(--muted) / 0.7);
+          position: relative;
+          box-shadow: inset 0 0 0 1px hsl(var(--background) / 0.2);
+          transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .theme-switch-track.is-dark {
+          background: hsl(var(--card) / 0.65);
+          border-color: hsl(var(--border) / 0.95);
+          box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.12);
+        }
+
+        .theme-switch-track.is-light {
+          background: hsl(var(--muted) / 0.85);
+          border-color: hsl(var(--border) / 0.8);
+        }
+
+        .theme-switch-thumb {
+          width: 22px;
+          height: 22px;
+          border-radius: 9999px;
+          background: hsl(var(--background));
+          border: 1px solid hsl(var(--foreground) / 0.22);
+          position: absolute;
+          top: 2px;
+          left: 2px;
+          box-shadow: 0 1px 3px hsl(var(--foreground) / 0.2), 0 0 0 1px hsl(var(--background) / 0.35);
+          transition: transform 0.25s ease, background-color 0.25s ease, border-color 0.25s ease;
+        }
+
+        .theme-switch-thumb.is-light {
+          transform: translateX(28px);
+        }
+
+        .theme-switch-label {
+          display: inline-flex;
+          align-items: center;
+          font-size: 0.78rem;
+          line-height: 1;
+          font-weight: 500;
+          color: hsl(var(--foreground));
+          white-space: nowrap;
+        }
+
+        .theme-switch-shell.on-dark .theme-switch-track {
+          background: hsl(var(--background) / 0.28);
+          border-color: hsl(var(--background) / 0.55);
+          box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.12);
+        }
+
+        .theme-switch-shell.on-dark .theme-switch-track.is-light {
+          background: hsl(var(--background) / 0.38);
+          border-color: hsl(var(--background) / 0.62);
+        }
+
+        .theme-switch-shell.on-dark .theme-switch-thumb {
+          background: hsl(var(--background) / 0.96);
+          border-color: hsl(var(--background) / 0.65);
+          box-shadow: 0 1px 4px hsl(var(--foreground) / 0.28);
+        }
+
+        .theme-switch-shell.on-dark .theme-switch-label {
+          color: hsl(var(--background) / 0.95);
+        }
+
       `}</style>
     </>
   );

@@ -117,7 +117,7 @@ const Index = ({ language }: IndexProps) => {
       {/* Loading Screen - Appears instantly to prevent blank screen */}
       {/* Only waits for critical hero assets: images (decoded) + videos (first frame) */}
       {!heroMediaLoaded && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center min-h-screen bg-black">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center min-h-screen bg-background">
           <LoadingScreen 
             text="Loading Experience..." 
             size="fullscreen"

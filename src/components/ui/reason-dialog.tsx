@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Loader from "@/components/ui/Loader";
 
-const dialogClass = "bg-[#1F1F1F] border-[#2A2A2A] text-white";
+const dialogClass = "bg-card border-border text-foreground";
 
 export interface ReasonDialogProps {
   open: boolean;
@@ -59,12 +59,12 @@ export function ReasonDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={dialogClass}>
         <DialogHeader>
-          <DialogTitle className="text-white">{title}</DialogTitle>
+          <DialogTitle className="text-foreground">{title}</DialogTitle>
         </DialogHeader>
         <div className="space-y-2 py-2">
-          <Label className="text-[#B0B0B0]">{inputLabel}</Label>
+          <Label className="text-muted-foreground">{inputLabel}</Label>
           <Input
-            className="bg-[#252525] border-[#2A2A2A] text-white placeholder:text-[#666]"
+            className="bg-background border-input text-foreground placeholder:text-muted-foreground"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={placeholder}
@@ -81,7 +81,7 @@ export function ReasonDialog({
           <Button
             type="button"
             variant="outline"
-            className="border-[#2A2A2A] text-[#B0B0B0] hover:bg-[#2A2A2A] hover:text-white"
+            className="border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             onClick={handleCancel}
             disabled={confirmLoading}
           >
@@ -89,7 +89,7 @@ export function ReasonDialog({
           </Button>
           <Button
             type="button"
-            className="bg-[#E21836] hover:bg-[#c4142e] text-white"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
             onClick={handleConfirm}
             disabled={confirmLoading}
           >
