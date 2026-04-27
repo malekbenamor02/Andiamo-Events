@@ -6126,6 +6126,52 @@ Billets envoyés par email. We Create Memories`;
         });
       }
     }
+
+    // /api/admin/consultation-inquiries (GET)
+    if (path === '/api/admin/consultation-inquiries' && method === 'GET') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            details: authResult.details || authResult.reason
+          });
+        }
+
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(500).json({
+            error: 'Server misconfiguration',
+            details: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required'
+          });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const dbClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+        const limitRaw = Number(req.query.limit ?? 200);
+        const limitNum = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 1000) : 200;
+
+        const { data, error } = await dbClient
+          .from('consultation_inquiries')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(limitNum);
+
+        if (error) {
+          return res.status(500).json({
+            error: 'Failed to fetch consultation inquiries',
+            details: error.message || String(error)
+          });
+        }
+
+        return res.status(200).json({ success: true, data: data || [] });
+      } catch (error) {
+        return res.status(500).json({
+          error: 'Server error',
+          details: error.message || String(error)
+        });
+      }
+    }
     
     // ============================================
     // OFFICIAL INVITATIONS API ENDPOINTS (Super Admin Only)

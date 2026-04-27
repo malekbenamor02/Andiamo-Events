@@ -172,6 +172,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/admin/consultation-inquiries",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin/ambassador-sales/orders",
       "destination": "/api/misc.js"
     },
