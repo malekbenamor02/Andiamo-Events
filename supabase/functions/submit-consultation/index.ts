@@ -49,6 +49,15 @@ function isValidTunisiaPhone(value: string): boolean {
   return /^\+216[2459][0-9]{7}$/.test(value);
 }
 
+function normalizeTunisiaPhone(value: string | null): string | null {
+  if (!value) return null;
+  const digitsOnly = value.replace(/\s+/g, "");
+  if (/^[2459][0-9]{7}$/.test(digitsOnly)) {
+    return `+216${digitsOnly}`;
+  }
+  return digitsOnly;
+}
+
 function sanitizePayload(body: ConsultationPayload) {
   const fullName = asTrimmedString(body.full_name);
   const company = asOptionalTrimmedString(body.company);
@@ -56,7 +65,7 @@ function sanitizePayload(body: ConsultationPayload) {
   const vision = asOptionalTrimmedString(body.vision);
   const sourceRaw = asTrimmedString(body.source) ?? "web_form";
   const contactEmail = asOptionalTrimmedString(body.contact_email);
-  const contactPhone = asOptionalTrimmedString(body.contact_phone);
+  const contactPhone = normalizeTunisiaPhone(asOptionalTrimmedString(body.contact_phone));
   const honeypot = asTrimmedString(body.honeypot) ?? "";
   const clientElapsedMsRaw = Number(body.client_elapsed_ms ?? 0);
   const ipHash = asOptionalTrimmedString(body.ip_hash);
