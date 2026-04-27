@@ -46,6 +46,8 @@ export type AdminDesktopSidebarRailProps = {
   fetchSmsLogs: () => void | Promise<void>;
   aioEventsSubmissionsCount: number;
   fetchAioEventsSubmissions: (reset?: boolean) => void | Promise<void>;
+  consultationInquiriesCount: number;
+  fetchConsultationInquiries: () => void | Promise<void>;
   logsCount: number;
   fetchLogs: (reset?: boolean) => void | Promise<void>;
   handleLogout: () => void | Promise<void>;
@@ -68,6 +70,8 @@ export function AdminDesktopSidebarRail({
   fetchSmsLogs,
   aioEventsSubmissionsCount,
   fetchAioEventsSubmissions,
+  consultationInquiriesCount,
+  fetchConsultationInquiries,
   logsCount,
   fetchLogs,
   handleLogout,
@@ -417,6 +421,27 @@ export function AdminDesktopSidebarRail({
               >
                 <MessageCircle className={`w-4 h-4 shrink-0 ${activeTab === "contact" ? "animate-pulse" : ""}`} />
                 <span>Contact Messages</span>
+              </button>
+            )}
+            {isAdminTabAllowedForRole("consultation-inquiries", currentAdminRole) && (
+              <button
+                type="button"
+                data-active={activeTab === "consultation-inquiries"}
+                onClick={() => {
+                  setActiveTab("consultation-inquiries");
+                  if (consultationInquiriesCount === 0) {
+                    void fetchConsultationInquiries();
+                  }
+                }}
+                className={`admin-sidebar-nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors duration-100 ${
+                  activeTab === "consultation-inquiries" ? "shadow-lg" : ""
+                }`}
+                style={{
+                  background: activeTab === "consultation-inquiries" ? "rgba(226, 24, 54, 0.08)" : "transparent",
+                }}
+              >
+                <Database className={`w-4 h-4 shrink-0 ${activeTab === "consultation-inquiries" ? "animate-pulse" : ""}`} />
+                <span>B2B Leads</span>
               </button>
             )}
             {isAdminTabAllowedForRole("suggestions", currentAdminRole) && (

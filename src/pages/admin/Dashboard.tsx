@@ -145,6 +145,7 @@ import { CareerTab } from "./components/CareerTab";
 import { SponsorsTab } from "./components/SponsorsTab";
 import { TeamTab } from "./components/TeamTab";
 import { ContactTab } from "./components/ContactTab";
+import { ConsultationInquiriesTab } from "./components/ConsultationInquiriesTab";
 import { SuggestionsTab } from "./components/SuggestionsTab";
 import type { SuggestionReadFilter, SuggestionTypeFilter } from "./components/SuggestionsTab";
 import { OfficialInvitationsTab } from "./components/OfficialInvitationsTab";
@@ -187,6 +188,7 @@ const REGULAR_ADMIN_TAB_KEYS = new Set([
   "online-orders",
   "ambassador-sales",
   "pos",
+  "consultation-inquiries",
 ]);
 
 function isAdminTabAllowedForRole(tab: string, role: string | null): boolean {
@@ -419,6 +421,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   const [messageToDelete, setMessageToDelete] = useState<any>(null);
   const [isDeleteMessageDialogOpen, setIsDeleteMessageDialogOpen] = useState(false);
   const [contactMessageSearchTerm, setContactMessageSearchTerm] = useState('');
+  const [consultationInquiries, setConsultationInquiries] = useState<any[]>([]);
+  const [consultationInquirySearchTerm, setConsultationInquirySearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [suggestionSearchTerm, setSuggestionSearchTerm] = useState('');
   const [suggestionReadFilter, setSuggestionReadFilter] = useState<SuggestionReadFilter>('all');
@@ -1753,6 +1757,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       message.subject.toLowerCase().includes(searchLower) ||
       message.message.toLowerCase().includes(searchLower)
     );
+  });
+
+  const filteredConsultationInquiries = consultationInquiries.filter((inquiry) => {
+    const searchLower = consultationInquirySearchTerm.toLowerCase().trim();
+    if (!searchLower) return true;
+    return [
+      inquiry.full_name,
+      inquiry.company,
+      inquiry.service,
+      inquiry.vision,
+      inquiry.source,
+      inquiry.contact_email,
+      inquiry.contact_phone,
+      inquiry.country,
+      inquiry.submission_channel,
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(searchLower));
   });
 
   // Filter suggestions by search, read status, and type
@@ -9736,6 +9758,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     fetchContactMessages();
   }, []);
 
+  const fetchConsultationInquiries = useCallback(async () => {
+    const { data, error } = await (supabase as any)
+      .from('consultation_inquiries')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (!error && data) {
+      setConsultationInquiries(data);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchConsultationInquiries();
+  }, [fetchConsultationInquiries]);
+
   // Fetch audience suggestions on mount (table not in generated types yet)
   useEffect(() => {
     const fetchSuggestions = async () => {
@@ -10155,6 +10191,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         "sponsors",
         "team",
         "contact",
+        "consultation-inquiries",
         "suggestions",
         "marketing",
         "aio-events",
@@ -10170,6 +10207,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         "online-orders",
         "ambassador-sales",
         "pos",
+        "consultation-inquiries",
       ];
     }
     return ["overview", "ambassador-sales", "online-orders", "pos"];
@@ -10297,6 +10335,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               {activeTab === "scanners" && (language === 'en' ? 'Scanners' : 'Scanners')}
               {activeTab === "tickets" && (language === 'en' ? 'Reports' : 'Rapports')}
               {activeTab === "settings" && t.settings}
+              {activeTab === "consultation-inquiries" && (language === 'en' ? 'B2B Leads' : 'B2B Leads')}
             </span>
           </div>
           <div className="flex items-center gap-1.5 shrink-0 text-xs font-medium text-muted-foreground">
@@ -10571,6 +10610,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           fetchSmsLogs={fetchSmsLogs}
           aioEventsSubmissionsCount={aioEventsSubmissions.length}
           fetchAioEventsSubmissions={fetchAioEventsSubmissions}
+          consultationInquiriesCount={consultationInquiries.length}
+          fetchConsultationInquiries={fetchConsultationInquiries}
           logsCount={logs.length}
           fetchLogs={fetchLogs}
           handleLogout={handleLogout}
@@ -11022,6 +11063,13 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                 onOpenDelete={openDeleteMessageDialog}
                 onCloseDelete={closeDeleteMessageDialog}
                 onConfirmDelete={handleDeleteMessage}
+              />
+
+              <ConsultationInquiriesTab
+                consultationInquiries={consultationInquiries}
+                filteredConsultationInquiries={filteredConsultationInquiries}
+                consultationInquirySearchTerm={consultationInquirySearchTerm}
+                setConsultationInquirySearchTerm={setConsultationInquirySearchTerm}
               />
 
               {/* Audience Suggestions Tab */}

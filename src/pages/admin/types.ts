@@ -219,6 +219,23 @@ export interface ContactMessage {
   created_at: string;
 }
 
+/** Consultation inquiry (subdomain contact storage). */
+export interface ConsultationInquiry {
+  id: string;
+  created_at: string;
+  full_name: string;
+  company?: string | null;
+  service: string;
+  vision?: string | null;
+  source: string;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  country?: string | null;
+  submission_channel: string;
+  user_agent?: string | null;
+  ip_hash?: string | null;
+}
+
 /** Audience suggestion (events, artists, venues) – admin suggestions tab. */
 export interface AudienceSuggestion {
   id: string;
