@@ -123,6 +123,7 @@ export const API_ROUTES = {
   
   // Admin Logs & Analytics
   ADMIN_LOGS: '/api/admin/logs',
+  ADMIN_CONSULTATION_INQUIRIES: '/api/admin/consultation-inquiries',
   ADMIN_CSP_REPORTS: '/api/admin/csp-reports',
   
   // AIO Events Submissions (Admin) - via misc.js

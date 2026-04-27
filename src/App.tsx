@@ -74,6 +74,40 @@ import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { useTheme } from "next-themes";
 
+const THEME_STORAGE_KEY = "andiamo-theme-mode";
+
+const readPersistedTheme = (): "light" | "dark" | null => {
+  if (typeof document === "undefined") return null;
+
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === "light" || stored === "dark") {
+      return stored;
+    }
+  } catch {
+    // Some mobile webviews/private modes block localStorage.
+  }
+
+  const cookieMatch = document.cookie.match(/(?:^|;\s*)andiamo-theme-mode=(light|dark)(?:;|$)/);
+  if (cookieMatch?.[1] === "light" || cookieMatch?.[1] === "dark") {
+    return cookieMatch[1];
+  }
+
+  return null;
+};
+
+const persistTheme = (theme: "light" | "dark") => {
+  if (typeof document === "undefined") return;
+
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // Ignore storage errors and use cookie fallback.
+  }
+
+  document.cookie = `${THEME_STORAGE_KEY}=${theme}; path=/; max-age=31536000; samesite=lax`;
+};
+
 // In-app browsers (Instagram, Facebook, etc.) use WebViews that can tear down native
 // objects; Vercel Speed Insights' button metadata code then throws "Java object is gone".
 // Skip loading Speed Insights there to avoid the error (we still load Analytics).
@@ -216,13 +250,32 @@ const AppContent = ({
 const App = () => {
   const [language, setLanguage] = useState<'en' | 'fr'>('en');
   const { theme, setTheme } = useTheme();
+
+  useEffect(() => {
+    const persistedTheme = readPersistedTheme();
+    if (persistedTheme) {
+      if (theme !== persistedTheme) {
+        setTheme(persistedTheme);
+      }
+      return;
+    }
+
+    // First visit: force and persist light mode as the product default.
+    persistTheme("light");
+    if (theme !== "light") {
+      setTheme("light");
+    }
+  }, [setTheme, theme]);
   
   const toggleLanguage = () => {
     setLanguage(prev => prev === 'en' ? 'fr' : 'en');
   };
 
   const toggleTheme = () => {
-    setTheme(theme === "light" ? "dark" : "light");
+    const currentTheme = theme === "dark" ? "dark" : "light";
+    const nextTheme = currentTheme === "light" ? "dark" : "light";
+    persistTheme(nextTheme);
+    setTheme(nextTheme);
   };
 
   return (

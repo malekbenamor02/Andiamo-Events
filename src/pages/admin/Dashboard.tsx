@@ -9759,12 +9759,20 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   }, []);
 
   const fetchConsultationInquiries = useCallback(async () => {
-    const { data, error } = await (supabase as any)
-      .from('consultation_inquiries')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (!error && data) {
-      setConsultationInquiries(data);
+    try {
+      const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_CONSULTATION_INQUIRIES, getApiBaseUrl());
+      if (!apiUrl) return;
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      if (!response.ok) return;
+      const json = await response.json();
+      if (json?.success && Array.isArray(json.data)) {
+        setConsultationInquiries(json.data);
+      }
+    } catch {
+      // Keep UI silent to avoid noisy toasts during background polling.
     }
   }, []);
 

@@ -1990,6 +1990,43 @@ app.get('/api/admin/scan-statistics', requireAdminAuth, requireSuperAdmin, async
 
 // Admin logs endpoint - Read-only, admin-only access
 // Aggregates logs from site_logs, security_audit_logs, sms_logs, and email_delivery_logs
+app.get('/api/admin/consultation-inquiries', requireAdminAuth, async (req, res) => {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return res.status(500).json({
+      error: 'Server misconfiguration',
+      details: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required'
+    });
+  }
+
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const dbClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+    const limitRaw = Number(req.query.limit ?? 200);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 1000) : 200;
+
+    const { data, error } = await dbClient
+      .from('consultation_inquiries')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      return res.status(500).json({
+        error: 'Failed to fetch consultation inquiries',
+        details: error.message || String(error),
+      });
+    }
+
+    return res.status(200).json({ success: true, data: data || [] });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Server error',
+      details: error.message || String(error),
+    });
+  }
+});
+
 app.get('/api/admin/logs', requireAdminAuth, async (req, res) => {
   if (!supabase) {
     return res.status(500).json({ 
