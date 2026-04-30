@@ -26,7 +26,6 @@ const Index = ({ language }: IndexProps) => {
   // Refs for each section
   const heroRef = useRef<HTMLDivElement>(null);
   const counterRef = useRef<HTMLDivElement>(null);
-  const eventsRef = useRef<HTMLDivElement>(null);
   const sponsorsRef = useRef<HTMLDivElement>(null);
 
   const targetCounts = { events: 20, members: 40, followers: 45000};
@@ -69,7 +68,6 @@ const Index = ({ language }: IndexProps) => {
     const sections = [
       { ref: heroRef, id: 'hero' },
       { ref: counterRef, id: 'counter' },
-      { ref: eventsRef, id: 'events' },
       { ref: sponsorsRef, id: 'sponsors' }
     ];
 
@@ -132,16 +130,19 @@ const Index = ({ language }: IndexProps) => {
           heroMediaLoaded ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
-        {/* Hero Section with Scroll Animation - positioned behind navbar */}
+        {/* `pt-16` clears fixed nav (h-16); HeroSection height uses calc(100svh - 4rem) */}
         <div 
           ref={heroRef}
-          className="transform transition-all duration-1000 ease-out opacity-100 translate-y-0 scale-100"
+          className="transform transition-all duration-1000 ease-out opacity-100 translate-y-0 scale-100 pt-16"
           style={{ position: 'relative', zIndex: 0 }}
         >
         <HeroSection language={language} onMediaLoaded={() => setHeroMediaLoaded(true)} />
         </div>
 
-      {/* Counter Section with Scroll Animation */}
+      {/* Featured Events Section (upcoming) — no scroll-in wrapper animation */}
+      <FeaturedEventsSection language={language} />
+
+      {/* Counter Section — Our Impact */}
       <div 
         ref={counterRef}
         className={`transform transition-all duration-1000 ease-out ${
@@ -151,18 +152,6 @@ const Index = ({ language }: IndexProps) => {
         }`}
       >
       <CounterSection language={language} />
-      </div>
-      
-      {/* Featured Events Section with Scroll Animation */}
-      <div 
-        ref={eventsRef}
-        className={`transform transition-all duration-1000 ease-out ${
-          animatedSections.has('events') 
-            ? 'opacity-100 translate-y-0 scale-100' 
-            : 'opacity-0 translate-y-8 scale-95'
-        }`}
-      >
-      <FeaturedEventsSection language={language} />
       </div>
 
       {/* Sponsors Section with Scroll Animation */}

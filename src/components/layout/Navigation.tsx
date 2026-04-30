@@ -129,7 +129,13 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
     };
 
     const updateLogoByBackground = () => {
-      // While hero is visible, always keep white logo in all modes.
+      // Home + light: hero is below the nav; the bar reads on light page chrome — use dark logo + links until past hero.
+      if (theme === "light" && location.pathname === "/" && !hasPassedHeroSection()) {
+        setUseBlackLogo(true);
+        return;
+      }
+
+      // While hero still dominates scroll (dark hero under viewport logic), keep white logo for contrast.
       if (!hasPassedHeroSection()) {
         setUseBlackLogo(false);
         return;

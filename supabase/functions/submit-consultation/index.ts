@@ -8,15 +8,12 @@ type ConsultationPayload = {
   company?: unknown;
   service?: unknown;
   vision?: unknown;
-  source?: unknown;
   contact_email?: unknown;
   contact_phone?: unknown;
+  /** Optional anti-bot field; must be empty (not stored). */
   honeypot?: unknown;
   client_elapsed_ms?: unknown;
-  ip_hash?: unknown;
   user_agent?: unknown;
-  country?: unknown;
-  submission_channel?: unknown;
 };
 
 function corsHeaders(origin: string | null): HeadersInit {
@@ -42,7 +39,7 @@ function asOptionalTrimmedString(value: unknown): string | null {
 }
 
 function isValidEmail(value: string): boolean {
-  return /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i.test(value);
+  return /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value);
 }
 
 function isValidTunisiaPhone(value: string): boolean {
@@ -63,15 +60,11 @@ function sanitizePayload(body: ConsultationPayload) {
   const company = asOptionalTrimmedString(body.company);
   const service = asTrimmedString(body.service);
   const vision = asOptionalTrimmedString(body.vision);
-  const sourceRaw = asTrimmedString(body.source) ?? "web_form";
   const contactEmail = asOptionalTrimmedString(body.contact_email);
   const contactPhone = normalizeTunisiaPhone(asOptionalTrimmedString(body.contact_phone));
   const honeypot = asTrimmedString(body.honeypot) ?? "";
   const clientElapsedMsRaw = Number(body.client_elapsed_ms ?? 0);
-  const ipHash = asOptionalTrimmedString(body.ip_hash);
   const userAgent = asOptionalTrimmedString(body.user_agent);
-  const countryRaw = asOptionalTrimmedString(body.country);
-  const submissionChannelRaw = asTrimmedString(body.submission_channel) ?? "edge_function";
 
   if (!fullName || fullName.length < 2 || fullName.length > 120) {
     throw new Error("Invalid full_name");
@@ -84,9 +77,6 @@ function sanitizePayload(body: ConsultationPayload) {
   }
   if (vision && (vision.length < 10 || vision.length > 4000)) {
     throw new Error("Invalid vision");
-  }
-  if (!["web", "web_form"].includes(sourceRaw)) {
-    throw new Error("Invalid source");
   }
   if (contactEmail && !isValidEmail(contactEmail)) {
     throw new Error("Invalid contact_email");
@@ -104,29 +94,15 @@ function sanitizePayload(body: ConsultationPayload) {
     throw new Error("Invalid user_agent");
   }
 
-  const country = countryRaw ? countryRaw.toUpperCase() : null;
-  if (country && !/^[A-Z]{2}$/.test(country)) {
-    throw new Error("Invalid country");
-  }
-
-  if (!["legacy_client", "edge_function"].includes(submissionChannelRaw)) {
-    throw new Error("Invalid submission_channel");
-  }
-
   return {
     full_name: fullName,
     company,
     service,
     vision,
-    source: sourceRaw,
     contact_email: contactEmail,
     contact_phone: contactPhone,
-    honeypot,
     client_elapsed_ms: Math.round(clientElapsedMsRaw),
-    ip_hash: ipHash,
     user_agent: userAgent,
-    country,
-    submission_channel: submissionChannelRaw,
   };
 }
 

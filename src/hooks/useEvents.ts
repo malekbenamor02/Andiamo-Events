@@ -27,6 +27,8 @@ export interface Event {
   gallery_credit?: string | null;
   event_status?: 'active' | 'cancelled' | 'completed';
   slug?: string;
+  /** When true, event is hidden from public listings except on local/dev (see `isLocalhostClient`). */
+  is_test?: boolean;
 }
 
 /**
@@ -129,7 +131,35 @@ export const useFeaturedEvents = () => {
       // Only events that are not completed (for home "featured" / book now)
       const notCompleted = (filteredData || []).filter((e: any) => e.event_status !== 'completed');
 
-      return notCompleted;
+      const mapped = await Promise.all(
+        notCompleted.map(async (e: any) => {
+          const { data: passesData, error: passesError } = await supabase
+            .from('event_passes')
+            .select('*')
+            .eq('event_id', e.id)
+            .eq('is_active', true)
+            .order('is_primary', { ascending: false })
+            .order('price', { ascending: true })
+            .order('created_at', { ascending: true });
+
+          if (passesError && passesError.code !== 'PGRST116' && passesError.message !== 'relation "public.event_passes" does not exist') {
+            console.error(`Error fetching passes for event ${e.id}:`, passesError);
+          }
+
+          const passes = (passesData || []).map((p: any) => ({
+            id: p.id,
+            name: p.name || '',
+            price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
+            description: p.description || '',
+            is_primary: p.is_primary || false,
+            is_active: p.is_active !== false,
+          }));
+
+          return { ...e, passes } as Event;
+        })
+      );
+
+      return mapped;
     },
     staleTime: 30 * 60 * 1000, // 30 minutes
     gcTime: 60 * 60 * 1000, // 60 minutes

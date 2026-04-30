@@ -1,8 +1,10 @@
 /**
- * Matches `useEvents` / gallery: treat local dev (localhost, loopback, common LAN) as “local”
- * so test events and other dev-only behavior apply consistently.
+ * Matches `useEvents` / gallery / pass purchase: treat Vite dev, localhost, loopback, and
+ * common LAN hostnames as “local” so test events (`is_test`) and dev bypasses apply consistently
+ * on your machine — production traffic still excludes test events.
  */
 export function isLocalhostClient(): boolean {
+  if (import.meta.env.DEV) return true;
   if (typeof window === "undefined") return false;
   const h = window.location.hostname;
   return (

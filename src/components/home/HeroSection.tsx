@@ -1,22 +1,19 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
-import { generateSlug } from "@/lib/utils";
+import { cn, generateSlug } from "@/lib/utils";
 import { avifVariantUrl, buildHeroImageSrcSet } from "@/lib/image-utils";
 import TypewriterText from "./TypewriterText";
+import { HeroMultiEventCarousel } from "./HeroMultiEventCarousel";
 import { useFeaturedEvents, type Event } from "@/hooks/useEvents";
 import { isPassPurchaseWindowClosed } from "@/lib/date-utils";
+import { isLocalhostClient } from "@/lib/localhost";
 
 interface HeroSectionProps {
   language: 'en' | 'fr';
   onMediaLoaded?: () => void;
-}
-
-interface SiteContentItem {
-  key: string;
-  content: any; // Using any for Supabase Json type
 }
 
 interface HeroSlide {
@@ -141,16 +138,14 @@ const VideoSlide = ({
       ref={videoRef}
       src={loadSource ? slide.src : undefined}
       poster={slide.poster}
-      className="w-full h-full object-cover"
+      className="absolute inset-0 h-full w-full min-h-0 object-cover"
       autoPlay
       loop
       muted
       playsInline
       preload={preload}
-      style={{ 
-        objectFit: 'cover',
-        width: '100%',
-        height: '100%'
+      style={{
+        objectFit: "cover",
       }}
       onLoadedData={(e) => {
         // Ensure video is muted and ready - critical for autoplay
@@ -206,7 +201,31 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
   const [heroContentLoaded, setHeroContentLoaded] = useState(false);
   const [isPageInteractive, setIsPageInteractive] = useState(false);
   const [loadedMedia, setLoadedMedia] = useState<Set<number>>(new Set());
-  const { data: featuredEvents = [] } = useFeaturedEvents();
+  const { data: featuredEvents = [], isFetched, isFetching } = useFeaturedEvents();
+  /** Latch once: first time featured query finishes, so refetch/focus doesn't flash placeholder vs hero. */
+  const [featuredLayoutReady, setFeaturedLayoutReady] = useState(false);
+  useLayoutEffect(() => {
+    if (featuredLayoutReady) return;
+    if (isFetched && !isFetching) {
+      setFeaturedLayoutReady(true);
+    }
+  }, [isFetched, isFetching, featuredLayoutReady]);
+  const showLocalTestFlow = isLocalhostClient();
+
+  const bookableUpcomingEvents = useMemo(() => {
+    return featuredEvents.filter((e) => {
+      if (isPassPurchaseWindowClosed(e.date, e.event_status)) return false;
+      const hasPasses = (e.passes?.length ?? 0) > 0;
+      const isTest = Boolean(e.is_test);
+      if (hasPasses) return true;
+      // Local dev: test events can drive multi-hero without passes so you can preview layout/flow.
+      if (showLocalTestFlow && isTest) return true;
+      return false;
+    });
+  }, [featuredEvents, showLocalTestFlow]);
+  const isMultiEventHero =
+    featuredLayoutReady && bookableUpcomingEvents.length >= 2;
+
   const nextEvent = useMemo<Event | null>(
     () => (featuredEvents.length > 0 ? featuredEvents[0] : null),
     [featuredEvents]
@@ -217,6 +236,16 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
   useEffect(() => {
     setLoadedMedia(new Set());
   }, [heroContent]);
+
+  useEffect(() => {
+    if (isMultiEventHero) {
+      setCurrentSlide(0);
+      if (transitionTimerRef.current) {
+        clearInterval(transitionTimerRef.current);
+        transitionTimerRef.current = null;
+      }
+    }
+  }, [isMultiEventHero]);
 
   // Ensure we start with the first slide
   useEffect(() => {
@@ -256,23 +285,6 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
     setIsPageInteractive(true);
   }, []);
 
-  const defaultContent = {
-    en: {
-      title: "Live the Night with Andiamo",
-      subtitle: "",
-      description: "Join thousands of party-goers across Tunisia for unforgettable nights filled with energy, music, and memories that last forever.",
-      cta: "Join the Movement",
-      joinNextEvent: "Join Next Event"
-    },
-    fr: {
-      title: "Vivez la Nuit avec Andiamo",
-      subtitle: "",
-      description: "Rejoignez des milliers de fêtards à travers la Tunisie pour des nuits inoubliables remplies d'énergie, de musique et de souvenirs qui durent pour toujours.",
-      cta: "Rejoignez le Mouvement",
-      joinNextEvent: "Rejoindre le Prochain Événement"
-    }
-  };
-
   const typewriterLines = useMemo(() => {
     const placeholderOnly = [PLACEHOLDER_TYPEWRITER_LINE];
     if (!heroContentLoaded) {
@@ -301,6 +313,9 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
 
   // Gate shell/LCP on slide 0 only (other slides load in the background)
   useEffect(() => {
+    if (!featuredLayoutReady) return;
+    if (isMultiEventHero) return;
+
     if (heroSlides.length === 0) {
       onMediaLoaded?.();
       return;
@@ -318,7 +333,13 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
     }
 
     return () => clearTimeout(maxTimeout);
-  }, [firstSlideReady, heroSlides.length, onMediaLoaded]);
+  }, [
+    featuredLayoutReady,
+    isMultiEventHero,
+    firstSlideReady,
+    heroSlides.length,
+    onMediaLoaded,
+  ]);
 
   // Handle media load callbacks
   const handleMediaLoad = (index: number) => {
@@ -326,6 +347,8 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
   };
 
   useEffect(() => {
+    if (!featuredLayoutReady) return;
+    if (isMultiEventHero) return;
     if (heroSlides.length === 0) return;
     if (!firstSlideReady) {
       setCurrentSlide(0);
@@ -333,20 +356,18 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
     }
 
     setCurrentSlide(0);
-    
-    // Clear any existing timer
+
     if (transitionTimerRef.current) {
       clearInterval(transitionTimerRef.current);
       transitionTimerRef.current = null;
     }
-    
-    // Start transitions after a brief delay
+
     const startTimer = setTimeout(() => {
       transitionTimerRef.current = setInterval(() => {
         setCurrentSlide((prev) => (prev + 1) % heroSlides.length);
-      }, 6000); // 6 seconds per slide for better video viewing
+      }, 6000);
     }, 500);
-    
+
     return () => {
       clearTimeout(startTimer);
       if (transitionTimerRef.current) {
@@ -354,14 +375,31 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
         transitionTimerRef.current = null;
       }
     };
-  }, [heroSlides.length, firstSlideReady]);
+  }, [featuredLayoutReady, isMultiEventHero, heroSlides.length, firstSlideReady]);
 
 
   return (
-    <section className="relative h-screen flex items-center justify-center overflow-hidden bg-gradient-dark">
-      {/* Background Slideshow with Crossfade Transition */}
+    <section
+      className={cn(
+        "relative flex items-center justify-center overflow-hidden bg-gradient-dark",
+        !featuredLayoutReady
+          ? "h-[calc(100svh-4rem)]"
+          : isMultiEventHero
+            ? "h-[min(52dvh,460px)] min-h-[200px] md:h-[calc(100svh-4rem)] md:min-h-0"
+            : "h-[calc(100svh-4rem)]"
+      )}
+    >
+      {/* Background: wait for featured events, then multi carousel or CMS slideshow */}
       <div className="absolute inset-0 z-0">
-        {heroSlides.length > 0 ? heroSlides.map((slide, index) => {
+        {!featuredLayoutReady ? (
+          <div className="absolute inset-0 bg-gradient-dark" />
+        ) : isMultiEventHero ? (
+          <HeroMultiEventCarousel
+            events={bookableUpcomingEvents}
+            language={language}
+            onCriticalMediaLoaded={onMediaLoaded}
+          />
+        ) : heroSlides.length > 0 ? heroSlides.map((slide, index) => {
           const isActive = index === currentSlide;
           const len = heroSlides.length;
           const nextIndex = len > 0 ? (currentSlide + 1) % len : 0;
@@ -408,13 +446,21 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
                   };
                   if (avifSrc) {
                     return (
-                      <picture>
+                      <picture className="absolute inset-0 block h-full w-full min-h-0">
                         <source srcSet={avifSrc} type="image/avif" />
-                        <img {...imgProps} />
+                        <img
+                          {...imgProps}
+                          className="absolute inset-0 h-full w-full min-h-0 object-cover"
+                        />
                       </picture>
                     );
                   }
-                  return <img {...imgProps} />;
+                  return (
+                    <img
+                      {...imgProps}
+                      className="absolute inset-0 h-full w-full min-h-0 object-cover"
+                    />
+                  );
                 })()
               )}
               <div 
@@ -426,19 +472,12 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
             </div>
           );
         }) : (
-          // Fallback when no slides are available
           <div className="absolute inset-0 bg-gradient-dark" />
         )}
       </div>
 
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 z-10">
-        <div className="absolute top-1/4 left-1/4 w-32 h-32 rounded-full bg-gradient-to-r from-primary/20 to-primary/10 animate-float" />
-        <div className="absolute bottom-1/3 right-1/4 w-24 h-24 rounded-full bg-gradient-to-r from-primary/20 to-primary/10 animate-float" style={{ animationDelay: "1s" }} />
-        <div className="absolute top-1/2 right-1/3 w-16 h-16 rounded-full bg-gradient-to-r from-primary/20 to-primary/10 animate-float" style={{ animationDelay: "2s" }} />
-      </div>
-
-      {/* Content */}
+      {/* CMS typewriter + single CTA (only after featured layout known; hidden in multi-event mode) */}
+      {featuredLayoutReady && !isMultiEventHero ? (
       <div className="relative z-20 text-center max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="animate-fade-in-up">
           <h1 className="text-3xl sm:text-4xl md:text-7xl font-heading font-black mb-6 min-h-[1.2em] uppercase">
@@ -453,14 +492,12 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
               />
             </span>
           </h1>
-          
-          {/* Description text removed for testing */}
-          {/* <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto animate-fade-in-up" style={{ animationDelay: "0.4s" }}>
-            {defaultContent[language].description}
-          </p> */}
 
-          {nextEvent && !isPassPurchaseWindowClosed(nextEvent.date, nextEvent.event_status) && (
-            <div className="flex justify-center items-center mt-8 animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
+          {nextEvent &&
+            !isPassPurchaseWindowClosed(nextEvent.date, nextEvent.event_status) &&
+            ((nextEvent.passes?.length ?? 0) > 0 ||
+              (showLocalTestFlow && Boolean(nextEvent.is_test))) && (
+            <div className="flex justify-center items-center mt-14 md:mt-20 animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
               <Button
                 variant="default"
                 size="lg"
@@ -493,10 +530,11 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
           )}
         </div>
       </div>
+      ) : null}
 
-      {/* Slide Indicators */}
-      {heroSlides.length > 0 && (
-        <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20">
+      {/* Slide Indicators (CMS hero only) */}
+      {featuredLayoutReady && !isMultiEventHero && heroSlides.length > 0 && (
+        <div className="absolute bottom-5 left-1/2 transform -translate-x-1/2 z-20">
           <div className="flex space-x-2">
             {heroSlides.map((_, index) => (
               <button
@@ -512,13 +550,6 @@ const HeroSection = ({ language, onMediaLoaded }: HeroSectionProps) => {
           </div>
         </div>
       )}
-
-      {/* Scroll Indicator */}
-      <div className="absolute bottom-8 right-8 z-20 animate-bounce">
-        <div className="w-6 h-10 border-2 border-white/50 rounded-full flex justify-center">
-          <div className="w-1 h-3 bg-white/50 rounded-full mt-2 animate-pulse" />
-        </div>
-      </div>
     </section>
   );
 };

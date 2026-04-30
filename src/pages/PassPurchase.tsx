@@ -11,6 +11,7 @@ import Loader from '@/components/ui/Loader';
 import { getApiBaseUrl, API_ROUTES } from '@/lib/api-routes';
 import { formatDateDMY, isPassPurchaseWindowClosed } from '@/lib/date-utils';
 import { cn, generateSlug, normalizeCommonEmailTypos } from '@/lib/utils';
+import { isLocalhostClient } from '@/lib/localhost';
 import { computeOnlinePaymentFeesDisplay } from '@/lib/onlinePaymentFee';
 
 // New unified order system components
@@ -159,12 +160,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   const RECAPTCHA_TIMEOUT_MS = 15000;
 
   const executeRecaptchaForOrder = async (): Promise<string | null> => {
-    const isLocalhost = window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.hostname.startsWith('192.168.') ||
-      window.location.hostname.startsWith('10.0.') ||
-      window.location.hostname.startsWith('172.');
-    if (isLocalhost) return 'localhost-bypass-token';
+    if (isLocalhostClient()) return 'localhost-bypass-token';
     if (!RECAPTCHA_SITE_KEY || !(window as any).grecaptcha) return null;
     const gr = (window as any).grecaptcha;
     await new Promise<void>((resolve) => {
@@ -388,14 +384,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     try {
       setLoading(true);
       
-      // Check if we're on localhost (for testing) or production
-      const isLocalhost = typeof window !== 'undefined' && (
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.0.') ||
-        window.location.hostname.startsWith('172.')
-      );
+      const isLocal = isLocalhostClient();
 
       let eventData: any = null;
       let eventError: any = null;
@@ -454,8 +443,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       // Type cast to access additional properties that might not be in the inferred type
       const event = eventData as any;
 
-      // Block test events on production (not localhost)
-      if (!isLocalhost && event?.is_test) {
+      // Block test events on production (not local dev)
+      if (!isLocal && event?.is_test) {
         // Redirect to home page or show error
         toast({
           title: t[language].error,
@@ -890,12 +879,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         }
         throw recaptchaErr;
       }
-      const isLocalhost = window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname.startsWith('192.168.') ||
-        window.location.hostname.startsWith('10.0.') ||
-        window.location.hostname.startsWith('172.');
-      if (!isLocalhost && !recaptchaToken) {
+      if (!isLocalhostClient() && !recaptchaToken) {
         toast({
           title: t[language].error,
           description: language === 'en' ? 'reCAPTCHA verification failed. Please try again.' : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.',

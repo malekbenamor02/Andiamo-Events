@@ -1767,11 +1767,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       inquiry.company,
       inquiry.service,
       inquiry.vision,
-      inquiry.source,
       inquiry.contact_email,
       inquiry.contact_phone,
-      inquiry.country,
-      inquiry.submission_channel,
     ]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(searchLower));

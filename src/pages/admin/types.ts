@@ -227,13 +227,9 @@ export interface ConsultationInquiry {
   company?: string | null;
   service: string;
   vision?: string | null;
-  source: string;
   contact_email?: string | null;
   contact_phone?: string | null;
-  country?: string | null;
-  submission_channel: string;
   user_agent?: string | null;
-  ip_hash?: string | null;
 }
 
 /** Audience suggestion (events, artists, venues) – admin suggestions tab. */
