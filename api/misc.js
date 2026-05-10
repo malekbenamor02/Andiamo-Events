@@ -43,13 +43,11 @@ const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot
 const { uploadTicketQrToR2OrSupabase } = requireFromRoot(path.join(__dirname, 'lib', 'r2-media.cjs'));
 const { sendTransactionalEmail } = requireFromRoot(path.join(__dirname, 'lib', 'transactional-email.cjs'));
 
-// Lazy-load: Vercel NFT can omit nested api/lib/*.cjs deps; eager require breaks every misc.js route at cold start.
-let _renderPremiumTicketPdf = null;
+// Eager load with a static specifier so @vercel/nft bundles transitive deps (@sparticuz/chromium, puppeteer-core, pdf-lib).
+// Lazy require(path.join(...)) omitted those packages → runtime "Cannot find module '@sparticuz/chromium'" on Vercel.
+const renderPremiumTicketPdfModule = requireFromRoot('./lib/render-premium-ticket-pdf.cjs');
 function getRenderPremiumTicketPdf() {
-  if (!_renderPremiumTicketPdf) {
-    _renderPremiumTicketPdf = requireFromRoot(path.join(__dirname, 'lib', 'render-premium-ticket-pdf.cjs'));
-  }
-  return _renderPremiumTicketPdf;
+  return renderPremiumTicketPdfModule;
 }
 
 let _createOfficialInvitationEmailHTML = null;

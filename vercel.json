@@ -518,7 +518,10 @@
     "api/admin-approve-order.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "api/lib/**"
+      "includeFiles": [
+        "api/lib/**",
+        "node_modules/@sparticuz/chromium/**"
+      ]
     },
     "api/orders-create.js": {
       "maxDuration": 60,
@@ -539,7 +542,10 @@
     "api/misc.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "api/lib/**"
+      "includeFiles": [
+        "api/lib/**",
+        "node_modules/@sparticuz/chromium/**"
+      ]
     },
     "api/media.js": {
       "maxDuration": 60,
@@ -556,7 +562,10 @@
     "api/admin-pos.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "api/lib/**"
+      "includeFiles": [
+        "api/lib/**",
+        "node_modules/@sparticuz/chromium/**"
+      ]
     },
     "api/scan.js": {
       "maxDuration": 30

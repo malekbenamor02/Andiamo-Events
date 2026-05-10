@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
 const { sendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/transactional-email.cjs'));
-const { tryBuildPremiumTicketsPdfAttachment } = requireCjs(path.join(__dirname, 'lib/render-premium-ticket-pdf.cjs'));
+const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./lib/render-premium-ticket-pdf.cjs');
 
 // Helper function to format event time
 function formatEventTime(eventDate) {
