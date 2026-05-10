@@ -42,10 +42,15 @@ const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot
 
 const { uploadTicketQrToR2OrSupabase } = requireFromRoot(path.join(__dirname, 'lib', 'r2-media.cjs'));
 const { sendTransactionalEmail } = requireFromRoot(path.join(__dirname, 'lib', 'transactional-email.cjs'));
-const {
-  tryBuildPremiumTicketsPdfAttachment,
-  tryBuildPremiumTicketsPdfAttachmentInvitation,
-} = requireFromRoot(path.join(__dirname, 'lib', 'render-premium-ticket-pdf.cjs'));
+
+// Lazy-load: Vercel NFT can omit nested api/lib/*.cjs deps; eager require breaks every misc.js route at cold start.
+let _renderPremiumTicketPdf = null;
+function getRenderPremiumTicketPdf() {
+  if (!_renderPremiumTicketPdf) {
+    _renderPremiumTicketPdf = requireFromRoot(path.join(__dirname, 'lib', 'render-premium-ticket-pdf.cjs'));
+  }
+  return _renderPremiumTicketPdf;
+}
 
 let _createOfficialInvitationEmailHTML = null;
 function getCreateOfficialInvitationEmailHTML() {
@@ -3456,7 +3461,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                 // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
                 let premiumPdf = null;
                 try {
-                  premiumPdf = await tryBuildPremiumTicketsPdfAttachment({
+                  premiumPdf = await getRenderPremiumTicketPdf().tryBuildPremiumTicketsPdfAttachment({
                     order: fullOrder,
                     event: fullOrder.events,
                     tickets,
@@ -3948,7 +3953,7 @@ We Create Memories`;
                 });
                 let premiumPdfCtp = null;
                 try {
-                  premiumPdfCtp = await tryBuildPremiumTicketsPdfAttachment({
+                  premiumPdfCtp = await getRenderPremiumTicketPdf().tryBuildPremiumTicketsPdfAttachment({
                     order: fullOrder,
                     event: fullOrder.events,
                     tickets,
@@ -4716,7 +4721,7 @@ Billets envoyés par email. We Create Memories`;
             // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
             let premiumPdfResend = null;
             try {
-              premiumPdfResend = await tryBuildPremiumTicketsPdfAttachment({
+              premiumPdfResend = await getRenderPremiumTicketPdf().tryBuildPremiumTicketsPdfAttachment({
                 order,
                 event: order.events,
                 tickets,
@@ -6815,7 +6820,7 @@ Billets envoyés par email. We Create Memories`;
 
           let invPdfCreate = null;
           try {
-            invPdfCreate = await tryBuildPremiumTicketsPdfAttachmentInvitation({
+            invPdfCreate = await getRenderPremiumTicketPdf().tryBuildPremiumTicketsPdfAttachmentInvitation({
               event,
               guestName: guest_name.trim(),
               invitationNumber: invitation.invitation_number,
@@ -7064,7 +7069,7 @@ Billets envoyés par email. We Create Memories`;
           const eventRow = invitation.events || {};
           let invPdfResend = null;
           try {
-            invPdfResend = await tryBuildPremiumTicketsPdfAttachmentInvitation({
+            invPdfResend = await getRenderPremiumTicketPdf().tryBuildPremiumTicketsPdfAttachmentInvitation({
               event: eventRow,
               guestName: invitation.recipient_name,
               invitationNumber: invitation.invitation_number,

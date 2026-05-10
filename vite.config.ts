@@ -88,9 +88,19 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           manualChunks: undefined,
-          entryFileNames: "assets/[name].[hash].js",
-          chunkFileNames: "assets/[name].[hash].js",
-          assetFileNames: "assets/[name].[hash].[ext]",
+          // Production: hash-only names so DevTools/Network do not expose module paths
+          // (e.g. adminLogs, api-client). Development keeps [name] for easier debugging.
+          ...(mode === "production"
+            ? {
+                entryFileNames: "assets/[hash].js",
+                chunkFileNames: "assets/[hash].js",
+                assetFileNames: "assets/[hash][extname]",
+              }
+            : {
+                entryFileNames: "assets/[name].[hash].js",
+                chunkFileNames: "assets/[name].[hash].js",
+                assetFileNames: "assets/[name].[hash].[ext]",
+              }),
         },
       },
     },
