@@ -1990,6 +1990,24 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           const filtered = (result.data as any[]).filter((s: any) => s.order_status === 'PENDING_CASH');
           setExpirationSettings(filtered);
         }
+      } else {
+        let detail = `HTTP ${response.status}`;
+        try {
+          const errBody = await response.json();
+          if (errBody?.details) detail = String(errBody.details);
+          else if (errBody?.error) detail = String(errBody.error);
+        } catch {
+          /* ignore */
+        }
+        console.error('order-expiration-settings failed:', detail);
+        toast({
+          title: language === 'en' ? 'Error' : 'Erreur',
+          description:
+            language === 'en'
+              ? `Could not load expiration settings: ${detail}`
+              : `Impossible de charger les paramètres d'expiration : ${detail}`,
+          variant: 'destructive',
+        });
       }
     } catch (err) {
       console.error('Error fetching expiration settings:', err);

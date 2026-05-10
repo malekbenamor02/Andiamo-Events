@@ -978,9 +978,23 @@ async function checkSmsBalance() {
   });
 }
 
+/** Pathname only; Vercel may set req.url to an absolute URL. */
+function requestPathname(req) {
+  const raw = String(req.url || req.path || '');
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      return new URL(raw).pathname || '/';
+    } catch {
+      return '/';
+    }
+  }
+  return raw.split('?')[0] || '';
+}
+
 export default async (req, res) => {
   // Get path from URL, handling both /api/... and /... formats (Vercel may strip /api prefix)
-  let path = req.url.split('?')[0]; // Remove query string
+  let path = requestPathname(req);
   // Normalize path: if it doesn't start with /api but matches known API routes, add /api prefix
   // This handles Vercel rewrites where /api might be stripped
   if (!path.startsWith('/api/') && (
@@ -5060,37 +5074,29 @@ Billets envoyés par email. We Create Memories`;
         const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10) || 50, 1000);
         const offset = Math.max(0, parseInt(searchParams.get('offset') || '0', 10) || 0);
         
-        // Select orders + order_passes; avoid embedding ambassadors (can cause 500 if RLS/relation differs)
-        let query = supabase
-          .from('orders')
-          .select(
-            '*, order_passes (*), approver:admins!approved_by(name,email), rejector:admins!rejected_by(name,email)',
-            { count: 'exact' }
-          )
-          .eq('payment_method', 'ambassador_cash')
-          .order('created_at', { ascending: false })
-          .range(offset, offset + limit - 1);
-        
-        // Exclude REMOVED_BY_ADMIN orders by default (only show when explicitly filtering by that status)
-        if (status === 'REMOVED_BY_ADMIN') {
-          query = query.eq('status', 'REMOVED_BY_ADMIN');
-        } else {
-          // Default: exclude removed orders from all queries
-          query = query.neq('status', 'REMOVED_BY_ADMIN');
-          if (status) {
-            query = query.eq('status', status);
+        function buildAmbassadorOrdersSelect(selectStr) {
+          let q = supabase
+            .from('orders')
+            .select(selectStr, { count: 'exact' })
+            .eq('payment_method', 'ambassador_cash')
+            .order('created_at', { ascending: false })
+            .range(offset, offset + limit - 1);
+          if (status === 'REMOVED_BY_ADMIN') {
+            q = q.eq('status', 'REMOVED_BY_ADMIN');
+          } else {
+            q = q.neq('status', 'REMOVED_BY_ADMIN');
+            if (status) q = q.eq('status', status);
           }
+          if (event_id) q = q.eq('event_id', event_id);
+          if (ambassador_id) q = q.eq('ambassador_id', ambassador_id);
+          if (city) q = q.eq('city', city);
+          if (ville) q = q.eq('ville', ville);
+          if (date_from) q = q.gte('created_at', date_from);
+          if (date_to) q = q.lte('created_at', date_to);
+          return q;
         }
-        
-        if (event_id) query = query.eq('event_id', event_id);
-        if (ambassador_id) query = query.eq('ambassador_id', ambassador_id);
-        if (city) query = query.eq('city', city);
-        if (ville) query = query.eq('ville', ville);
-        if (date_from) query = query.gte('created_at', date_from);
-        if (date_to) query = query.lte('created_at', date_to);
-        
+
         // Auto-reject expired orders in the background — do not block the list response (admin tab latency).
-        // Note: supabase.rpc() returns a Postgrest builder, not a native Promise — use await/try or .then(fn, fn), not .catch().
         void (async () => {
           try {
             const { error: rpcErr } = await supabase.rpc('auto_reject_expired_pending_cash_orders');
@@ -5099,9 +5105,23 @@ Billets envoyés par email. We Create Memories`;
             console.warn('Warning: Failed to auto-reject expired orders:', rejectError);
           }
         })();
-        
-        const { data, error, count } = await query;
-        
+
+        const selectWithAdmins =
+          '*, order_passes (*), approver:admins!approved_by(name,email), rejector:admins!rejected_by(name,email)';
+        const selectPassesOnly = '*, order_passes (*)';
+
+        let { data, error, count } = await buildAmbassadorOrdersSelect(selectWithAdmins);
+        if (error) {
+          console.warn(
+            'ambassador-sales/orders: select with admin embeds failed, retrying without embeds:',
+            error.message || error
+          );
+          const retry = await buildAmbassadorOrdersSelect(selectPassesOnly);
+          data = retry.data;
+          error = retry.error;
+          count = retry.count;
+        }
+
         if (error) {
           console.error('Error fetching ambassador orders:', error);
           return res.status(500).json({
