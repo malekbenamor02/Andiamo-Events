@@ -5,6 +5,7 @@
 import '../lib/sentry-server.js';
 import { verifyAdminAuth } from './lib/admin-verify.js';
 import { handleVerifyAdmin } from './lib/verify-admin-http.js';
+import { applyClearAdminTokenCookie } from './lib/clear-admin-token-cookie.js';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -2026,7 +2027,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         const authResult = await verifyAdminAuth(req);
         
         if (!authResult.valid) {
-          res.clearCookie('adminToken', { path: '/' });
+          applyClearAdminTokenCookie(res);
           return res.status(authResult.statusCode || 401).json({
             error: authResult.error,
             reason: authResult.reason || 'Authentication required',
