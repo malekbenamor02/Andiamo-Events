@@ -6,6 +6,7 @@ import '../lib/sentry-server.js';
 import { verifyAdminAuth } from './lib/admin-verify.js';
 import { handleVerifyAdmin } from './lib/verify-admin-http.js';
 import { applyClearAdminTokenCookie } from './lib/clear-admin-token-cookie.js';
+import { agentDebugLog } from './lib/agent-debug-log.js';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -1009,6 +1010,28 @@ export default async (req, res) => {
     path = '/api' + path;
   }
   const method = req.method;
+
+  // #region agent log
+  if (
+    path.includes('verify-admin') ||
+    path.includes('ambassador-sales') ||
+    path.includes('order-expiration') ||
+    (path.includes('/api/admin/passes/') && method === 'GET')
+  ) {
+    agentDebugLog({
+      runId: 'pre-fix',
+      hypothesisId: 'H3-H5',
+      location: 'api/misc.js:misc-entry',
+      message: 'misc dispatch',
+      data: {
+        path,
+        method,
+        urlSnippet: String(req.url || '').slice(0, 160),
+        hasAdminCookie: !!(req.headers?.cookie && req.headers.cookie.includes('adminToken=')),
+      },
+    });
+  }
+  // #endregion
   
   // Debug logging for admin/update-order-notes route
   if (path.includes('update-order-notes')) {
@@ -2431,6 +2454,16 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             valid: false
           });
         }
+
+        // #region agent log
+        agentDebugLog({
+          runId: 'pre-fix',
+          hypothesisId: 'H2-H4',
+          location: 'api/misc.js:admin-passes-auth-ok',
+          message: 'admin passes GET auth ok',
+          data: { hasService: !!process.env.SUPABASE_SERVICE_ROLE_KEY },
+        });
+        // #endregion
         
         if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
           return res.status(500).json({ error: 'Supabase not configured' });
@@ -2472,6 +2505,18 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           .order('price', { ascending: true });
         
         if (passesError) {
+          // #region agent log
+          agentDebugLog({
+            runId: 'pre-fix',
+            hypothesisId: 'H4',
+            location: 'api/misc.js:admin-passes-query-err',
+            message: 'event_passes select error',
+            data: {
+              code: passesError.code ?? null,
+              msg: passesError.message ? String(passesError.message).slice(0, 200) : null,
+            },
+          });
+          // #endregion
           console.error('Error fetching passes:', passesError);
           return res.status(500).json({
             error: 'Failed to fetch passes',
@@ -5034,12 +5079,38 @@ Billets envoyés par email. We Create Memories`;
         const authResult = await verifyAdminAuth(req);
         
         if (!authResult.valid) {
+          // #region agent log
+          agentDebugLog({
+            runId: 'pre-fix',
+            hypothesisId: 'H2',
+            location: 'api/misc.js:ambassador-sales-auth-fail',
+            message: 'ambassador orders auth failed',
+            data: {
+              statusCode: authResult.statusCode ?? null,
+              errSlug: authResult.error ? String(authResult.error).slice(0, 100) : null,
+            },
+          });
+          // #endregion
           return res.status(authResult.statusCode || 401).json({
             error: authResult.error,
             reason: authResult.reason || 'Authentication failed',
             valid: false
           });
         }
+
+        // #region agent log
+        agentDebugLog({
+          runId: 'pre-fix',
+          hypothesisId: 'H2-H4',
+          location: 'api/misc.js:ambassador-sales-ok',
+          message: 'ambassador orders auth ok, querying',
+          data: {
+            hasUrl: !!process.env.SUPABASE_URL,
+            hasAnon: !!process.env.SUPABASE_ANON_KEY,
+            hasService: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+          },
+        });
+        // #endregion
         
         if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
           return res.status(500).json({ 
@@ -5124,6 +5195,18 @@ Billets envoyés par email. We Create Memories`;
         }
 
         if (error) {
+          // #region agent log
+          agentDebugLog({
+            runId: 'pre-fix',
+            hypothesisId: 'H4',
+            location: 'api/misc.js:ambassador-query-err',
+            message: 'ambassador orders PostgREST error after retry',
+            data: {
+              code: error.code ?? null,
+              msg: error.message ? String(error.message).slice(0, 200) : null,
+            },
+          });
+          // #endregion
           console.error('Error fetching ambassador orders:', error);
           return res.status(500).json({
             error: error.message || 'Failed to fetch ambassador orders',
@@ -5137,6 +5220,15 @@ Billets envoyés par email. We Create Memories`;
           count: count || 0
         });
       } catch (error) {
+        // #region agent log
+        agentDebugLog({
+          runId: 'pre-fix',
+          hypothesisId: 'H5',
+          location: 'api/misc.js:ambassador-catch',
+          message: 'ambassador orders threw',
+          data: { msg: error?.message ? String(error.message).slice(0, 200) : 'unknown' },
+        });
+        // #endregion
         console.error('Error in ambassador-sales/orders endpoint:', error);
         return res.status(500).json({
           error: error.message || 'Failed to fetch ambassador orders',
@@ -5672,6 +5764,20 @@ Billets envoyés par email. We Create Memories`;
     if (path === '/api/admin/order-expiration-settings' && method === 'GET') {
       try {
         const authResult = await verifyAdminAuth(req);
+
+        // #region agent log
+        agentDebugLog({
+          runId: 'pre-fix',
+          hypothesisId: 'H2',
+          location: 'api/misc.js:order-expiration-auth',
+          message: 'order-expiration GET auth',
+          data: {
+            valid: !!authResult.valid,
+            statusCode: authResult.statusCode ?? null,
+            errSlug: authResult.error ? String(authResult.error).slice(0, 100) : null,
+          },
+        });
+        // #endregion
         
         if (!authResult.valid) {
           return res.status(authResult.statusCode || 401).json({
@@ -9557,6 +9663,18 @@ Billets envoyés par email. We Create Memories`;
     });
     
   } catch (error) {
+    // #region agent log
+    agentDebugLog({
+      runId: 'pre-fix',
+      hypothesisId: 'H5',
+      location: 'api/misc.js:outer-catch',
+      message: 'API Router Error',
+      data: {
+        msg: error?.message ? String(error.message).slice(0, 250) : 'unknown',
+        name: error?.name ?? null,
+      },
+    });
+    // #endregion
     console.error('API Router Error:', error);
     return res.status(500).json({
       error: 'Internal Server Error',

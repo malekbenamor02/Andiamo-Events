@@ -2,6 +2,7 @@
  * GET /api/verify-admin — served via api/misc.js on Vercel (serverless count).
  */
 import { applyClearAdminTokenCookie } from './clear-admin-token-cookie.js';
+import { agentDebugLog } from './agent-debug-log.js';
 
 let corsUtils = null;
 async function getCorsUtils() {
@@ -158,6 +159,20 @@ export async function handleVerifyAdmin(req, res) {
 
     const authResult = await verifyAdminAuth(req);
 
+    // #region agent log
+    agentDebugLog({
+      runId: 'pre-fix',
+      hypothesisId: 'H1-H2',
+      location: 'verify-admin-http.js:after-auth',
+      message: 'verify-admin auth result',
+      data: {
+        valid: !!authResult.valid,
+        statusCode: authResult.statusCode ?? null,
+        errSlug: authResult.error ? String(authResult.error).slice(0, 80) : null,
+      },
+    });
+    // #endregion
+
     if (!authResult.valid) {
       applyClearAdminTokenCookie(res);
       return res.status(authResult.statusCode || 401).json({
@@ -174,6 +189,15 @@ export async function handleVerifyAdmin(req, res) {
       sessionTimeRemaining: authResult.sessionTimeRemaining
     });
   } catch (e) {
+    // #region agent log
+    agentDebugLog({
+      runId: 'pre-fix',
+      hypothesisId: 'H1',
+      location: 'verify-admin-http.js:catch',
+      message: 'handleVerifyAdmin threw',
+      data: { name: e?.name, msg: e?.message ? String(e.message).slice(0, 200) : 'unknown' },
+    });
+    // #endregion
     console.error('handleVerifyAdmin:', e);
     if (!res.headersSent) {
       return res.status(500).json({
