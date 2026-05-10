@@ -517,16 +517,24 @@
     },
     "api/admin-approve-order.js": {
       "maxDuration": 60,
-      "memory": 1024
+      "memory": 1024,
+      "includeFiles": "api/lib/**"
     },
     "api/orders-create.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "api/lib/**"
     },
     "api/passes-[eventId].js": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "api/lib/**"
     },
     "api/presale.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "api/lib/**"
+    },
+    "api/clictopay-generate-payment.js": {
+      "maxDuration": 30,
+      "includeFiles": "api/lib/**"
     },
     "api/misc.js": {
       "maxDuration": 60,
@@ -535,17 +543,20 @@
     },
     "api/media.js": {
       "maxDuration": 60,
-      "memory": 1024
+      "memory": 1024,
+      "includeFiles": "api/lib/**"
     },
     "api/admin/logs.js": {
       "maxDuration": 60
     },
     "api/pos.js": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "api/lib/**"
     },
     "api/admin-pos.js": {
       "maxDuration": 60,
-      "memory": 1024
+      "memory": 1024,
+      "includeFiles": "api/lib/**"
     },
     "api/scan.js": {
       "maxDuration": 30
