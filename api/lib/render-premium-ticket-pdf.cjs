@@ -10,6 +10,27 @@ const { getEmailLogoUrl } = require('./email-branding.cjs');
  * @param {number} [maxBytes]
  * @returns {Promise<string|null>}
  */
+/** Last-resort wordmark if hosted logo is missing (404) or unreachable from serverless. */
+const FALLBACK_LOGO_SVG_DATA_URL =
+  'data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="64" viewBox="0 0 320 64"><text x="4" y="44" fill="#ffffff" font-family="system-ui,-apple-system,sans-serif" font-size="26" font-weight="700">Andiamo Events</text></svg>'
+  );
+
+/**
+ * Prefer inlined logo bytes; otherwise let Chromium load an https URL at PDF render time;
+ * if there is no usable URL, use an inline SVG so ticket PDFs still attach (channel-agnostic).
+ * @param {string|null|undefined} logoUrl
+ * @param {string|null|undefined} logoDataUrl
+ * @returns {{ src: string, kind: 'inline' | 'remote' | 'fallback' }}
+ */
+function resolveLogoSrcForPdf(logoUrl, logoDataUrl) {
+  if (logoDataUrl && typeof logoDataUrl === 'string') return { src: logoDataUrl.trim(), kind: 'inline' };
+  const u = logoUrl && String(logoUrl).trim();
+  if (u && /^https?:\/\//i.test(u)) return { src: u, kind: 'remote' };
+  return { src: FALLBACK_LOGO_SVG_DATA_URL, kind: 'fallback' };
+}
+
 async function fetchUrlAsDataUrl(url, maxBytes = 6 * 1024 * 1024) {
   if (!url || typeof url !== 'string') return null;
   const u = url.trim();
@@ -191,11 +212,16 @@ async function tryBuildPremiumTicketsPdfAttachment(params) {
   const logoUrl = getEmailLogoUrl();
   const posterUrl = event.poster_url || null;
 
-  const [logoDataUrl, posterDataUrl] = await Promise.all([
+  const [logoFetched, posterDataUrl] = await Promise.all([
     fetchUrlAsDataUrl(logoUrl),
     posterUrl ? fetchUrlAsDataUrl(posterUrl) : Promise.resolve(null),
   ]);
-  if (!logoDataUrl) return null;
+  const logoResolved = resolveLogoSrcForPdf(logoUrl, logoFetched);
+  if (logoResolved.kind === 'fallback') {
+    console.warn('[premium-ticket-pdf] No usable logo URL; using placeholder wordmark in PDF', {
+      logoUrl: logoUrl || null,
+    });
+  }
 
   const passById = new Map();
   (orderPasses || []).forEach((p) => {
@@ -223,7 +249,7 @@ async function tryBuildPremiumTicketsPdfAttachment(params) {
     venue: event.venue,
     city: event.city,
     posterDataUrl: posterDataUrl || null,
-    logoDataUrl: logoDataUrl,
+    logoDataUrl: logoResolved.src,
     guestName: order.user_name || order.guest_name || 'Guest',
     orderNumberDisplay: orderNum,
     channelLabel,
