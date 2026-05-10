@@ -224,7 +224,7 @@ export const StockManagement = ({ eventId, eventName, language, onClose }: Stock
       const maxQuantity = parsed;
 
       const apiBase = getApiBaseUrl();
-      const url = buildFullApiUrl(API_ROUTES.ADMIN_CREATE_PASS, apiBase);
+      const url = buildFullApiUrl(API_ROUTES.ADMIN_PASS_CREATE, apiBase);
       
       if (!url) {
         throw new Error('Invalid API URL configuration');

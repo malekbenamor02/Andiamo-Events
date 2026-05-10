@@ -8,7 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Order, OrderPass } from '@/types/orders';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
 import { getOrderLineRevenue, getOrderTicketsAndRevenue, getOrderReportRevenue } from '@/lib/orders/orderRevenue';
-import { isPaidOnlineOrAmbassadorOrder } from '@/lib/orders/orderAnalytics';
+import { isPaidOnlineOrAmbassadorOrder, orderHasPresaleAttribution } from '@/lib/orders/orderAnalytics';
 
 export type DateRange = 'ALL_TIME' | 'LAST_30_DAYS' | 'LAST_7_DAYS';
 
@@ -20,7 +20,12 @@ export interface AnalyticsData {
   totalTicketsSold: number;
   totalRevenue: number;
   totalOrders: number;
-  orderCompletionRate: number; // Renamed from conversionRate for clarity
+  /** Paid online + ambassador cash only; POS excluded. */
+  presalePaidTickets: number;
+  presalePaidBreakdown: {
+    online: { orders: number; tickets: number };
+    cod: { orders: number; tickets: number };
+  };
   averageTicketsPerDay: number;
   ambassadorsInvolved: number;
   
@@ -29,7 +34,7 @@ export interface AnalyticsData {
     tickets: number | null;
     revenue: number | null;
     orders: number | null;
-    completionRate: number | null;
+    presaleTickets: number | null;
     avgTickets: number | null;
     ambassadors: number | null;
   };
@@ -326,6 +331,10 @@ async function fetchAnalyticsData(
   const salesByDate = new Map<string, { tickets: number; revenue: number }>();
   const salesByHour = new Map<number, number>();
   const salesByDayOfWeek = new Map<string, number>();
+  const presalePaidBreakdown = {
+    online: { orders: 0, tickets: 0 },
+    cod: { orders: 0, tickets: 0 },
+  };
   
   // Process each order
   ordersList.forEach((order: any) => {
@@ -406,9 +415,22 @@ async function fetchAnalyticsData(
     
     const dayName = orderDate.toLocaleDateString('en-US', { weekday: 'long' });
     salesByDayOfWeek.set(dayName, (salesByDayOfWeek.get(dayName) || 0) + orderTickets);
+
+    if (orderHasPresaleAttribution(order)) {
+      if (order.payment_method === PaymentMethod.ONLINE) {
+        presalePaidBreakdown.online.orders += 1;
+        presalePaidBreakdown.online.tickets += orderTickets;
+      } else if (order.payment_method === PaymentMethod.AMBASSADOR_CASH) {
+        presalePaidBreakdown.cod.orders += 1;
+        presalePaidBreakdown.cod.tickets += orderTickets;
+      }
+    }
   });
+
+  const presalePaidTickets =
+    presalePaidBreakdown.online.tickets + presalePaidBreakdown.cod.tickets;
   
-  // Get total orders created (for order completion rate) - need to fetch all orders, not just PAID
+  // Get total orders created (for ambassador conversion) - need to fetch all orders, not just PAID
   let allOrdersQuery = supabase
     .from('orders')
     .select('id, ambassador_id, status, created_at');
@@ -426,11 +448,7 @@ async function fetchAnalyticsData(
   }
   
   const { data: allOrders } = await allOrdersQuery;
-  const totalOrdersCreated = (allOrders || []).length;
   const totalOrdersPaid = ordersList.length;
-  const orderCompletionRate = totalOrdersCreated > 0 
-    ? (totalOrdersPaid / totalOrdersCreated) * 100 
-    : 0;
   
   // Get all orders per ambassador for conversion rate calculation
   const ambassadorTotalOrdersMap = new Map<string, number>();
@@ -506,8 +524,8 @@ async function fetchAnalyticsData(
     orders: previousPeriodData 
       ? calculateTrend(totalOrdersPaid, previousPeriodData.totalOrders)
       : null,
-    completionRate: previousPeriodData 
-      ? calculateTrend(orderCompletionRate, previousPeriodData.orderCompletionRate)
+    presaleTickets: previousPeriodData
+      ? calculateTrend(presalePaidTickets, previousPeriodData.presalePaidTickets)
       : null,
     avgTickets: previousPeriodData 
       ? calculateTrend(averageTicketsPerDay, previousPeriodData.averageTicketsPerDay)
@@ -584,7 +602,8 @@ async function fetchAnalyticsData(
     totalTicketsSold,
     totalRevenue,
     totalOrders: totalOrdersPaid,
-    orderCompletionRate,
+    presalePaidTickets,
+    presalePaidBreakdown,
     averageTicketsPerDay,
     ambassadorsInvolved: ambassadorIds.size,
     trends,

@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
 const { sendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/transactional-email.cjs'));
+const { tryBuildPremiumTicketsPdfAttachment } = requireCjs(path.join(__dirname, 'lib/render-premium-ticket-pdf.cjs'));
 const { uploadTicketQrToR2OrSupabase } = requireCjs(path.join(__dirname, 'lib/r2-media.cjs'));
 
 async function verifyAdminAuth(req) {
@@ -367,9 +368,9 @@ async function ordersList(sb, q, res) {
     pos_outlets(id, name, slug),
     events(id, name, date, venue),
     order_passes(id, pass_id, pass_type, quantity, price),
-    approver:admins!approved_by(email),
-    rejector:admins!rejected_by(email),
-    remover:admins!removed_by(email)
+    approver:admins!approved_by(name,email),
+    rejector:admins!rejected_by(name,email),
+    remover:admins!removed_by(name,email)
   `).eq('source', 'point_de_vente').order('created_at', { ascending: false });
   if (q.status) query = query.eq('status', q.status);
   if (q.event_id) query = query.eq('event_id', q.event_id);
@@ -445,8 +446,9 @@ async function ordersResendOrderReceived(sb, id, auth, req, res) {
 // --- Orders: resend tickets (completion) email ---
 async function ordersResendTickets(sb, id, auth, req, res) {
   const { data: order, error: e0 } = await sb.from('orders').select(`
-    id, order_number, user_name, user_phone, user_email, total_price, status, event_id, pos_outlet_id,
-    events(id, name, date, venue, city, poster_url)
+    id, order_number, user_name, user_phone, user_email, total_price, status, source, payment_method, event_id, pos_outlet_id,
+    events(id, name, date, venue, city, poster_url),
+    pos_outlets(name)
   `).eq('id', id).eq('source', 'point_de_vente').single();
   if (e0 || !order) return res.status(404).json({ error: 'Order not found' });
   if (order.status !== 'PAID') return res.status(400).json({ error: 'Only approved (PAID) orders can resend tickets email' });
@@ -478,16 +480,26 @@ async function ordersResendTickets(sb, id, auth, req, res) {
         secure: false,
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
       });
-    await sendTransactionalEmail(
-      { getEmailTransporter },
-      {
-        from: '"Andiamo Events" <contact@andiamoevents.com>',
-        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-        to: order.user_email,
-        subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-        html,
-      }
-    );
+    let premiumPdfPosResend = null;
+    try {
+      premiumPdfPosResend = await tryBuildPremiumTicketsPdfAttachment({
+        order,
+        event: order.events,
+        tickets,
+        orderPasses,
+      });
+    } catch (pdfErr) {
+      console.warn('Premium ticket PDF skipped (POS resend):', pdfErr && pdfErr.message);
+    }
+    const mailPosResend = {
+      from: '"Andiamo Events" <contact@andiamoevents.com>',
+      replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+      to: order.user_email,
+      subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+      html,
+    };
+    if (premiumPdfPosResend) mailPosResend.attachments = [premiumPdfPosResend];
+    await sendTransactionalEmail({ getEmailTransporter }, mailPosResend);
     await posAuditLog(sb, { action: 'resend_pos_order_email', performed_by_type: 'admin', performed_by_id: auth.admin.id, performed_by_email: auth.admin.email, pos_outlet_id: order.pos_outlet_id, target_type: 'order', target_id: id, details: { type: 'tickets' }, req });
     return res.status(200).json({ success: true });
   } catch (er) { return res.status(500).json({ error: String(er && er.message) }); }
@@ -536,7 +548,8 @@ async function ordersRemove(sb, id, auth, req, res) {
 async function ordersApprove(sb, id, auth, req, res) {
   const { data: order, error: e0 } = await sb.from('orders').select(`
     id, order_number, status, source, payment_method, user_name, user_phone, user_email, total_price, event_id, pos_outlet_id, city, ville,
-    events(id, name, date, venue, city, poster_url)
+    events(id, name, date, venue, city, poster_url),
+    pos_outlets(name)
   `).eq('id', id).single();
   if (e0 || !order) return res.status(404).json({ error: 'Order not found' });
   if (order.status !== 'PENDING_ADMIN_APPROVAL') return res.status(400).json({ error: 'Order not in PENDING_ADMIN_APPROVAL' });
@@ -560,7 +573,7 @@ async function ordersApprove(sb, id, auth, req, res) {
   for (const pass of orderPasses) {
     for (let i = 0; i < pass.quantity; i++) {
       const secureToken = uuidv4();
-      const buf = await QRCode.default.toBuffer(secureToken, { type: 'png', width: 300, margin: 2 });
+      const buf = await QRCode.default.toBuffer(secureToken, { type: 'png', width: 512, margin: 2 });
       const fname = `tickets/${id}/${secureToken}.png`;
       let publicQrUrl = null;
       try {
@@ -641,16 +654,26 @@ async function ordersApprove(sb, id, auth, req, res) {
           secure: false,
           auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
         });
-      await sendTransactionalEmail(
-        { getEmailTransporter },
-        {
-          from: '"Andiamo Events" <contact@andiamoevents.com>',
-          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-          to: order.user_email,
-          subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-          html,
-        }
-      );
+      let premiumPdfPosApprove = null;
+      try {
+        premiumPdfPosApprove = await tryBuildPremiumTicketsPdfAttachment({
+          order,
+          event: order.events,
+          tickets,
+          orderPasses,
+        });
+      } catch (pdfErr) {
+        console.warn('Premium ticket PDF skipped (POS approve):', pdfErr && pdfErr.message);
+      }
+      const mailPosApprove = {
+        from: '"Andiamo Events" <contact@andiamoevents.com>',
+        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+        to: order.user_email,
+        subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+        html,
+      };
+      if (premiumPdfPosApprove) mailPosApprove.attachments = [premiumPdfPosApprove];
+      await sendTransactionalEmail({ getEmailTransporter }, mailPosApprove);
       await sb.from('tickets').update({ status: 'DELIVERED', email_delivery_status: 'sent', delivered_at: new Date().toISOString() }).in('id', tickets.map(t => t.id));
     } catch (er) { console.warn('POS approve email:', er); }
   }

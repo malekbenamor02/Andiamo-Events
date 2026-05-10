@@ -98,7 +98,8 @@ export interface AmbassadorTranslations {
   noCompletedOrders: string;
   event: string;
   selectEvent: string;
-  noUpcomingEvents?: string;
+  filterByEvent: string;
+  noUpcomingEvents: string;
   save: string;
   cancelOrder: string;
   cancelReason: string;

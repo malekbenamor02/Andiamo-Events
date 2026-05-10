@@ -18,6 +18,7 @@ import { Package, Phone, MapPin, Clock } from "lucide-react";
 import { format } from "date-fns";
 import type { Order } from "../types";
 import type { AmbassadorTranslations } from "../types";
+import { passTypeBadgeClass } from "../passTypeBadge";
 
 export interface HistoryTabProps {
   language: "en" | "fr";
@@ -95,14 +96,20 @@ export function HistoryTab({
                       }`}
                     >
                       <TableCell className="font-medium text-foreground">{order.user_name}</TableCell>
-                      <TableCell className="text-foreground/90 flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-                        {order.user_phone}
+                      <TableCell className="text-foreground/90">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Phone className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 break-all">{order.user_phone}</span>
+                        </div>
                       </TableCell>
-                      <TableCell className="text-foreground/90 flex items-center gap-2">
-                        <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
-                        {order.city}
-                        {order.ville ? ` – ${order.ville}` : ""}
+                      <TableCell className="text-foreground/90">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <MapPin className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0">
+                            {order.city}
+                            {order.ville ? ` – ${order.ville}` : ""}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell>
                         {(() => {
@@ -116,12 +123,8 @@ export function HistoryTab({
                             const passName = isVip ? t.vip : pass.pass_type || t.standard;
                             return (
                               <Badge
-                                variant={isVip ? "default" : "secondary"}
-                                className={
-                                  isVip
-                                    ? "bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 text-yellow-300 border-yellow-500/30"
-                                    : "bg-muted/50 text-foreground/80"
-                                }
+                                variant="outline"
+                                className={passTypeBadgeClass(pass.pass_type)}
                               >
                                 {passName}
                               </Badge>
@@ -276,12 +279,8 @@ export function HistoryTab({
                             return (
                               <div className="space-y-2">
                                 <Badge
-                                  variant={isVip ? "default" : "secondary"}
-                                  className={
-                                    isVip
-                                      ? "bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 text-yellow-300 border-yellow-500/30"
-                                      : "bg-muted/50 text-foreground/80"
-                                  }
+                                  variant="outline"
+                                  className={passTypeBadgeClass(pass.pass_type)}
                                 >
                                   {passName}
                                 </Badge>

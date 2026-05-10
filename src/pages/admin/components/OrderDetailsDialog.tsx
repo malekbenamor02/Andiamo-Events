@@ -3,7 +3,7 @@
  * Extracted from Dashboard.tsx for maintainability.
  */
 
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import Loader from "@/components/ui/Loader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,9 +21,9 @@ import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AdminOrderQrTicketsSection } from "./AdminOrderQrTicketsSection";
 import {
-  Package, FileText, Activity, Database, Calendar as CalendarIcon, Clock, DollarSign,
-  User, Phone, Mail, MapPin, Ticket, Users, Save, X, Edit, RefreshCw, Send,
-  Trash2, Wrench, CheckCircle, XCircle, CheckCircle2, Zap, MailCheck, Shield, AlertCircle, Plus
+  Package, FileText, Activity, Database, Calendar as CalendarIcon, Clock,
+  User, Phone, Mail, MapPin, Ticket, Save, X, Edit, RefreshCw, Send,
+  Trash2, Wrench, CheckCircle, XCircle, CheckCircle2, Zap, MailCheck, Shield, AlertCircle, Plus, Tag
 } from "lucide-react";
 
 export interface OrderDetailsDialogProps {
@@ -51,7 +51,7 @@ export function OrderDetailsDialog({
   open,
   onOpenChange,
   order,
-  ambassador,
+  ambassador: _ambassador,
   orderLogs,
   language,
   resendingTicketEmail,
@@ -116,16 +116,156 @@ export function OrderDetailsDialog({
   const [isRejecting, setIsRejecting] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
 
+  // Read presale snapshot persisted by the order-create handler. RLS hides `presale_codes` from
+  // the anon admin client, so the snapshot stored on `orders.notes.presale` is the source of truth.
+  let presaleInfo: {
+    code_id?: string;
+    code_label?: string | null;
+    discount_type?: "percent" | "fixed" | string;
+    discount_value?: number;
+    original_subtotal?: number;
+    discounted_subtotal?: number;
+  } | null = null;
+  try {
+    const rawNotes = (order as { notes?: unknown } | null)?.notes;
+    if (rawNotes != null) {
+      const notesData = typeof rawNotes === "string" ? JSON.parse(rawNotes) : rawNotes;
+      const p = (notesData as { presale?: Record<string, unknown> } | null)?.presale;
+      if (p && typeof p === "object") {
+        presaleInfo = {
+          code_id: typeof p.code_id === "string" ? (p.code_id as string) : undefined,
+          code_label: typeof p.code_label === "string" ? (p.code_label as string) : null,
+          discount_type: typeof p.discount_type === "string" ? (p.discount_type as string) : undefined,
+          discount_value: typeof p.discount_value === "number" ? (p.discount_value as number) : undefined,
+          original_subtotal: typeof p.original_subtotal === "number" ? (p.original_subtotal as number) : undefined,
+          discounted_subtotal: typeof p.discounted_subtotal === "number" ? (p.discounted_subtotal as number) : undefined,
+        };
+      }
+    }
+  } catch (e) {
+    presaleInfo = null;
+  }
+
+  const presaleCodeIdOnOrder = (order as { presale_code_id?: string | null } | null)?.presale_code_id;
+  const isPresaleOrder = !!presaleCodeIdOnOrder || !!presaleInfo;
+
+  const formatPresaleDiscount = () => {
+    if (!presaleInfo || presaleInfo.discount_value == null) return null;
+    if (presaleInfo.discount_type === "percent") {
+      return `${Number(presaleInfo.discount_value).toFixed(0)}%`;
+    }
+    return `${Number(presaleInfo.discount_value).toFixed(2)} TND`;
+  };
+
+  const formatOrderSummaryDateTime = (iso: string | Date | undefined | null) => {
+    if (iso == null) return "";
+    const d = new Date(iso);
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    return `${day}/${month}/${d.getFullYear()}, ${d.toLocaleTimeString(language === "en" ? "en-GB" : "fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+  };
+
+  type AdminRelInline = { name?: string | null; email?: string | null } | null | undefined;
+  const adminRelLabelFromOrder = (rel: AdminRelInline) => {
+    if (!rel || typeof rel !== "object") return null;
+    const nameStr = rel.name != null ? String(rel.name).trim() : "";
+    if (nameStr) return nameStr;
+    const emailStr = rel.email != null ? String(rel.email).trim() : "";
+    return emailStr || null;
+  };
+
+  const codApprovalAttribution =
+    order &&
+    (order.status === "PAID" || order.status === "APPROVED" || order.status === "COMPLETED")
+      ? (() => {
+          const o = order as Record<string, unknown>;
+          const approvedByLabel = adminRelLabelFromOrder(o.approver as AdminRelInline);
+          const approvedAt = o.approved_at as string | undefined;
+          if (!approvedByLabel && !approvedAt) return null;
+          return { approvedByLabel, approvedAt };
+        })()
+      : null;
+
+  const uniqueOrderActivityLogs = useMemo(() => {
+    if (!order?.id) return [];
+    const logsForOrder = (orderLogs as any[]).filter((log: any) => log.order_id === order.id);
+    const seen = new Set<string>();
+    return logsForOrder
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .filter((log: any) => {
+        const signature = JSON.stringify({
+          action: log.action,
+          performed_by_type: log.performed_by_type,
+          created_at: log.created_at,
+          old_status: log.details?.old_status,
+          new_status: log.details?.new_status,
+          old_payment_status: log.details?.old_payment_status,
+          new_payment_status: log.details?.new_payment_status,
+        });
+        if (seen.has(signature)) return false;
+        seen.add(signature);
+        return true;
+      });
+  }, [order?.id, orderLogs]);
+
+  const codRejectionAttribution = useMemo(() => {
+    if (!order || order.status !== "REJECTED") return null;
+    const o = order as Record<string, unknown>;
+    const rejectedAt = o.rejected_at as string | undefined;
+    const rejectionReason = (o.rejection_reason || o.cancellation_reason) as string | undefined;
+    const nameOnOrder =
+      typeof o.rejected_by_name === "string" && o.rejected_by_name.trim()
+        ? o.rejected_by_name.trim()
+        : null;
+    let rejectedByLabel =
+      adminRelLabelFromOrder(o.rejector as AdminRelInline) || nameOnOrder;
+    if (!rejectedByLabel) {
+      const logsForOrder = (orderLogs as any[]).filter((log: any) => log.order_id === order.id);
+      const rejLog = logsForOrder.find((log: any) => log.action === "rejected");
+      const fromDetails = rejLog?.details?.rejected_by_name;
+      if (typeof fromDetails === "string" && fromDetails.trim()) {
+        rejectedByLabel = fromDetails.trim();
+      }
+    }
+    if (!rejectedByLabel && !rejectionReason && !rejectedAt) return null;
+    return { rejectedByLabel, rejectedAt, rejectionReason };
+  }, [order, orderLogs]);
+
+  const formatActivityLogRelativeTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return language === "en" ? "Just now" : "À l'instant";
+    if (diffMins < 60) return `${diffMins} ${language === "en" ? "min ago" : "min"}`;
+    if (diffHours < 24) return `${diffHours} ${language === "en" ? "hours ago" : "heures"}`;
+    if (diffDays < 7) return `${diffDays} ${language === "en" ? "days ago" : "jours"}`;
+    return date.toLocaleString(language === "en" ? "en-US" : "fr-FR", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const hasSyntheticActivity = !!(codApprovalAttribution || codRejectionAttribution);
+  const hasAnyActivity = uniqueOrderActivityLogs.length > 0 || hasSyntheticActivity;
+
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="w-full max-w-[100vw] left-0 translate-x-0 p-3 sm:p-6 sm:left-1/2 sm:translate-x-[-50%] sm:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
+          className="w-full max-w-[100vw] left-0 translate-x-0 p-3 sm:p-6 sm:left-1/2 sm:translate-x-[-50%] sm:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden scrollbar-hidden"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
           <DialogHeader>
-            <DialogTitle>{language === 'en' ? 'Order Details' : 'DÃ©tails de la Commande'}</DialogTitle>
+            <DialogTitle>
+              {language === "en" ? "Ambassadors Order Details" : "Détails de la commande ambassadeur"}
+            </DialogTitle>
           </DialogHeader>
           {order && (
             <div className="space-y-3 sm:space-y-6 w-full break-words">
@@ -134,7 +274,7 @@ export function OrderDetailsDialog({
                 <CardHeader className="pb-2 sm:pb-3">
                   <CardTitle className="text-base sm:text-lg flex items-center gap-2">
                     <Package className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Order Summary' : 'RÃ©sumÃ© de la Commande'}
+                    {language === 'en' ? 'Order Summary' : 'Résumé de la commande'}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 sm:p-6">
@@ -142,7 +282,7 @@ export function OrderDetailsDialog({
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
                         <FileText className="w-3 h-3" />
-                        {language === 'en' ? 'Order Number' : 'NumÃ©ro de Commande'}
+                        {language === 'en' ? 'Order Number' : 'Numéro de commande'}
                       </Label>
                       <p className="font-mono text-sm break-all">
                         #{order.order_number != null ? String(order.order_number) : String(order.id)}
@@ -184,16 +324,29 @@ export function OrderDetailsDialog({
                             'secondary'
                           }
                           className={
-                            order.status === 'PAID' || order.status === 'APPROVED' || order.status === 'COMPLETED' ? 'bg-green-500 text-white border-green-600' :
-                            order.status === 'REJECTED' || order.status?.includes('CANCELLED') ? 'bg-red-500 text-white border-red-600' :
-                            order.status === 'REMOVED_BY_ADMIN' ? 'bg-gray-600 text-white border-gray-700' :
-                            order.status === 'PENDING_ADMIN_APPROVAL' ? 'bg-yellow-500 text-white border-yellow-600' :
-                            order.status === 'PENDING_CASH' ? 'bg-gray-500 text-white border-gray-600' :
+                            order.status === 'PAID' || order.status === 'APPROVED' || order.status === 'COMPLETED' ? 'bg-green-500 hover:bg-green-500 text-white border-green-600' :
+                            order.status === 'REJECTED' || order.status?.includes('CANCELLED') ? 'bg-red-500 hover:bg-red-500 text-white border-red-600' :
+                            order.status === 'REMOVED_BY_ADMIN' ? 'bg-gray-600 hover:bg-gray-600 text-white border-gray-700' :
+                            order.status === 'PENDING_ADMIN_APPROVAL' ? 'bg-yellow-500 hover:bg-yellow-500 text-white border-yellow-600' :
+                            order.status === 'PENDING_CASH' ? 'bg-gray-500 hover:bg-gray-500 text-white border-gray-600' :
                             ''
                           }
                         >
                           {order.status}
                         </Badge>
+                        {isPresaleOrder && (
+                          <Badge
+                            variant="default"
+                            className="bg-indigo-500 hover:bg-indigo-500 text-white border-indigo-600 inline-flex items-center gap-1"
+                            title={presaleInfo?.code_label
+                              ? `${language === 'en' ? 'Presale code' : 'Code presale'}: ${presaleInfo.code_label}`
+                              : (language === 'en' ? 'Placed via presale' : 'Commande presale')}
+                          >
+                            <Tag className="w-3 h-3" />
+                            {language === 'en' ? 'Presale' : 'Presale'}
+                            {presaleInfo?.code_label ? ` · ${presaleInfo.code_label}` : ''}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                     <div className="space-y-1">
@@ -210,19 +363,23 @@ export function OrderDetailsDialog({
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
                         <CalendarIcon className="w-3 h-3" />
-                        {language === 'en' ? 'Created At' : 'CrÃ©Ã© Le'}
+                        {language === 'en' ? 'Created At' : 'Créé le'}
                       </Label>
-                      <p className="text-sm">{(() => {
-                        const d = new Date(order.created_at);
-                        const day = String(d.getDate()).padStart(2, '0');
-                        const month = String(d.getMonth() + 1).padStart(2, '0');
-                        return `${day}/${month}/${d.getFullYear()}, ${d.toLocaleTimeString(language === 'en' ? 'en-GB' : 'fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-                      })()}</p>
+                      <p className="text-sm">{formatOrderSummaryDateTime(order.created_at as string | undefined)}</p>
+                      {order.status === "PENDING_CASH" && order.expires_at && (
+                        <>
+                          <Label className="text-xs text-muted-foreground flex items-center gap-1 pt-2">
+                            <Clock className="w-3 h-3" />
+                            {language === "en" ? "Expires At" : "Expire Le"}
+                          </Label>
+                          <p className="text-sm">{formatOrderSummaryDateTime(order.expires_at as string)}</p>
+                        </>
+                      )}
                     </div>
                     <div className="space-y-1 md:col-span-2">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
                         <Ticket className="w-3 h-3" />
-                        {language === 'en' ? 'Pass Details' : 'DÃ©tails du Pass'}
+                        {language === 'en' ? 'Pass Details' : 'Détails du pass'}
                       </Label>
                   {(() => {
                         let allPasses: any[] = [];
@@ -252,7 +409,7 @@ export function OrderDetailsDialog({
                                   <TableHeader>
                                     <TableRow>
                                       <TableHead>{language === 'en' ? 'Pass Type' : 'Type Pass'}</TableHead>
-                                      <TableHead>{language === 'en' ? 'Quantity' : 'QuantitÃ©'}</TableHead>
+                                      <TableHead>{language === 'en' ? 'Quantity' : 'Quantité'}</TableHead>
                                       <TableHead>{language === 'en' ? 'Unit Price' : 'Prix Unitaire'}</TableHead>
                                       <TableHead>{language === 'en' ? 'Subtotal' : 'Sous-total'}</TableHead>
                                     </TableRow>
@@ -282,9 +439,47 @@ export function OrderDetailsDialog({
                                         </TableRow>
                                       );
                                     })}
+                                    {presaleInfo && typeof presaleInfo.original_subtotal === 'number' && (
+                                      <TableRow>
+                                        <TableCell colSpan={3} className="text-right text-sm text-muted-foreground">
+                                          {language === 'en' ? 'Original Subtotal' : 'Sous-total Initial'}
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground line-through">
+                                          {presaleInfo.original_subtotal.toFixed(2)} TND
+                                        </TableCell>
+                                      </TableRow>
+                                    )}
+                                    {presaleInfo && (
+                                      <TableRow>
+                                        <TableCell colSpan={3} className="text-right text-sm">
+                                          <span className="inline-flex items-center gap-1.5 justify-end flex-wrap">
+                                            <Tag className="w-3.5 h-3.5 text-indigo-500" />
+                                            <span className="text-muted-foreground">
+                                              {language === 'en' ? 'Presale Code' : 'Code Presale'}:
+                                            </span>
+                                            <span className="font-mono font-semibold">
+                                              {presaleInfo.code_label || (language === 'en' ? '(no label)' : '(sans libellé)')}
+                                            </span>
+                                            {formatPresaleDiscount() && (
+                                              <Badge className="bg-indigo-500 hover:bg-indigo-500 text-white border-indigo-600 text-[10px] px-1.5 py-0 h-5">
+                                                -{formatPresaleDiscount()}
+                                              </Badge>
+                                            )}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                          {typeof presaleInfo.original_subtotal === 'number' &&
+                                          typeof presaleInfo.discounted_subtotal === 'number'
+                                            ? `-${Math.max(0, presaleInfo.original_subtotal - presaleInfo.discounted_subtotal).toFixed(2)} TND`
+                                            : '—'}
+                                        </TableCell>
+                                      </TableRow>
+                                    )}
                                     <TableRow className="font-bold border-t-2">
                                       <TableCell colSpan={3} className="text-right">
-                                        {language === 'en' ? 'Total' : 'Total'}
+                                        {presaleInfo
+                                          ? (language === 'en' ? 'Total (after discount)' : 'Total (après remise)')
+                                          : (language === 'en' ? 'Total' : 'Total')}
                                       </TableCell>
                                       <TableCell className="text-lg">
                                         {calculatedTotal.toFixed(2)} TND
@@ -324,7 +519,7 @@ export function OrderDetailsDialog({
                                       <div className="mt-2 grid grid-cols-2 gap-2">
                                         <div className="space-y-1">
                                           <Label className="text-[11px] text-muted-foreground">
-                                            {language === 'en' ? 'Quantity' : 'QuantitÃ©'}
+                                            {language === 'en' ? 'Quantity' : 'Quantité'}
                                           </Label>
                                           <p className="font-semibold">{qty}</p>
                                         </div>
@@ -339,9 +534,45 @@ export function OrderDetailsDialog({
                                   );
                                 })}
 
+                                {presaleInfo && typeof presaleInfo.original_subtotal === 'number' && (
+                                  <div className="space-y-0.5">
+                                    <div className="text-xs sm:text-sm text-muted-foreground">
+                                      {language === 'en' ? 'Original Subtotal' : 'Sous-total Initial'}
+                                    </div>
+                                    <div className="text-xs sm:text-sm text-muted-foreground line-through">
+                                      {presaleInfo.original_subtotal.toFixed(2)} TND
+                                    </div>
+                                  </div>
+                                )}
+
+                                {presaleInfo && (
+                                  <div className="space-y-0.5">
+                                    <div className="text-xs sm:text-sm text-muted-foreground inline-flex items-center gap-1.5 flex-wrap">
+                                      <Tag className="w-3.5 h-3.5 text-indigo-500" />
+                                      <span>{language === 'en' ? 'Presale Code' : 'Code Presale'}:</span>
+                                      <span className="font-mono font-semibold text-foreground">
+                                        {presaleInfo.code_label || (language === 'en' ? '(no label)' : '(sans libellé)')}
+                                      </span>
+                                      {formatPresaleDiscount() && (
+                                        <Badge className="bg-indigo-500 hover:bg-indigo-500 text-white border-indigo-600 text-[10px] px-1.5 py-0 h-5">
+                                          -{formatPresaleDiscount()}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {typeof presaleInfo.original_subtotal === 'number' &&
+                                      typeof presaleInfo.discounted_subtotal === 'number' && (
+                                        <div className="text-xs sm:text-sm font-semibold text-green-600 dark:text-green-400">
+                                          -{Math.max(0, presaleInfo.original_subtotal - presaleInfo.discounted_subtotal).toFixed(2)} TND
+                                        </div>
+                                      )}
+                                  </div>
+                                )}
+
                                 <div className="pt-2 border-t border-border">
                                   <div className="text-xs sm:text-sm font-semibold text-muted-foreground">
-                                    {language === 'en' ? 'Total' : 'Total'}
+                                    {presaleInfo
+                                      ? (language === 'en' ? 'Total (after discount)' : 'Total (après remise)')
+                                      : (language === 'en' ? 'Total' : 'Total')}
                                   </div>
                                   <div className="text-base sm:text-lg font-semibold">{calculatedTotal.toFixed(2)} TND</div>
                                 </div>
@@ -377,7 +608,7 @@ export function OrderDetailsDialog({
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
                         <Phone className="w-3 h-3" />
-                        {language === 'en' ? 'Phone' : 'TÃ©lÃ©phone'}
+                        {language === 'en' ? 'Phone' : 'Téléphone'}
                       </Label>
                       <p className="text-sm sm:text-base">{order.user_phone || order.phone || 'N/A'}</p>
                     </div>
@@ -403,7 +634,7 @@ export function OrderDetailsDialog({
                               if (!editingEmailValue.trim()) {
                                 toast({
                                   title: language === 'en' ? 'Error' : 'Erreur',
-                                  description: language === 'en' ? 'Email cannot be empty' : 'L\'email ne peut pas Ãªtre vide',
+                                  description: language === 'en' ? 'Email cannot be empty' : "L'e-mail ne peut pas être vide",
                                   variant: 'destructive'
                                 });
                                 return;
@@ -447,10 +678,10 @@ export function OrderDetailsDialog({
                                 }
                                 
                                 toast({
-                                  title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+                                  title: language === 'en' ? 'Success' : 'Succès',
                                   description: language === 'en' 
                                     ? 'Email updated successfully' 
-                                    : 'Email mis Ã  jour avec succÃ¨s',
+                                    : 'E-mail mis à jour avec succès',
                                   variant: 'default'
                                 });
                                 
@@ -463,7 +694,7 @@ export function OrderDetailsDialog({
                                 console.error('Error updating email:', error);
                                 toast({
                                   title: language === 'en' ? 'Error' : 'Erreur',
-                                  description: error.message || (language === 'en' ? 'Failed to update email' : 'Ã‰chec de la mise Ã  jour de l\'email'),
+                                  description: error.message || (language === 'en' ? 'Failed to update email' : "Échec de la mise à jour de l'e-mail"),
                                   variant: 'destructive'
                                 });
                               } finally {
@@ -516,145 +747,6 @@ export function OrderDetailsDialog({
                   </div>
                 </CardContent>
               </Card>
-
-              {/* Order Expiration Display (Read-Only) */}
-              {order.status === 'PENDING_CASH' && order.expires_at && (
-                <Card className="bg-muted/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Clock className="w-5 h-5 text-primary" />
-                      {language === 'en' ? 'Order Expiration' : 'Expiration de la Commande'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Clock className="w-4 h-4 text-yellow-500" />
-                        <Label className="text-sm font-semibold text-foreground">
-                          {language === 'en' ? 'Expires At' : 'Expire Le'}
-                        </Label>
-                      </div>
-                      <p className="text-sm text-foreground">
-                        {new Date(order.expires_at).toLocaleString(language === 'en' ? 'en-US' : 'fr-FR')}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {language === 'en' 
-                          ? 'This order will be automatically rejected when the expiration date is reached. Expired orders are checked when you view the orders list.' 
-                          : 'Cette commande sera automatiquement rejetÃ©e lorsque la date d\'expiration sera atteinte. Les commandes expirÃ©es sont vÃ©rifiÃ©es lorsque vous consultez la liste des commandes.'}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Ambassador Information */}
-              {order.ambassador_id && (
-                <Card className="bg-muted/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Users className="w-5 h-5 text-primary" />
-                      {language === 'en' ? 'Assigned Ambassador' : 'Ambassadeur AssignÃ©'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {ambassador ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <User className="w-3 h-3" />
-                            {language === 'en' ? 'Name' : 'Nom'}
-                          </Label>
-                          <p className="font-semibold text-base">{ambassador.full_name}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Phone className="w-3 h-3" />
-                            {language === 'en' ? 'Phone' : 'TÃ©lÃ©phone'}
-                          </Label>
-                          <p className="text-base">{ambassador.phone}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Mail className="w-3 h-3" />
-                            {language === 'en' ? 'Email' : 'Email'}
-                          </Label>
-                          <p className="text-base break-all">{ambassador.email || 'N/A'}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            {language === 'en' ? 'City/Ville' : 'Ville/Quartier'}
-                          </Label>
-                          <p className="text-base">{ambassador.city || 'N/A'}{ambassador.ville ? ` - ${ambassador.ville}` : ''}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Activity className="w-3 h-3" />
-                            {language === 'en' ? 'Status' : 'Statut'}
-                          </Label>
-                          <Badge variant={ambassador.status === 'approved' ? 'default' : 'secondary'}>
-                            {ambassador.status}
-                          </Badge>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground font-mono">{order.ambassador_id}</p>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Timestamps */}
-              <div className="border-t pt-4">
-                <h3 className="font-semibold mb-4">{language === 'en' ? 'Timestamps' : 'Horodatages'}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  {order.assigned_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Assigned At' : 'AssignÃ© Le'}</Label>
-                      <p>{new Date(order.assigned_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {order.accepted_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Accepted At' : 'AcceptÃ© Le'}</Label>
-                      <p>{new Date(order.accepted_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {order.approved_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Approved At' : 'ApprouvÃ© Le'}</Label>
-                      <p>{new Date(order.approved_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {order.rejected_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Rejected At' : 'RejetÃ© Le'}</Label>
-                      <p>{new Date(order.rejected_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {order.rejection_reason && (
-                    <div className="col-span-2">
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Rejection Reason' : 'Raison du Rejet'}</Label>
-                      <p className="text-sm text-destructive">{order.rejection_reason}</p>
-                    </div>
-                  )}
-                  {order.completed_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Completed At' : 'TerminÃ© Le'}</Label>
-                      <p>{new Date(order.completed_at).toLocaleString()}</p>
-                    </div>
-                  )}
-                  {order.cancelled_at && (
-                    <div>
-                      <Label className="text-muted-foreground">{language === 'en' ? 'Cancelled At' : 'AnnulÃ© Le'}</Label>
-                      <p>{new Date(order.cancelled_at).toLocaleString()}</p>
-                      {order.cancellation_reason && (
-                        <p className="mt-1 text-muted-foreground italic">{language === 'en' ? 'Reason' : 'Raison'}: {order.cancellation_reason}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
 
               {/* Admin Notes */}
               <Card className="bg-muted/30">
@@ -712,10 +804,10 @@ export function OrderDetailsDialog({
                               }
                               
                               toast({
-                                title: language === 'en' ? 'Success' : 'SuccÃ¨s',
+                                title: language === 'en' ? 'Success' : 'Succès',
                                 description: language === 'en' 
                                   ? 'Admin notes updated successfully' 
-                                  : 'Notes administrateur mises Ã  jour avec succÃ¨s',
+                                  : 'Notes administrateur mises à jour avec succès',
                                 variant: 'default'
                               });
                               
@@ -732,7 +824,7 @@ export function OrderDetailsDialog({
                               console.error('Error updating admin notes:', error);
                               toast({
                                 title: language === 'en' ? 'Error' : 'Erreur',
-                                description: error.message || (language === 'en' ? 'Failed to update admin notes' : 'Ã‰chec de la mise Ã  jour des notes administrateur'),
+                                description: error.message || (language === 'en' ? 'Failed to update admin notes' : 'Échec de la mise à jour des notes administrateur'),
                                 variant: 'destructive'
                               });
                             } finally {
@@ -765,7 +857,7 @@ export function OrderDetailsDialog({
                           <p className="text-base whitespace-pre-wrap">{order.admin_notes}</p>
                         ) : (
                           <p className="text-base text-muted-foreground italic">
-                            {language === 'en' ? 'No admin notes added yet' : 'Aucune note administrateur ajoutÃ©e pour le moment'}
+                            {language === 'en' ? 'No admin notes added yet' : 'Aucune note administrateur ajoutée pour le moment'}
                           </p>
                         )}
                       </div>
@@ -791,177 +883,238 @@ export function OrderDetailsDialog({
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center gap-2">
                     <FileText className="w-5 h-5 text-primary" />
-                    {language === 'en' ? 'Order Activity Log' : 'Journal d\'ActivitÃ© de la Commande'}
+                    {language === 'en' ? 'Order Activity Log' : "Journal d'activité de la commande"}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="max-h-96 overflow-y-auto">
-                    {orderLogs.filter((log: any) => log.order_id === order.id).length > 0 ? (
-                      <div className="space-y-3">
-                        {(() => {
-                          const seen = new Set<string>();
-                          const uniqueLogs = orderLogs
-                            .filter((log: any) => log.order_id === order.id)
-                            .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                            .filter((log: any) => {
-                              const signature = JSON.stringify({
-                                action: log.action,
-                                performed_by_type: log.performed_by_type,
-                                created_at: log.created_at,
-                                old_status: log.details?.old_status,
-                                new_status: log.details?.new_status,
-                                old_payment_status: log.details?.old_payment_status,
-                                new_payment_status: log.details?.new_payment_status,
-                              });
-                              if (seen.has(signature)) {
-                                return false;
-                              }
-                              seen.add(signature);
-                              return true;
-                            });
-
-                          return uniqueLogs.map((log: any, index: number) => {
-                            const getActionIcon = () => {
-                              switch (log.action) {
-                                case 'approved':
-                                  return <CheckCircle className="w-4 h-4 text-green-500" />;
-                                case 'rejected':
-                                  return <XCircle className="w-4 h-4 text-red-500" />;
-                                case 'cancelled':
-                                  return <XCircle className="w-4 h-4 text-orange-500" />;
-                                case 'status_changed':
-                                  return <RefreshCw className="w-4 h-4 text-blue-500" />;
-                                case 'created':
-                                  return <Plus className="w-4 h-4 text-purple-500" />;
-                                default:
-                                  return <Clock className="w-4 h-4 text-muted-foreground" />;
-                              }
-                            };
-
-                            const getActionBadge = () => {
-                              const actionMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-                                'approved': { label: language === 'en' ? 'Approved' : 'ApprouvÃ©', variant: 'default' },
-                                'rejected': { label: language === 'en' ? 'Rejected' : 'RejetÃ©', variant: 'destructive' },
-                                'cancelled': { label: language === 'en' ? 'Cancelled' : 'AnnulÃ©', variant: 'destructive' },
-                                'status_changed': { label: language === 'en' ? 'Status Changed' : 'Statut ModifiÃ©', variant: 'secondary' },
-                                'created': { label: language === 'en' ? 'Created' : 'CrÃ©Ã©', variant: 'outline' },
-                              };
-                              const actionInfo = actionMap[log.action] || { label: log.action, variant: 'outline' as const };
-                              return (
-                                <Badge 
-                                  variant={actionInfo.variant}
-                                  className={actionInfo.variant === 'default' ? 'bg-green-500/20 text-green-300 border-green-500/30' : ''}
-                                >
-                                  {actionInfo.label}
-                                </Badge>
-                              );
-                            };
-
-                            const getPerformedByBadge = () => {
-                              const typeMap: Record<string, { label: string; color: string }> = {
-                                'admin': { label: language === 'en' ? 'Admin' : 'Admin', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
-                                'ambassador': { label: language === 'en' ? 'Ambassador' : 'Ambassadeur', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
-                                'system': { label: language === 'en' ? 'System' : 'SystÃ¨me', color: 'bg-gray-500/20 text-gray-300 border-gray-500/30' },
-                              };
-                              const typeInfo = typeMap[log.performed_by_type] || { label: log.performed_by_type || 'N/A', color: 'bg-muted text-muted-foreground border-border' };
-                              return (
-                                <Badge variant="outline" className={typeInfo.color}>
-                                  {typeInfo.label}
-                                </Badge>
-                              );
-                            };
-
-                            const formatTimestamp = (timestamp: string) => {
-                              const date = new Date(timestamp);
-                              const now = new Date();
-                              const diffMs = now.getTime() - date.getTime();
-                              const diffMins = Math.floor(diffMs / 60000);
-                              const diffHours = Math.floor(diffMs / 3600000);
-                              const diffDays = Math.floor(diffMs / 86400000);
-
-                              if (diffMins < 1) return language === 'en' ? 'Just now' : 'Ã€ l\'instant';
-                              if (diffMins < 60) return `${diffMins} ${language === 'en' ? 'min ago' : 'min'}`;
-                              if (diffHours < 24) return `${diffHours} ${language === 'en' ? 'hours ago' : 'heures'}`;
-                              if (diffDays < 7) return `${diffDays} ${language === 'en' ? 'days ago' : 'jours'}`;
-                              return date.toLocaleString(language === 'en' ? 'en-US' : 'fr-FR', {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              });
-                            };
-
-                            return (
-                              <div 
-                                key={log.id} 
-                                className="flex items-start gap-3 p-3 rounded-lg border border-border bg-background/50 hover:bg-muted/50 transition-colors"
-                              >
-                                <div className="mt-0.5">
-                                  {getActionIcon()}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                                    {getActionBadge()}
-                                    {getPerformedByBadge()}
-                                  </div>
-                                  {log.details && typeof log.details === 'object' && (
-                                    <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                                  {log.details.old_status && log.details.new_status && (
-                                        <p className="break-words whitespace-normal">
-                                          {language === 'en' ? 'Status' : 'Statut'}:
-                                          <span className="ml-1 font-medium break-all">{log.details.old_status}</span>
-                                          <span className="mx-1">â†’</span>
-                                          <span className="font-medium break-all">{log.details.new_status}</span>
-                                        </p>
-                                      )}
-                                      {log.details.reason && (
-                                        <p className="italic break-words whitespace-normal">
-                                          {language === 'en' ? 'Reason' : 'Raison'}: {log.details.reason}
-                                        </p>
-                                      )}
-                                      {log.details.email_sent !== undefined && (
-                                        <p className="break-words whitespace-normal">
-                                          {language === 'en' ? 'Email' : 'Email'}:
-                                          <span className={`ml-1 ${log.details.email_sent ? 'text-green-500' : 'text-red-500'}`}>
-                                            {log.details.email_sent ? (language === 'en' ? 'Sent' : 'EnvoyÃ©') : (language === 'en' ? 'Failed' : 'Ã‰chouÃ©')}
-                                          </span>
-                                        </p>
-                                      )}
-                                      {log.details.sms_sent !== undefined && (
-                                        <p className="break-words whitespace-normal">
-                                          {language === 'en' ? 'SMS' : 'SMS'}:
-                                          <span className={`ml-1 ${log.details.sms_sent ? 'text-green-500' : 'text-red-500'}`}>
-                                            {log.details.sms_sent ? (language === 'en' ? 'Sent' : 'EnvoyÃ©') : (language === 'en' ? 'Failed' : 'Ã‰chouÃ©')}
-                                          </span>
-                                        </p>
-                                      )}
-                                      {log.details.tickets_generated !== undefined && (
-                                        <p>
-                                          {language === 'en' ? 'Tickets' : 'Billets'}: 
-                                          <span className={`ml-1 ${log.details.tickets_generated ? 'text-green-500' : 'text-red-500'}`}>
-                                            {log.details.tickets_generated ? (language === 'en' ? 'Generated' : 'GÃ©nÃ©rÃ©s') : (language === 'en' ? 'Failed' : 'Ã‰chouÃ©')}
-                                          </span>
-                                        </p>
-                                      )}
-                                    </div>
-                                  )}
-                                  <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                                    <Clock className="w-3 h-3" />
-                                    <span>{formatTimestamp(log.created_at)}</span>
-                                    <span className="text-muted-foreground/50">â€¢</span>
-                                    <span>{new Date(log.created_at).toLocaleTimeString(language === 'en' ? 'en-US' : 'fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
-                    ) : (
+                  <div className="max-h-96 overflow-y-auto scrollbar-hidden">
+                    {!hasAnyActivity ? (
                       <div className="text-center py-8">
                         <FileText className="w-12 h-12 text-muted-foreground/50 mx-auto mb-3" />
-                        <p className="text-sm text-muted-foreground">{language === 'en' ? 'No activity logs found for this order' : 'Aucun journal d\'activitÃ© trouvÃ© pour cette commande'}</p>
+                        <p className="text-sm text-muted-foreground">{language === 'en' ? 'No activity logs found for this order' : "Aucun journal d'activité trouvé pour cette commande"}</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {codApprovalAttribution ? (
+                          <div className="flex items-start gap-3 p-3 rounded-lg border border-green-500/30 bg-green-500/5 hover:bg-green-500/10 transition-colors">
+                            <div className="mt-0.5">
+                              <CheckCircle className="w-4 h-4 text-green-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <Badge variant="default" className="bg-green-500/20 text-green-300 border-green-500/30">
+                                  {language === "en" ? "Approved" : "Approuvé"}
+                                </Badge>
+                                <Badge variant="outline" className="bg-blue-500/20 text-blue-300 border-blue-500/30">
+                                  {language === "en" ? "Admin" : "Admin"}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                                <p className="break-words whitespace-normal">
+                                  {language === "en" ? "Approved by" : "Approuvé par"}:{" "}
+                                  <span className="font-medium text-foreground">
+                                    {codApprovalAttribution.approvedByLabel ??
+                                      (language === "en" ? "Not recorded" : "Non enregistré")}
+                                  </span>
+                                </p>
+                              </div>
+                              {codApprovalAttribution.approvedAt ? (
+                                <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                                  <Clock className="w-3 h-3" />
+                                  <span>{formatActivityLogRelativeTime(codApprovalAttribution.approvedAt)}</span>
+                                  <span className="text-muted-foreground/50">{"\u2022"}</span>
+                                  <span>
+                                    {new Date(codApprovalAttribution.approvedAt).toLocaleTimeString(
+                                      language === "en" ? "en-US" : "fr-FR",
+                                      { hour: "2-digit", minute: "2-digit" }
+                                    )}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
+                        {codRejectionAttribution ? (
+                          <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/5 hover:bg-destructive/10 transition-colors">
+                            <div className="mt-0.5">
+                              <XCircle className="w-4 h-4 text-red-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <Badge variant="destructive">{language === "en" ? "Rejected" : "Rejeté"}</Badge>
+                                <Badge variant="outline" className="bg-blue-500/20 text-blue-300 border-blue-500/30">
+                                  {language === "en" ? "Admin" : "Admin"}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                                <p className="break-words whitespace-normal">
+                                  {language === "en" ? "Rejected by" : "Rejeté par"}:{" "}
+                                  <span className="font-medium text-foreground">
+                                    {codRejectionAttribution.rejectedByLabel ??
+                                      (language === "en" ? "Not recorded" : "Non enregistré")}
+                                  </span>
+                                </p>
+                                {codRejectionAttribution.rejectionReason ? (
+                                  <p className="italic break-words whitespace-normal">
+                                    {language === "en" ? "Reason" : "Raison"}: {codRejectionAttribution.rejectionReason}
+                                  </p>
+                                ) : null}
+                              </div>
+                              {codRejectionAttribution.rejectedAt ? (
+                                <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                                  <Clock className="w-3 h-3" />
+                                  <span>{formatActivityLogRelativeTime(codRejectionAttribution.rejectedAt)}</span>
+                                  <span className="text-muted-foreground/50">{"\u2022"}</span>
+                                  <span>
+                                    {new Date(codRejectionAttribution.rejectedAt).toLocaleTimeString(
+                                      language === "en" ? "en-US" : "fr-FR",
+                                      { hour: "2-digit", minute: "2-digit" }
+                                    )}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
+                        {uniqueOrderActivityLogs.map((log: any) => {
+                          const getActionIcon = () => {
+                            switch (log.action) {
+                              case "approved":
+                                return <CheckCircle className="w-4 h-4 text-green-500" />;
+                              case "rejected":
+                                return <XCircle className="w-4 h-4 text-red-500" />;
+                              case "cancelled":
+                                return <XCircle className="w-4 h-4 text-orange-500" />;
+                              case "status_changed":
+                                return <RefreshCw className="w-4 h-4 text-blue-500" />;
+                              case "created":
+                                return <Plus className="w-4 h-4 text-purple-500" />;
+                              default:
+                                return <Clock className="w-4 h-4 text-muted-foreground" />;
+                            }
+                          };
+
+                          const getActionBadge = () => {
+                            const actionMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+                              approved: { label: language === "en" ? "Approved" : "Approuvé", variant: "default" },
+                              rejected: { label: language === "en" ? "Rejected" : "Rejeté", variant: "destructive" },
+                              cancelled: { label: language === "en" ? "Cancelled" : "Annulé", variant: "destructive" },
+                              status_changed: { label: language === "en" ? "Status Changed" : "Statut modifié", variant: "secondary" },
+                              created: { label: language === "en" ? "Created" : "Créé", variant: "outline" },
+                            };
+                            const actionInfo = actionMap[log.action] || { label: log.action, variant: "outline" as const };
+                            return (
+                              <Badge
+                                variant={actionInfo.variant}
+                                className={actionInfo.variant === "default" ? "bg-green-500/20 text-green-300 border-green-500/30" : ""}
+                              >
+                                {actionInfo.label}
+                              </Badge>
+                            );
+                          };
+
+                          const getPerformedByBadge = () => {
+                            const typeMap: Record<string, { label: string; color: string }> = {
+                              admin: { label: language === "en" ? "Admin" : "Admin", color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
+                              ambassador: { label: language === "en" ? "Ambassador" : "Ambassadeur", color: "bg-purple-500/20 text-purple-300 border-purple-500/30" },
+                              system: { label: language === "en" ? "System" : "Système", color: "bg-gray-500/20 text-gray-300 border-gray-500/30" },
+                            };
+                            const typeInfo = typeMap[log.performed_by_type] || {
+                              label: log.performed_by_type || "N/A",
+                              color: "bg-muted text-muted-foreground border-border",
+                            };
+                            return (
+                              <Badge variant="outline" className={typeInfo.color}>
+                                {typeInfo.label}
+                              </Badge>
+                            );
+                          };
+
+                          return (
+                            <div
+                              key={log.id}
+                              className="flex items-start gap-3 p-3 rounded-lg border border-border bg-background/50 hover:bg-muted/50 transition-colors"
+                            >
+                              <div className="mt-0.5">{getActionIcon()}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  {getActionBadge()}
+                                  {getPerformedByBadge()}
+                                </div>
+                                {log.details && typeof log.details === "object" && (
+                                  <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                                    {log.details.old_status && log.details.new_status && (
+                                      <p className="break-words whitespace-normal">
+                                        {language === "en" ? "Status" : "Statut"}:
+                                        <span className="ml-1 font-medium break-all">{log.details.old_status}</span>
+                                        <span className="mx-1">{"\u2192"}</span>
+                                        <span className="font-medium break-all">{log.details.new_status}</span>
+                                      </p>
+                                    )}
+                                    {log.details.reason && (
+                                      <p className="italic break-words whitespace-normal">
+                                        {language === "en" ? "Reason" : "Raison"}: {log.details.reason}
+                                      </p>
+                                    )}
+                                    {log.details.email_sent !== undefined && (
+                                      <p className="break-words whitespace-normal">
+                                        {language === "en" ? "Email" : "Email"}:
+                                        <span className={`ml-1 ${log.details.email_sent ? "text-green-500" : "text-red-500"}`}>
+                                          {log.details.email_sent
+                                            ? language === "en"
+                                              ? "Sent"
+                                              : "Envoyé"
+                                            : language === "en"
+                                              ? "Failed"
+                                              : "Échoué"}
+                                        </span>
+                                      </p>
+                                    )}
+                                    {log.details.sms_sent !== undefined && (
+                                      <p className="break-words whitespace-normal">
+                                        {language === "en" ? "SMS" : "SMS"}:
+                                        <span className={`ml-1 ${log.details.sms_sent ? "text-green-500" : "text-red-500"}`}>
+                                          {log.details.sms_sent
+                                            ? language === "en"
+                                              ? "Sent"
+                                              : "Envoyé"
+                                            : language === "en"
+                                              ? "Failed"
+                                              : "Échoué"}
+                                        </span>
+                                      </p>
+                                    )}
+                                    {log.details.tickets_generated !== undefined && (
+                                      <p>
+                                        {language === "en" ? "Tickets" : "Billets"}:
+                                        <span className={`ml-1 ${log.details.tickets_generated ? "text-green-500" : "text-red-500"}`}>
+                                          {log.details.tickets_generated
+                                            ? language === "en"
+                                              ? "Generated"
+                                              : "Générés"
+                                            : language === "en"
+                                              ? "Failed"
+                                              : "Échoué"}
+                                        </span>
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                                  <Clock className="w-3 h-3" />
+                                  <span>{formatActivityLogRelativeTime(log.created_at)}</span>
+                                  <span className="text-muted-foreground/50">{"\u2022"}</span>
+                                  <span>
+                                    {new Date(log.created_at).toLocaleTimeString(language === "en" ? "en-US" : "fr-FR", {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1016,8 +1169,8 @@ export function OrderDetailsDialog({
                                     'outline'
                                   }
                                 >
-                                  {log.status === 'sent' ? (language === 'en' ? 'Sent' : 'EnvoyÃ©') :
-                                   log.status === 'failed' ? (language === 'en' ? 'Failed' : 'Ã‰chouÃ©') :
+                                  {log.status === 'sent' ? (language === 'en' ? 'Sent' : 'Envoyé') :
+                                   log.status === 'failed' ? (language === 'en' ? 'Failed' : 'Échoué') :
                                    log.status === 'pending_retry' ? (language === 'en' ? 'Pending Retry' : 'Nouvelle Tentative') :
                                    language === 'en' ? 'Pending' : 'En Attente'}
                                 </Badge>
@@ -1035,7 +1188,7 @@ export function OrderDetailsDialog({
                             </div>
                             <div className="text-sm">
                               <p className="text-muted-foreground">
-                                <strong>{language === 'en' ? 'To:' : 'Ã€:'}</strong> {log.recipient_email}
+                                <strong>{language === 'en' ? 'To:' : 'À:'}</strong> {log.recipient_email}
                               </p>
                               {log.error_message && (
                                 <p className="text-destructive text-xs mt-1">
@@ -1059,8 +1212,8 @@ export function OrderDetailsDialog({
                                     });
                                     if (response.ok) {
                                       toast({
-                                        title: language === 'en' ? 'Email Resent' : 'Email RenvoyÃ©',
-                                        description: language === 'en' ? 'The completion email has been resent successfully.' : 'L\'email de confirmation a Ã©tÃ© renvoyÃ© avec succÃ¨s.',
+                                        title: language === 'en' ? 'Email Resent' : 'E-mail renvoyé',
+                                        description: language === 'en' ? 'The completion email has been resent successfully.' : "L'e-mail de confirmation a été renvoyé avec succès.",
                                         variant: 'default',
                                       });
                                       // Refresh email logs
@@ -1073,7 +1226,7 @@ export function OrderDetailsDialog({
                                       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
                                       toast({
                                         title: language === 'en' ? 'Error' : 'Erreur',
-                                        description: errorData.details || errorData.error || (language === 'en' ? 'Failed to resend email.' : 'Ã‰chec du renvoi de l\'email.'),
+                                        description: errorData.details || errorData.error || (language === 'en' ? 'Failed to resend email.' : "Échec du renvoi de l'e-mail."),
                                         variant: 'destructive',
                                       });
                                     }
@@ -1081,7 +1234,7 @@ export function OrderDetailsDialog({
                                     console.error('Error resending email:', error);
                                     toast({
                                       title: language === 'en' ? 'Error' : 'Erreur',
-                                      description: language === 'en' ? 'Failed to resend email.' : 'Ã‰chec du renvoi de l\'email.',
+                                      description: language === 'en' ? 'Failed to resend email.' : "Échec du renvoi de l'e-mail.",
                                       variant: 'destructive',
                                     });
                                   } finally {
@@ -1101,7 +1254,7 @@ export function OrderDetailsDialog({
                     ) : (
                       <div className="text-center py-4 space-y-3">
                         <p className="text-sm text-muted-foreground">
-                          {language === 'en' ? 'No email delivery logs found. The completion email may not have been sent yet.' : 'Aucun journal de livraison email trouvÃ©. L\'email de confirmation n\'a peut-Ãªtre pas encore Ã©tÃ© envoyÃ©.'}
+                          {language === 'en' ? 'No email delivery logs found. The completion email may not have been sent yet.' : "Aucun journal de livraison e-mail trouvé. L'e-mail de confirmation n'a peut-être pas encore été envoyé."}
                         </p>
                         {order.user_email && (
                           <Button
@@ -1119,8 +1272,8 @@ export function OrderDetailsDialog({
                                 });
                                 if (response.ok) {
                                   toast({
-                                    title: language === 'en' ? 'Email Sent' : 'Email EnvoyÃ©',
-                                    description: language === 'en' ? 'The completion email has been sent successfully.' : 'L\'email de confirmation a Ã©tÃ© envoyÃ© avec succÃ¨s.',
+                                    title: language === 'en' ? 'Email Sent' : 'E-mail envoyé',
+                                    description: language === 'en' ? 'The completion email has been sent successfully.' : "L'e-mail de confirmation a été envoyé avec succès.",
                                     variant: 'default',
                                   });
                                   // Refresh email logs
@@ -1133,7 +1286,7 @@ export function OrderDetailsDialog({
                                   const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
                                   toast({
                                     title: language === 'en' ? 'Error' : 'Erreur',
-                                    description: errorData.details || errorData.error || (language === 'en' ? 'Failed to send email.' : 'Ã‰chec de l\'envoi de l\'email.'),
+                                    description: errorData.details || errorData.error || (language === 'en' ? 'Failed to send email.' : "Échec de l'envoi de l'e-mail."),
                                     variant: 'destructive',
                                   });
                                 }
@@ -1141,7 +1294,7 @@ export function OrderDetailsDialog({
                                 console.error('Error sending email:', error);
                                 toast({
                                   title: language === 'en' ? 'Error' : 'Erreur',
-                                  description: error?.message || (language === 'en' ? 'Failed to send email. Please check server logs for details.' : 'Ã‰chec de l\'envoi de l\'email. Veuillez vÃ©rifier les journaux du serveur.'),
+                                  description: error?.message || (language === 'en' ? 'Failed to send email. Please check server logs for details.' : "Échec de l'envoi de l'e-mail. Veuillez vérifier les journaux du serveur."),
                                   variant: 'destructive',
                                 });
                               } finally {
@@ -1160,42 +1313,10 @@ export function OrderDetailsDialog({
                 </Card>
               )}
 
-              {/* Remove Order Action - Show for all non-PAID orders */}
-              {order.status !== 'PAID' && order.status !== 'REMOVED_BY_ADMIN' && (
-                <Card className="bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
-                      {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">
-                        {language === 'en' 
-                          ? 'Remove this order (soft delete). The order will be hidden from reports but data will be preserved for audit purposes.'
-                          : 'Retirer cette commande (suppression douce). La commande sera masquÃ©e des rapports mais les donnÃ©es seront conservÃ©es Ã  des fins d\'audit.'}
-                      </p>
-                      <Button
-                        onClick={() => {
-                          setRemovingOrderId(order.id);
-                          setIsRemoveDialogOpen(true);
-                        }}
-                        variant="destructive"
-                        size="sm"
-                        className="w-full sm:w-auto"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Admin Actions */}
-              {(order.status === 'PENDING_CASH' || 
-                (order.status === 'PENDING_ADMIN_APPROVAL' && order.payment_method === 'ambassador_cash')) && (
+              {/* Admin Actions (workflow + remove order) */}
+              {((order.status === 'PENDING_CASH' ||
+                (order.status === 'PENDING_ADMIN_APPROVAL' && order.payment_method === 'ambassador_cash')) ||
+                (order.status !== 'PAID' && order.status !== 'REMOVED_BY_ADMIN')) && (
                 <Card className="bg-primary/5 border-primary/20">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -1311,6 +1432,20 @@ export function OrderDetailsDialog({
                         >
                           {isCompleting ? <Loader size="sm" className="mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
                           {isCompleting ? (language === 'en' ? 'Completing...' : 'En cours...') : (language === 'en' ? 'Complete Order' : 'Terminer la Commande')}
+                        </Button>
+                      )}
+
+                      {order.status !== 'PAID' && order.status !== 'REMOVED_BY_ADMIN' && (
+                        <Button
+                          onClick={() => {
+                            setRemovingOrderId(order.id);
+                            setIsRemoveDialogOpen(true);
+                          }}
+                          variant="destructive"
+                          size="sm"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          {language === 'en' ? 'Remove Order' : 'Retirer la Commande'}
                         </Button>
                       )}
                     </div>

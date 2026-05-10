@@ -167,13 +167,15 @@ export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId, ad
             totalTicketsSold: analyticsData.totalTicketsSold,
             totalRevenue: analyticsData.totalRevenue,
             totalOrders: analyticsData.totalOrders,
-            orderCompletionRate: analyticsData.orderCompletionRate,
+            presalePaidTickets: analyticsData.presalePaidTickets,
+            presalePaidBreakdown: analyticsData.presalePaidBreakdown,
             averageTicketsPerDay: analyticsData.averageTicketsPerDay,
             ambassadorsInvolved: analyticsData.ambassadorsInvolved,
             trends: analyticsData.trends
           } : null}
           loading={analyticsLoading}
           error={analyticsError ? true : false}
+          language={language === 'fr' ? 'fr' : 'en'}
         />
       </div>
 

@@ -1324,10 +1324,6 @@ export function CareerTab({ language }: CareerTabProps) {
                     }
                   }}
                 />
-                <p className="text-xs text-muted-foreground">
-                  All email addresses listed here will receive a notification whenever a new career
-                  application is submitted.
-                </p>
               </div>
             </CardContent>
           </Card>

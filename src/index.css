@@ -27,6 +27,37 @@
   display: none; /* Chrome, Safari, Opera */
 }
 
+/* Admin — add/edit event dialog: no field transitions, subtle focus, static poster dropzone border */
+.event-edit-dialog input,
+.event-edit-dialog textarea,
+.event-edit-dialog [role="combobox"] {
+  transition: none !important;
+}
+.event-edit-dialog input:focus,
+.event-edit-dialog input:focus-visible,
+.event-edit-dialog textarea:focus,
+.event-edit-dialog textarea:focus-visible,
+.event-edit-dialog [role="combobox"]:focus,
+.event-edit-dialog [role="combobox"]:focus-visible {
+  transform: none !important;
+}
+.event-edit-dialog input:focus-visible,
+.event-edit-dialog textarea:focus-visible,
+.event-edit-dialog [role="combobox"]:focus-visible {
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-width: 0 !important;
+  --tw-ring-width: 0 !important;
+  box-shadow: 0 0 0 1px hsl(var(--ring) / 0.4) !important;
+  outline: none !important;
+}
+.event-edit-dialog div.border-2.border-dashed.rounded-lg {
+  transition: none !important;
+}
+.event-edit-dialog div.border-2.border-dashed.rounded-lg:hover {
+  border-color: hsl(var(--muted-foreground) / 0.25) !important;
+}
+
 /* Admin dashboard: navigation list scrollbar (brand red) */
 .admin-nav-scrollbar {
   scrollbar-width: thin;
@@ -119,6 +150,37 @@ textarea,
   -moz-user-select: text;
   -ms-user-select: text;
   user-select: text;
+}
+
+/* Admin Dashboard: re-enable text selection (scoped) */
+[data-admin-dashboard] * {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+/* Admin Dashboard (portal/dialog content lives under <body>) */
+body[data-admin-dashboard] * {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+/* Keep intentional non-select elements non-selectable */
+[data-admin-dashboard] .select-none {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+body[data-admin-dashboard] .select-none {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 /* Mobile-specific styles for QR scanner */
@@ -271,6 +333,51 @@ All colors MUST be HSL.
     font-style: normal;
     letter-spacing: 0.025em;
     line-height: 1.6;
+  }
+
+  /* Keep form fields from turning "blue" while typing (focus/autofill) */
+  input,
+  textarea,
+  select {
+    background-color: hsl(var(--input));
+    color: hsl(var(--foreground));
+    caret-color: hsl(var(--foreground));
+  }
+
+  input:focus,
+  input:focus-visible,
+  textarea:focus,
+  textarea:focus-visible,
+  select:focus,
+  select:focus-visible {
+    background-color: hsl(var(--input));
+  }
+
+  /* Chrome/Safari autofill paint override */
+  input:-webkit-autofill,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  textarea:-webkit-autofill:hover,
+  select:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill:focus,
+  select:-webkit-autofill:focus {
+    -webkit-text-fill-color: hsl(var(--foreground)) !important;
+    caret-color: hsl(var(--foreground)) !important;
+    -webkit-box-shadow: 0 0 0px 1000px hsl(var(--input)) inset !important;
+    box-shadow: 0 0 0px 1000px hsl(var(--input)) inset !important;
+    transition: background-color 9999s ease-out 0s;
+  }
+
+  /* Standards-based autofill selector (supported in modern browsers) */
+  input:autofill,
+  textarea:autofill,
+  select:autofill {
+    background-color: hsl(var(--input)) !important;
+    color: hsl(var(--foreground)) !important;
+    caret-color: hsl(var(--foreground)) !important;
+    box-shadow: 0 0 0px 1000px hsl(var(--input)) inset !important;
   }
 }
 
@@ -815,6 +922,47 @@ All colors MUST be HSL.
 
 .animate-neon-glow {
   animation: neon-glow-pulse 3s ease-in-out infinite;
+}
+
+/* Pass purchase / payment success — green checkmark */
+@keyframes success-check-reveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.35) rotate(-8deg);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.1) rotate(0deg);
+  }
+  78% {
+    transform: scale(0.92) rotate(0deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes success-check-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.06);
+  }
+}
+
+.animate-success-check {
+  animation: success-check-reveal 0.78s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+  transform-origin: center center;
+}
+
+.animate-success-check-glow {
+  animation: success-check-glow-pulse 2.4s ease-in-out 0.55s infinite;
+  transform-origin: center center;
 }
 
 @keyframes slideInScale {

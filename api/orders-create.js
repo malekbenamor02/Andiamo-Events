@@ -8,6 +8,11 @@ import { createRequire } from 'module';
 import nodemailer from 'nodemailer';
 import querystring from 'querystring';
 import https from 'https';
+import { getClientIp, resolvePresaleForOrderCreate } from './lib/presale-server.js';
+import {
+  rejectForbiddenOrderCreateKeys,
+  buildValidatedPassLineItem,
+} from './lib/order-create-pricing-guard.js';
 
 const requireCjs = createRequire(import.meta.url);
 const { buildOrderConfirmationEmailHtml } = requireCjs('./lib/order-confirmation-email-html.cjs');
@@ -17,11 +22,17 @@ const { sendTransactionalEmail } = requireCjs('./lib/transactional-email.cjs');
 
 // --- Basic helpers (shared within this module) ---
 
-function getClientIp(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-    || req.headers['x-real-ip']
-    || req.socket?.remoteAddress
-    || 'unknown';
+// Rollback presale_claim_slot when order creation fails before (or right after) the row exists.
+// Lifecycle releases (expire / cancel / payment FAILED) are handled by DB trigger
+// orders_presale_release_on_terminal_failure on public.orders — do not duplicate here.
+async function releasePresaleSlotRpc(dbClient, presaleCodeId) {
+  if (!presaleCodeId) return;
+  try {
+    const { error } = await dbClient.rpc('presale_release_slot', { p_presale_code_id: presaleCodeId });
+    if (error) console.error('presale_release_slot', error);
+  } catch (e) {
+    console.error('presale_release_slot', e);
+  }
 }
 
 // Per-IP rate limit: 10 orders per hour per IP
@@ -133,12 +144,12 @@ export default async (req, res) => {
   const { setCORSHeaders, handlePreflight } = await getCorsUtils();
   
   // Handle preflight requests
-  if (handlePreflight(req, res, { methods: 'POST, OPTIONS', headers: 'Content-Type', credentials: true })) {
+  if (handlePreflight(req, res, { methods: 'POST, OPTIONS', headers: 'Content-Type, X-Presale-CSRF, X-Device-Id', credentials: true })) {
     return; // Preflight handled
   }
   
   // Set CORS headers for actual requests
-  if (!setCORSHeaders(res, req, { methods: 'POST, OPTIONS', headers: 'Content-Type', credentials: true })) {
+  if (!setCORSHeaders(res, req, { methods: 'POST, OPTIONS', headers: 'Content-Type, X-Presale-CSRF, X-Device-Id', credentials: true })) {
     if (req.headers.origin) {
       return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
     }
@@ -200,6 +211,19 @@ export default async (req, res) => {
         body += chunk.toString();
       }
       bodyData = JSON.parse(body);
+    }
+
+    const forbiddenBody = rejectForbiddenOrderCreateKeys(bodyData);
+    if (!forbiddenBody.ok) {
+      console.warn('orders/create: rejected forbidden body keys', forbiddenBody.keys);
+      await logOrderCreateFailure(dbClient, req, 400, {
+        error: 'forbidden_request_fields',
+        keys: forbiddenBody.keys,
+      });
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: 'Request contains unsupported fields.',
+      });
     }
 
     const {
@@ -375,6 +399,22 @@ export default async (req, res) => {
     }
 
     const orderEventIds = [...new Set((eventPasses || []).map((p) => p.event_id).filter(Boolean))];
+    if (orderEventIds.length > 1) {
+      await logOrderCreateFailure(dbClient, req, 400, { error: 'Multiple events in one order' });
+      return res.status(400).json({
+        error: 'Invalid order',
+        details: 'All passes must be for the same event.'
+      });
+    }
+    const primaryEventId = orderEventIds[0] || eventId || null;
+    if (eventId && primaryEventId && String(eventId) !== String(primaryEventId)) {
+      await logOrderCreateFailure(dbClient, req, 400, { error: 'Event mismatch' });
+      return res.status(400).json({
+        error: 'Invalid order',
+        details: 'Event does not match selected passes.'
+      });
+    }
+
     if (orderEventIds.length > 0) {
       const { data: evRows, error: evErr } = await dbClient
         .from('events')
@@ -439,30 +479,40 @@ export default async (req, res) => {
         }
       }
 
-      // Validate price (server is authority for pricing)
-      if (parseFloat(eventPass.price) !== parseFloat(pass.price)) {
-        console.warn(`Price mismatch for pass ${pass.passId}: client=${pass.price}, server=${eventPass.price}`);
-        // Use server price
-        pass.price = parseFloat(eventPass.price);
+      const line = buildValidatedPassLineItem(pass, eventPass);
+      if (!line.passId || line.quantity < 1) {
+        await logOrderCreateFailure(dbClient, req, 400, { error: 'Invalid pass line', passId: line.passId });
+        return res.status(400).json({
+          error: 'Invalid pass',
+          details: 'Each pass must have a valid passId and quantity of at least 1.',
+        });
       }
 
       // Check stock availability
       if (eventPass.max_quantity !== null) {
         const remaining = eventPass.max_quantity - eventPass.sold_quantity;
-        if (remaining < pass.quantity) {
-          await logOrderCreateFailure(dbClient, req, 400, { error: 'Insufficient stock', remaining, requested: pass.quantity });
+        if (remaining < line.quantity) {
+          await logOrderCreateFailure(dbClient, req, 400, { error: 'Insufficient stock', remaining, requested: line.quantity });
           return res.status(400).json({
             error: 'Insufficient stock',
-            details: `Only ${remaining} ${eventPass.name} pass(es) available, requested ${pass.quantity}`
+            details: `Only ${remaining} ${eventPass.name} pass(es) available, requested ${line.quantity}`
           });
         }
       }
 
-      validatedPasses.push({
-        ...pass,
-        eventPass: eventPass
-      });
+      validatedPasses.push(line);
     }
+
+    const presaleResult = await resolvePresaleForOrderCreate(dbClient, req, {
+      primaryEventId,
+      validatedPasses,
+    });
+    if (!presaleResult.ok) {
+      await logOrderCreateFailure(dbClient, req, 403, { error: presaleResult.error });
+      return res.status(403).json({ error: 'Invalid access' });
+    }
+    const presaleCodeIdForOrder = presaleResult.presaleCodeId;
+    const presaleSnapshotForNotes = presaleResult.presaleSnapshot || null;
 
     // Max 10 passes per order
     const totalQuantityForCap = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
@@ -625,6 +675,51 @@ export default async (req, res) => {
       stockReservations.push({ passId: id, reserved: true, unlimited: false });
     }
 
+    const rollbackStockReservations = async () => {
+      for (const reservation of stockReservations) {
+        if (!reservation.unlimited && reservation.reserved) {
+          const pass = validatedPasses.find((p) => p.passId === reservation.passId);
+          if (pass) {
+            const { data: currentStock } = await dbClient
+              .from('event_passes')
+              .select('sold_quantity')
+              .eq('id', reservation.passId)
+              .single();
+            if (currentStock) {
+              await dbClient
+                .from('event_passes')
+                .update({ sold_quantity: Math.max(0, currentStock.sold_quantity - pass.quantity) })
+                .eq('id', reservation.passId);
+            }
+          }
+        }
+      }
+    };
+
+    let presaleSlotClaimed = false;
+    if (presaleCodeIdForOrder && primaryEventId) {
+      const { data: claimedRaw, error: claimErr } = await dbClient.rpc('presale_claim_slot', {
+        p_event_id: primaryEventId,
+        p_presale_code_id: presaleCodeIdForOrder,
+      });
+      if (claimErr) {
+        console.error('presale_claim_slot', claimErr);
+        await rollbackStockReservations();
+        await logOrderCreateFailure(dbClient, req, 500, { error: 'Presale claim failed', details: claimErr.message });
+        return res.status(500).json({
+          error: 'Failed to place order',
+          details: claimErr.message,
+        });
+      }
+      const claimedRows = Array.isArray(claimedRaw) ? claimedRaw : claimedRaw ? [claimedRaw] : [];
+      if (!claimedRows.length) {
+        await rollbackStockReservations();
+        await logOrderCreateFailure(dbClient, req, 403, { error: 'Presale code exhausted' });
+        return res.status(403).json({ error: 'Invalid access' });
+      }
+      presaleSlotClaimed = true;
+    }
+
     // STEP 4: Calculate totals (server-side authority)
     const totalQuantity = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
     const subtotal = validatedPasses.reduce((sum, p) => sum + (parseFloat(p.price) * p.quantity), 0);
@@ -650,6 +745,9 @@ export default async (req, res) => {
         initialStatus = 'PENDING_CASH';
         break;
       default:
+        if (presaleSlotClaimed && presaleCodeIdForOrder) {
+          await releasePresaleSlotRpc(dbClient, presaleCodeIdForOrder);
+        }
         // Rollback stock reservations
         for (const reservation of stockReservations) {
           if (!reservation.unlimited) {
@@ -698,6 +796,7 @@ export default async (req, res) => {
       stock_released: false,  // Stock is reserved, not released
       assigned_at: ambassadorId ? new Date().toISOString() : null,
       idempotency_key: safeIdempotencyKey || null,
+      presale_code_id: presaleCodeIdForOrder || null,
       notes: JSON.stringify({
         all_passes: validatedPasses.map(p => ({
           passId: p.passId,
@@ -717,6 +816,11 @@ export default async (req, res) => {
                 total_with_fees: totalWithFees
               }
             }
+          : {}),
+        // Persist presale attribution + pre/post-discount snapshot for admin views.
+        // RLS hides presale_codes from the anon admin client, so we keep the data here.
+        ...(presaleSnapshotForNotes
+          ? { presale: presaleSnapshotForNotes }
           : {})
       })
     };
@@ -730,6 +834,9 @@ export default async (req, res) => {
     if (orderError) {
       // Rollback stock reservations
       console.error('Order creation failed, rolling back stock:', orderError);
+      if (presaleSlotClaimed && presaleCodeIdForOrder) {
+        await releasePresaleSlotRpc(dbClient, presaleCodeIdForOrder);
+      }
       for (const reservation of stockReservations) {
         if (!reservation.unlimited) {
           const pass = validatedPasses.find(p => p.passId === reservation.passId);
@@ -771,6 +878,9 @@ export default async (req, res) => {
     if (passesInsertError) {
         // Rollback: delete order and release stock
         console.error('Order passes creation failed, rolling back:', passesInsertError);
+        if (presaleSlotClaimed && presaleCodeIdForOrder) {
+          await releasePresaleSlotRpc(dbClient, presaleCodeIdForOrder);
+        }
         await dbClient.from('orders').delete().eq('id', order.id);
         for (const reservation of stockReservations) {
           if (!reservation.unlimited) {

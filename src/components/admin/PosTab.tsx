@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,11 +10,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ReasonDialog } from "@/components/ui/reason-dialog";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import Loader from "@/components/ui/Loader";
-import { Store, Building2, Users, Package, ShoppingCart, Activity, Plus, RefreshCw, Edit, Trash2, Copy, Check, X, Eye, Mail, Send, BarChart3, TrendingUp } from "lucide-react";
+import { Store, Building2, Users, Package, ShoppingCart, Activity, Plus, RefreshCw, Edit, Trash2, Copy, Check, X, Eye, Mail, Send, BarChart3, TrendingUp, Calendar as CalendarIcon } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { useToast } from "@/hooks/use-toast";
 import { AdminOrderQrTicketsSection } from "@/pages/admin/components/AdminOrderQrTicketsSection";
@@ -76,9 +79,9 @@ interface PosOrder {
   pos_outlets?: { id: string; name: string; slug: string } | null;
   events?: { id: string; name: string; date?: string; venue?: string } | null;
   order_passes?: { pass_type: string; quantity: number; price: number }[];
-  approver?: { email?: string } | null;
-  rejector?: { email?: string } | null;
-  remover?: { email?: string } | null;
+  approver?: { name?: string | null; email?: string } | null;
+  rejector?: { name?: string | null; email?: string } | null;
+  remover?: { name?: string | null; email?: string } | null;
 }
 
 interface AuditRow {
@@ -110,6 +113,7 @@ type ConfirmTarget = { kind: "delete-outlet"; o: Outlet } | { kind: "delete-user
 
 export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosTabProps) {
   const { toast } = useToast();
+  const ordersFetchGenRef = useRef(0);
   const [subTab, setSubTab] = useState("orders");
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [users, setUsers] = useState<PosUser[]>([]);
@@ -117,13 +121,15 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
   const [orders, setOrders] = useState<PosOrder[]>([]);
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  /** True after the first POS events list fetch finishes (ok or error). */
+  const [eventsReady, setEventsReady] = useState(false);
   const [passesByEvent, setPassesByEvent] = useState<Record<string, EventPass[]>>({});
   const [loading, setLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [outletFilter, setOutletFilter] = useState<string>("__all__");
-  const [eventFilter, setEventFilter] = useState<string>("__all__");
+  const [eventFilter, setEventFilter] = useState<string>(() => selectedEventId ?? "__all__");
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("__all__");
-  const [orderEventFilter, setOrderEventFilter] = useState<string>("__all__");
+  const [orderEventFilter, setOrderEventFilter] = useState<string>(() => selectedEventId ?? "__all__");
   const [orderFrom, setOrderFrom] = useState("");
   const [orderTo, setOrderTo] = useState("");
   const [createOutlet, setCreateOutlet] = useState(false);
@@ -167,6 +173,7 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
     if (r.ok) setStock(await r.json()); else setStock([]);
   };
   const loadOrders = async () => {
+    const gen = ++ordersFetchGenRef.current;
     setOrdersLoading(true);
     try {
       const q = new URLSearchParams();
@@ -176,9 +183,10 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
       if (orderFrom) q.set("from", orderFrom);
       if (orderTo) q.set("to", orderTo);
       const r = await fetcher(`${API_ROUTES.ADMIN_POS_ORDERS}?${q}`);
+      if (gen !== ordersFetchGenRef.current) return;
       if (r.ok) setOrders(await r.json()); else setOrders([]);
     } finally {
-      setOrdersLoading(false);
+      if (gen === ordersFetchGenRef.current) setOrdersLoading(false);
     }
   };
   const loadAudit = async () => {
@@ -186,8 +194,12 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
     if (r.ok) setAudit(await r.json()); else setAudit([]);
   };
   const loadEvents = async () => {
-    const r = await fetcher(API_ROUTES.ADMIN_POS_EVENTS);
-    if (r.ok) setEvents(await r.json()); else setEvents([]);
+    try {
+      const r = await fetcher(API_ROUTES.ADMIN_POS_EVENTS);
+      if (r.ok) setEvents(await r.json()); else setEvents([]);
+    } finally {
+      setEventsReady(true);
+    }
   };
   const loadPasses = async (eventId: string) => {
     if (passesByEvent[eventId]) return;
@@ -232,23 +244,26 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
 
   // Sync POS event filters with the main admin "Filter by Event" selection
   useEffect(() => {
-    // When no specific event is selected at the top level, show all events in POS
     if (!selectedEventId) {
       setEventFilter("__all__");
       setOrderEventFilter("__all__");
       return;
     }
-
-    // Only apply the filter if this event exists in the POS events list
+    // Until the POS events list has loaded, keep the dashboard event so the first orders fetch
+    // is scoped (empty events[] previously forced "__all__" and caused a flash of all events' orders).
+    if (!eventsReady) {
+      setEventFilter(selectedEventId);
+      setOrderEventFilter(selectedEventId);
+      return;
+    }
     if (events.some((ev) => ev.id === selectedEventId)) {
       setEventFilter(selectedEventId);
       setOrderEventFilter(selectedEventId);
     } else {
-      // Fallback: if POS doesn't know this event, don't force a broken filter
       setEventFilter("__all__");
       setOrderEventFilter("__all__");
     }
-  }, [selectedEventId, events]);
+  }, [selectedEventId, events, eventsReady]);
 
   const copyLink = (slug: string) => {
     const u = typeof window !== "undefined" ? `${window.location.origin}/pos/${slug}` : `/pos/${slug}`;
@@ -509,16 +524,16 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
               <CardTitle style={{ color: "#E21836" }}>{t.orders}</CardTitle>
               <div className="flex gap-2 flex-wrap">
                 <Select value={outletFilter === "__none__" ? "__all__" : outletFilter} onValueChange={setOutletFilter}>
-                  <SelectTrigger className="w-[160px]"><SelectValue placeholder={t.outlet} /></SelectTrigger>
+                  <SelectTrigger className="w-[160px]"><SelectValue placeholder={t.name} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">{language === "en" ? "All" : "Tous"}</SelectItem>
+                    <SelectItem value="__all__">{t.name}</SelectItem>
                     {outlets.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={orderStatusFilter} onValueChange={setOrderStatusFilter}>
                   <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.status} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">{language === "en" ? "All" : "Tous"}</SelectItem>
+                    <SelectItem value="__all__">{t.status}</SelectItem>
                     <SelectItem value="PENDING_ADMIN_APPROVAL">PENDING_ADMIN_APPROVAL</SelectItem>
                     <SelectItem value="PAID">PAID</SelectItem>
                     <SelectItem value="REJECTED">REJECTED</SelectItem>
@@ -529,11 +544,89 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                   <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.event} /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">{language === "en" ? "All events" : "Tous"}</SelectItem>
+                    {selectedEventId && !eventsReady ? (
+                      <SelectItem value={selectedEventId} disabled>
+                        {language === "en" ? "Loading events…" : "Chargement des événements…"}
+                      </SelectItem>
+                    ) : null}
                     {events.map(ev => <SelectItem key={ev.id} value={ev.id}>{ev.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Input type="date" className="w-[140px]" value={orderFrom} onChange={e => setOrderFrom(e.target.value)} />
-                <Input type="date" className="w-[140px]" value={orderTo} onChange={e => setOrderTo(e.target.value)} />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-[160px] justify-start text-left font-normal",
+                        !orderFrom && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {orderFrom
+                        ? format(new Date(`${orderFrom}T00:00:00`), "dd/MM/yyyy")
+                        : (language === "en" ? "From" : "De")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={orderFrom ? new Date(`${orderFrom}T00:00:00`) : undefined}
+                      onSelect={(date) => setOrderFrom(date ? format(date, "yyyy-MM-dd") : "")}
+                      initialFocus
+                    />
+                    {orderFrom && (
+                      <div className="p-2 border-t border-border flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setOrderFrom("")}
+                        >
+                          <X className="w-3 h-3 mr-1" />
+                          {language === "en" ? "Clear" : "Effacer"}
+                        </Button>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-[160px] justify-start text-left font-normal",
+                        !orderTo && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {orderTo
+                        ? format(new Date(`${orderTo}T00:00:00`), "dd/MM/yyyy")
+                        : (language === "en" ? "To" : "À")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={orderTo ? new Date(`${orderTo}T00:00:00`) : undefined}
+                      onSelect={(date) => setOrderTo(date ? format(date, "yyyy-MM-dd") : "")}
+                      disabled={orderFrom ? { before: new Date(`${orderFrom}T00:00:00`) } : undefined}
+                      initialFocus
+                    />
+                    {orderTo && (
+                      <div className="p-2 border-t border-border flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setOrderTo("")}
+                        >
+                          <X className="w-3 h-3 mr-1" />
+                          {language === "en" ? "Clear" : "Effacer"}
+                        </Button>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
                 <Button size="sm" variant="ghost" onClick={loadOrders}><RefreshCw className="w-4 h-4" /></Button>
               </div>
             </CardHeader>
@@ -800,8 +893,81 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                     {outlets.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Input type="date" className="w-[140px]" value={statsFrom} onChange={e => setStatsFrom(e.target.value)} placeholder="From" />
-                <Input type="date" className="w-[140px]" value={statsTo} onChange={e => setStatsTo(e.target.value)} placeholder="To" />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-[160px] justify-start text-left font-normal",
+                        !statsFrom && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {statsFrom
+                        ? format(new Date(`${statsFrom}T00:00:00`), "dd/MM/yyyy")
+                        : (language === "en" ? "From" : "De")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={statsFrom ? new Date(`${statsFrom}T00:00:00`) : undefined}
+                      onSelect={(date) => setStatsFrom(date ? format(date, "yyyy-MM-dd") : "")}
+                      initialFocus
+                    />
+                    {statsFrom && (
+                      <div className="p-2 border-t border-border flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setStatsFrom("")}
+                        >
+                          <X className="w-3 h-3 mr-1" />
+                          {language === "en" ? "Clear" : "Effacer"}
+                        </Button>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-[160px] justify-start text-left font-normal",
+                        !statsTo && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {statsTo
+                        ? format(new Date(`${statsTo}T00:00:00`), "dd/MM/yyyy")
+                        : (language === "en" ? "To" : "À")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={statsTo ? new Date(`${statsTo}T00:00:00`) : undefined}
+                      onSelect={(date) => setStatsTo(date ? format(date, "yyyy-MM-dd") : "")}
+                      disabled={statsFrom ? { before: new Date(`${statsFrom}T00:00:00`) } : undefined}
+                      initialFocus
+                    />
+                    {statsTo && (
+                      <div className="p-2 border-t border-border flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setStatsTo("")}
+                        >
+                          <X className="w-3 h-3 mr-1" />
+                          {language === "en" ? "Clear" : "Effacer"}
+                        </Button>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
                 <Button size="sm" variant="ghost" onClick={loadStats} disabled={statsLoading}>{statsLoading ? <Loader size="sm" className="[background:#E21836]" /> : <RefreshCw className="w-4 h-4" />}</Button>
               </div>
             </CardHeader>
@@ -1019,16 +1185,16 @@ export function PosTab({ language, selectedEventId, isSuperAdmin = false }: PosT
                 <div>
                   <p className="text-[#E21836] font-semibold mb-1">{language === "en" ? "Action by" : "Action par"}</p>
                   {selectedOrder.status === "PAID" && selectedOrder.approver && (
-                    <p className="text-[#B0B0B0]">{(language === "en" ? "Approved by" : "Approuvé par")}: {selectedOrder.approver?.email || "—"}</p>
+                    <p className="text-[#B0B0B0]">{(language === "en" ? "Approved by" : "Approuvé par")}: {(selectedOrder.approver?.name && String(selectedOrder.approver.name).trim()) || selectedOrder.approver?.email || "—"}</p>
                   )}
                   {selectedOrder.status === "REJECTED" && (
                     <>
-                      {selectedOrder.rejector && <p className="text-[#B0B0B0]">{(language === "en" ? "Rejected by" : "Rejeté par")}: {selectedOrder.rejector?.email || "—"}</p>}
+                      {selectedOrder.rejector && <p className="text-[#B0B0B0]">{(language === "en" ? "Rejected by" : "Rejeté par")}: {(selectedOrder.rejector?.name && String(selectedOrder.rejector.name).trim()) || selectedOrder.rejector?.email || "—"}</p>}
                       {selectedOrder.cancellation_reason && <p className="text-[#B0B0B0] mt-0.5">{(language === "en" ? "Reason" : "Raison")}: {selectedOrder.cancellation_reason}</p>}
                     </>
                   )}
                   {selectedOrder.status === "REMOVED_BY_ADMIN" && selectedOrder.remover && (
-                    <p className="text-[#B0B0B0]">{(language === "en" ? "Removed by" : "Supprimé par")}: {selectedOrder.remover?.email || "—"}</p>
+                    <p className="text-[#B0B0B0]">{(language === "en" ? "Removed by" : "Supprimé par")}: {(selectedOrder.remover?.name && String(selectedOrder.remover.name).trim()) || selectedOrder.remover?.email || "—"}</p>
                   )}
                 </div>
               ) : null}

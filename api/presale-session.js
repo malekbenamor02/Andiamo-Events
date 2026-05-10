@@ -1,0 +1,170 @@
+/**
+ * GET /api/presale/session?eventId= — validate cookie session (no CSRF in body; use POST for CSRF).
+ * POST /api/presale/session — JSON { eventId } — same validation + returns csrfToken (no-store).
+ * POST /api/presale/session/clear — invalidate session (by cookie id) + clear cookie (no CSRF; gate reset on each load)
+ */
+import '../lib/sentry-server.js';
+import { createClient } from '@supabase/supabase-js';
+import {
+  parseCookie,
+  PRESALE_COOKIE_NAME,
+  PRESALE_CSRF_HEADER,
+  fetchValidPresaleSessionRow,
+  clearPresaleCookieHeader,
+} from './lib/presale-server.js';
+
+let corsUtils = null;
+async function getCorsUtils() {
+  if (!corsUtils) corsUtils = await import('../lib/cors.js');
+  return corsUtils;
+}
+
+function requireServiceDb(res) {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    res.status(503).json({
+      valid: false,
+      error: 'missing_service_role',
+      message: 'Presale session API requires SUPABASE_SERVICE_ROLE_KEY (presale_sessions is not readable with anon).',
+    });
+    return null;
+  }
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+async function readJsonBody(req) {
+  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) return req.body;
+  let raw = '';
+  for await (const chunk of req) raw += chunk.toString();
+  if (!raw.trim()) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+export default async function handler(req, res) {
+  const { setCORSHeaders, handlePreflight } = await getCorsUtils();
+  if (handlePreflight(req, res, {
+    methods: 'GET, POST, OPTIONS',
+    headers: `Content-Type, ${PRESALE_CSRF_HEADER}`,
+    credentials: true,
+  })) return;
+  if (!setCORSHeaders(res, req, {
+    methods: 'GET, POST, OPTIONS',
+    headers: `Content-Type, ${PRESALE_CSRF_HEADER}`,
+    credentials: true,
+  })) {
+    if (req.headers.origin) {
+      return res.status(403).json({ error: 'Invalid access' });
+    }
+  }
+
+  const client = requireServiceDb(res);
+  if (!client) return;
+
+  const url = req.url || '';
+  const isClear = url.includes('/session/clear') || url.endsWith('/clear');
+
+  if (req.method === 'POST' && isClear) {
+    const sessionId = parseCookie(req, PRESALE_COOKIE_NAME);
+    if (!sessionId) {
+      res.setHeader('Set-Cookie', clearPresaleCookieHeader());
+      return res.status(200).json({ success: true });
+    }
+    const { data: row } = await client
+      .from('presale_sessions')
+      .select('id, invalidated_at')
+      .eq('id', sessionId)
+      .maybeSingle();
+    if (row && !row.invalidated_at) {
+      await client
+        .from('presale_sessions')
+        .update({ invalidated_at: new Date().toISOString(), invalidated_reason: 'gate_reset' })
+        .eq('id', sessionId);
+    }
+    res.setHeader('Set-Cookie', clearPresaleCookieHeader());
+    return res.status(200).json({ success: true });
+  }
+
+  async function sessionPayloadForRow(row, eventId, includeCsrf) {
+    let discount_type = null;
+    let discount_value = null;
+    try {
+      const { data: codeRow } = await client
+        .from('presale_codes')
+        .select('discount_type, discount_value')
+        .eq('id', row.presale_code_id)
+        .maybeSingle();
+      if (codeRow && (codeRow.discount_type === 'percent' || codeRow.discount_type === 'fixed')) {
+        discount_type = codeRow.discount_type;
+        discount_value = codeRow.discount_value != null ? Number(codeRow.discount_value) : null;
+      }
+    } catch (e) {
+      console.error('presale-session discount lookup', e);
+    }
+    const base = {
+      valid: true,
+      eventId,
+      presaleCodeId: row.presale_code_id,
+      discount_type,
+      discount_value,
+    };
+    if (includeCsrf) {
+      return { ...base, csrfToken: row.csrf_token };
+    }
+    return base;
+  }
+
+  if (req.method === 'POST' && !isClear) {
+    try {
+      const body = await readJsonBody(req);
+      const eventId = body?.eventId ? String(body.eventId).trim() : '';
+      if (!eventId) {
+        return res.status(400).json({ error: 'Invalid access' });
+      }
+      const sessionId = parseCookie(req, PRESALE_COOKIE_NAME);
+      if (!sessionId) {
+        return res.status(401).json({ valid: false });
+      }
+      const row = await fetchValidPresaleSessionRow(client, sessionId, eventId);
+      if (!row) {
+        return res.status(401).json({ valid: false });
+      }
+      res.setHeader('Cache-Control', 'no-store, private');
+      const payload = await sessionPayloadForRow(row, eventId, true);
+      return res.status(200).json(payload);
+    } catch (e) {
+      console.error('presale-session POST', e);
+      return res.status(401).json({ valid: false });
+    }
+  }
+
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const eventId = req.query?.eventId || new URL(req.url || '', 'http://localhost').searchParams.get('eventId');
+    if (!eventId) {
+      return res.status(400).json({ error: 'Invalid access' });
+    }
+
+    const sessionId = parseCookie(req, PRESALE_COOKIE_NAME);
+    if (!sessionId) {
+      return res.status(401).json({ valid: false });
+    }
+
+    const row = await fetchValidPresaleSessionRow(client, sessionId, eventId);
+    if (!row) {
+      return res.status(401).json({ valid: false });
+    }
+
+    res.setHeader('Cache-Control', 'no-store, private');
+    const payload = await sessionPayloadForRow(row, eventId, false);
+    return res.status(200).json(payload);
+  } catch (e) {
+    console.error('presale-session', e);
+    return res.status(401).json({ valid: false });
+  }
+}

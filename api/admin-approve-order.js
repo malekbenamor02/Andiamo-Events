@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
 const { sendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/transactional-email.cjs'));
+const { tryBuildPremiumTicketsPdfAttachment } = requireCjs(path.join(__dirname, 'lib/render-premium-ticket-pdf.cjs'));
 
 // Helper function to format event time
 function formatEventTime(eventDate) {
@@ -317,6 +318,7 @@ export default async (req, res) => {
         status: 'PAID',
         payment_status: 'PAID',
         approved_at: new Date().toISOString(),
+        approved_by: adminId || null,
         updated_at: new Date().toISOString()
       })
       .eq('id', orderId)
@@ -408,6 +410,9 @@ export default async (req, res) => {
             id,
             full_name,
             phone
+          ),
+          pos_outlets (
+            name
           )
         `)
         .eq('id', orderId)
@@ -467,7 +472,7 @@ export default async (req, res) => {
             // Generate QR code
             const qrCodeBuffer = await QRCode.default.toBuffer(secureToken, {
               type: 'png',
-              width: 300,
+              width: 512,
               margin: 2
             });
             
@@ -761,16 +766,26 @@ export default async (req, res) => {
             
             // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
             // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
-            await sendTransactionalEmail(
-              { getEmailTransporter },
-              {
-                from: '"Andiamo Events" <contact@andiamoevents.com>',
-                replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-                to: fullOrder.user_email,
-                subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-                html: emailHtml,
-              }
-            );
+            let premiumPdf = null;
+            try {
+              premiumPdf = await tryBuildPremiumTicketsPdfAttachment({
+                order: fullOrder,
+                event: fullOrder.events,
+                tickets,
+                orderPasses,
+              });
+            } catch (pdfErr) {
+              console.warn('Premium ticket PDF skipped:', pdfErr && pdfErr.message);
+            }
+            const mailOpts = {
+              from: '"Andiamo Events" <contact@andiamoevents.com>',
+              replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+              to: fullOrder.user_email,
+              subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+              html: emailHtml,
+            };
+            if (premiumPdf) mailOpts.attachments = [premiumPdf];
+            await sendTransactionalEmail({ getEmailTransporter }, mailOpts);
             
             // Update tickets to DELIVERED
             const ticketIds = tickets.map(t => t.id);

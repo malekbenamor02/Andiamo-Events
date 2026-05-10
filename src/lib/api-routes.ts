@@ -20,6 +20,21 @@ export const API_ROUTES = {
   VERIFY_ADMIN: '/api/verify-admin',
   ADMIN_EVENTS: '/api/admin/events',
   ADMIN_EVENT: (id: string) => `/api/admin/events/${id}`,
+
+  PRESALE_REDEEM: '/api/presale/redeem',
+  /** Server truth for whether pass purchase requires presale code (matches DB used by /api/passes). */
+  PRESALE_REQUIRED: '/api/presale/required',
+  PRESALE_SESSION: '/api/presale/session',
+  PRESALE_SESSION_CLEAR: '/api/presale/session/clear',
+  ADMIN_PRESALE_CODES: (eventId: string) =>
+    `/api/admin/presale/codes?eventId=${encodeURIComponent(eventId)}`,
+  ADMIN_PRESALE_CODE_PAUSE: (id: string) => `/api/admin/presale/codes/${encodeURIComponent(id)}/pause`,
+  ADMIN_PRESALE_CODE_UNPAUSE: (id: string) => `/api/admin/presale/codes/${encodeURIComponent(id)}/unpause`,
+  ADMIN_PRESALE_CODE_MAX_REDEMPTIONS: (id: string) =>
+    `/api/admin/presale/codes/${encodeURIComponent(id)}/max-redemptions`,
+
+  /** Create pass for an event (service role; required when event has presale — anon cannot SELECT inserted row). */
+  ADMIN_PASS_CREATE: '/api/admin/passes/create',
   
   // Application Management
   ADMIN_UPDATE_APPLICATION: '/api/admin-update-application',

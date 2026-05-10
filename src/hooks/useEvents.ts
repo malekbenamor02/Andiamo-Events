@@ -23,12 +23,20 @@ export interface Event {
   event_type?: 'upcoming' | 'gallery';
   gallery_images?: string[];
   gallery_videos?: string[];
-  /** Shown on gallery masonry tiles under the logo (“Event by : …”) */
-  gallery_credit?: string | null;
   event_status?: 'active' | 'cancelled' | 'completed';
   slug?: string;
-  /** When true, event is hidden from public listings except on local/dev (see `isLocalhostClient`). */
+  /** When true, event is hidden from public listings on production (not localhost). */
   is_test?: boolean;
+  presale_enabled?: boolean;
+  presale_active_from?: string | null;
+  presale_active_until?: string | null;
+  /** Admin: hide teaser / list intent when presale is on; browse lists omit any `presale_enabled` event (see `isEventOmittedFromPublicListings`). */
+  presale_hide_from_public_list?: boolean;
+}
+
+/** Presale events: direct pass-purchase URL + code only; never home / Events browse lists (including local dev). */
+export function isEventOmittedFromPublicListings(e: Pick<Event, 'presale_enabled'>): boolean {
+  return !!e.presale_enabled;
 }
 
 /**
@@ -94,7 +102,7 @@ export const useEvents = () => {
         })
       );
 
-      return mappedEvents;
+      return mappedEvents.filter((e: Event) => !isEventOmittedFromPublicListings(e));
     },
     staleTime: 30 * 60 * 1000, // 30 minutes - events are fresh for 30 min
     gcTime: 60 * 60 * 1000, // 60 minutes - keep in cache for 1 hour
@@ -159,7 +167,7 @@ export const useFeaturedEvents = () => {
         })
       );
 
-      return mapped;
+      return mapped.filter((e: Event) => !isEventOmittedFromPublicListings(e));
     },
     staleTime: 30 * 60 * 1000, // 30 minutes
     gcTime: 60 * 60 * 1000, // 60 minutes

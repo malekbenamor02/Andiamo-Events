@@ -3,10 +3,10 @@
 // This reduces function count from 7 to 1
 
 import '../lib/sentry-server.js';
+import { verifyAdminAuth } from './lib/admin-verify.js';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireFromRoot = createRequire(import.meta.url);
 const { fetchAmbassadorSocialLinkFromApplications } = requireFromRoot(
@@ -39,6 +39,10 @@ const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot
 
 const { uploadTicketQrToR2OrSupabase } = requireFromRoot(path.join(__dirname, 'lib', 'r2-media.cjs'));
 const { sendTransactionalEmail } = requireFromRoot(path.join(__dirname, 'lib', 'transactional-email.cjs'));
+const {
+  tryBuildPremiumTicketsPdfAttachment,
+  tryBuildPremiumTicketsPdfAttachmentInvitation,
+} = requireFromRoot(path.join(__dirname, 'lib', 'render-premium-ticket-pdf.cjs'));
 
 let _createOfficialInvitationEmailHTML = null;
 function getCreateOfficialInvitationEmailHTML() {
@@ -46,134 +50,6 @@ function getCreateOfficialInvitationEmailHTML() {
   const mod = requireFromRoot(path.join(__dirname, 'lib', 'official-invitation-email-html.cjs'));
   _createOfficialInvitationEmailHTML = mod.createOfficialInvitationEmailHTML;
   return _createOfficialInvitationEmailHTML;
-}
-
-// Inlined verifyAdminAuth function (for admin-update-application and send-email)
-async function verifyAdminAuth(req) {
-  try {
-    const cookies = req.headers.cookie || '';
-    const cookieMatch = cookies.match(/adminToken=([^;]+)/);
-    const token = cookieMatch ? cookieMatch[1] : null;
-    
-    if (!token) {
-      return {
-        valid: false,
-        error: 'No authentication token provided',
-        statusCode: 401
-      };
-    }
-    
-    const jwt = await import('jsonwebtoken');
-    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
-    
-    const isProduction = process.env.NODE_ENV === 'production' || 
-                         process.env.VERCEL === '1' || 
-                         !!process.env.VERCEL_URL;
-    
-    if (!jwtSecret || jwtSecret === 'fallback-secret-dev-only') {
-      if (isProduction) {
-        return {
-          valid: false,
-          error: 'Server configuration error: JWT_SECRET not set',
-          statusCode: 500
-        };
-      }
-    }
-    
-    let decoded;
-    try {
-      decoded = jwt.default.verify(token, jwtSecret);
-    } catch (jwtError) {
-      return {
-        valid: false,
-        error: 'Invalid or expired token',
-        reason: jwtError.name === 'TokenExpiredError' 
-          ? 'Token expired - session ended' 
-          : jwtError.message,
-        statusCode: 401
-      };
-    }
-    
-    if (!decoded.id || !decoded.email || !decoded.role) {
-      return {
-        valid: false,
-        error: 'Invalid token payload',
-        statusCode: 401
-      };
-    }
-    
-    if (decoded.role !== 'admin' && decoded.role !== 'super_admin') {
-      return {
-        valid: false,
-        error: 'Invalid admin role',
-        statusCode: 403
-      };
-    }
-    
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-      return {
-        valid: false,
-        error: 'Supabase not configured',
-        statusCode: 500
-      };
-    }
-    
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
-    );
-    
-    const { data: admin, error: dbError } = await supabase
-      .from('admins')
-      .select('id, email, name, role, is_active')
-      .eq('id', decoded.id)
-      .eq('email', decoded.email)
-      .eq('is_active', true)
-      .single();
-    
-    if (dbError || !admin) {
-      return {
-        valid: false,
-        error: 'Admin not found or inactive',
-        statusCode: 401
-      };
-    }
-    
-    if (admin.role !== decoded.role) {
-      return {
-        valid: false,
-        error: 'Admin role mismatch',
-        statusCode: 401
-      };
-    }
-    
-    const tokenExpiration = decoded.exp ? decoded.exp * 1000 : null;
-    const timeRemaining = tokenExpiration 
-      ? Math.max(0, Math.floor((tokenExpiration - Date.now()) / 1000)) 
-      : 0;
-    
-    return {
-      valid: true,
-      admin: {
-        id: admin.id,
-        email: admin.email,
-        name: admin.name,
-        role: admin.role
-      },
-      sessionExpiresAt: tokenExpiration,
-      sessionTimeRemaining: timeRemaining
-    };
-    
-  } catch (error) {
-    console.error('Auth middleware error:', error);
-    return {
-      valid: false,
-      error: 'Authentication error',
-      details: error.message,
-      statusCode: 500
-    };
-  }
 }
 
 // Basic client IP helper
@@ -1431,17 +1307,27 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         }
         
         const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
+        const supabaseAnon = createClient(
           process.env.SUPABASE_URL,
           process.env.SUPABASE_ANON_KEY
         );
-        
-        const updateData = { status };
+        const dbForApp = process.env.SUPABASE_SERVICE_ROLE_KEY
+          ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+          : supabaseAnon;
+
+        const adminUser = authResult.admin;
+        const reviewFields = {
+          reviewed_by_admin_id: adminUser?.id || null,
+          reviewed_at: new Date().toISOString(),
+          reviewed_by_name: (adminUser?.name && String(adminUser.name).trim()) || adminUser?.email || null,
+        };
+
+        const updateData = { status, ...reviewFields };
         if (reapply_delay_date) {
           updateData.reapply_delay_date = reapply_delay_date;
         }
         
-        let result = await supabase
+        let result = await dbForApp
           .from('ambassador_applications')
           .update({ 
             ...updateData,
@@ -1451,7 +1337,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           .select();
         
         if (result.error && result.error.message?.includes('updated_at')) {
-          result = await supabase
+          result = await dbForApp
             .from('ambassador_applications')
             .update(updateData)
             .eq('id', applicationId)
@@ -2308,8 +2194,30 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
               : (payload.event_type || 'upcoming'),
           gallery_images: payload.gallery_images ?? [],
           gallery_videos: payload.gallery_videos ?? [],
-          gallery_credit: payload.gallery_credit ?? null,
         };
+        if (Object.prototype.hasOwnProperty.call(payload, 'presale_enabled')) {
+          insertData.presale_enabled = !!payload.presale_enabled;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'presale_active_from')) {
+          insertData.presale_active_from = payload.presale_active_from || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'presale_active_until')) {
+          insertData.presale_active_until = payload.presale_active_until || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'presale_hide_from_public_list')) {
+          insertData.presale_hide_from_public_list = !!payload.presale_hide_from_public_list;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'presale_enabled')) {
+          if (insertData.presale_enabled === true) {
+            insertData.presale_hide_from_public_list = true;
+            insertData.presale_active_from = null;
+            insertData.presale_active_until = null;
+          } else {
+            insertData.presale_hide_from_public_list = false;
+            insertData.presale_active_from = null;
+            insertData.presale_active_until = null;
+          }
+        }
 
         const { data, error } = await dbClient
           .from('events')
@@ -2355,9 +2263,31 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
           event_type: eventType,
           gallery_images: payload.gallery_images ?? [],
           gallery_videos: payload.gallery_videos ?? [],
-          gallery_credit: payload.gallery_credit ?? null,
           updated_at: new Date().toISOString(),
         };
+        if (Object.prototype.hasOwnProperty.call(payload, 'presale_enabled')) {
+          updateData.presale_enabled = !!payload.presale_enabled;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'presale_active_from')) {
+          updateData.presale_active_from = payload.presale_active_from || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'presale_active_until')) {
+          updateData.presale_active_until = payload.presale_active_until || null;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'presale_hide_from_public_list')) {
+          updateData.presale_hide_from_public_list = !!payload.presale_hide_from_public_list;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'presale_enabled')) {
+          if (updateData.presale_enabled === true) {
+            updateData.presale_hide_from_public_list = true;
+            updateData.presale_active_from = null;
+            updateData.presale_active_until = null;
+          } else if (updateData.presale_enabled === false) {
+            updateData.presale_hide_from_public_list = false;
+            updateData.presale_active_from = null;
+            updateData.presale_active_until = null;
+          }
+        }
 
         const { data, error } = await dbClient
           .from('events')
@@ -2384,6 +2314,90 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
     }
     
     // ============================================
+    // POST /api/admin/passes/create (service role — presale events block anon SELECT on event_passes)
+    // ============================================
+    if (path === '/api/admin/passes/create' && method === 'POST') {
+      try {
+        const authResult = await verifyAdminAuth(req);
+        if (!authResult.valid) {
+          return res.status(authResult.statusCode || 401).json({
+            error: authResult.error,
+            reason: authResult.reason || 'Authentication failed',
+            valid: false,
+          });
+        }
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required for pass creation' });
+        }
+        const bodyData = await parseBody(req);
+        const event_id = bodyData.event_id;
+        const name = typeof bodyData.name === 'string' ? bodyData.name.trim() : '';
+        const price = typeof bodyData.price === 'number' ? bodyData.price : parseFloat(bodyData.price);
+        const description =
+          bodyData.description == null || bodyData.description === ''
+            ? ''
+            : String(bodyData.description);
+        const is_primary = !!bodyData.is_primary;
+        const max_quantity =
+          bodyData.max_quantity != null ? parseInt(String(bodyData.max_quantity), 10) : NaN;
+        const allowed_payment_methods =
+          Array.isArray(bodyData.allowed_payment_methods) && bodyData.allowed_payment_methods.length > 0
+            ? bodyData.allowed_payment_methods
+            : null;
+        const release_version =
+          bodyData.release_version != null ? parseInt(String(bodyData.release_version), 10) : 1;
+
+        if (!event_id || !name) {
+          return res.status(400).json({ error: 'event_id and name are required' });
+        }
+        if (Number.isNaN(price) || price <= 0) {
+          return res.status(400).json({ error: 'price must be a number greater than 0' });
+        }
+        if (!Number.isInteger(max_quantity) || max_quantity < 1) {
+          return res.status(400).json({ error: 'max_quantity is required and must be at least 1' });
+        }
+
+        const { createClient } = await import('@supabase/supabase-js');
+        const dbClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+        if (is_primary) {
+          await dbClient.from('event_passes').update({ is_primary: false }).eq('event_id', event_id);
+        }
+
+        const insertRow = {
+          event_id,
+          name,
+          price,
+          description,
+          is_primary,
+          max_quantity,
+          sold_quantity: 0,
+          is_active: bodyData.is_active !== false,
+          release_version: Number.isInteger(release_version) && release_version > 0 ? release_version : 1,
+          allowed_payment_methods,
+        };
+
+        const { data: newPass, error: insertError } = await dbClient
+          .from('event_passes')
+          .insert(insertRow)
+          .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version, allowed_payment_methods')
+          .single();
+
+        if (insertError) {
+          console.error('admin pass create', insertError);
+          return res.status(400).json({
+            error: insertError.message || 'Failed to create pass',
+            code: insertError.code,
+          });
+        }
+        return res.status(201).json({ success: true, pass: newPass });
+      } catch (error) {
+        console.error('Error in POST /api/admin/passes/create:', error);
+        return res.status(500).json({ error: 'Internal server error', details: error.message });
+      }
+    }
+
+    // ============================================
     // /api/admin/passes/:eventId (GET)
     // ============================================
     if (path.startsWith('/api/admin/passes/') && method === 'GET') {
@@ -2405,6 +2419,10 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
         // Extract eventId from path: /api/admin/passes/[eventId]
         const pathParts = path.split('/');
         const eventId = pathParts[pathParts.length - 1];
+
+        if (eventId === 'create') {
+          return res.status(400).json({ error: 'Invalid event id' });
+        }
         
         if (!eventId) {
           return res.status(400).json({ error: 'Event ID is required' });
@@ -3049,6 +3067,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             status: 'PAID',
             payment_status: 'PAID',
             approved_at: new Date().toISOString(),
+            approved_by: adminId || null,
             updated_at: new Date().toISOString()
           })
           .eq('id', orderId)
@@ -3130,6 +3149,9 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                 id,
                 full_name,
                 phone
+              ),
+              pos_outlets (
+                name
               )
             `)
             .eq('id', orderId)
@@ -3204,7 +3226,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                 // Generate QR code
                 const qrCodeBuffer = await QRCode.default.toBuffer(secureToken, {
                   type: 'png',
-                  width: 300,
+                  width: 512,
                   margin: 2
                 });
                 
@@ -3367,16 +3389,26 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
                 });
                 // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
                 // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
-                await sendTransactionalEmail(
-                  { getEmailTransporter },
-                  {
-                    from: '"Andiamo Events" <contact@andiamoevents.com>',
-                    replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-                    to: fullOrder.user_email,
-                    subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-                    html: emailHtml,
-                  }
-                );
+                let premiumPdf = null;
+                try {
+                  premiumPdf = await tryBuildPremiumTicketsPdfAttachment({
+                    order: fullOrder,
+                    event: fullOrder.events,
+                    tickets,
+                    orderPasses,
+                  });
+                } catch (pdfErr) {
+                  console.warn('Premium ticket PDF skipped:', pdfErr && pdfErr.message);
+                }
+                const mailOpts = {
+                  from: '"Andiamo Events" <contact@andiamoevents.com>',
+                  replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+                  to: fullOrder.user_email,
+                  subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+                  html: emailHtml,
+                };
+                if (premiumPdf) mailOpts.attachments = [premiumPdf];
+                await sendTransactionalEmail({ getEmailTransporter }, mailOpts);
                 
                 // Update tickets to DELIVERED
                 const ticketIds = tickets.map(t => t.id);
@@ -3755,7 +3787,9 @@ We Create Memories`;
         try {
           const { data: fullOrderData, error: fullOrderError } = await dbClient
             .from('orders')
-            .select(`*, events (id, name, date, venue, city, poster_url), ambassadors (id, full_name, phone)`)
+            .select(
+              `*, events (id, name, date, venue, city, poster_url), ambassadors (id, full_name, phone), pos_outlets ( name )`
+            )
             .eq('id', orderId)
             .single();
           if (fullOrderError || !fullOrderData) throw new Error('Failed to fetch order');
@@ -3774,7 +3808,7 @@ We Create Memories`;
             for (const pass of orderPasses) {
               for (let i = 0; i < pass.quantity; i++) {
                 const secureToken = uuidv4();
-                const qrCodeBuffer = await QRCode.default.toBuffer(secureToken, { type: 'png', width: 300, margin: 2 });
+                const qrCodeBuffer = await QRCode.default.toBuffer(secureToken, { type: 'png', width: 512, margin: 2 });
                 const fileName = `tickets/${orderId}/${secureToken}.png`;
                 let ticketQrUrl = null;
                 try {
@@ -3847,16 +3881,26 @@ We Create Memories`;
                   subtotalAmount,
                   ticketsByPassType,
                 });
-                await sendTransactionalEmail(
-                  { getEmailTransporter },
-                  {
-                    from: '"Andiamo Events" <contact@andiamoevents.com>',
-                    replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-                    to: fullOrder.user_email,
-                    subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-                    html: emailHtml,
-                  }
-                );
+                let premiumPdfCtp = null;
+                try {
+                  premiumPdfCtp = await tryBuildPremiumTicketsPdfAttachment({
+                    order: fullOrder,
+                    event: fullOrder.events,
+                    tickets,
+                    orderPasses,
+                  });
+                } catch (pdfErr) {
+                  console.warn('Premium ticket PDF skipped (ClicToPay):', pdfErr && pdfErr.message);
+                }
+                const mailOptsCtp = {
+                  from: '"Andiamo Events" <contact@andiamoevents.com>',
+                  replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+                  to: fullOrder.user_email,
+                  subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+                  html: emailHtml,
+                };
+                if (premiumPdfCtp) mailOptsCtp.attachments = [premiumPdfCtp];
+                await sendTransactionalEmail({ getEmailTransporter }, mailOptsCtp);
                 await dbClient.from('tickets').update({ status: 'DELIVERED', email_delivery_status: 'sent', delivered_at: new Date().toISOString() }).in('id', tickets.map(t => t.id));
                 await dbClient.from('email_delivery_logs').insert({ order_id: orderId, email_type: 'ticket_delivery', recipient_email: fullOrder.user_email, recipient_name: fullOrder.user_name, subject: 'Your Digital Tickets Are Ready - Andiamo Events', status: 'sent', sent_at: new Date().toISOString() });
                 ticketResult.emailSent = true;
@@ -4409,6 +4453,7 @@ Billets envoyés par email. We Create Memories`;
             status, 
             payment_status,
             source,
+            payment_method,
             user_email,
             user_name,
             total_price,
@@ -4426,6 +4471,9 @@ Billets envoyés par email. We Create Memories`;
               id,
               full_name,
               phone
+            ),
+            pos_outlets (
+              name
             )
           `)
           .eq('id', orderId)
@@ -4601,16 +4649,26 @@ Billets envoyés par email. We Create Memories`;
 
             // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
             // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
-            await sendTransactionalEmail(
-              { getEmailTransporter },
-              {
-                from: '"Andiamo Events" <contact@andiamoevents.com>',
-                replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-                to: order.user_email,
-                subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-                html: emailHtml,
-              }
-            );
+            let premiumPdfResend = null;
+            try {
+              premiumPdfResend = await tryBuildPremiumTicketsPdfAttachment({
+                order,
+                event: order.events,
+                tickets,
+                orderPasses: passes,
+              });
+            } catch (pdfErr) {
+              console.warn('Premium ticket PDF skipped (resend):', pdfErr && pdfErr.message);
+            }
+            const mailOptsResend = {
+              from: '"Andiamo Events" <contact@andiamoevents.com>',
+              replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+              to: order.user_email,
+              subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+              html: emailHtml,
+            };
+            if (premiumPdfResend) mailOptsResend.attachments = [premiumPdfResend];
+            await sendTransactionalEmail({ getEmailTransporter }, mailOptsResend);
             
             emailSent = true;
             
@@ -5000,7 +5058,10 @@ Billets envoyés par email. We Create Memories`;
         // Select orders + order_passes; avoid embedding ambassadors (can cause 500 if RLS/relation differs)
         let query = supabase
           .from('orders')
-          .select('*, order_passes (*)', { count: 'exact' })
+          .select(
+            '*, order_passes (*), approver:admins!approved_by(name,email), rejector:admins!rejected_by(name,email)',
+            { count: 'exact' }
+          )
           .eq('payment_method', 'ambassador_cash')
           .order('created_at', { ascending: false })
           .range(offset, offset + limit - 1);
@@ -5074,6 +5135,9 @@ Billets envoyés par email. We Create Memories`;
         const ambassadorId = searchParams.get('ambassadorId');
         const status = searchParams.get('status');
         const limit = parseInt(searchParams.get('limit') || '100');
+        const eventIdRaw = searchParams.get('event_id');
+        const eventId =
+          eventIdRaw && String(eventIdRaw).trim() !== '' ? String(eventIdRaw).trim() : null;
 
         if (!ambassadorId) {
           return res.status(400).json({
@@ -5139,6 +5203,10 @@ Billets envoyés par email. We Create Memories`;
           }
         }
 
+        if (eventId) {
+          query = query.eq('event_id', eventId);
+        }
+
         // Check and auto-reject expired orders before fetching (on-demand checking)
         try {
           await dbClient.rpc('auto_reject_expired_pending_cash_orders');
@@ -5186,6 +5254,11 @@ Billets envoyés par email. We Create Memories`;
         const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
         const searchParams = new URLSearchParams(queryString);
         const ambassadorId = searchParams.get('ambassadorId');
+        const perfEventIdRaw = searchParams.get('event_id');
+        const perfEventId =
+          perfEventIdRaw && String(perfEventIdRaw).trim() !== ''
+            ? String(perfEventIdRaw).trim()
+            : null;
 
         if (!ambassadorId) {
           return res.status(400).json({
@@ -5227,11 +5300,17 @@ Billets envoyés par email. We Create Memories`;
         }
 
         // Fetch all orders with order_passes (exclude REMOVED_BY_ADMIN)
-        const { data: allOrders, error: ordersError } = await dbClient
+        let perfQuery = dbClient
           .from('orders')
           .select('*, order_passes (*)')
           .eq('ambassador_id', ambassadorId)
           .neq('status', 'REMOVED_BY_ADMIN'); // Exclude removed orders from performance
+
+        if (perfEventId) {
+          perfQuery = perfQuery.eq('event_id', perfEventId);
+        }
+
+        const { data: allOrders, error: ordersError } = await perfQuery;
 
         if (ordersError) {
           console.error('Error fetching ambassador orders for performance:', ordersError);
@@ -6422,7 +6501,7 @@ Billets envoyés par email. We Create Memories`;
         // Fetch event details
         const { data: event, error: eventError } = await dbClient
           .from('events')
-          .select('id, name, date, venue, city')
+          .select('id, name, date, venue, city, poster_url')
           .eq('id', event_id)
           .single();
         
@@ -6483,9 +6562,9 @@ Billets envoyés par email. We Create Memories`;
         
         for (let i = 0; i < quantityNum; i++) {
           const secureToken = uuidv4();
-          const qrCodeBuffer = await QRCode.toBuffer(secureToken, { 
-            type: 'png', 
-            width: 300,
+          const qrCodeBuffer = await QRCode.toBuffer(secureToken, {
+            type: 'png',
+            width: 512,
             errorCorrectionLevel: 'M'
           });
           
@@ -6602,15 +6681,27 @@ Billets envoyés par email. We Create Memories`;
               },
             });
 
-          await sendTransactionalEmail(
-            { getEmailTransporter },
-            {
-              from: emailConfig.from,
-              to: emailConfig.to,
-              subject: emailConfig.subject,
-              html: emailConfig.html,
-            }
-          );
+          let invPdfCreate = null;
+          try {
+            invPdfCreate = await tryBuildPremiumTicketsPdfAttachmentInvitation({
+              event,
+              guestName: guest_name.trim(),
+              invitationNumber: invitation.invitation_number,
+              passTypeName: passType.name,
+              qrCodes,
+            });
+          } catch (pdfErr) {
+            console.warn('Invitation premium PDF skipped:', pdfErr && pdfErr.message);
+          }
+          const mailInvCreate = {
+            from: emailConfig.from,
+            to: emailConfig.to,
+            subject: emailConfig.subject,
+            html: emailConfig.html,
+          };
+          if (invPdfCreate) mailInvCreate.attachments = [invPdfCreate];
+
+          await sendTransactionalEmail({ getEmailTransporter }, mailInvCreate);
 
           emailSent = true;
         } catch (emailErr) {
@@ -6778,7 +6869,8 @@ Billets envoyés par email. We Create Memories`;
               name,
               date,
               venue,
-              city
+              city,
+              poster_url
             )
           `)
           .eq('id', id)
@@ -6801,7 +6893,7 @@ Billets envoyés par email. We Create Memories`;
           });
         }
         
-        const emailConfig = getCreateOfficialInvitationEmailHTML()({
+        const emailConfig = getCreateOfficialInvitationEmailHTML({
           guestName: invitation.recipient_name,
           guestPhone: invitation.recipient_phone,
           guestEmail: invitation.recipient_email,
@@ -6837,15 +6929,31 @@ Billets envoyés par email. We Create Memories`;
               },
             });
 
-          await sendTransactionalEmail(
-            { getEmailTransporter },
-            {
-              from: emailConfig.from,
-              to: emailConfig.to,
-              subject: emailConfig.subject,
-              html: emailConfig.html,
-            }
-          );
+          const eventRow = invitation.events || {};
+          let invPdfResend = null;
+          try {
+            invPdfResend = await tryBuildPremiumTicketsPdfAttachmentInvitation({
+              event: eventRow,
+              guestName: invitation.recipient_name,
+              invitationNumber: invitation.invitation_number,
+              passTypeName: invitation.pass_type,
+              qrCodes: qrTickets.map((qt) => ({
+                secure_token: qt.secure_token,
+                qr_code_url: qt.qr_code_url,
+              })),
+            });
+          } catch (pdfErr) {
+            console.warn('Invitation premium PDF skipped (resend):', pdfErr && pdfErr.message);
+          }
+          const mailInvResend = {
+            from: emailConfig.from,
+            to: emailConfig.to,
+            subject: emailConfig.subject,
+            html: emailConfig.html,
+          };
+          if (invPdfResend) mailInvResend.attachments = [invPdfResend];
+
+          await sendTransactionalEmail({ getEmailTransporter }, mailInvResend);
 
           emailSent = true;
         } catch (emailErr) {

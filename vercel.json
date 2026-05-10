@@ -96,6 +96,38 @@
       "destination": "/api/orders-create.js"
     },
     {
+      "source": "/api/presale/required",
+      "destination": "/api/presale-required.js"
+    },
+    {
+      "source": "/api/presale/redeem",
+      "destination": "/api/presale-redeem.js"
+    },
+    {
+      "source": "/api/presale/session/clear",
+      "destination": "/api/presale-session.js"
+    },
+    {
+      "source": "/api/presale/session",
+      "destination": "/api/presale-session.js"
+    },
+    {
+      "source": "/api/admin/presale/codes/:id/max-redemptions",
+      "destination": "/api/presale-admin-codes.js"
+    },
+    {
+      "source": "/api/admin/presale/codes/:id/unpause",
+      "destination": "/api/presale-admin-codes.js"
+    },
+    {
+      "source": "/api/admin/presale/codes/:id/pause",
+      "destination": "/api/presale-admin-codes.js"
+    },
+    {
+      "source": "/api/admin/presale/codes",
+      "destination": "/api/presale-admin-codes.js"
+    },
+    {
       "source": "/api/aio-events/save-submission",
       "destination": "/api/misc.js"
     },
@@ -113,6 +145,10 @@
     },
     {
       "source": "/api/admin/careers/:path*",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/admin/passes/create",
       "destination": "/api/misc.js"
     },
     {
@@ -476,7 +512,8 @@
       "maxDuration": 30
     },
     "api/admin-approve-order.js": {
-      "maxDuration": 30
+      "maxDuration": 60,
+      "memory": 1024
     },
     "api/verify-admin.js": {
       "maxDuration": 30
@@ -487,8 +524,21 @@
     "api/passes-[eventId].js": {
       "maxDuration": 30
     },
+    "api/presale-required.js": {
+      "maxDuration": 15
+    },
+    "api/presale-redeem.js": {
+      "maxDuration": 30
+    },
+    "api/presale-session.js": {
+      "maxDuration": 15
+    },
+    "api/presale-admin-codes.js": {
+      "maxDuration": 30
+    },
     "api/misc.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "memory": 1024
     },
     "api/media.js": {
       "maxDuration": 60,
@@ -501,7 +551,8 @@
       "maxDuration": 30
     },
     "api/admin-pos.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "memory": 1024
     },
     "api/scan.js": {
       "maxDuration": 30

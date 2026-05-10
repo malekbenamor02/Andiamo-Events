@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Andiamo Events | Premium Digital Ticket</title>
+  <!-- Static design preview only — not wired to the app or email pipeline. Open locally in a browser. -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+  <style>
+    @import url("https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,900&f[]=satoshi@400,500,700&f[]=jet-brains-mono@500&display=swap");
+    body {
+      font-family: "Satoshi", sans-serif;
+      background-color: #0d0d0d;
+      margin: 0;
+    }
+    .font-display {
+      font-family: "Cabinet Grotesk", sans-serif;
+    }
+    .font-mono {
+      font-family: "JetBrains Mono", monospace;
+    }
+    .ticket-glow {
+      box-shadow: 0 0 80px -20px rgba(225, 25, 52, 0.4);
+    }
+    .red-gradient {
+      background: linear-gradient(135deg, #e11934 0%, #a11226 100%);
+    }
+    .image-overlay {
+      background: linear-gradient(90deg, #1a1a1a 15%, rgba(26, 26, 26, 0.8) 50%, rgba(225, 25, 52, 0.1) 100%);
+    }
+    .stipple {
+      background-image: radial-gradient(#ffffff22 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="min-h-screen bg-[#0d0d0d] flex items-center justify-center p-8 lg:p-12">
+    <div class="relative w-full max-w-6xl aspect-[1.8/1] bg-[#1A1A1A] rounded-[40px] overflow-hidden ticket-glow flex border border-white/5">
+      <!-- Event Background Image -->
+      <div class="absolute inset-0 z-0">
+        <img
+          src="https://images.unsplash.com/photo-1514525253361-bee8718a74a2?auto=format&amp;fit=crop&amp;q=80&amp;w=2000"
+          alt="Event Image"
+          class="w-full h-full object-cover grayscale opacity-50"
+        />
+        <div class="absolute inset-0 image-overlay"></div>
+        <div class="absolute inset-0 stipple opacity-20"></div>
+      </div>
+
+      <div class="relative z-10 flex w-full h-full">
+        <!-- Left Side: Event Details (70%) -->
+        <div class="flex-[0.7] flex flex-col p-16 justify-between">
+          <div class="flex items-center gap-12">
+            <div class="flex shrink-0 items-center">
+              <!-- Relative to this file: email-templates/previews → repo public/ -->
+              <img
+                src="../../public/email-assets/logo-white.png"
+                alt="Andiamo Events"
+                class="h-12 w-auto object-contain object-left sm:h-14"
+                width="220"
+                height="56"
+              />
+            </div>
+            <div class="h-px w-24 bg-white/20 shrink-0"></div>
+            <div class="text-white/60 text-xs tracking-widest uppercase font-bold">Event by Mouayed &amp; Sirine</div>
+          </div>
+
+          <div class="flex flex-col gap-4">
+            <div class="flex items-center gap-4 text-[#E11934]">
+              <div class="w-2 h-2 rounded-full bg-[#E11934] animate-pulse"></div>
+              <span class="text-xs font-bold tracking-[0.3em] uppercase">event name</span>
+            </div>
+            <h1 class="text-white font-display text-[100px] leading-[0.85] tracking-tighter uppercase">
+              <span class="text-transparent bg-clip-text bg-gradient-to-r from-white to-white/40">the name of&nbsp;</span><br />
+              <span class="text-[#E11934]">the event</span>
+            </h1>
+          </div>
+
+          <div class="grid grid-cols-3 gap-8 border-t border-white/10 pt-8">
+            <div class="space-y-1">
+              <p class="text-[#E11934] text-xs font-bold uppercase tracking-[0.18em]">Date / Time</p>
+              <p class="text-[1.75rem] font-medium leading-snug text-white">Oct 24 <span class="text-white/40">/</span> 21:00</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-[#E11934] text-xs font-bold uppercase tracking-[0.18em]">Venue</p>
+              <p class="text-[1.75rem] font-medium leading-snug text-white">Kantaoui</p>
+            </div>
+            <div class="space-y-1">
+              <p class="text-[#E11934] text-xs font-bold uppercase tracking-[0.18em]">City</p>
+              <p class="text-[1.75rem] font-medium leading-snug text-white">Sousse</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Side: QR Stub (30%) -->
+        <div class="flex-[0.3] relative bg-[#1A1A1A]/40 backdrop-blur-xl border-l border-white/10 flex flex-col items-center justify-between py-16 px-12">
+          <div class="absolute -left-4 top-1/2 z-20 h-8 w-8 -translate-y-1/2 rounded-full bg-[#0d0d0d]"></div>
+          <div class="absolute -left-[1px] top-0 bottom-0 w-[1px] flex flex-col justify-around py-4">
+            <div class="w-1 h-2 bg-white/10"></div>
+            <div class="w-1 h-2 bg-white/10"></div>
+            <div class="w-1 h-2 bg-white/10"></div>
+            <div class="w-1 h-2 bg-white/10"></div>
+            <div class="w-1 h-2 bg-white/10"></div>
+          </div>
+
+          <div class="text-center">
+            <span class="mb-3.5 inline-block rounded-full bg-[#E11934] px-[18px] py-2 text-xs font-bold uppercase tracking-[0.18em] text-white">Access Level</span>
+            <h2 class="font-display text-[2.25rem] font-black uppercase leading-tight tracking-tighter text-white">vip</h2>
+          </div>
+
+          <div class="relative group">
+            <div class="absolute -inset-4 bg-[#E11934]/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div class="relative rounded-3xl bg-white p-[1.35rem]">
+              <img
+                src="https://api.qrserver.com/v1/create-qr-code/?size=456x456&amp;data=ANDIAMO-V-829371&amp;color=1A1A1A"
+                alt="QR Code"
+                class="h-[228px] w-[228px]"
+              />
+            </div>
+          </div>
+
+          <div class="w-full space-y-4">
+            <div class="text-center">
+              <p class="text-xs font-bold uppercase tracking-[0.18em] text-white/45">Order Number</p>
+              <p class="mt-1.5 font-mono text-2xl text-white">#152415</p>
+            </div>
+            <div class="h-px w-full bg-white/10"></div>
+            <div class="text-center">
+              <p class="text-xs font-bold uppercase tracking-[0.18em] text-white/45">Guest Name</p>
+              <p class="mt-1.5 text-2xl font-bold tracking-tight text-white">name of the client</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 opacity-20">
+            <iconify-icon icon="lucide:shield-check" class="text-white text-xl"></iconify-icon>
+            <span class="text-white text-[10px] uppercase tracking-widest font-bold">Verified Authentic</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="absolute bottom-8 left-16 flex gap-4 opacity-10">
+        <div class="w-12 h-1 bg-white"></div>
+        <div class="w-8 h-1 bg-white"></div>
+        <div class="w-4 h-1 bg-white"></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

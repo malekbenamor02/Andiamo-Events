@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams, useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, MapPin, ArrowLeft, CheckCircle, XCircle, Lock } from 'lucide-react';
 import { ExpandableText } from '@/components/ui/expandable-text';
@@ -10,7 +11,7 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import Loader from '@/components/ui/Loader';
 import { getApiBaseUrl, API_ROUTES } from '@/lib/api-routes';
 import { formatDateDMY, isPassPurchaseWindowClosed } from '@/lib/date-utils';
-import { cn, generateSlug, normalizeCommonEmailTypos } from '@/lib/utils';
+import { cn, generateSlug, findEventByPublicUrlSlug, normalizeCommonEmailTypos } from '@/lib/utils';
 import { isLocalhostClient } from '@/lib/localhost';
 import { computeOnlinePaymentFeesDisplay } from '@/lib/onlinePaymentFee';
 
@@ -39,7 +40,6 @@ import {
   validatePassPurchasePaymentStep,
   validatePassPurchaseFull,
   validatePassPurchaseCustomer,
-  PASS_PURCHASE_FIELD_ERROR_AR,
   firstPassPurchaseErrorField,
   firstPassPurchaseErrorMessage,
 } from '@/lib/orders/passPurchaseValidation';
@@ -72,6 +72,10 @@ interface Event {
   event_status?: string;
   event_type?: string;
   slug?: string | null;
+  presale_enabled?: boolean;
+  presale_active_from?: string | null;
+  presale_active_until?: string | null;
+  presale_hide_from_public_list?: boolean;
 }
 
 interface PassPurchaseProps {
@@ -80,13 +84,95 @@ interface PassPurchaseProps {
 
 const WIZARD_STEP_COUNT = 5;
 
-/** Tunisian / Darija Arabic — main wizard card titles (steps 1–4). */
-const PASS_PURCHASE_AR = {
-  passSelection: 'أختار نوع Ticket',
-  namePhone: 'أكتب إسمك و نومروك',
-  email: 'تأكد mail صحيح بش يجيك فيه ticket',
-  cityVille: 'أختار وين تسكن ولا أقرب بلاصة ليك',
-} as const;
+/** DB / PostgREST may surface booleans inconsistently; server 403 on passes is authoritative for gating. */
+function isPresaleEnabledOnEvent(ev: { presale_enabled?: unknown } | null | undefined): boolean {
+  const v = ev?.presale_enabled;
+  return v === true || v === 1 || v === '1' || v === 't' || v === 'T' || v === 'true' || v === 'TRUE';
+}
+
+type PresaleDiscountMeta = {
+  discount_type: 'percent' | 'fixed';
+  discount_value: number;
+};
+
+function roundMoneyDisplay(n: number) {
+  return Math.round(Number(n) * 100) / 100;
+}
+
+function parsePresaleDiscountFromApi(body: Record<string, unknown>): PresaleDiscountMeta | null {
+  const dt = body.discount_type;
+  const dv = body.discount_value;
+  if (dt !== 'percent' && dt !== 'fixed') return null;
+  if (typeof dv !== 'number' || Number.isNaN(dv)) return null;
+  return { discount_type: dt, discount_value: dv };
+}
+
+const PRESALE_CSRF_STORAGE_PREFIX = 'andiamo_presale_csrf:';
+function readPresaleCsrfFromStorage(eventId: string): string | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const v = sessionStorage.getItem(`${PRESALE_CSRF_STORAGE_PREFIX}${eventId}`);
+    return v && String(v).trim() ? String(v).trim() : null;
+  } catch {
+    return null;
+  }
+}
+function writePresaleCsrfToStorage(eventId: string, token: string) {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(`${PRESALE_CSRF_STORAGE_PREFIX}${eventId}`, token);
+  } catch {
+    /* ignore */
+  }
+}
+function clearPresaleCsrfFromStorage(eventId: string) {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.removeItem(`${PRESALE_CSRF_STORAGE_PREFIX}${eventId}`);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Same proportional rules as server `applyPresaleDiscountToPasses` (fixed = spread across line totals). */
+function presaleAdjustedUnitPrice(
+  unitList: number,
+  cartLines: { unitList: number; qty: number }[],
+  disc: PresaleDiscountMeta | null
+): number {
+  if (!disc || cartLines.length === 0) return unitList;
+  const subtotal = cartLines.reduce((s, l) => s + l.unitList * l.qty, 0);
+  if (subtotal <= 0) return unitList;
+  if (disc.discount_type === 'percent') {
+    const pct = Math.min(100, Math.max(0, disc.discount_value));
+    return roundMoneyDisplay(Math.max(0, unitList * (1 - pct / 100)));
+  }
+  const fixed = Math.min(subtotal, Math.max(0, disc.discount_value));
+  const factor = Math.max(0, (subtotal - fixed) / subtotal);
+  return roundMoneyDisplay(Math.max(0, unitList * factor));
+}
+
+function mapPassesFromApiResponse(passesData: unknown[]): EventPass[] {
+  return (passesData || []).map((raw) => {
+    const p = raw as Record<string, unknown>;
+    const priceRaw = p.price;
+    const price =
+      typeof priceRaw === 'number' ? priceRaw : parseFloat(String(priceRaw ?? 0)) || 0;
+    return {
+      id: String(p.id ?? ''),
+      name: String(p.name ?? ''),
+      price,
+      description: String(p.description ?? ''),
+      is_primary: Boolean(p.is_primary),
+      max_quantity: (p.max_quantity as number | null | undefined) ?? undefined,
+      sold_quantity: typeof p.sold_quantity === 'number' ? p.sold_quantity : 0,
+      remaining_quantity: (p.remaining_quantity as number | null | undefined) ?? undefined,
+      is_unlimited: Boolean(p.is_unlimited),
+      is_sold_out: Boolean(p.is_sold_out),
+      allowed_payment_methods: (p.allowed_payment_methods as string[] | null | undefined) ?? null,
+    };
+  });
+}
 
 const PassPurchase = ({ language }: PassPurchaseProps) => {
   const navigate = useNavigate();
@@ -118,16 +204,50 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   const [wizardStep, setWizardStep] = useState(1);
   const [emailConfirm, setEmailConfirm] = useState('');
   const [stepDirection, setStepDirection] = useState<'forward' | 'back'>('forward');
+  const [presaleCsrfToken, setPresaleCsrfToken] = useState<string | null>(null);
+  /** True after GET /api/passes/:id returns 403 (presale session required) even if client event row omits presale_enabled. */
+  const [passesForbiddenPresale, setPassesForbiddenPresale] = useState(false);
+  /** From GET /api/presale/required — authoritative DB flag; undefined = meta request failed, fall back to client row. */
+  const [serverPresaleRequired, setServerPresaleRequired] = useState<boolean | undefined>(undefined);
+  const [presaleCodeDraft, setPresaleCodeDraft] = useState('');
+  const [presaleRedeeming, setPresaleRedeeming] = useState(false);
+  /** Mirrors presale_codes discount for the active session (from session or redeem API). */
+  const [presaleDiscountMeta, setPresaleDiscountMeta] = useState<PresaleDiscountMeta | null>(null);
+  /** Cart lines at list price — used with presaleDiscountMeta for totals (matches server order math). */
+  const presaleLineList = useMemo((): { unitList: number; qty: number }[] => {
+    if (!event?.passes) return [];
+    const out: { unitList: number; qty: number }[] = [];
+    for (const [passId, quantity] of Object.entries(selectedPasses)) {
+      if (quantity <= 0) continue;
+      const pass = event.passes.find((p) => p.id === passId);
+      if (pass) out.push({ unitList: pass.price, qty: quantity });
+    }
+    return out;
+  }, [event?.passes, selectedPasses]);
   /** Glass card that wraps the step fields — scroll this into view on Continue/Back so it stays visible (esp. mobile). */
   const wizardFieldsBoxRef = useRef<HTMLDivElement>(null);
   /** Step 5 footer (terms + Back / Submit) — scroll here on mobile after ambassador pick. */
   const step5SubmitScrollRef = useRef<HTMLDivElement>(null);
   /** Skip auto-scroll on first paint so event details stay visible at the top on load. */
   const skipInitialWizardScrollRef = useRef(true);
+  /** User used Back from payment step — do not create an order until they press Proceed again. */
+  const checkoutBackFromPaymentRef = useRef(false);
+  /** Prevents double "Proceed" / duplicate createOrder while async work runs. */
+  const checkoutSubmitInFlightRef = useRef(false);
+  /** Abort in-flight POST /api/orders/create when leaving payment step during checkout. */
+  const activeCheckoutAbortRef = useRef<AbortController | null>(null);
 
   // Fetch payment options
   const { data: paymentOptions = [], isLoading: loadingPaymentOptions } = usePaymentOptions();
-  
+
+  const presaleLocked = useMemo(() => {
+    if (presaleCsrfToken) return false;
+    if (passesForbiddenPresale) return true;
+    if (serverPresaleRequired === true) return true;
+    if (serverPresaleRequired === false) return false;
+    return isPresaleEnabledOnEvent(event);
+  }, [event, presaleCsrfToken, passesForbiddenPresale, serverPresaleRequired]);
+
   // Fetch active ambassadors to get full details (including social_link)
   const { data: activeAmbassadors = [] } = useActiveAmbassadors(
     customerInfo.city, 
@@ -136,10 +256,11 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 
-  // Load reCAPTCHA v3 only on the final wizard step (payment / submit) — avoids badge + scoring on steps 1–4
+  // Load reCAPTCHA v3 on payment step or presale gate (redeem uses v3 action presale_redeem)
   useEffect(() => {
     if (!RECAPTCHA_SITE_KEY || typeof window === 'undefined') return;
-    if (wizardStep !== WIZARD_STEP_COUNT) return;
+    const needScript = wizardStep === WIZARD_STEP_COUNT || presaleLocked;
+    if (!needScript) return;
     if ((window as any).grecaptcha) return;
 
     const script = document.createElement('script');
@@ -147,15 +268,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     script.async = true;
     script.defer = true;
     document.body.appendChild(script);
-
-    return () => {
-      const existing = document.querySelector('script[src*="recaptcha/api.js"]');
-      if (existing?.parentNode) existing.parentNode.removeChild(existing);
-      const badge = document.querySelector('.grecaptcha-badge') as HTMLElement | null;
-      if (badge?.parentNode) badge.parentNode.removeChild(badge);
-      delete (window as any).grecaptcha;
-    };
-  }, [RECAPTCHA_SITE_KEY, wizardStep]);
+    // Intentionally no cleanup: presale gate and payment step both need grecaptcha; removing the script
+    // when leaving the gate would break step 5 if the user had not visited it yet.
+  }, [RECAPTCHA_SITE_KEY, wizardStep, presaleLocked]);
 
   const RECAPTCHA_TIMEOUT_MS = 15000;
 
@@ -169,6 +284,29 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     });
     try {
       const executePromise = gr.execute(RECAPTCHA_SITE_KEY, { action: 'order_create' });
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('RECAPTCHA_TIMEOUT')), RECAPTCHA_TIMEOUT_MS);
+      });
+      return await Promise.race([executePromise, timeoutPromise]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'RECAPTCHA_TIMEOUT' || (typeof msg === 'string' && msg.includes('reCAPTCHA Timeout'))) {
+        throw new Error('RECAPTCHA_TIMEOUT');
+      }
+      return null;
+    }
+  };
+
+  const executeRecaptchaPresaleRedeem = async (): Promise<string | null> => {
+    if (isLocalhostClient()) return 'localhost-bypass-token';
+    if (!RECAPTCHA_SITE_KEY || !(window as any).grecaptcha) return null;
+    const gr = (window as any).grecaptcha;
+    await new Promise<void>((resolve) => {
+      if (typeof gr.ready === 'function') gr.ready(() => resolve());
+      else resolve();
+    });
+    try {
+      const executePromise = gr.execute(RECAPTCHA_SITE_KEY, { action: 'presale_redeem' });
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error('RECAPTCHA_TIMEOUT')), RECAPTCHA_TIMEOUT_MS);
       });
@@ -278,7 +416,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
   // Scroll the wizard fields card into view on every step change (Continue / Back), not on first load (event details stay first).
   useEffect(() => {
-    if (!event || loading || purchaseBlockedReason || submitted) return;
+    if (!event || loading || purchaseBlockedReason || submitted || presaleLocked) return;
     if (skipInitialWizardScrollRef.current) {
       skipInitialWizardScrollRef.current = false;
       return;
@@ -292,7 +430,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         });
       });
     });
-  }, [wizardStep, event?.id, loading, purchaseBlockedReason, submitted]);
+  }, [wizardStep, event?.id, loading, purchaseBlockedReason, submitted, presaleLocked]);
 
   const t = {
     en: {
@@ -327,6 +465,27 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       completePaymentToSubmit: "Select a payment method above to continue.",
       next: "Continue",
       back: "Back",
+      presaleTitle: "So you think you're VIP?",
+      presaleHint: "Unlock access for our community members.",
+      presalePlaceholder: "Presale code",
+      presaleUnlock: "Prove It",
+      presaleInvalid: "Invalid or expired code. Try again.",
+      presaleErrMissingServiceRole:
+        "Presale unlock is not configured on this server (missing database key). Ask the developer to set SUPABASE_SERVICE_ROLE_KEY for the API.",
+      presaleErrCaptcha: "Verification failed. Try again.",
+      presaleErrPresaleOff:
+        "Presale is not enabled for this event. In admin, open the event, turn on presale (code gate), and save.",
+      presaleErrEventNotFound: "Event not found.",
+      presaleErrDatesMissing: "Presale configuration is incomplete for this event.",
+      presaleErrNotStarted: "Presale is not available yet.",
+      presaleErrEnded: "Presale is no longer available.",
+      presaleErrCodeNotFound: "Code not recognized. Check spelling and try again.",
+      presaleErrCodeNotActiveYet: "This code is not active yet.",
+      presaleErrCodeExpired: "This code has expired.",
+      presaleErrCodeExhausted: "This code has already been used or reached its limit.",
+      presaleErrSession: "Could not start your session. Try again.",
+      presaleErrServer: "Something went wrong. Try again later.",
+      presaleErrRateLimited: "Too many attempts. Try again later.",
     },
     fr: {
       title: "Acheter un Pass",
@@ -360,8 +519,56 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       completePaymentToSubmit: "Choisissez un mode de paiement ci-dessus pour continuer.",
       next: "Continuer",
       back: "Retour",
+      presaleTitle: "Oh… alors tu te crois VIP ?",
+      presaleHint: "Débloquez l'accès réservé aux membres de notre communauté.",
+      presalePlaceholder: "Code prévente",
+      presaleUnlock: "Prouve-le",
+      presaleInvalid: "Code invalide ou expiré. Réessayez.",
+      presaleErrMissingServiceRole:
+        "Le déblocage prévente n'est pas configuré sur ce serveur (clé base de données manquante). Demandez au développeur de définir SUPABASE_SERVICE_ROLE_KEY pour l'API.",
+      presaleErrCaptcha: "Échec de la vérification. Réessayez.",
+      presaleErrPresaleOff:
+        "La prévente n'est pas activée pour cet événement. Dans l'admin, ouvrez l'événement, activez la prévente (code), puis enregistrez.",
+      presaleErrEventNotFound: "Événement introuvable.",
+      presaleErrDatesMissing: "La configuration prévente est incomplète pour cet événement.",
+      presaleErrNotStarted: "La prévente n'est pas encore disponible.",
+      presaleErrEnded: "La prévente n'est plus disponible.",
+      presaleErrCodeNotFound: "Code non reconnu. Vérifiez l'orthographe et réessayez.",
+      presaleErrCodeNotActiveYet: "Ce code n'est pas encore actif.",
+      presaleErrCodeExpired: "Ce code a expiré.",
+      presaleErrCodeExhausted: "Ce code a déjà été utilisé ou a atteint sa limite.",
+      presaleErrSession: "Impossible de démarrer votre session. Réessayez.",
+      presaleErrServer: "Une erreur s'est produite. Réessayez plus tard.",
+      presaleErrRateLimited: "Trop de tentatives. Réessayez plus tard.",
     }
   };
+
+  function presaleRedeemErrorDescription(
+    lang: 'en' | 'fr',
+    reason: string | undefined,
+    serverMessage: string | undefined
+  ): string {
+    const k = t[lang];
+    const map: Record<string, string> = {
+      missing_service_role: k.presaleErrMissingServiceRole,
+      captcha_failed: k.presaleErrCaptcha,
+      presale_off: k.presaleErrPresaleOff,
+      event_not_found: k.presaleErrEventNotFound,
+      presale_dates_missing: k.presaleErrDatesMissing,
+      presale_not_started: k.presaleErrNotStarted,
+      presale_ended: k.presaleErrEnded,
+      code_not_found: k.presaleErrCodeNotFound,
+      code_not_active_yet: k.presaleErrCodeNotActiveYet,
+      code_expired: k.presaleErrCodeExpired,
+      code_exhausted: k.presaleErrCodeExhausted,
+      session_create_failed: k.presaleErrSession,
+      server_error: k.presaleErrServer,
+      rate_limited: k.presaleErrRateLimited,
+    };
+    if (reason && map[reason]) return map[reason];
+    if (serverMessage && typeof serverMessage === 'string' && serverMessage.trim()) return serverMessage.trim();
+    return k.presaleInvalid;
+  }
 
   useEffect(() => {
     if (eventSlug || eventId) {
@@ -383,7 +590,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   const fetchEvent = async () => {
     try {
       setLoading(true);
-      
+      setPurchaseBlockedReason(null);
+      setPresaleCsrfToken(null);
+      setPassesForbiddenPresale(false);
+      setServerPresaleRequired(undefined);
+      setPresaleDiscountMeta(null);
+
       const isLocal = isLocalhostClient();
 
       let eventData: any = null;
@@ -392,18 +604,31 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
 
       // Fetch event by slug or eventId
       if (eventSlug) {
-        // New friendly URL: fetch by slug
         const normalizedSlug = decodeURIComponent(eventSlug).toLowerCase().trim();
-        const { data, error } = await supabase
+        // Prefer DB `slug` column; then same fallbacks as UpcomingEvent / GalleryEvent (name slug, event-{id})
+        const { data: byDbSlug, error: slugColError } = await supabase
           .from('events')
           .select('*')
           .eq('slug', normalizedSlug)
-          .single();
-        
-        eventData = data;
-        eventError = error;
-        if (data) {
-          resolvedEventId = data.id;
+          .maybeSingle();
+
+        if (slugColError) {
+          eventError = slugColError;
+        } else if (byDbSlug) {
+          eventData = byDbSlug;
+          resolvedEventId = byDbSlug.id;
+        } else {
+          const { data: allRows, error: allErr } = await supabase.from('events').select('*');
+          if (allErr) {
+            eventError = allErr;
+          } else {
+            const pool = isLocal ? allRows || [] : (allRows || []).filter((ev: { is_test?: boolean }) => !ev.is_test);
+            const found = findEventByPublicUrlSlug(pool, normalizedSlug);
+            if (found) {
+              eventData = found;
+              resolvedEventId = found.id;
+            }
+          }
         }
       } else if (eventId) {
         // Legacy URL: fetch by eventId
@@ -458,24 +683,17 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         return;
       }
 
-      // Check if event is cancelled
+      // Cancelled: same UX as missing event (do not disclose cancellation)
       if (event?.event_status === 'cancelled') {
-        toast({
-          title: t[language].error,
-          description: language === 'en' 
-            ? 'This event has been cancelled.' 
-            : 'Cet événement a été annulé.',
-          variant: 'destructive'
-        });
         setEvent(null);
         setLoading(false);
         return;
       }
 
-      // Block pass purchase when admin marked completed or cancelled (cancelled handled above)
+      // Block pass purchase when admin marked completed (cancelled handled above)
       if (isPassPurchaseWindowClosed(event.date, event.event_status)) {
         setPurchaseBlockedReason('completed');
-        setEvent({ ...event, passes: [] });
+        setEvent({ ...event, passes: [] } as Event);
         setLoading(false);
         toast({
           title: language === 'en' ? 'Sales are closed' : 'Ventes fermées',
@@ -487,39 +705,123 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         return;
       }
 
-      // Fetch passes from server endpoint (includes stock information)
-      let passes: any[] = [];
+      // Fetch passes from server (stock + payment rules; presale events require HttpOnly session cookie)
+      let passes: EventPass[] = [];
+      let presaleOn = isPresaleEnabledOnEvent(event);
       try {
-        // Use getApiBaseUrl() for consistent API routing
         const apiBase = getApiBaseUrl();
         if (!resolvedEventId) {
           throw new Error('Event ID not resolved');
         }
-        const passesResponse = await fetch(`${apiBase}/api/passes/${resolvedEventId}`);
-        
-        if (passesResponse.ok) {
-          const passesResult = await passesResponse.json();
-          const passesData = passesResult.passes || [];
+        const eidForPresale = String(resolvedEventId).trim();
+        clearPresaleCsrfFromStorage(eidForPresale);
+        try {
+          const clearRes = await fetch(`${apiBase}${API_ROUTES.PRESALE_SESSION_CLEAR}`, {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (!clearRes.ok) {
+            console.warn('PassPurchase: presale session clear failed', clearRes.status);
+          }
+        } catch (clearErr) {
+          console.warn('PassPurchase: presale session clear request failed', clearErr);
+        }
+        try {
+          const metaRes = await fetch(
+            `${apiBase}${API_ROUTES.PRESALE_REQUIRED}?eventId=${encodeURIComponent(String(resolvedEventId).trim())}`,
+            { credentials: 'include' }
+          );
+          const metaJson = await metaRes.json().catch(() => ({}));
+          if (metaRes.ok && typeof metaJson.required === 'boolean' && metaJson.found === true) {
+            presaleOn = metaJson.required;
+            setServerPresaleRequired(metaJson.required);
+          } else {
+            // Do not set false here: /api/passes returns authoritative presale_required after this.
+            setServerPresaleRequired(undefined);
+          }
+        } catch (e) {
+          console.warn('PassPurchase: /api/presale/required failed', e);
+          setServerPresaleRequired(undefined);
+        }
 
-          // Map passes with stock information
-          passes = passesData.map((p: any) => ({
-            id: p.id,
-            name: p.name || '',
-            price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
-            description: p.description || '',
-            is_primary: p.is_primary || false,
-            // Stock information
-            max_quantity: p.max_quantity,
-            sold_quantity: p.sold_quantity || 0,
-            remaining_quantity: p.remaining_quantity,
-            is_unlimited: p.is_unlimited || false,
-            is_sold_out: p.is_sold_out || false,
-            // Payment method restrictions (UX only - backend is authoritative)
-            allowed_payment_methods: p.allowed_payment_methods || null
-          }));
+        const idForPasses = encodeURIComponent(String(resolvedEventId).trim());
+        const privatePassesResponse = await fetch(`${apiBase}/api/passes/${idForPasses}`, {
+          credentials: 'include',
+        });
+        if (privatePassesResponse.status === 403) {
+          passes = [];
+          setPresaleCsrfToken(null);
+          setPassesForbiddenPresale(true);
+          setPresaleDiscountMeta(null);
+        } else if (privatePassesResponse.ok) {
+          const passesResult = await privatePassesResponse.json();
+          if (typeof passesResult.presale_required === 'boolean') {
+            presaleOn = passesResult.presale_required;
+            setServerPresaleRequired(passesResult.presale_required);
+          }
+          const mappedPasses = mapPassesFromApiResponse(passesResult.passes || []);
+          if (presaleOn) {
+            const eid = String(resolvedEventId).trim();
+            const sessRes = await fetch(`${apiBase}${API_ROUTES.PRESALE_SESSION}`, {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ eventId: eid }),
+            });
+            const sessJson = await sessRes.json().catch(() => ({}));
+            let csrfTok =
+              typeof sessJson.csrfToken === 'string' && sessJson.csrfToken.trim()
+                ? sessJson.csrfToken.trim()
+                : readPresaleCsrfFromStorage(eid);
+            const sessionOk = sessRes.ok && sessJson.valid === true && !!csrfTok;
+            if (sessionOk) {
+              setPresaleCsrfToken(csrfTok);
+              writePresaleCsrfToStorage(eid, csrfTok);
+              setPassesForbiddenPresale(false);
+              const disc = parsePresaleDiscountFromApi(sessJson as Record<string, unknown>);
+              setPresaleDiscountMeta(disc);
+              passes = mappedPasses;
+            } else {
+              setPresaleCsrfToken(null);
+              setPassesForbiddenPresale(true);
+              setPresaleDiscountMeta(null);
+              passes = [];
+            }
+          } else {
+            setPresaleCsrfToken(null);
+            setPassesForbiddenPresale(false);
+            setPresaleDiscountMeta(null);
+            passes = mappedPasses;
+          }
+        } else if (privatePassesResponse.status === 404) {
+          passes = [];
+          setPresaleCsrfToken(null);
+          if (presaleOn) {
+            setPassesForbiddenPresale(true);
+            // Presale: no passes list until unlock; 404 often means API DB env mismatch — avoid scary toast
+          } else {
+            setPassesForbiddenPresale(false);
+            const errorText = await privatePassesResponse.text();
+            let errorData;
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { error: errorText };
+            }
+            console.error('❌ Failed to fetch passes for event:', resolvedEventId, {
+              status: 404,
+              error: errorData,
+            });
+            toast({
+              title: language === 'en' ? 'Warning' : 'Avertissement',
+              description: language === 'en'
+                ? 'Passes could not be loaded (event not found on server). Check that SUPABASE_URL / SUPABASE_ANON_KEY match VITE_SUPABASE_* in .env, then restart the API.'
+                : 'Impossible de charger les passes (événement introuvable côté serveur). Vérifiez que SUPABASE_URL / SUPABASE_ANON_KEY correspondent aux VITE_* dans .env, puis redémarrez l’API.',
+              variant: 'destructive',
+            });
+          }
         } else {
-          // Passes fetch failed, but we still show the event
-          const errorText = await passesResponse.text();
+          const errorText = await privatePassesResponse.text();
           let errorData;
           try {
             errorData = JSON.parse(errorText);
@@ -527,15 +829,19 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             errorData = { error: errorText };
           }
           console.error('❌ Failed to fetch passes for event:', resolvedEventId, {
-            status: passesResponse.status,
-            statusText: passesResponse.statusText,
+            status: privatePassesResponse.status,
+            statusText: privatePassesResponse.statusText,
             error: errorData
           });
+          if (presaleOn) {
+            setPresaleCsrfToken(null);
+            setPassesForbiddenPresale(true);
+          }
           toast({
             title: language === 'en' ? 'Warning' : 'Avertissement',
             description: language === 'en' 
-              ? `Event loaded but passes could not be loaded (${passesResponse.status}). Please try again later.` 
-              : `Événement chargé mais les passes n'ont pas pu être chargées (${passesResponse.status}). Veuillez réessayer plus tard.`,
+              ? `Event loaded but passes could not be loaded (${privatePassesResponse.status}). Please try again later.` 
+              : `Événement chargé mais les passes n'ont pas pu être chargées (${privatePassesResponse.status}). Veuillez réessayer plus tard.`,
             variant: "destructive",
           });
         }
@@ -551,11 +857,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         });
       }
 
-      // Set event with passes (even if empty array)
-      setEvent({
-        ...event,
-        passes: passes
-      });
+      setEvent({ ...event, passes } as Event);
 
       // All passes start at 0 - no default selection
     } catch (error) {
@@ -569,6 +871,95 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePresaleRedeem = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!event?.id) return;
+    const code = presaleCodeDraft.trim();
+    if (!code) {
+      toast({
+        title: t[language].error,
+        description: language === 'en' ? 'Enter your presale code.' : 'Entrez votre code prévente.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setPresaleRedeeming(true);
+    try {
+      let recaptchaToken: string | null = null;
+      try {
+        recaptchaToken = await executeRecaptchaPresaleRedeem();
+      } catch (recaptchaErr: unknown) {
+        if (recaptchaErr instanceof Error && recaptchaErr.message === 'RECAPTCHA_TIMEOUT') {
+          toast({
+            title: language === 'en' ? 'Verification timed out' : 'Vérification expirée',
+            description: language === 'en'
+              ? "Verification timed out. Please try again or open this page in your device's browser instead of the in-app browser."
+              : 'Vérification expirée. Réessayez ou ouvrez cette page dans le navigateur de votre appareil.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw recaptchaErr;
+      }
+      if (!isLocalhostClient() && !recaptchaToken) {
+        toast({
+          title: t[language].error,
+          description: language === 'en' ? 'reCAPTCHA verification failed. Please try again.' : 'La vérification reCAPTCHA a échoué. Veuillez réessayer.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      const apiBase = getApiBaseUrl();
+      const r = await fetch(`${apiBase}${API_ROUTES.PRESALE_REDEEM}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: event.id,
+          code,
+          recaptchaToken: recaptchaToken ?? undefined,
+        }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok || !body.success) {
+        const reason = typeof body.reason === 'string' ? body.reason : undefined;
+        const serverMessage = typeof body.message === 'string' ? body.message : undefined;
+        toast({
+          title: t[language].error,
+          description: presaleRedeemErrorDescription(language, reason, serverMessage),
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (typeof body.csrfToken === 'string' && body.csrfToken.trim()) {
+        const tok = body.csrfToken.trim();
+        setPresaleCsrfToken(tok);
+        writePresaleCsrfToStorage(event.id, tok);
+      }
+      const disc = parsePresaleDiscountFromApi(body as Record<string, unknown>);
+      if (disc) setPresaleDiscountMeta(disc);
+      setPassesForbiddenPresale(false);
+      setPresaleCodeDraft('');
+      const passesRes = await fetch(`${apiBase}/api/passes/${event.id}`, { credentials: 'include' });
+      if (!passesRes.ok) {
+        toast({
+          title: t[language].error,
+          description: t[language].presaleInvalid,
+          variant: 'destructive',
+        });
+        return;
+      }
+      const passesJson = await passesRes.json();
+      if (typeof passesJson.presale_required === 'boolean') {
+        setServerPresaleRequired(passesJson.presale_required);
+      }
+      const mapped = mapPassesFromApiResponse(passesJson.passes || []);
+      setEvent((prev) => (prev ? ({ ...prev, passes: mapped } as Event) : prev));
+    } finally {
+      setPresaleRedeeming(false);
     }
   };
 
@@ -653,34 +1044,31 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     // Note: useEffect will handle clearing payment method if it becomes incompatible
   };
 
-  // Calculate total price (subtotal before any online payment fees)
+  // Calculate total price (subtotal before any online payment fees; presale discount matches server)
   const calculateTotal = (): number => {
-    if (!event?.passes) return 0;
-    
-    let total = 0;
-    Object.entries(selectedPasses).forEach(([passId, quantity]) => {
-      const pass = event.passes?.find(p => p.id === passId);
-      if (pass && quantity > 0) {
-        total += pass.price * quantity;
-      }
-    });
-    return total;
+    if (presaleLineList.length === 0) return 0;
+    return presaleLineList.reduce(
+      (sum, l) =>
+        sum + presaleAdjustedUnitPrice(l.unitList, presaleLineList, presaleDiscountMeta) * l.qty,
+      0
+    );
   };
 
   // Get selected passes as array
   const getSelectedPassesArray = (): SelectedPass[] => {
     if (!event?.passes) return [];
-    
+
     const passes: SelectedPass[] = [];
+    const lines = presaleLineList;
     Object.entries(selectedPasses).forEach(([passId, quantity]) => {
       if (quantity > 0) {
-        const pass = event.passes?.find(p => p.id === passId);
+        const pass = event.passes?.find((p) => p.id === passId);
         if (pass) {
           passes.push({
             passId: pass.id,
             passName: pass.name,
             quantity,
-            price: pass.price
+            price: presaleAdjustedUnitPrice(pass.price, lines, presaleDiscountMeta),
           });
         }
       }
@@ -712,22 +1100,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     return null;
   };
 
-  /** EN/FR line plus optional Darija hint for name / phone / email (toast). */
+  /** EN/FR error message shown in toast. */
   const passPurchaseValidationToastDescription = (errors: Record<string, string>) => {
     const primary = firstPassPurchaseErrorMessage(errors);
     if (!primary) return t[language].fixFormErrors;
-    const field = firstPassPurchaseErrorField(errors);
-    const ar = field ? PASS_PURCHASE_FIELD_ERROR_AR[field] : undefined;
-    if (ar) {
-      return (
-        <>
-          <span className="block">{primary}</span>
-          <span lang="ar" dir="rtl" className="block mt-1.5 text-right text-[0.95em] leading-snug opacity-95">
-            {ar}
-          </span>
-        </>
-      );
-    }
     return primary;
   };
 
@@ -770,6 +1146,10 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
   };
 
   const goBack = () => {
+    if (wizardStep === WIZARD_STEP_COUNT) {
+      checkoutBackFromPaymentRef.current = true;
+      activeCheckoutAbortRef.current?.abort();
+    }
     setStepDirection('back');
     setValidationErrors({});
     setWizardStep((s) => Math.max(1, s - 1));
@@ -787,16 +1167,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     return { valid: Object.keys(errors).length === 0, errors };
   };
 
-  // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const isAbortLikeError = (err: unknown): boolean => {
+    if (!err || typeof err !== 'object') return false;
+    const name = (err as { name?: string }).name;
+    return name === 'AbortError';
+  };
 
-    // Radix <button>s used to default to type="submit" inside <form>; ignore stray submits from earlier steps.
-    if (wizardStep !== WIZARD_STEP_COUNT) {
-      return;
-    }
+  /** Checkout runs only from an explicit Proceed click, not implicit Enter on the outer form. */
+  const runPassCheckout = async () => {
+    if (wizardStep !== WIZARD_STEP_COUNT) return;
 
-    // Automatically accept terms when submitting
     setTermsAccepted(true);
 
     const { valid, errors: submitErrors } = validateForm();
@@ -825,6 +1205,19 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       return;
     }
 
+    if (checkoutSubmitInFlightRef.current) return;
+    checkoutSubmitInFlightRef.current = true;
+    checkoutBackFromPaymentRef.current = false;
+
+    const abortCtl = new AbortController();
+    activeCheckoutAbortRef.current = abortCtl;
+    const endCheckoutAttempt = () => {
+      checkoutSubmitInFlightRef.current = false;
+      if (activeCheckoutAbortRef.current === abortCtl) {
+        activeCheckoutAbortRef.current = null;
+      }
+    };
+
     setProcessing(true);
 
     const selectedPassesArray = getSelectedPassesArray();
@@ -835,6 +1228,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         variant: "destructive",
       });
       setProcessing(false);
+      endCheckoutAttempt();
       return;
     }
 
@@ -847,6 +1241,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         variant: "destructive",
       });
       setProcessing(false);
+      endCheckoutAttempt();
       return;
     }
 
@@ -875,6 +1270,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             variant: 'destructive',
           });
           setProcessing(false);
+          endCheckoutAttempt();
           return;
         }
         throw recaptchaErr;
@@ -886,25 +1282,42 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           variant: 'destructive',
         });
         setProcessing(false);
+        endCheckoutAttempt();
         return;
       }
+
+      if (checkoutBackFromPaymentRef.current) {
+        setProcessing(false);
+        endCheckoutAttempt();
+        return;
+      }
+
       const customerInfoForOrder: CustomerInfo = {
         ...customerInfo,
         email: normalizeCommonEmailTypos(customerInfo.email),
       };
-      const order = await createOrder({
-        customerInfo: customerInfoForOrder,
-        passes: selectedPassesArray,
-        paymentMethod,
-        ambassadorId: paymentMethod === PaymentMethod.AMBASSADOR_CASH ? selectedAmbassadorId || undefined : undefined,
-        eventId: event?.id || eventId || undefined,
-        recaptchaToken: recaptchaToken ?? undefined,
-        idempotencyKey,
-        metaEventId,
-        metaFbp: metaAttribution.fbp,
-        metaFbc: metaAttribution.fbc,
-        metaEventSourceUrl: metaAttribution.eventSourceUrl,
-      });
+      const order = await createOrder(
+        {
+          customerInfo: customerInfoForOrder,
+          passes: selectedPassesArray,
+          paymentMethod,
+          ambassadorId: paymentMethod === PaymentMethod.AMBASSADOR_CASH ? selectedAmbassadorId || undefined : undefined,
+          eventId: event?.id || eventId || undefined,
+          recaptchaToken: recaptchaToken ?? undefined,
+          idempotencyKey,
+          metaEventId,
+          metaFbp: metaAttribution.fbp,
+          metaFbc: metaAttribution.fbc,
+          metaEventSourceUrl: metaAttribution.eventSourceUrl,
+          presaleCsrfToken:
+            (serverPresaleRequired === true ||
+              (serverPresaleRequired !== false && isPresaleEnabledOnEvent(event))) &&
+            presaleCsrfToken
+              ? presaleCsrfToken
+              : undefined,
+        },
+        { signal: abortCtl.signal }
+      );
 
       // Handle redirect based on payment method
       if (paymentMethod === PaymentMethod.ONLINE) {
@@ -928,7 +1341,6 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         trackEvent('order_submit_online', onlineParams);
         trackMetaEvent('OrderSubmitOnline', onlineParams);
 
-        // Redirect to payment processing (ClicToPay flow)
         const passIds = selectedPassesArray.map((p) => p.passId).join(',');
         const redirectUrl =
           `/payment-processing?orderId=${order.id}` +
@@ -936,10 +1348,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           `&value=${encodeURIComponent(String(totalPrice))}` +
           `&qty=${encodeURIComponent(String(totalQuantity))}` +
           `&pass_ids=${encodeURIComponent(passIds)}`;
+        endCheckoutAttempt();
         navigate(redirectUrl, { replace: true });
       } else if (paymentMethod === PaymentMethod.EXTERNAL_APP) {
         const option = paymentOptions.find(o => o.option_type === 'external_app');
         if (option?.external_link) {
+          endCheckoutAttempt();
           window.location.href = option.external_link;
         } else {
           toast({
@@ -948,6 +1362,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             variant: "destructive",
           });
           setProcessing(false);
+          endCheckoutAttempt();
         }
       } else if (paymentMethod === PaymentMethod.AMBASSADOR_CASH) {
         // Track ambassador payment order
@@ -976,17 +1391,29 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           description: t[language].successMessageAmbassador,
           variant: "default",
         });
+        endCheckoutAttempt();
         setSubmitted(true);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      if (isAbortLikeError(error)) {
+        setProcessing(false);
+        endCheckoutAttempt();
+        return;
+      }
       console.error('Order submission error:', error);
-      const errorMessage = error.message || (language === 'en' ? 'Failed to submit order' : 'Échec de la soumission de la commande');
+      const errorMessage =
+        error instanceof Error && error.message
+          ? error.message
+          : language === 'en'
+            ? 'Failed to submit order'
+            : 'Échec de la soumission de la commande';
       toast({
         title: t[language].error,
         description: errorMessage,
         variant: "destructive",
       });
       setProcessing(false);
+      endCheckoutAttempt();
     }
   };
 
@@ -1046,6 +1473,54 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     );
   }
 
+  if (presaleLocked) {
+    const purchasePath = eventSlug ? `/${eventSlug}` : '/pass-purchase';
+    const purchaseTitle =
+      language === 'en' ? `Presale – ${event.name} | Andiamo Events` : `Prévente – ${event.name} | Andiamo Events`;
+    return (
+      <main className="min-h-screen bg-gradient-dark flex flex-col items-center justify-center px-4 pt-20 pb-12" id="main-content">
+        <PageMeta title={purchaseTitle} description={event.description?.slice(0, 155) ?? ''} path={purchasePath} />
+        <Card className="flex w-full max-w-md flex-col items-stretch text-left glass border-border/60">
+          <CardHeader className="items-stretch text-left">
+            <h2 className="w-full text-left text-2xl font-semibold font-heading leading-snug tracking-tight text-gradient-neon [background-position:0%_50%]">
+              {t[language].presaleTitle}
+            </h2>
+          </CardHeader>
+          <CardContent className="flex flex-col items-stretch space-y-4 text-left">
+            <p className="w-full text-left text-sm text-muted-foreground">{t[language].presaleHint}</p>
+            <form onSubmit={handlePresaleRedeem} className="flex w-full flex-col items-stretch space-y-3 text-left">
+              <Input
+                type="text"
+                name="presale-code"
+                autoComplete="off"
+                value={presaleCodeDraft}
+                autoCapitalize="characters"
+                spellCheck={false}
+                onChange={(e) => setPresaleCodeDraft(e.target.value.toUpperCase())}
+                placeholder={t[language].presalePlaceholder}
+                className="bg-background/50 text-left"
+              />
+              <Button
+                type="submit"
+                disabled={presaleRedeeming}
+                className={cn('w-full', presaleRedeeming && 'disabled:!opacity-100')}
+              >
+                {presaleRedeeming ? (
+                  <>
+                    <Loader size="sm" className="!bg-white shrink-0" />
+                    {t[language].processing}
+                  </>
+                ) : (
+                  t[language].presaleUnlock
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </main>
+    );
+  }
+
   // Calculate values that might be needed in early returns
   const totalPrice = calculateTotal();
   const isOnlinePayment = paymentMethod === PaymentMethod.ONLINE;
@@ -1084,7 +1559,17 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card className="glass border-2 border-green-500/30">
             <CardContent className="p-8 text-center">
-              <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-4" />
+              <div className="relative inline-flex mx-auto mb-4">
+                <div
+                  className="absolute -inset-5 rounded-full bg-green-500/25 blur-2xl animate-success-check-glow"
+                  aria-hidden
+                />
+                <CheckCircle
+                  className="relative z-10 h-20 w-20 text-green-500 drop-shadow-[0_0_12px_rgba(34,197,94,0.45)] animate-success-check"
+                  strokeWidth={1.75}
+                  aria-hidden
+                />
+              </div>
               <h2 className="text-3xl font-bold text-gradient-neon mb-4">
                 {t[language].thankYou}
               </h2>
@@ -1141,7 +1626,11 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           </h1>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+          }}
+        >
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Event Details — first on all breakpoints */}
             <div className="lg:col-span-1">
@@ -1150,13 +1639,13 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                   <CardTitle className="text-gradient-neon">{t[language].eventDetails}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {event.poster_url && (
+                  {event.poster_url ? (
                     <img
                       src={event.poster_url}
                       alt={event.name}
                       className="w-full h-48 object-cover rounded-lg"
                     />
-                  )}
+                  ) : null}
                   <div className="mb-4">
                     <h3 className="text-xl font-bold text-primary mb-3">{event.name}</h3>
                     {event.description && (
@@ -1215,14 +1704,13 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                   <CardTitle
                     className={cn(
                       'text-gradient-neon',
-                      wizardStep <= 4 && 'text-right leading-snug'
+                      wizardStep <= 4 && 'leading-snug'
                     )}
-                    {...(wizardStep <= 4 ? { lang: 'ar', dir: 'rtl' } : {})}
                   >
-                    {wizardStep === 1 && PASS_PURCHASE_AR.passSelection}
-                    {wizardStep === 2 && PASS_PURCHASE_AR.namePhone}
-                    {wizardStep === 3 && PASS_PURCHASE_AR.email}
-                    {wizardStep === 4 && PASS_PURCHASE_AR.cityVille}
+                    {wizardStep === 1 && t[language].passSelection}
+                    {wizardStep === 2 && t[language].stepIdentity}
+                    {wizardStep === 3 && t[language].stepEmail}
+                    {wizardStep === 4 && t[language].stepLocation}
                     {wizardStep === 5 && t[language].stepPaymentSummary}
                   </CardTitle>
                 </CardHeader>
@@ -1244,6 +1732,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                         const remainingQuantity = pass.remaining_quantity ?? 0;
                         const maxAllowed = Math.min(10, remainingQuantity);
                         const isLowStock = !isSoldOut && remainingQuantity <= 5;
+                        const pricePreviewLines =
+                          quantity > 0 ? presaleLineList : [{ unitList: pass.price, qty: 1 }];
+                        const displayUnitPrice = presaleAdjustedUnitPrice(
+                          pass.price,
+                          pricePreviewLines,
+                          presaleDiscountMeta
+                        );
+                        const showPresaleStrike =
+                          presaleDiscountMeta != null &&
+                          roundMoneyDisplay(displayUnitPrice) < roundMoneyDisplay(pass.price);
                         
                         // Check if pass is compatible with selected payment method (UX only - backend is authoritative)
                         const isCompatible = isPassCompatibleWithPaymentMethod(pass, paymentMethod);
@@ -1269,7 +1767,16 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                                 </h3>
                               </div>
                               <p className={`text-2xl font-bold ${isSoldOut ? 'text-muted-foreground' : 'text-primary'}`}>
-                                {pass.price} TND
+                                {showPresaleStrike ? (
+                                  <>
+                                    <span>{displayUnitPrice} TND</span>
+                                    <span className="line-through text-muted-foreground text-lg font-semibold ml-2">
+                                      {pass.price} TND
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>{displayUnitPrice} TND</>
+                                )}
                               </p>
                               {pass.description && (
                                 <p className={`text-sm mt-1 ${isSoldOut ? 'text-muted-foreground/70' : 'text-muted-foreground'}`}>
@@ -1628,13 +2135,19 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                       </Button>
                     ) : (
                       <Button
-                        type="submit"
+                        type="button"
                         disabled={processing || !step5ReadyToSubmit}
-                        className="w-full sm:ml-auto sm:w-auto btn-gradient disabled:opacity-50"
+                        className={cn(
+                          'w-full sm:ml-auto sm:w-auto btn-gradient disabled:opacity-50',
+                          processing && 'disabled:!opacity-100'
+                        )}
+                        onClick={() => {
+                          void runPassCheckout();
+                        }}
                       >
                         {processing ? (
                           <>
-                            <Loader size="sm" className="mr-2 shrink-0 [background:white]" />
+                            <Loader size="sm" className="mr-2 shrink-0 !bg-white" />
                             {t[language].processing}
                           </>
                         ) : paymentMethod === PaymentMethod.ONLINE ? (

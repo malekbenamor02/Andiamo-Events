@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import LoadingScreen from "@/components/ui/LoadingScreen";
-import { generateSlug } from "@/lib/utils";
+import { generateSlug, findEventByPublicUrlSlug } from "@/lib/utils";
 import { formatDateTimeLong, formatDateShortDMY, isPassPurchaseWindowClosed } from "@/lib/date-utils";
 import { Card } from "@/components/ui/card";
 import { ExpandableText } from "@/components/ui/expandable-text";
@@ -36,19 +36,10 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
   // Find event by slug from cached data
   const event = useMemo(() => {
     if (!eventSlug || !allEvents.length) return null;
-    
-    const normalizedSlug = decodeURIComponent(eventSlug).toLowerCase().trim();
-    
-    return allEvents.find(e => {
-      const rawSlug = typeof e.slug === "string" ? e.slug.trim() : "";
-      const officialMatch =
-        rawSlug !== "" && rawSlug.toLowerCase() === normalizedSlug;
-      const idMatch =
-        normalizedSlug.startsWith("event-") && normalizedSlug === `event-${e.id}`;
-      const eventSlugFromName = generateSlug(e.name).toLowerCase();
-      const slugMatch = eventSlugFromName === normalizedSlug;
-      return officialMatch || idMatch || slugMatch;
-    }) || null;
+    const found = findEventByPublicUrlSlug(allEvents, eventSlug);
+    // Cancelled: same as missing for visitors (no cancellation disclosure)
+    if (found?.event_status === 'cancelled') return null;
+    return found;
   }, [eventSlug, allEvents]);
 
   const isEventPastOrCompleted = useMemo(() => {
@@ -82,7 +73,6 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
       loading: "Loading event...",
       showMore: "Read more",
       showLess: "Read less",
-      cancelled: "Cancelled",
       standard: "Standard",
       vip: "VIP"
     },
@@ -101,7 +91,6 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
       loading: "Chargement de l'événement...",
       showMore: "Lire plus",
       showLess: "Lire moins",
-      cancelled: "Annulé",
       standard: "Standard",
       vip: "VIP"
     }
@@ -179,7 +168,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
           city={event.city}
           image={event.poster_url || ""}
           eventUrl={eventPath}
-          status={event.event_status === "cancelled" ? "cancelled" : event.event_status === "completed" ? "completed" : "scheduled"}
+          status={event.event_status === "completed" ? "completed" : "scheduled"}
         />
       )}
       <JsonLdBreadcrumb
@@ -221,11 +210,6 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
                 <Badge className="bg-primary/80 backdrop-blur-sm animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
                   {t.upcomingEvent}
                 </Badge>
-                {event.event_status === 'cancelled' && (
-                  <Badge className="bg-red-500/80 backdrop-blur-sm animate-fade-in-up">
-                    {t.cancelled}
-                  </Badge>
-                )}
               </div>
               <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-4 drop-shadow-2xl animate-fade-in-up uppercase" style={{ animationDelay: '0.4s' }}>
                 {event.name}
@@ -299,7 +283,7 @@ const UpcomingEvent = ({ language }: UpcomingEventProps) => {
             </p>
           </div>
         </section>
-      ) : event.passes && event.passes.length > 0 && event.event_status !== 'cancelled' ? (
+      ) : event.passes && event.passes.length > 0 ? (
         <section className="py-16 bg-gradient-dark">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center animate-fade-in-up">

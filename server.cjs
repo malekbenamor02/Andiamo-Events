@@ -42,6 +42,10 @@ const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./api/
 const { uploadTicketQrToR2OrSupabase } = require('./api/lib/r2-media.cjs');
 const { computeOnlinePaymentFees } = require('./api/lib/online-payment-fee.cjs');
 const { sendTransactionalEmail } = require('./api/lib/transactional-email.cjs');
+const {
+  tryBuildPremiumTicketsPdfAttachment,
+  tryBuildPremiumTicketsPdfAttachmentInvitation,
+} = require('./api/lib/render-premium-ticket-pdf.cjs');
 const { buildCampaignEmailHtml } = require('./api/lib/campaign-email-html.cjs');
 
 // Import centralized SMS template helpers
@@ -51,9 +55,17 @@ const {
   buildClientAdminApprovalSMS
 } = require('./smsTemplates.cjs');
 
+// Prefer SUPABASE_* (Node); fall back to VITE_* so local dev matches the browser client when only Vite vars are set.
+function trimEnvValue(v) {
+  if (v == null || typeof v !== 'string') return v;
+  return v.trim().replace(/^["']|["']$/g, '');
+}
+const resolvedSupabaseUrl = trimEnvValue(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
+const resolvedSupabaseAnonKey = trimEnvValue(process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY);
+
 // Debug: Log environment variables
 // Check environment variables
-if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+if (!resolvedSupabaseUrl || !resolvedSupabaseAnonKey) {
   console.warn('Warning: Supabase environment variables not configured. Admin login functionality will be disabled.');
 }
 if (!process.env.JWT_SECRET) {
@@ -74,14 +86,14 @@ if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PAS
 // Initialize Supabase client only if environment variables are available
 let supabase = null;
 let supabaseService = null; // Service role client for storage operations
-if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
+if (resolvedSupabaseUrl && resolvedSupabaseAnonKey) {
   const { createClient } = require('@supabase/supabase-js');
-  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+  supabase = createClient(resolvedSupabaseUrl, resolvedSupabaseAnonKey);
   // Supabase client initialized
-  
+
   // Also create service role client if available (for storage operations)
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    supabaseService = createClient(resolvedSupabaseUrl, trimEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY));
   } else {
     console.warn('SUPABASE_SERVICE_ROLE_KEY not set - storage operations may fail. Using anon key instead.');
   }
@@ -226,8 +238,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// Large event payloads (many gallery URLs, long descriptions) exceed default 100kb.
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
 // Security: Security headers middleware
@@ -2517,7 +2530,7 @@ app.post('/api/admin/official-invitations/create', requireAdminAuth, requireSupe
     // Fetch event details
     const { data: event, error: eventError } = await dbClient
       .from('events')
-      .select('id, name, date, venue, city')
+      .select('id, name, date, venue, city, poster_url')
       .eq('id', event_id)
       .single();
 
@@ -2581,9 +2594,9 @@ app.post('/api/admin/official-invitations/create', requireAdminAuth, requireSupe
       const secureToken = uuidv4();
       
       // Generate QR code image
-      const qrCodeBuffer = await QRCode.toBuffer(secureToken, { 
-        type: 'png', 
-        width: 300,
+      const qrCodeBuffer = await QRCode.toBuffer(secureToken, {
+        type: 'png',
+        width: 512,
         errorCorrectionLevel: 'M'
       });
 
@@ -2681,15 +2694,27 @@ app.post('/api/admin/official-invitations/create', requireAdminAuth, requireSupe
     let emailError = null;
     
     try {
-      await sendTransactionalEmail(
-        { getEmailTransporter },
-        {
-          from: emailConfig.from,
-          to: emailConfig.to,
-          subject: emailConfig.subject,
-          html: emailConfig.html,
-        }
-      );
+      let invPdfCreateSrv = null;
+      try {
+        invPdfCreateSrv = await tryBuildPremiumTicketsPdfAttachmentInvitation({
+          event,
+          guestName: guest_name.trim(),
+          invitationNumber: invitation.invitation_number,
+          passTypeName: passType.name,
+          qrCodes,
+        });
+      } catch (pdfErr) {
+        console.warn('Invitation premium PDF skipped:', pdfErr && pdfErr.message);
+      }
+      const mailInvCreateSrv = {
+        from: emailConfig.from,
+        to: emailConfig.to,
+        subject: emailConfig.subject,
+        html: emailConfig.html,
+      };
+      if (invPdfCreateSrv) mailInvCreateSrv.attachments = [invPdfCreateSrv];
+
+      await sendTransactionalEmail({ getEmailTransporter }, mailInvCreateSrv);
 
       emailSent = true;
     } catch (emailErr) {
@@ -2948,7 +2973,8 @@ app.post('/api/admin/official-invitations/:id/resend', requireAdminAuth, require
           name,
           date,
           venue,
-          city
+          city,
+          poster_url
         )
       `)
       .eq('id', id)
@@ -2997,15 +3023,31 @@ app.post('/api/admin/official-invitations/:id/resend', requireAdminAuth, require
     let emailError = null;
 
     try {
-      await sendTransactionalEmail(
-        { getEmailTransporter },
-        {
-          from: emailConfig.from,
-          to: emailConfig.to,
-          subject: emailConfig.subject,
-          html: emailConfig.html,
-        }
-      );
+      const eventRowSrv = invitation.events || {};
+      let invPdfResendSrv = null;
+      try {
+        invPdfResendSrv = await tryBuildPremiumTicketsPdfAttachmentInvitation({
+          event: eventRowSrv,
+          guestName: invitation.recipient_name,
+          invitationNumber: invitation.invitation_number,
+          passTypeName: invitation.pass_type,
+          qrCodes: qrTickets.map((qt) => ({
+            secure_token: qt.secure_token,
+            qr_code_url: qt.qr_code_url,
+          })),
+        });
+      } catch (pdfErr) {
+        console.warn('Invitation premium PDF skipped (resend):', pdfErr && pdfErr.message);
+      }
+      const mailInvResendSrv = {
+        from: emailConfig.from,
+        to: emailConfig.to,
+        subject: emailConfig.subject,
+        html: emailConfig.html,
+      };
+      if (invPdfResendSrv) mailInvResendSrv.attachments = [invPdfResendSrv];
+
+      await sendTransactionalEmail({ getEmailTransporter }, mailInvResendSrv);
 
       emailSent = true;
     } catch (emailErr) {
@@ -3277,9 +3319,16 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
     // Update application status (using anon key - RLS policies should allow this)
     // If RLS blocks it, we'll get a clear error message
     
+    const dbClient = supabaseService || supabase;
+    const { data: reviewerRow } = await dbClient.from('admins').select('name').eq('id', req.admin.id).maybeSingle();
+    const reviewerName = (reviewerRow?.name && String(reviewerRow.name).trim()) || req.admin.email || null;
+
     // Prepare update data
     const updatePayload = {
-      status: status
+      status: status,
+      reviewed_by_admin_id: req.admin.id,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by_name: reviewerName,
     };
     
     // Include reapply_delay_date if provided (for rejected status)
@@ -3293,7 +3342,7 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
     let updateData, updateError;
     
     // Try with updated_at first
-    const result = await supabase
+    const result = await dbClient
       .from('ambassador_applications')
       .update({ 
         ...updatePayload,
@@ -3307,7 +3356,7 @@ app.post('/api/admin-update-application', requireAdminAuth, async (req, res) => 
     
     // If error is about missing updated_at column, try without it
     if (updateError && updateError.message?.includes('updated_at')) {
-      const retryResult = await supabase
+      const retryResult = await dbClient
         .from('ambassador_applications')
         .update(updatePayload)
         .eq('id', applicationId)
@@ -5186,7 +5235,11 @@ app.get('/api/ambassador/orders', async (req, res) => {
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    const { ambassadorId, status, limit = 100 } = req.query;
+    const { ambassadorId, status, limit = 100, event_id: eventIdQuery } = req.query;
+    const eventId =
+      eventIdQuery != null && String(eventIdQuery).trim() !== ''
+        ? String(eventIdQuery).trim()
+        : null;
 
     if (!ambassadorId) {
       return res.status(400).json({
@@ -5240,6 +5293,10 @@ app.get('/api/ambassador/orders', async (req, res) => {
       }
     }
 
+    if (eventId) {
+      query = query.eq('event_id', eventId);
+    }
+
     // Check and auto-reject expired orders before fetching (on-demand checking)
     try {
       await dbClient.rpc('auto_reject_expired_pending_cash_orders');
@@ -5280,7 +5337,11 @@ app.get('/api/ambassador/performance', async (req, res) => {
       return res.status(500).json({ error: 'Supabase not configured' });
     }
 
-    const { ambassadorId } = req.query;
+    const { ambassadorId, event_id: perfEventIdQuery } = req.query;
+    const perfEventId =
+      perfEventIdQuery != null && String(perfEventIdQuery).trim() !== ''
+        ? String(perfEventIdQuery).trim()
+        : null;
 
     if (!ambassadorId) {
       return res.status(400).json({
@@ -5309,12 +5370,17 @@ app.get('/api/ambassador/performance', async (req, res) => {
       });
     }
 
-    // Fetch all orders with order_passes (exclude REMOVED_BY_ADMIN)
-    const { data: allOrders, error: ordersError } = await dbClient
+    let perfQuery = dbClient
       .from('orders')
       .select('*, order_passes (*)')
       .eq('ambassador_id', ambassadorId)
-      .neq('status', 'REMOVED_BY_ADMIN'); // Exclude removed orders from performance
+      .neq('status', 'REMOVED_BY_ADMIN');
+
+    if (perfEventId) {
+      perfQuery = perfQuery.eq('event_id', perfEventId);
+    }
+
+    const { data: allOrders, error: ordersError } = await perfQuery;
 
     if (ordersError) {
       console.error('Error fetching ambassador orders for performance:', ordersError);
@@ -5812,6 +5878,25 @@ app.get('/api/passes/:eventId', async (req, res) => {
 
     const dbClient = supabaseService || supabase;
 
+    const { data: eventData, error: eventError } = await dbClient
+      .from('events')
+      .select('id, presale_enabled')
+      .eq('id', eventId)
+      .single();
+    if (eventError || !eventData) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const presaleRequired = !!eventData.presale_enabled;
+    if (eventData.presale_enabled) {
+      const { parseCookie, PRESALE_COOKIE_NAME, fetchValidPresaleSessionRow } = await import('./api/lib/presale-server.js');
+      const sessionId = parseCookie(req, PRESALE_COOKIE_NAME);
+      const sessionRow = await fetchValidPresaleSessionRow(dbClient, sessionId, eventId);
+      if (!sessionRow) {
+        return res.status(403).json({ error: 'Invalid access', presale_required: true });
+      }
+    }
+
     // Fetch only active passes with stock information
     const { data: passes, error: passesError } = await dbClient
       .from('event_passes')
@@ -5858,6 +5943,7 @@ app.get('/api/passes/:eventId', async (req, res) => {
 
     res.status(200).json({
       success: true,
+      presale_required: presaleRequired,
       passes: passesWithStock
     });
 
@@ -5885,6 +5971,9 @@ app.get('/api/admin/passes/:eventId', requireAdminAuth, async (req, res) => {
 
     if (!eventId) {
       return res.status(400).json({ error: 'Event ID is required' });
+    }
+    if (eventId === 'create') {
+      return res.status(400).json({ error: 'Invalid event id' });
     }
 
     const dbClient = supabaseService || supabase;
@@ -5994,6 +6083,77 @@ app.get('/api/admin/passes/:eventId', requireAdminAuth, async (req, res) => {
   }
 });
 
+// POST /api/admin/passes/create — service role (presale events: anon cannot SELECT new rows under RLS)
+app.post('/api/admin/passes/create', requireAdminAuth, async (req, res) => {
+  try {
+    if (!supabaseService) {
+      return res.status(500).json({ error: 'Supabase service client not configured' });
+    }
+    const payload = req.body || {};
+    const event_id = payload.event_id;
+    const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+    const price = typeof payload.price === 'number' ? payload.price : parseFloat(payload.price);
+    const description =
+      payload.description == null || payload.description === '' ? '' : String(payload.description);
+    const is_primary = !!payload.is_primary;
+    const max_quantity =
+      payload.max_quantity != null ? parseInt(String(payload.max_quantity), 10) : NaN;
+    const allowed_payment_methods =
+      Array.isArray(payload.allowed_payment_methods) && payload.allowed_payment_methods.length > 0
+        ? payload.allowed_payment_methods
+        : null;
+    const release_version =
+      payload.release_version != null ? parseInt(String(payload.release_version), 10) : 1;
+
+    if (!event_id || !name) {
+      return res.status(400).json({ error: 'event_id and name are required' });
+    }
+    if (Number.isNaN(price) || price <= 0) {
+      return res.status(400).json({ error: 'price must be a number greater than 0' });
+    }
+    if (!Number.isInteger(max_quantity) || max_quantity < 1) {
+      return res.status(400).json({ error: 'max_quantity is required and must be at least 1' });
+    }
+
+    const dbClient = supabaseService;
+
+    if (is_primary) {
+      await dbClient.from('event_passes').update({ is_primary: false }).eq('event_id', event_id);
+    }
+
+    const insertRow = {
+      event_id,
+      name,
+      price,
+      description,
+      is_primary,
+      max_quantity,
+      sold_quantity: 0,
+      is_active: payload.is_active !== false,
+      release_version: Number.isInteger(release_version) && release_version > 0 ? release_version : 1,
+      allowed_payment_methods,
+    };
+
+    const { data: newPass, error: insertError } = await dbClient
+      .from('event_passes')
+      .insert(insertRow)
+      .select('id, name, price, description, is_primary, is_active, max_quantity, sold_quantity, release_version, allowed_payment_methods')
+      .single();
+
+    if (insertError) {
+      console.error('admin pass create', insertError);
+      return res.status(400).json({
+        error: insertError.message || 'Failed to create pass',
+        code: insertError.code,
+      });
+    }
+    return res.status(201).json({ success: true, pass: newPass });
+  } catch (error) {
+    console.error('Error in POST /api/admin/passes/create:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
 // Admin Events CRUD (cookie-admin-auth + service role)
 app.post('/api/admin/events', requireAdminAuth, async (req, res) => {
   try {
@@ -6027,6 +6187,29 @@ app.post('/api/admin/events', requireAdminAuth, async (req, res) => {
       gallery_videos: payload.gallery_videos ?? [],
       gallery_credit: payload.gallery_credit ?? null,
     };
+    if (Object.prototype.hasOwnProperty.call(payload, 'presale_enabled')) {
+      insertData.presale_enabled = !!payload.presale_enabled;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'presale_active_from')) {
+      insertData.presale_active_from = payload.presale_active_from || null;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'presale_active_until')) {
+      insertData.presale_active_until = payload.presale_active_until || null;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'presale_hide_from_public_list')) {
+      insertData.presale_hide_from_public_list = !!payload.presale_hide_from_public_list;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'presale_enabled')) {
+      if (insertData.presale_enabled === true) {
+        insertData.presale_hide_from_public_list = true;
+        insertData.presale_active_from = null;
+        insertData.presale_active_until = null;
+      } else {
+        insertData.presale_hide_from_public_list = false;
+        insertData.presale_active_from = null;
+        insertData.presale_active_until = null;
+      }
+    }
 
     const { data, error } = await supabaseService
       .from('events')
@@ -6076,6 +6259,29 @@ app.patch('/api/admin/events/:id', requireAdminAuth, async (req, res) => {
       gallery_credit: payload.gallery_credit ?? null,
       updated_at: new Date().toISOString(),
     };
+    if (Object.prototype.hasOwnProperty.call(payload, 'presale_enabled')) {
+      updateData.presale_enabled = !!payload.presale_enabled;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'presale_active_from')) {
+      updateData.presale_active_from = payload.presale_active_from || null;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'presale_active_until')) {
+      updateData.presale_active_until = payload.presale_active_until || null;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'presale_hide_from_public_list')) {
+      updateData.presale_hide_from_public_list = !!payload.presale_hide_from_public_list;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'presale_enabled')) {
+      if (updateData.presale_enabled === true) {
+        updateData.presale_hide_from_public_list = true;
+        updateData.presale_active_from = null;
+        updateData.presale_active_until = null;
+      } else if (updateData.presale_enabled === false) {
+        updateData.presale_hide_from_public_list = false;
+        updateData.presale_active_from = null;
+        updateData.presale_active_until = null;
+      }
+    }
 
     const { data, error } = await supabaseService
       .from('events')
@@ -8713,7 +8919,7 @@ app.post('/api/generate-qr-code', async (req, res) => {
     const QRCode = require('qrcode');
     const qrCodeBuffer = await QRCode.toBuffer(token, {
       type: 'png',
-      width: 300,
+      width: 512,
       margin: 2,
       color: {
         dark: '#000000',
@@ -9024,6 +9230,9 @@ async function generateTicketsAndSendEmail(orderId) {
           id,
           full_name,
           phone
+        ),
+        pos_outlets (
+          name
         )
       `)
       .eq('id', orderId)
@@ -9213,7 +9422,7 @@ async function generateTicketsAndSendEmail(orderId) {
         // Generate QR code
         const qrCodeBuffer = await QRCode.toBuffer(secureToken, {
           type: 'png',
-          width: 300,
+          width: 512,
           margin: 2
         });
 
@@ -9561,16 +9770,27 @@ ${transactionalEmailDarkStylesCss()}
           htmlLength: emailHtml.length
         });
         
-        const emailResult = await sendTransactionalEmail(
-          { getEmailTransporter },
-          {
-            from: '"Andiamo Events" <contact@andiamoevents.com>',
-            replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-            to: order.user_email,
-            subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-            html: emailHtml,
-          }
-        );
+        let premiumPdfGen = null;
+        try {
+          premiumPdfGen = await tryBuildPremiumTicketsPdfAttachment({
+            order,
+            event: order.events,
+            tickets,
+            orderPasses,
+          });
+        } catch (pdfErr) {
+          console.warn('Premium ticket PDF skipped (generateTickets):', pdfErr && pdfErr.message);
+        }
+        const mailGenOpts = {
+          from: '"Andiamo Events" <contact@andiamoevents.com>',
+          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+          to: order.user_email,
+          subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+          html: emailHtml,
+        };
+        if (premiumPdfGen) mailGenOpts.attachments = [premiumPdfGen];
+
+        const emailResult = await sendTransactionalEmail({ getEmailTransporter }, mailGenOpts);
 
         console.log('✅ Email sent successfully:', {
           messageId: emailResult.messageId || emailResult.info?.messageId,
@@ -10254,6 +10474,7 @@ app.post('/api/admin-skip-ambassador-confirmation', requireAdminAuth, logSecurit
         status: 'PAID',
         payment_status: 'PAID',
         approved_at: new Date().toISOString(),
+        approved_by: adminId || null,
         updated_at: new Date().toISOString()
       })
       .eq('id', orderId)
@@ -10498,6 +10719,7 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
         status: 'PAID',
         payment_status: 'PAID',
         approved_at: new Date().toISOString(),
+        approved_by: adminId || null,
         updated_at: new Date().toISOString()
       })
       .eq('id', orderId)
@@ -10569,8 +10791,8 @@ app.post('/api/admin-approve-order', requireAdminAuth, logSecurityRequest, async
       const ticketGenerationPromise = generateTicketsAndSendEmail(orderId);
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => {
-          reject(new Error('Ticket generation timed out after 30 seconds'));
-        }, 30000); // 30 second timeout
+          reject(new Error('Ticket generation timed out after 60 seconds'));
+        }, 60000); // allow headless PDF render
       });
       
       ticketResult = await Promise.race([ticketGenerationPromise, timeoutPromise]);
@@ -10712,6 +10934,7 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLi
         status, 
         payment_status,
         source,
+        payment_method,
         user_email,
         user_name,
         total_price,
@@ -10728,6 +10951,9 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLi
           id,
           full_name,
           phone
+        ),
+        pos_outlets (
+          name
         )
       `)
       .eq('id', orderId)
@@ -10848,16 +11074,27 @@ app.post('/api/admin-resend-ticket-email', requireAdminAuth, resendTicketEmailLi
       // CRITICAL: Brevo SMTP restriction - The SMTP login (EMAIL_USER) must NEVER be used as the "from" address.
       // Emails must be sent from a verified sender domain. Use contact@andiamoevents.com instead.
       console.log('📤 Sending email to:', order.user_email);
-      const emailResult = await sendTransactionalEmail(
-        { getEmailTransporter },
-        {
-          from: '"Andiamo Events" <contact@andiamoevents.com>',
-          replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
-          to: order.user_email,
-          subject: 'Your Digital Tickets Are Ready - Andiamo Events',
-          html: emailHtml,
-        }
-      );
+      let premiumPdfResendSrv = null;
+      try {
+        premiumPdfResendSrv = await tryBuildPremiumTicketsPdfAttachment({
+          order,
+          event: order.events,
+          tickets,
+          orderPasses: passes,
+        });
+      } catch (pdfErr) {
+        console.warn('Premium ticket PDF skipped (admin resend):', pdfErr && pdfErr.message);
+      }
+      const mailResendSrvOpts = {
+        from: '"Andiamo Events" <contact@andiamoevents.com>',
+        replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
+        to: order.user_email,
+        subject: 'Your Digital Tickets Are Ready - Andiamo Events',
+        html: emailHtml,
+      };
+      if (premiumPdfResendSrv) mailResendSrvOpts.attachments = [premiumPdfResendSrv];
+
+      const emailResult = await sendTransactionalEmail({ getEmailTransporter }, mailResendSrvOpts);
 
       console.log('✅ Email sent successfully:', {
         messageId: emailResult.messageId || emailResult.info?.messageId,
@@ -11191,6 +11428,23 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     }
 
     const {
+      rejectForbiddenOrderCreateKeys,
+      buildValidatedPassLineItem,
+    } = await import('./api/lib/order-create-pricing-guard.js');
+    const forbiddenBody = rejectForbiddenOrderCreateKeys(req.body);
+    if (!forbiddenBody.ok) {
+      console.warn('orders/create: rejected forbidden body keys', forbiddenBody.keys);
+      await logOrderCreateFailure(req, 400, {
+        error: 'forbidden_request_fields',
+        keys: forbiddenBody.keys,
+      });
+      return res.status(400).json({
+        error: 'Invalid request',
+        details: 'Request contains unsupported fields.',
+      });
+    }
+
+    const {
       customerInfo,
       passes,
       paymentMethod,
@@ -11365,6 +11619,21 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     }
 
     const orderEventIds = [...new Set((eventPasses || []).map((p) => p.event_id).filter(Boolean))];
+    if (orderEventIds.length > 1) {
+      await logOrderCreateFailure(req, 400, { error: 'Multiple events in one order' });
+      return res.status(400).json({
+        error: 'Invalid order',
+        details: 'All passes must be for the same event.'
+      });
+    }
+    const primaryEventId = orderEventIds[0] || eventId || null;
+    if (eventId && primaryEventId && String(eventId) !== String(primaryEventId)) {
+      await logOrderCreateFailure(req, 400, { error: 'Event mismatch' });
+      return res.status(400).json({
+        error: 'Invalid order',
+        details: 'Event does not match selected passes.'
+      });
+    }
     if (orderEventIds.length > 0) {
       const { data: evRows, error: evErr } = await dbClient
         .from('events')
@@ -11429,30 +11698,41 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
         }
       }
 
-      // Validate price (server is authority for pricing)
-      if (parseFloat(eventPass.price) !== parseFloat(pass.price)) {
-        console.warn(`Price mismatch for pass ${pass.passId}: client=${pass.price}, server=${eventPass.price}`);
-        // Use server price
-        pass.price = parseFloat(eventPass.price);
+      const line = buildValidatedPassLineItem(pass, eventPass);
+      if (!line.passId || line.quantity < 1) {
+        await logOrderCreateFailure(req, 400, { error: 'Invalid pass line', passId: line.passId });
+        return res.status(400).json({
+          error: 'Invalid pass',
+          details: 'Each pass must have a valid passId and quantity of at least 1.',
+        });
       }
 
       // Check stock availability
       if (eventPass.max_quantity !== null) {
         const remaining = eventPass.max_quantity - eventPass.sold_quantity;
-        if (remaining < pass.quantity) {
-          await logOrderCreateFailure(req, 400, { error: 'Insufficient stock', remaining, requested: pass.quantity });
+        if (remaining < line.quantity) {
+          await logOrderCreateFailure(req, 400, { error: 'Insufficient stock', remaining, requested: line.quantity });
           return res.status(400).json({
             error: 'Insufficient stock',
-            details: `Only ${remaining} ${eventPass.name} pass(es) available, requested ${pass.quantity}`
+            details: `Only ${remaining} ${eventPass.name} pass(es) available, requested ${line.quantity}`
           });
         }
       }
 
-      validatedPasses.push({
-        ...pass,
-        eventPass: eventPass
-      });
+      validatedPasses.push(line);
     }
+
+    const { resolvePresaleForOrderCreate } = await import('./api/lib/presale-server.js');
+    const presaleResult = await resolvePresaleForOrderCreate(dbClient, req, {
+      primaryEventId,
+      validatedPasses,
+    });
+    if (!presaleResult.ok) {
+      await logOrderCreateFailure(req, 403, { error: presaleResult.error });
+      return res.status(403).json({ error: 'Invalid access' });
+    }
+    const presaleCodeIdForOrder = presaleResult.presaleCodeId;
+    const presaleSnapshotForNotes = presaleResult.presaleSnapshot || null;
 
     // Max 10 passes per order
     const totalQuantityForCap = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
@@ -11617,6 +11897,61 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
       stockReservations.push({ passId: id, reserved: true, unlimited: false });
     }
 
+    const rollbackStockReservations = async () => {
+      for (const reservation of stockReservations) {
+        if (!reservation.unlimited && reservation.reserved) {
+          const pass = validatedPasses.find((p) => p.passId === reservation.passId);
+          if (pass) {
+            const { data: currentStock } = await dbClient
+              .from('event_passes')
+              .select('sold_quantity')
+              .eq('id', reservation.passId)
+              .single();
+            if (currentStock) {
+              await dbClient
+                .from('event_passes')
+                .update({ sold_quantity: Math.max(0, currentStock.sold_quantity - pass.quantity) })
+                .eq('id', reservation.passId);
+            }
+          }
+        }
+      }
+    };
+
+    const releasePresaleSlotRpc = async (presaleCodeId) => {
+      if (!presaleCodeId) return;
+      try {
+        const { error } = await dbClient.rpc('presale_release_slot', { p_presale_code_id: presaleCodeId });
+        if (error) console.error('presale_release_slot', error);
+      } catch (e) {
+        console.error('presale_release_slot', e);
+      }
+    };
+
+    let presaleSlotClaimed = false;
+    if (presaleCodeIdForOrder && primaryEventId) {
+      const { data: claimedRaw, error: claimErr } = await dbClient.rpc('presale_claim_slot', {
+        p_event_id: primaryEventId,
+        p_presale_code_id: presaleCodeIdForOrder,
+      });
+      if (claimErr) {
+        console.error('presale_claim_slot', claimErr);
+        await rollbackStockReservations();
+        await logOrderCreateFailure(req, 500, { error: 'Presale claim failed', details: claimErr.message });
+        return res.status(500).json({
+          error: 'Failed to place order',
+          details: claimErr.message,
+        });
+      }
+      const claimedRows = Array.isArray(claimedRaw) ? claimedRaw : claimedRaw ? [claimedRaw] : [];
+      if (!claimedRows.length) {
+        await rollbackStockReservations();
+        await logOrderCreateFailure(req, 403, { error: 'Presale code exhausted' });
+        return res.status(403).json({ error: 'Invalid access' });
+      }
+      presaleSlotClaimed = true;
+    }
+
     // STEP 4: Calculate totals (server-side authority)
     const totalQuantity = validatedPasses.reduce((sum, p) => sum + p.quantity, 0);
     const subtotal = validatedPasses.reduce((sum, p) => sum + (parseFloat(p.price) * p.quantity), 0);
@@ -11641,6 +11976,9 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
         initialStatus = 'PENDING_CASH';
         break;
       default:
+        if (presaleSlotClaimed && presaleCodeIdForOrder) {
+          await releasePresaleSlotRpc(presaleCodeIdForOrder);
+        }
         // Rollback stock reservations
         for (const reservation of stockReservations) {
           if (!reservation.unlimited) {
@@ -11689,6 +12027,7 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
       stock_released: false,  // Stock is reserved, not released
       assigned_at: ambassadorId ? new Date().toISOString() : null,
       idempotency_key: safeIdempotencyKey || null,
+      presale_code_id: presaleCodeIdForOrder || null,
       notes: JSON.stringify({
         all_passes: validatedPasses.map(p => ({
           passId: p.passId,
@@ -11707,6 +12046,11 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
                 total_with_fees: totalWithFees
               }
             }
+          : {}),
+        // Persist presale attribution + pre/post-discount snapshot for admin views.
+        // RLS hides presale_codes from the anon admin client, so we keep the data here.
+        ...(presaleSnapshotForNotes
+          ? { presale: presaleSnapshotForNotes }
           : {})
       })
     };
@@ -11720,6 +12064,9 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     if (orderError) {
       // Rollback stock reservations
       console.error('Order creation failed, rolling back stock:', orderError);
+      if (presaleSlotClaimed && presaleCodeIdForOrder) {
+        await releasePresaleSlotRpc(presaleCodeIdForOrder);
+      }
       for (const reservation of stockReservations) {
         if (!reservation.unlimited) {
           const pass = validatedPasses.find(p => p.passId === reservation.passId);
@@ -11761,6 +12108,9 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     if (passesInsertError) {
         // Rollback: delete order and release stock
         console.error('Order passes creation failed, rolling back:', passesInsertError);
+        if (presaleSlotClaimed && presaleCodeIdForOrder) {
+          await releasePresaleSlotRpc(presaleCodeIdForOrder);
+        }
         await dbClient.from('orders').delete().eq('id', order.id);
         for (const reservation of stockReservations) {
           if (!reservation.unlimited) {
@@ -12057,6 +12407,82 @@ async function handleClicToPayConfirm(req, res, next) {
   }
 }
 app.all('/api/clictopay-confirm-payment', (req, res, next) => handleClicToPayConfirm(req, res, next));
+
+// Presale (local dev — Vercel uses vercel.json rewrites)
+async function handlePresaleRedeem(req, res, next) {
+  try {
+    const handler = (await import('./api/presale-redeem.js')).default;
+    req.url = req.originalUrl || req.url;
+    await handler(req, res);
+  } catch (e) {
+    console.error('[/api/presale/redeem]', e);
+    next(e);
+  }
+}
+app.all('/api/presale/redeem', (req, res, next) => handlePresaleRedeem(req, res, next));
+
+async function handlePresaleRequired(req, res, next) {
+  try {
+    req.url = req.originalUrl || req.url;
+    const raw = req.query?.eventId;
+    const eventId = Array.isArray(raw) ? raw[0] : raw;
+    if (!eventId || !String(eventId).trim()) {
+      return res.status(400).json({ error: 'eventId required' });
+    }
+    const id = String(eventId).trim();
+    const dbClient = supabaseService || supabase;
+    if (!dbClient) {
+      return res.status(503).json({ error: 'Supabase not configured' });
+    }
+    const { data, error } = await dbClient
+      .from('events')
+      .select('presale_enabled')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) {
+      console.error('presale-required', error);
+      const msg = error.message || String(error);
+      const network = /fetch failed|ECONNREFUSED|ENOTFOUND|getaddrinfo|certificate/i.test(msg);
+      return res.status(network ? 503 : 500).json({
+        error: network ? 'supabase_unreachable' : 'query failed',
+        details: msg,
+      });
+    }
+    if (!data) {
+      return res.status(404).json({ required: false, found: false });
+    }
+    return res.status(200).json({ required: !!data.presale_enabled, found: true });
+  } catch (e) {
+    console.error('[/api/presale/required]', e);
+    next(e);
+  }
+}
+app.all('/api/presale/required', (req, res, next) => handlePresaleRequired(req, res, next));
+
+async function handlePresaleSession(req, res, next) {
+  try {
+    const handler = (await import('./api/presale-session.js')).default;
+    req.url = req.originalUrl || req.url;
+    await handler(req, res);
+  } catch (e) {
+    console.error('[/api/presale/session]', e);
+    next(e);
+  }
+}
+app.all('/api/presale/session/clear', (req, res, next) => handlePresaleSession(req, res, next));
+app.all('/api/presale/session', (req, res, next) => handlePresaleSession(req, res, next));
+
+async function handlePresaleAdminCodes(req, res, next) {
+  try {
+    const handler = (await import('./api/presale-admin-codes.js')).default;
+    req.url = req.originalUrl || req.url;
+    await handler(req, res);
+  } catch (e) {
+    console.error('[/api/admin/presale/codes]', e);
+    next(e);
+  }
+}
+app.all(/^\/api\/admin\/presale\/codes.*$/, (req, res, next) => handlePresaleAdminCodes(req, res, next));
 
 // Catch-all 404 handler for undefined API routes
 app.use('/api', (req, res) => {

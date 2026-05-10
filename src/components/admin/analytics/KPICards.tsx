@@ -3,11 +3,13 @@
  * KPI metrics for Reports & Analytics
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, Ticket, DollarSign, ShoppingCart, Target, Calendar, Users, Info, Clock, Package } from 'lucide-react';
+import { TrendingUp, TrendingDown, Ticket, DollarSign, ShoppingCart, Calendar, Users, Info, Clock, Package } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface KPICardsProps {
   data: {
@@ -17,20 +19,25 @@ interface KPICardsProps {
     totalTicketsSold: number;
     totalRevenue: number;
     totalOrders: number;
-    orderCompletionRate: number;
+    presalePaidTickets: number;
+    presalePaidBreakdown: {
+      online: { orders: number; tickets: number };
+      cod: { orders: number; tickets: number };
+    };
     averageTicketsPerDay: number;
     ambassadorsInvolved: number;
     trends: {
       tickets: number | null;
       revenue: number | null;
       orders: number | null;
-      completionRate: number | null;
+      presaleTickets: number | null;
       avgTickets: number | null;
       ambassadors: number | null;
     };
   } | null;
   loading: boolean;
   error?: boolean;
+  language?: 'en' | 'fr';
 }
 
 interface KPICardProps {
@@ -119,7 +126,133 @@ function KPICardSkeleton() {
   );
 }
 
-export function KPICards({ data, loading, error }: KPICardsProps) {
+function presaleKpiCopy(language: 'en' | 'fr') {
+  if (language === 'fr') {
+    return {
+      cardTitle: 'Presale',
+      cardSubtitle: 'Billets payés (en ligne + COD)',
+      breakdownTitle: 'Presale — détail',
+      online: 'En ligne',
+      cod: 'COD (ambassadeur)',
+      ordersLabel: 'commandes',
+      ticketsLabel: 'billets',
+      tapHint: 'Appuyez pour le détail',
+      hoverHint: 'Survolez pour le détail',
+    };
+  }
+  return {
+    cardTitle: 'Presale',
+    cardSubtitle: 'Paid tickets (online + COD)',
+    breakdownTitle: 'Presale breakdown',
+    online: 'Online',
+    cod: 'COD (ambassador)',
+    ordersLabel: 'orders',
+    ticketsLabel: 'tickets',
+    tapHint: 'Tap for breakdown',
+    hoverHint: 'Hover for breakdown',
+  };
+}
+
+function PresaleTicketsKpiCard({
+  totalTickets,
+  breakdown,
+  trend,
+  language,
+}: {
+  totalTickets: number;
+  breakdown: {
+    online: { orders: number; tickets: number };
+    cod: { orders: number; tickets: number };
+  };
+  trend: number | null;
+  language: 'en' | 'fr';
+}) {
+  const isMobile = useIsMobile();
+  const [open, setOpen] = useState(false);
+  const t = presaleKpiCopy(language);
+
+  const breakdownBody = (
+    <div className="space-y-3 text-xs font-heading">
+      <p className="font-semibold text-foreground border-b border-border/60 pb-2">{t.breakdownTitle}</p>
+      <div className="space-y-2">
+        <div>
+          <p className="text-muted-foreground mb-0.5">{t.online}</p>
+          <p className="text-foreground tabular-nums">
+            {breakdown.online.orders.toLocaleString()} {t.ordersLabel} · {breakdown.online.tickets.toLocaleString()}{' '}
+            {t.ticketsLabel}
+          </p>
+        </div>
+        <div>
+          <p className="text-muted-foreground mb-0.5">{t.cod}</p>
+          <p className="text-foreground tabular-nums">
+            {breakdown.cod.orders.toLocaleString()} {t.ordersLabel} · {breakdown.cod.tickets.toLocaleString()}{' '}
+            {t.ticketsLabel}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const titleNode = (
+    <div className="space-y-0.5 text-foreground">
+      <span className="flex items-center gap-1">
+        {t.cardTitle}
+        <Info className="w-3 h-3 shrink-0 text-muted-foreground" aria-hidden />
+      </span>
+      <span className="block text-[11px] font-normal text-muted-foreground leading-snug">{t.cardSubtitle}</span>
+      {isMobile ? (
+        <span className="block text-[11px] font-normal text-primary/80 pt-0.5">{t.tapHint}</span>
+      ) : (
+        <span className="block text-[11px] font-normal text-muted-foreground/80 pt-0.5">{t.hoverHint}</span>
+      )}
+    </div>
+  );
+
+  const card = (
+    <KPICard
+      title={titleNode}
+      value={totalTickets}
+      icon={<Ticket className="w-6 h-6 text-purple-500" />}
+      trend={trend}
+      color="text-purple-500"
+    />
+  );
+
+  if (isMobile) {
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="w-full text-left rounded-2xl touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background"
+            aria-expanded={open}
+            aria-label={t.breakdownTitle}
+          >
+            {card}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[min(100vw-2rem,20rem)] p-4" align="center" side="bottom">
+          {breakdownBody}
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="cursor-help rounded-2xl">{card}</div>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs p-4" side="top">
+          {breakdownBody}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+export function KPICards({ data, loading, error, language = 'en' }: KPICardsProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -196,34 +329,12 @@ export function KPICards({ data, loading, error }: KPICardsProps) {
         trend={data.trends.orders}
         color="text-blue-500"
       />
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="cursor-help">
-              <KPICard
-                title={
-                  <span className="flex items-center gap-1">
-                    Order Completion Rate
-                    <Info className="w-3 h-3 text-muted-foreground" />
-                  </span>
-                }
-                value={data.orderCompletionRate}
-                suffix="%"
-                icon={<Target className="w-6 h-6 text-purple-500" />}
-                trend={data.trends.completionRate}
-                color="text-purple-500"
-              />
-            </div>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-xs">
-            <p className="text-xs">
-              Percentage of orders that were completed (paid) out of all orders created.
-              <br />
-              <span className="text-muted-foreground">Formula: (Paid Orders / Total Orders Created) × 100</span>
-            </p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <PresaleTicketsKpiCard
+        totalTickets={data.presalePaidTickets}
+        breakdown={data.presalePaidBreakdown}
+        trend={data.trends.presaleTickets}
+        language={language}
+      />
       <KPICard
         title="Avg Tickets Per Day"
         value={Math.round(data.averageTicketsPerDay)}

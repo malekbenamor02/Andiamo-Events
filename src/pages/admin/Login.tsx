@@ -12,6 +12,7 @@ import { logger } from "@/lib/logger";
 import { API_ROUTES } from "@/lib/api-routes";
 import { supabase } from "@/integrations/supabase/client";
 import { logAdminAction } from "@/lib/adminLogs";
+import { writeAdminVerifyCache } from "@/lib/admin-verify-cache";
 
 interface AdminLoginProps {
   language: 'en' | 'fr';
@@ -276,6 +277,20 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
             ? "Welcome to the admin dashboard."
             : "Bienvenue dans le tableau de bord admin.",
         });
+
+        if (data.admin?.id) {
+          const sessionExpiresAt = Date.now() + 5 * 60 * 60 * 1000;
+          writeAdminVerifyCache({
+            admin: {
+              id: data.admin.id,
+              email: data.admin.email,
+              name: data.admin.name,
+              role: data.admin.role || "admin",
+            },
+            sessionExpiresAt,
+            sessionTimeRemaining: Math.max(0, Math.floor((sessionExpiresAt - Date.now()) / 1000)),
+          });
+        }
 
         navigate('/admin', { state: { fromLogin: true }, replace: true });
       } else {

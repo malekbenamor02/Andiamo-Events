@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TabsContent } from "@/components/ui/tabs";
-import { RefreshCw, Eye, X } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { OnlineOrder, OnlineOrderFilters } from "../types";
@@ -293,15 +293,12 @@ export function OnlineOrdersTab({
                         <TableHead className="py-2 whitespace-nowrap text-center">
                           {language === "en" ? "Created" : "Créé"}
                         </TableHead>
-                        <TableHead className="py-2 whitespace-nowrap text-center">
-                          {language === "en" ? "Actions" : "Actions"}
-                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {onlineOrders.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                          <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                             {language === "en"
                               ? "No online orders found"
                               : "Aucune commande en ligne trouvée"}
@@ -378,11 +375,37 @@ export function OnlineOrdersTab({
                           })();
 
                           return (
-                            <TableRow key={order.id} className="text-xs">
-                              <TableCell className="py-2 text-center">
-                                {passItems.length > 0 ? (
-                                  <div className="flex flex-col items-center gap-1">
-                                    {passItems.map((px, idx) => (
+                            <TableRow
+                              key={order.id}
+                              className="text-xs cursor-pointer"
+                              onClick={() => onViewOrder(order)}
+                              title={
+                                order.ville
+                                  ? language === "en"
+                                    ? `Click row to view order details — Neighborhood: ${order.ville}`
+                                    : `Cliquer sur la ligne pour voir la commande — Quartier : ${order.ville}`
+                                  : language === "en"
+                                    ? "Click row to view order details"
+                                    : "Cliquer sur la ligne pour voir la commande"
+                              }
+                            >
+                              <TableCell className="py-2 text-center relative overflow-hidden">
+                                {order.presale_code_id ? (
+                                  <div
+                                    className="absolute top-0 left-0 w-[38px] h-[38px] overflow-hidden pointer-events-none z-10"
+                                    title={language === "en" ? "Placed via presale" : "Commande presale"}
+                                  >
+                                    <span
+                                      className="absolute block text-center bg-indigo-500 text-white font-bold uppercase tracking-wider shadow-sm"
+                                      style={{ width: 64, transform: "rotate(-45deg)", top: 6, left: -20, fontSize: 7, lineHeight: "10px", padding: "1px 0" }}
+                                    >
+                                      {language === "en" ? "Presale" : "Presale"}
+                                    </span>
+                                  </div>
+                                ) : null}
+                                <div className="flex flex-col items-center gap-1">
+                                  {passItems.length > 0 ? (
+                                    passItems.map((px, idx) => (
                                       <div
                                         key={idx}
                                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-muted/30 text-xs"
@@ -390,11 +413,11 @@ export function OnlineOrdersTab({
                                         <span className="font-medium">{px.name}</span>
                                         <span className="text-muted-foreground">×{px.quantity}</span>
                                       </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-xs">N/A</span>
-                                )}
+                                    ))
+                                  ) : (
+                                    <span className="text-xs">N/A</span>
+                                  )}
+                                </div>
                               </TableCell>
 
                               <TableCell className="py-2 text-center">
@@ -409,7 +432,10 @@ export function OnlineOrdersTab({
                                 {email !== "N/A" ? (
                                   <button
                                     type="button"
-                                    onClick={() => handleCopyEmail(email)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopyEmail(email);
+                                    }}
                                     className="hover:text-primary hover:underline cursor-pointer"
                                     title={language === "en" ? "Click to copy email" : "Cliquer pour copier l'email"}
                                   >
@@ -481,19 +507,6 @@ export function OnlineOrdersTab({
 
                               <TableCell className="py-2 text-center whitespace-nowrap text-xs">
                                 {createdText}
-                              </TableCell>
-
-                              <TableCell className="py-2 text-center">
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  className="bg-black hover:bg-gray-800 text-white border-none text-xs px-2 py-1 h-auto"
-                                  onClick={() => onViewOrder(order)}
-                                  title={order.ville ? `${language === "en" ? "Neighborhood" : "Quartier"}: ${order.ville}` : undefined}
-                                >
-                                  <Eye className="w-3 h-3 mr-1 text-white" />
-                                  {language === "en" ? "View" : "Voir"}
-                                </Button>
                               </TableCell>
                             </TableRow>
                           );
@@ -584,72 +597,119 @@ export function OnlineOrdersTab({
                       return `${day}/${month}/${d.getFullYear()}`;
                     })();
 
+                    const mobilePaymentStatus = (
+                      <>
+                        {status === "FAILED" ? (
+                          <Popover
+                            open={mobileFailedPopoverOrderId === String(order.id)}
+                            onOpenChange={(open) => {
+                              if (open) {
+                                setMobileFailedPopoverOrderId(String(order.id));
+                              } else {
+                                setMobileFailedPopoverOrderId(null);
+                              }
+                            }}
+                          >
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                className={cn(
+                                  "w-3 h-3 rounded-full cursor-help p-0 m-0 border-0",
+                                  // Ensure the small indicator doesn't inherit default button styles.
+                                  "bg-transparent",
+                                  getStatusColor()
+                                )}
+                                aria-label={language === "en" ? "Failed reason" : "Raison d'échec"}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </PopoverTrigger>
+                            <PopoverContent
+                              side="bottom"
+                              align="center"
+                              className="w-48 p-2 text-xs"
+                            >
+                              <div className="space-y-1">
+                                <p className="text-xs">{statusMap[status] ?? status}</p>
+                                {typeof actionCodeDescription === "string" &&
+                                actionCodeDescription.trim().length > 0 ? (
+                                  <p className="text-xs text-muted-foreground">{actionCodeDescription}</p>
+                                ) : null}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        ) : (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className={cn("w-3 h-3 rounded-full cursor-help", getStatusColor())} />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs">{statusMap[status] ?? status}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                        <span
+                          className={cn("text-xs", order.presale_code_id ? "text-left" : "text-right")}
+                          style={{ color: "#B0B0B0" }}
+                        >
+                          {statusMap[status] ?? status}
+                        </span>
+                      </>
+                    );
+
                     return (
-                      <Card key={order.id} className="relative">
+                      <Card
+                        key={order.id}
+                        className="relative overflow-hidden cursor-pointer transition-opacity hover:opacity-95"
+                        onClick={() => onViewOrder(order)}
+                        title={
+                          order.ville
+                            ? language === "en"
+                              ? `Tap to view order details — Neighborhood: ${order.ville}`
+                              : `Appuyer pour voir la commande — Quartier : ${order.ville}`
+                            : language === "en"
+                              ? "Tap to view order details"
+                              : "Appuyer pour voir la commande"
+                        }
+                      >
+                        {order.presale_code_id ? (
+                          <div
+                            className="pointer-events-none absolute right-0 top-0 z-10 h-[80px] w-[80px] overflow-hidden"
+                            title={language === "en" ? "Placed via presale" : "Commande presale"}
+                          >
+                            <span
+                              className="absolute block bg-indigo-500 py-[2px] text-center text-[10px] font-bold uppercase tracking-wider text-white shadow-md"
+                              style={{ width: 130, transform: "rotate(45deg)", top: 16, right: -38 }}
+                            >
+                              {language === "en" ? "Presale" : "Presale"}
+                            </span>
+                          </div>
+                        ) : null}
                         <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-heading font-semibold" style={{ color: "#FFFFFF" }}>
+                          <div
+                            className={cn(
+                              order.presale_code_id
+                                ? "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2"
+                                : "flex items-start justify-between gap-3",
+                              order.presale_code_id && "pr-[5.25rem]",
+                            )}
+                          >
+                            {order.presale_code_id ? (
+                              <p
+                                className="min-w-0 break-words text-sm font-heading font-semibold"
+                                style={{ color: "#FFFFFF" }}
+                              >
                                 {order.user_name ?? order.customer_name ?? "N/A"}
                               </p>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              {status === "FAILED" ? (
-                                <Popover
-                                  open={mobileFailedPopoverOrderId === String(order.id)}
-                                  onOpenChange={(open) => {
-                                    if (open) {
-                                      setMobileFailedPopoverOrderId(String(order.id));
-                                    } else {
-                                      setMobileFailedPopoverOrderId(null);
-                                    }
-                                  }}
-                                >
-                                  <PopoverTrigger asChild>
-                                    <button
-                                      type="button"
-                                      className={cn(
-                                        "w-3 h-3 rounded-full cursor-help p-0 m-0 border-0",
-                                        // Ensure the small indicator doesn't inherit default button styles.
-                                        "bg-transparent",
-                                        getStatusColor()
-                                      )}
-                                      aria-label={language === "en" ? "Failed reason" : "Raison d'échec"}
-                                      onClick={() => {
-                                      }}
-                                    />
-                                  </PopoverTrigger>
-                                  <PopoverContent
-                                    side="bottom"
-                                    align="center"
-                                    className="w-48 p-2 text-xs"
-                                  >
-                                    <div className="space-y-1">
-                                      <p className="text-xs">{statusMap[status] ?? status}</p>
-                                      {typeof actionCodeDescription === "string" &&
-                                      actionCodeDescription.trim().length > 0 ? (
-                                        <p className="text-xs text-muted-foreground">{actionCodeDescription}</p>
-                                      ) : null}
-                                    </div>
-                                  </PopoverContent>
-                                </Popover>
-                              ) : (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className={cn("w-3 h-3 rounded-full cursor-help", getStatusColor())} />
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-xs">{statusMap[status] ?? status}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                              <span className="text-xs" style={{ color: "#B0B0B0" }}>
-                                {statusMap[status] ?? status}
-                              </span>
-                            </div>
+                            ) : (
+                              <div className="min-w-0">
+                                <p className="text-sm font-heading font-semibold" style={{ color: "#FFFFFF" }}>
+                                  {order.user_name ?? order.customer_name ?? "N/A"}
+                                </p>
+                              </div>
+                            )}
+                            <div className="flex shrink-0 items-center gap-2">{mobilePaymentStatus}</div>
                           </div>
 
                           <div className="mt-3">
@@ -689,7 +749,10 @@ export function OnlineOrdersTab({
                                 {email !== "N/A" ? (
                                   <button
                                     type="button"
-                                    onClick={() => handleCopyEmail(email)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopyEmail(email);
+                                    }}
                                     className="text-xs hover:text-primary hover:underline cursor-pointer"
                                     title={language === "en" ? "Click to copy email" : "Cliquer pour copier l'email"}
                                   >
@@ -744,29 +807,16 @@ export function OnlineOrdersTab({
                                   N/A
                                 </span>
                               )}
-
-                              <div className="space-y-1 mt-2">
-                                <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                  {language === "en" ? "Created" : "Créé"}
-                                </p>
-                                <span className="text-xs" style={{ color: "#B0B0B0" }}>
-                                  {createdText}
-                                </span>
-                              </div>
                             </div>
                           </div>
 
-                          <div className="mt-4 flex justify-end">
-                            <Button
-                              size="sm"
-                              variant="default"
-                              className="bg-black hover:bg-gray-800 text-white border-none text-xs px-2 py-1 h-auto"
-                              onClick={() => onViewOrder(order)}
-                              title={order.ville ? `${language === "en" ? "Neighborhood" : "Quartier"}: ${order.ville}` : undefined}
-                            >
-                              <Eye className="w-3 h-3 mr-1 text-white" />
-                              {language === "en" ? "View" : "Voir"}
-                            </Button>
+                          <div className="mt-3 w-full max-w-full space-y-1">
+                            <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
+                              {language === "en" ? "Created" : "Créé"}
+                            </p>
+                            <span className="min-w-0 text-xs tabular-nums" style={{ color: "#B0B0B0" }}>
+                              {createdText}
+                            </span>
                           </div>
                         </CardContent>
                       </Card>

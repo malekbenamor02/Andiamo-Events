@@ -8,19 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CustomerInfo } from '@/types/orders';
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from '@/lib/constants';
-import { normalizeCommonEmailTypos, sanitizePhoneInput } from '@/lib/utils';
-import { PASS_PURCHASE_FIELD_ERROR_AR } from '@/lib/orders/passPurchaseValidation';
+import { cn, normalizeCommonEmailTypos, sanitizePhoneInput } from '@/lib/utils';
 
 export type CustomerInfoFormSections = 'all' | 'identity' | 'email' | 'location';
-
-export interface CustomerInfoFormArHints {
-  fullName?: string;
-  phone?: string;
-  email?: string;
-  confirmEmail?: string;
-  city?: string;
-  ville?: string;
-}
 
 interface CustomerInfoFormProps {
   customerInfo: CustomerInfo;
@@ -33,36 +23,10 @@ interface CustomerInfoFormProps {
   emailConfirm?: string;
   onEmailConfirmChange?: (value: string) => void;
   confirmEmailLabel?: string;
-  arHints?: CustomerInfoFormArHints;
 }
 
-function ArHint({ text }: { text?: string }) {
-  if (!text?.trim()) return null;
-  return (
-    <span lang="ar" dir="rtl" className="block text-xs text-muted-foreground font-normal mt-0.5">
-      {text}
-    </span>
-  );
-}
-
-function FieldErrorWithAr({
-  message,
-  fieldKey,
-}: {
-  message: string;
-  fieldKey: 'full_name' | 'phone' | 'email' | 'email_confirm';
-}) {
-  const ar = PASS_PURCHASE_FIELD_ERROR_AR[fieldKey];
-  return (
-    <div className="mt-1 space-y-0.5">
-      <p className="text-sm text-red-500">{message}</p>
-      {ar && (
-        <p lang="ar" dir="rtl" className="text-sm text-red-500/90 text-right leading-snug">
-          {ar}
-        </p>
-      )}
-    </div>
-  );
+function FieldError({ message }: { message: string }) {
+  return <p className="mt-1 text-sm text-red-500">{message}</p>;
 }
 
 export function CustomerInfoForm({
@@ -74,7 +38,6 @@ export function CustomerInfoForm({
   emailConfirm = '',
   onEmailConfirmChange,
   confirmEmailLabel,
-  arHints,
 }: CustomerInfoFormProps) {
   const t =
     language === 'en'
@@ -150,7 +113,6 @@ export function CustomerInfoForm({
           <div>
             <Label htmlFor="full_name">
               {t.fullName} *
-              <ArHint text={arHints?.fullName} />
             </Label>
             <Input
               id="full_name"
@@ -159,26 +121,28 @@ export function CustomerInfoForm({
               className={errors.full_name || errors.fullName ? 'border-red-500' : ''}
             />
             {(errors.full_name || errors.fullName) && (
-              <FieldErrorWithAr
-                message={errors.full_name || errors.fullName || ''}
-                fieldKey="full_name"
-              />
+              <FieldError message={errors.full_name || errors.fullName || ''} />
             )}
           </div>
 
           <div>
             <Label htmlFor="phone">
               {t.phone} *
-              <ArHint text={arHints?.phone} />
             </Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={customerInfo.phone}
-              onChange={(e) => handleChange('phone', e.target.value)}
-              className={errors.phone ? 'border-red-500' : ''}
-            />
-            {errors.phone && <FieldErrorWithAr message={errors.phone} fieldKey="phone" />}
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground select-none pointer-events-none">
+                +216
+              </span>
+              <Input
+                id="phone"
+                type="tel"
+                inputMode="numeric"
+                value={customerInfo.phone}
+                onChange={(e) => handleChange('phone', e.target.value)}
+                className={cn('pl-14', errors.phone ? 'border-red-500' : '')}
+              />
+            </div>
+            {errors.phone && <FieldError message={errors.phone} />}
           </div>
         </>
       )}
@@ -188,7 +152,6 @@ export function CustomerInfoForm({
           <div>
             <Label htmlFor="email">
               {t.email} *
-              <ArHint text={arHints?.email} />
             </Label>
             <Input
               id="email"
@@ -198,14 +161,13 @@ export function CustomerInfoForm({
               onBlur={commitEmailTypoFix}
               className={errors.email ? 'border-red-500' : ''}
             />
-            {errors.email && <FieldErrorWithAr message={errors.email} fieldKey="email" />}
+            {errors.email && <FieldError message={errors.email} />}
           </div>
 
           {showConfirmEmail && (
             <div>
               <Label htmlFor="email_confirm">
                 {confirmEmailLabel ?? t.confirmEmail} *
-                <ArHint text={arHints?.confirmEmail} />
               </Label>
               <Input
                 id="email_confirm"
@@ -217,7 +179,7 @@ export function CustomerInfoForm({
                 className={errors.email_confirm ? 'border-red-500' : ''}
               />
               {errors.email_confirm && (
-                <FieldErrorWithAr message={errors.email_confirm} fieldKey="email_confirm" />
+                <FieldError message={errors.email_confirm} />
               )}
             </div>
           )}
@@ -229,7 +191,6 @@ export function CustomerInfoForm({
           <div>
             <Label htmlFor="city">
               {t.city} *
-              <ArHint text={arHints?.city} />
             </Label>
             <Select value={customerInfo.city} onValueChange={(value) => handleChange('city', value)}>
               <SelectTrigger className={errors.city ? 'border-red-500' : ''}>
@@ -250,7 +211,6 @@ export function CustomerInfoForm({
             <div>
               <Label htmlFor="ville">
                 {t.ville} *
-                <ArHint text={arHints?.ville} />
               </Label>
               <Select value={customerInfo.ville || ''} onValueChange={(value) => handleChange('ville', value)}>
                 <SelectTrigger className={errors.ville ? 'border-red-500' : ''}>

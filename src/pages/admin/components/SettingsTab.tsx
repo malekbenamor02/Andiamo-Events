@@ -68,385 +68,252 @@ export interface SettingsTabProps {
 export function SettingsTab(p: SettingsTabProps) {
   return (
     <TabsContent value="settings" className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full px-2">
-                  {/* Sales Settings Card */}
-                  <div>
-                    <Card className="shadow-lg h-full flex flex-col">
-                    <CardHeader className="pb-4">
-                      <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                        <Settings className="w-5 h-5 text-primary" />
-                        {p.t.salesSettings}
-                      </CardTitle>
-                      <p className="text-sm text-foreground/70 mt-2">{p.t.salesSettingsDescription}</p>
-                    </CardHeader>
-                    <CardContent className="flex-1 flex flex-col space-y-4">
-                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border transition-all duration-300 hover:shadow-md">
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
-                            p.salesEnabled 
-                              ? 'bg-green-500 shadow-md shadow-green-500/50' 
-                              : 'bg-gray-500'
-                          }`}>
-                            {p.salesEnabled ? (
-                              <CheckCircle className="w-5 h-5 text-white" />
-                            ) : (
-                              <XCircle className="w-5 h-5 text-white" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm text-foreground">
-                              {p.salesEnabled ? p.t.salesEnabled : p.t.salesDisabled}
-                            </p>
-                            <p className="text-xs text-foreground/60 line-clamp-2">
-                              {p.salesEnabled 
-                                ? (p.language === 'en' ? 'Ambassadors can add sales' : 'Les ambassadeurs peuvent ajouter des ventes')
-                                : (p.language === 'en' ? 'Sales are disabled' : 'Les ventes sont dÃ©sactivÃ©es')
-                              }
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          onClick={() => p.updateSalesSettingsData(!p.salesEnabled)}
-                          disabled={p.loadingSalesSettings}
-                          variant={p.salesEnabled ? "default" : "destructive"}
-                          size="sm"
-                          className="ml-2 flex-shrink-0 transition-all duration-300"
-                        >
-                          {p.loadingSalesSettings ? (
-                            <Loader size="sm" />
-                          ) : p.salesEnabled ? (
-                            <CheckCircle className="w-4 h-4" />
-                          ) : (
-                            <XCircle className="w-4 h-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+      {/* Parameters list (no cards / no toggle buttons) */}
+      <div className="w-full px-2">
+        <div className="w-full space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Settings className="w-4 h-4 text-primary" />
+            <span>{p.language === "en" ? "Settings" : "Paramètres"}</span>
+          </div>
+
+          <div className="rounded-xl border border-border bg-background/60">
+            {/* Sales */}
+            <div className="flex items-start justify-between gap-4 p-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">{p.t.salesSettings}</span>
+                  {p.loadingSalesSettings ? <Loader size="sm" /> : null}
+                </div>
+                <p className="text-xs text-foreground/70 mt-1">
+                  {p.salesEnabled
+                    ? (p.language === "en" ? "Ambassadors can add sales." : "Les ambassadeurs peuvent ajouter des ventes.")
+                    : (p.language === "en" ? "Sales are disabled." : "Les ventes sont désactivées.")}
+                </p>
+              </div>
+              <Switch
+                checked={p.salesEnabled}
+                disabled={p.loadingSalesSettings}
+                onCheckedChange={(checked) => p.updateSalesSettingsData(checked)}
+              />
+            </div>
+            <div className="h-px bg-border" />
+
+            {/* Maintenance */}
+            <div className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">{p.t.maintenanceSettings}</span>
+                    {p.loadingMaintenanceSettings ? <Loader size="sm" /> : null}
                   </div>
+                  <p className="text-xs text-foreground/70 mt-1">
+                    {p.maintenanceEnabled
+                      ? (p.language === "en" ? "Website in maintenance." : "Site en maintenance.")
+                      : (p.language === "en" ? "Website accessible." : "Site accessible.")}
+                  </p>
+                </div>
+                <Switch
+                  checked={p.maintenanceEnabled}
+                  disabled={p.loadingMaintenanceSettings}
+                  onCheckedChange={(checked) =>
+                    p.updateMaintenanceSettings(checked, p.maintenanceMessage, p.allowAmbassadorApplication)
+                  }
+                />
+              </div>
 
-                  {/* Maintenance Mode Settings Card */}
-                  <div>
-                    <Card className="shadow-lg h-full flex flex-col">
-                    <CardHeader className="pb-4">
-                      <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                        <Settings className="w-5 h-5 text-primary" />
-                        {p.t.maintenanceSettings}
-                      </CardTitle>
-                      <p className="text-sm text-foreground/70 mt-2">{p.t.maintenanceSettingsDescription}</p>
-                    </CardHeader>
-                    <CardContent className="flex-1 flex flex-col space-y-4">
-                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border transition-all duration-300 hover:shadow-md">
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
-                            p.maintenanceEnabled 
-                              ? 'bg-orange-500 shadow-md shadow-orange-500/50' 
-                              : 'bg-gray-500'
-                          }`}>
-                            {p.maintenanceEnabled ? (
-                              <Wrench className="w-5 h-5 text-white" />
-                            ) : (
-                              <CheckCircle className="w-5 h-5 text-white" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm text-foreground">
-                              {p.maintenanceEnabled ? p.t.maintenanceEnabled : p.t.maintenanceDisabled}
-                            </p>
-                            <p className="text-xs text-foreground/60 line-clamp-2">
-                              {p.maintenanceEnabled 
-                                ? (p.language === 'en' ? 'Website in maintenance' : 'Site en maintenance')
-                                : (p.language === 'en' ? 'Website accessible' : 'Site accessible')
-                              }
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          onClick={() => p.updateMaintenanceSettings(!p.maintenanceEnabled, p.maintenanceMessage)}
-                          disabled={p.loadingMaintenanceSettings}
-                          variant={p.maintenanceEnabled ? "default" : "destructive"}
-                          size="sm"
-                          className="ml-2 flex-shrink-0 transition-all duration-300"
-                        >
-                          {p.loadingMaintenanceSettings ? (
-                            <Loader size="sm" />
-                          ) : p.maintenanceEnabled ? (
-                            <CheckCircle className="w-4 h-4" />
-                          ) : (
-                            <XCircle className="w-4 h-4" />
-                          )}
-                        </Button>
-                      </div>
+              <div className="space-y-2">
+                <Label htmlFor="maintenance-message" className="text-xs text-foreground/70">
+                  {p.t.maintenanceMessage}
+                </Label>
+                <Textarea
+                  id="maintenance-message"
+                  placeholder={p.t.maintenanceMessagePlaceholder}
+                  value={p.maintenanceMessage}
+                  onChange={(e) => p.setMaintenanceMessage(e.target.value)}
+                  onBlur={() => {
+                    p.updateMaintenanceSettings(p.maintenanceEnabled, p.maintenanceMessage, p.allowAmbassadorApplication);
+                  }}
+                  className="min-h-[80px] text-sm bg-background text-foreground"
+                />
+              </div>
 
-                      {/* Maintenance Message Input */}
-                      <div className="space-y-2">
-                        <Label htmlFor="maintenance-message" className="text-sm text-foreground">{p.t.maintenanceMessage}</Label>
-                        <Textarea
-                          id="maintenance-message"
-                          placeholder={p.t.maintenanceMessagePlaceholder}
-                          value={p.maintenanceMessage}
-                          onChange={(e) => p.setMaintenanceMessage(e.target.value)}
-                          onBlur={() => {
-                            p.updateMaintenanceSettings(p.maintenanceEnabled, p.maintenanceMessage, p.allowAmbassadorApplication);
+              {p.maintenanceEnabled ? (
+                <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3">
+                  <Checkbox
+                    id="allow-ambassador-application"
+                    checked={p.allowAmbassadorApplication}
+                    onCheckedChange={(checked) => {
+                      const newValue = checked === true;
+                      p.setAllowAmbassadorApplication(newValue);
+                      p.updateMaintenanceSettings(p.maintenanceEnabled, p.maintenanceMessage, newValue);
+                    }}
+                    className="mt-1"
+                  />
+                  <div className="min-w-0">
+                    <Label htmlFor="allow-ambassador-application" className="text-sm font-medium text-foreground cursor-pointer">
+                      {p.t.allowAmbassadorApplication}
+                    </Label>
+                    <p className="text-xs text-foreground/60 mt-1">{p.t.allowAmbassadorApplicationDescription}</p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="h-px bg-border" />
+
+            {/* Order expiration (Pending Cash) */}
+            <div className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-semibold text-foreground">
+                      {p.language === "en" ? "Order expiration" : "Expiration des commandes"}
+                    </span>
+                    {p.loadingExpirationSettings ? <Loader size="sm" /> : null}
+                  </div>
+                  <p className="text-xs text-foreground/70 mt-1">
+                    {p.language === "en"
+                      ? "Auto-expire Pending Cash orders after a delay."
+                      : "Expiration automatique des commandes en attente d'espèces après un délai."}
+                  </p>
+                </div>
+                <Button
+                  onClick={p.triggerAutoRejectExpired}
+                  disabled={p.rejectingExpired}
+                  variant="destructive"
+                  size="sm"
+                  className="h-8"
+                >
+                  {p.rejectingExpired ? (
+                    <>
+                      <Loader size="sm" className="mr-2" />
+                      {p.language === "en" ? "Processing..." : "Traitement..."}
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-4 h-4 mr-2" />
+                      {p.language === "en" ? "Reject expired" : "Rejeter expirées"}
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {p.loadingExpirationSettings ? (
+                <div className="flex items-center justify-center py-3">
+                  <Loader size="sm" className="[background:hsl(var(--muted-foreground))]" />
+                </div>
+              ) : (
+                (() => {
+                  const status = "PENDING_CASH";
+                  const setting = p.expirationSettings.find((s) => s.order_status === status);
+                  const isActive = setting?.is_active !== false;
+                  const hours = setting?.default_expiration_hours || 48;
+                  return (
+                    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <Label className="text-sm font-medium text-foreground">
+                          {p.language === "en" ? "Pending Cash" : "Espèces en attente"}
+                        </Label>
+                        <Switch
+                          checked={isActive}
+                          onCheckedChange={(checked) => {
+                            const updated = p.expirationSettings.map((s) =>
+                              s.order_status === status ? { ...s, is_active: checked } : s
+                            );
+                            if (!updated.find((s) => s.order_status === status)) {
+                              updated.push({
+                                order_status: status,
+                                default_expiration_hours: hours,
+                                is_active: checked
+                              });
+                            }
+                            p.updateExpirationSettings(updated.filter((s) => s.order_status === status));
                           }}
-                          className="min-h-[80px] text-sm bg-background text-foreground"
+                          disabled={p.loadingExpirationSettings}
                         />
                       </div>
 
-                      {/* Allow Ambassador Application Checkbox */}
-                      {p.maintenanceEnabled && (
-                        <div className="space-y-2 p-4 bg-muted/30 rounded-lg border border-border">
-                          <div className="flex items-start space-x-3">
-                            <Checkbox
-                              id="allow-ambassador-application"
-                              checked={p.allowAmbassadorApplication}
-                              onCheckedChange={(checked) => {
-                                const newValue = checked === true;
-                                p.setAllowAmbassadorApplication(newValue);
-                                p.updateMaintenanceSettings(p.maintenanceEnabled, p.maintenanceMessage, newValue);
-                              }}
-                              className="mt-1"
-                            />
-                            <div className="flex-1 space-y-1">
-                              <Label 
-                                htmlFor="allow-ambassador-application" 
-                                className="text-sm font-medium text-foreground cursor-pointer"
-                              >
-                                {p.t.allowAmbassadorApplication}
-                              </Label>
-                              <p className="text-xs text-foreground/60">
-                                {p.t.allowAmbassadorApplicationDescription}
-                              </p>
-                            </div>
-                          </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <Label className="text-xs text-foreground/70">
+                            {p.language === "en" ? "Default expiration (hours)" : "Expiration par défaut (heures)"}
+                          </Label>
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                  </div>
-
-                  {/* Order Expiration Settings Card */}
-                  <div>
-                    <Card className="shadow-lg h-full flex flex-col">
-                      <CardHeader className="pb-4">
-                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                          <Clock className="w-5 h-5 text-primary" />
-                          {p.language === 'en' ? 'Order Expiration Settings' : 'ParamÃ¨tres d\'Expiration des Commandes'}
-                        </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {p.language === 'en' 
-                            ? 'Set default expiration time for Pending Cash orders. Orders will be automatically rejected when expired. Use external cron service to call /api/auto-reject-expired-orders every 5 minutes.' 
-                            : 'DÃ©finir le dÃ©lai d\'expiration par dÃ©faut pour les commandes Pending Cash. Les commandes seront automatiquement rejetÃ©es Ã  l\'expiration. Utilisez un service cron externe pour appeler /api/auto-reject-expired-orders toutes les 5 minutes.'}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="flex-1 flex flex-col space-y-4">
-                        {/* Manual trigger section - Dark theme compatible */}
-                        <div className="mb-4 p-4 bg-muted/50 dark:bg-muted/30 rounded-lg border border-border">
-                          <div className="flex items-start gap-4">
-                            <div className="flex-shrink-0 mt-1">
-                              <div className="w-10 h-10 rounded-full bg-red-500/20 dark:bg-red-500/30 flex items-center justify-center border border-red-500/30">
-                                <XCircle className="w-5 h-5 text-red-500 dark:text-red-400" />
-                              </div>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-sm font-semibold text-foreground">
-                                  {p.language === 'en' ? 'Manual Rejection' : 'Rejet Manuel'}
-                                </h4>
-                                <Badge variant="outline" className="text-xs bg-red-500/10 dark:bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/30">
-                                  {p.language === 'en' ? 'Instant Action' : 'Action ImmÃ©diate'}
-                                </Badge>
-                              </div>
-                              <p className="text-xs text-foreground/70 mb-3 leading-relaxed">
-                                {p.language === 'en' 
-                                  ? 'Click the button below to immediately reject all expired PENDING_CASH orders. Stock will be automatically released and orders will be marked as REJECTED.' 
-                                  : 'Cliquez sur le bouton ci-dessous pour rejeter immÃ©diatement toutes les commandes PENDING_CASH expirÃ©es. Le stock sera automatiquement libÃ©rÃ© et les commandes seront marquÃ©es comme REJETÃ‰ES.'}
-                              </p>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <Button
-                                  onClick={p.triggerAutoRejectExpired}
-                                  disabled={p.rejectingExpired}
-                                  variant="destructive"
-                                  size="sm"
-                                  className="shadow-md hover:shadow-lg transition-all duration-200"
-                                >
-                                  {p.rejectingExpired ? (
-                                    <>
-                                      <Loader size="sm" className="mr-2" />
-                                      {p.language === 'en' ? 'Processing...' : 'Traitement...'}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <XCircle className="w-4 h-4 mr-2" />
-                                      {p.language === 'en' ? 'Reject Expired Orders' : 'Rejeter les Commandes ExpirÃ©es'}
-                                    </>
-                                  )}
-                                </Button>
-                                <span className="text-xs text-foreground/50">
-                                  {p.language === 'en' ? 'For automatic rejection every 5 minutes, set up an external cron service' : 'Pour un rejet automatique toutes les 5 minutes, configurez un service cron externe'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        {p.loadingExpirationSettings ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader size="sm" className="[background:hsl(var(--muted-foreground))]" />
-                          </div>
-                        ) : (
-                          <>
-                            {['PENDING_CASH'].map((status) => {
-                              const setting = p.expirationSettings.find(s => s.order_status === status);
-                              const statusLabel = {
-                                'PENDING_CASH': p.language === 'en' ? 'Pending Cash' : 'EspÃ¨ces en Attente'
-                              }[status] || status;
-                              
-                              return (
-                                <div key={status} className="p-4 bg-muted/30 rounded-lg border border-border">
-                                  <div className="flex items-center justify-between mb-3">
-                                    <Label className="text-sm font-semibold text-foreground">{statusLabel}</Label>
-                                    <Switch
-                                      checked={setting?.is_active !== false}
-                                      onCheckedChange={(checked) => {
-                                        const updated = p.expirationSettings.map(s =>
-                                          s.order_status === status
-                                            ? { ...s, is_active: checked }
-                                            : s
-                                        );
-                                        if (!updated.find(s => s.order_status === status)) {
-                                          updated.push({
-                                            order_status: status,
-                                            default_expiration_hours: setting?.default_expiration_hours || 48,
-                                            is_active: checked
-                                          });
-                                        }
-                                        // Only send PENDING_CASH settings
-                                        const pendingCashOnly = updated.filter(s => s.order_status === 'PENDING_CASH');
-                                        p.updateExpirationSettings(pendingCashOnly);
-                                      }}
-                                      disabled={p.loadingExpirationSettings}
-                                    />
-                                  </div>
-                                  {/* Always show time input, even when inactive */}
-                                  <div className="space-y-2">
-                                    <Label className="text-xs text-foreground/70">
-                                      {p.language === 'en' ? 'Default Expiration (hours)' : 'Expiration par DÃ©faut (heures)'}
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                      <Input
-                                        type="number"
-                                        min="1"
-                                        value={setting?.default_expiration_hours || 48}
-                                        onChange={(e) => {
-                                          const hours = parseInt(e.target.value) || 48;
-                                          const updated = p.expirationSettings.map(s =>
-                                            s.order_status === status
-                                              ? { ...s, default_expiration_hours: hours }
-                                              : s
-                                          );
-                                          if (!updated.find(s => s.order_status === status)) {
-                                            updated.push({
-                                              order_status: status,
-                                              default_expiration_hours: hours,
-                                              is_active: setting?.is_active !== false
-                                            });
-                                          }
-                                          // Only send PENDING_CASH settings
-                                          const pendingCashOnly = updated.filter(s => s.order_status === 'PENDING_CASH');
-                                          p.updateExpirationSettings(pendingCashOnly);
-                                        }}
-                                        disabled={p.loadingExpirationSettings}
-                                        className="w-20"
-                                      />
-                                      <span className="text-xs text-foreground/60">
-                                        {p.language === 'en' ? 'hours' : 'heures'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min="1"
+                            value={hours}
+                            onChange={(e) => {
+                              const next = parseInt(e.target.value) || 48;
+                              const updated = p.expirationSettings.map((s) =>
+                                s.order_status === status ? { ...s, default_expiration_hours: next } : s
                               );
-                            })}
-                          </>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Ambassador Application Settings Card */}
-                  <div>
-                    <Card className="shadow-lg h-full flex flex-col">
-                    <CardHeader className="pb-4">
-                      <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                        <Settings className="w-5 h-5 text-primary" />
-                        {p.t.ambassadorApplicationSettings}
-                      </CardTitle>
-                      <p className="text-sm text-foreground/70 mt-2">{p.t.ambassadorApplicationSettingsDescription}</p>
-                    </CardHeader>
-                    <CardContent className="flex-1 flex flex-col space-y-4">
-                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border transition-all duration-300 hover:shadow-md">
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 flex-shrink-0 ${
-                            p.ambassadorApplicationEnabled 
-                              ? 'bg-blue-500 shadow-md shadow-blue-500/50' 
-                              : 'bg-gray-500'
-                          }`}>
-                            {p.ambassadorApplicationEnabled ? (
-                              <CheckCircle className="w-5 h-5 text-white" />
-                            ) : (
-                              <XCircle className="w-5 h-5 text-white" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm text-foreground">
-                              {p.ambassadorApplicationEnabled ? p.t.ambassadorApplicationEnabled : p.t.ambassadorApplicationDisabled}
-                            </p>
-                            <p className="text-xs text-foreground/60 line-clamp-2">
-                              {p.ambassadorApplicationEnabled 
-                                ? (p.language === 'en' ? 'Applications are open' : 'Les candidatures sont ouvertes')
-                                : (p.language === 'en' ? 'Applications are closed' : 'Les candidatures sont fermÃ©es')
+                              if (!updated.find((s) => s.order_status === status)) {
+                                updated.push({
+                                  order_status: status,
+                                  default_expiration_hours: next,
+                                  is_active: isActive
+                                });
                               }
-                            </p>
-                          </div>
+                              p.updateExpirationSettings(updated.filter((s) => s.order_status === status));
+                            }}
+                            disabled={p.loadingExpirationSettings}
+                            className="w-20"
+                          />
+                          <span className="text-xs text-foreground/60">{p.language === "en" ? "hours" : "heures"}</span>
                         </div>
-                        <Button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            p.updateAmbassadorApplicationSettings(!p.ambassadorApplicationEnabled, p.ambassadorApplicationMessage);
-                          }}
-                          disabled={p.loadingAmbassadorApplicationSettings}
-                          variant={p.ambassadorApplicationEnabled ? "default" : "destructive"}
-                          size="sm"
-                          className="ml-2 flex-shrink-0 transition-all duration-300"
-                        >
-                          {p.loadingAmbassadorApplicationSettings ? (
-                            <Loader size="sm" />
-                          ) : p.ambassadorApplicationEnabled ? (
-                            <CheckCircle className="w-4 h-4" />
-                          ) : (
-                            <XCircle className="w-4 h-4" />
-                          )}
-                        </Button>
                       </div>
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+            <div className="h-px bg-border" />
 
-                      {/* Ambassador Application Closed Message Input */}
-                      <div className="space-y-2">
-                        <Label htmlFor="ambassador-application-message" className="text-sm text-foreground">{p.t.ambassadorApplicationMessage}</Label>
-                        <Textarea
-                          id="ambassador-application-message"
-                          placeholder={p.t.ambassadorApplicationMessagePlaceholder}
-                          value={p.ambassadorApplicationMessage}
-                          onChange={(e) => p.setAmbassadorApplicationMessage(e.target.value)}
-                          onBlur={() => {
-                            p.updateAmbassadorApplicationSettings(p.ambassadorApplicationEnabled, p.ambassadorApplicationMessage);
-                          }}
-                          className="min-h-[80px] text-sm bg-background text-foreground"
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
+            {/* Ambassador application */}
+            <div className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">{p.t.ambassadorApplicationSettings}</span>
+                    {p.loadingAmbassadorApplicationSettings ? <Loader size="sm" /> : null}
                   </div>
+                  <p className="text-xs text-foreground/70 mt-1">
+                    {p.ambassadorApplicationEnabled
+                      ? (p.language === "en" ? "Applications are open." : "Les candidatures sont ouvertes.")
+                      : (p.language === "en" ? "Applications are closed." : "Les candidatures sont fermées.")}
+                  </p>
+                </div>
+                <Switch
+                  checked={p.ambassadorApplicationEnabled}
+                  disabled={p.loadingAmbassadorApplicationSettings}
+                  onCheckedChange={(checked) => p.updateAmbassadorApplicationSettings(checked, p.ambassadorApplicationMessage)}
+                />
+              </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="ambassador-application-message" className="text-xs text-foreground/70">
+                  {p.t.ambassadorApplicationMessage}
+                </Label>
+                <Textarea
+                  id="ambassador-application-message"
+                  placeholder={p.t.ambassadorApplicationMessagePlaceholder}
+                  value={p.ambassadorApplicationMessage}
+                  onChange={(e) => p.setAmbassadorApplicationMessage(e.target.value)}
+                  onBlur={() => {
+                    p.updateAmbassadorApplicationSettings(p.ambassadorApplicationEnabled, p.ambassadorApplicationMessage);
+                  }}
+                  className="min-h-[80px] text-sm bg-background text-foreground"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Remaining settings sections (keep existing card layout) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full px-2">
                   {/* Hero Images Settings Card */}
                   <div className="md:col-span-2 lg:col-span-3">
                     <Card className="shadow-lg h-full flex flex-col">
@@ -476,19 +343,14 @@ export function SettingsTab(p: SettingsTabProps) {
                                 onUrlChange={() => {}}
                                 accept="image/*,video/mp4,video/quicktime,.mp4,.mov"
                                 maxSize={50}
-                                label={p.uploadingHeroImage ? (p.language === 'en' ? 'Uploading...' : 'TÃ©lÃ©chargement...') : (p.language === 'en' ? 'Upload Image or Video' : 'TÃ©lÃ©charger une Image ou une VidÃ©o')}
+                                label={p.uploadingHeroImage ? (p.language === 'en' ? 'Uploading...' : 'Téléversement...') : (p.language === 'en' ? 'Upload Image or Video' : 'Téléverser une image ou une vidéo')}
                               />
                               {p.uploadingHeroImage && (
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                   <Loader size="sm" />
-                                  {p.language === 'en' ? 'Uploading media...' : 'TÃ©lÃ©chargement du mÃ©dia...'}
+                                  {p.language === 'en' ? 'Uploading media...' : 'Téléversement du média...'}
                                 </div>
                               )}
-                              <p className="text-xs text-muted-foreground">
-                                {p.language === 'en' 
-                                  ? 'Supports images (JPG, PNG) and videos (MP4, MOV). Recommended: MP4 (H.264), 5-10 seconds, under 2MB for fast loading. Videos will auto-play muted and loop.' 
-                                  : 'Prend en charge les images (JPG, PNG) et les vidÃ©os (MP4, MOV). RecommandÃ©: MP4 (H.264), 5-10 secondes, moins de 2MB pour un chargement rapide. Les vidÃ©os se liront automatiquement en muet et en boucle.'}
-                              </p>
                             </div>
 
                             {/* Hero Images List */}
@@ -576,13 +438,13 @@ export function SettingsTab(p: SettingsTabProps) {
                                         <div className="flex items-center justify-between">
                                           <span className="text-xs text-muted-foreground">
                                             {item.type === 'video' 
-                                              ? (p.language === 'en' ? 'Video' : 'VidÃ©o') 
+                                              ? (p.language === 'en' ? 'Video' : 'Vidéo')
                                               : (p.language === 'en' ? 'Image' : 'Image')} {index + 1}
                                           </span>
                                           <div className="flex items-center gap-2">
                                             <Badge variant={item.type === 'video' ? 'default' : 'outline'} className="text-xs">
                                               {item.type === 'video' ? <Video className="w-3 h-3 mr-1" /> : <Image className="w-3 h-3 mr-1" />}
-                                              {item.type === 'video' ? (p.language === 'en' ? 'Video' : 'VidÃ©o') : (p.language === 'en' ? 'Image' : 'Image')}
+                                              {item.type === 'video' ? (p.language === 'en' ? 'Video' : 'Vidéo') : (p.language === 'en' ? 'Image' : 'Image')}
                                             </Badge>
                                             <Badge variant="outline" className="text-xs">
                                               {item.alt || 'No alt text'}
@@ -618,10 +480,17 @@ export function SettingsTab(p: SettingsTabProps) {
                       <CardContent className="flex-1 flex flex-col space-y-6">
                         {(["en", "fr"] as const).map((langKey) => (
                           <div key={langKey} className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <Label className="text-sm font-semibold flex items-center gap-2">
-                                <span>{langKey === "en" ? "English" : "Français"}</span>
-                              </Label>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <Label className="text-sm font-semibold flex items-center gap-2">
+                                  <span>{langKey === "en" ? "English" : "Français"}</span>
+                                </Label>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {p.language === "en"
+                                    ? "These lines rotate in the hero."
+                                    : "Ces lignes tournent dans le hero."}
+                                </p>
+                              </div>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -629,21 +498,28 @@ export function SettingsTab(p: SettingsTabProps) {
                                   const current = p.heroTypewriterTexts[langKey] || [];
                                   p.handleUpdateHeroTypewriterTexts(langKey, [...current, ""]);
                                 }}
+                                className="shrink-0"
                               >
                                 {p.language === "en" ? "Add line" : "Ajouter une ligne"}
                               </Button>
                             </div>
+
                             {p.heroTypewriterTexts[langKey].length === 0 ? (
-                              <p className="text-xs text-muted-foreground">
-                                {p.language === "en"
-                                  ? "No custom texts yet. The default hardcoded texts will be used."
-                                  : "Aucun texte personnalisé pour le moment. Les textes par défaut codés en dur seront utilisés."}
-                              </p>
+                              <div className="rounded-lg border border-border bg-muted/30 p-3">
+                                <p className="text-xs text-muted-foreground">
+                                  {p.language === "en"
+                                    ? "No custom texts yet. The default hardcoded texts will be used."
+                                    : "Aucun texte personnalisé pour le moment. Les textes par défaut codés en dur seront utilisés."}
+                                </p>
+                              </div>
                             ) : (
-                              <div className="space-y-2">
+                              <div className="rounded-xl border border-border bg-background/60 overflow-hidden">
                                 {p.heroTypewriterTexts[langKey].map((text, index) => (
-                                  <div key={index} className="flex gap-2 items-start">
-                                    <div className="flex flex-col gap-1 flex-1">
+                                  <div key={index}>
+                                    <div className="flex items-center gap-3 p-3">
+                                      <div className="w-8 text-xs text-muted-foreground tabular-nums text-center select-none">
+                                        {index + 1}
+                                      </div>
                                       <Input
                                         value={text}
                                         onChange={(e) => {
@@ -651,57 +527,59 @@ export function SettingsTab(p: SettingsTabProps) {
                                           arr[index] = e.target.value;
                                           p.handleUpdateHeroTypewriterTexts(langKey, arr);
                                         }}
-                                        className="text-sm"
+                                        className="text-sm flex-1"
                                         placeholder={
                                           p.language === "en"
                                             ? "Type text to display in hero"
                                             : "Saisir le texte à afficher dans le hero"
                                         }
                                       />
-                                      <p className="text-[11px] text-muted-foreground">
-                                        {p.language === "en"
-                                          ? "This line will appear in the typing animation."
-                                          : "Cette ligne apparaîtra dans l’animation de texte tapé."}
-                                      </p>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          disabled={index === 0}
+                                          onClick={() => {
+                                            if (index === 0) return;
+                                            const arr = [...p.heroTypewriterTexts[langKey]];
+                                            [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
+                                            p.handleUpdateHeroTypewriterTexts(langKey, arr);
+                                          }}
+                                          className="h-9 w-9"
+                                        >
+                                          <ArrowUp className="w-4 h-4" />
+                                        </Button>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          disabled={index === p.heroTypewriterTexts[langKey].length - 1}
+                                          onClick={() => {
+                                            const arr = [...p.heroTypewriterTexts[langKey]];
+                                            if (index >= arr.length - 1) return;
+                                            [arr[index + 1], arr[index]] = [arr[index], arr[index + 1]];
+                                            p.handleUpdateHeroTypewriterTexts(langKey, arr);
+                                          }}
+                                          className="h-9 w-9"
+                                        >
+                                          <ArrowDown className="w-4 h-4" />
+                                        </Button>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          onClick={() => {
+                                            const arr = p.heroTypewriterTexts[langKey].filter((_, i) => i !== index);
+                                            p.handleUpdateHeroTypewriterTexts(langKey, arr);
+                                          }}
+                                          className="h-9 w-9"
+                                          title={p.language === "en" ? "Delete line" : "Supprimer la ligne"}
+                                        >
+                                          <Trash2 className="w-4 h-4 text-destructive" />
+                                        </Button>
+                                      </div>
                                     </div>
-                                    <div className="flex flex-col gap-1">
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        disabled={index === 0}
-                                        onClick={() => {
-                                          if (index === 0) return;
-                                          const arr = [...p.heroTypewriterTexts[langKey]];
-                                          [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
-                                          p.handleUpdateHeroTypewriterTexts(langKey, arr);
-                                        }}
-                                      >
-                                        <ArrowUp className="w-4 h-4" />
-                                      </Button>
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        disabled={index === p.heroTypewriterTexts[langKey].length - 1}
-                                        onClick={() => {
-                                          const arr = [...p.heroTypewriterTexts[langKey]];
-                                          if (index >= arr.length - 1) return;
-                                          [arr[index + 1], arr[index]] = [arr[index], arr[index + 1]];
-                                          p.handleUpdateHeroTypewriterTexts(langKey, arr);
-                                        }}
-                                      >
-                                        <ArrowDown className="w-4 h-4" />
-                                      </Button>
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        onClick={() => {
-                                          const arr = p.heroTypewriterTexts[langKey].filter((_, i) => i !== index);
-                                          p.handleUpdateHeroTypewriterTexts(langKey, arr);
-                                        }}
-                                      >
-                                        <Trash2 className="w-4 h-4 text-destructive" />
-                                      </Button>
-                                    </div>
+                                    {index < p.heroTypewriterTexts[langKey].length - 1 ? (
+                                      <div className="h-px bg-border" />
+                                    ) : null}
                                   </div>
                                 ))}
                               </div>
@@ -727,13 +605,8 @@ export function SettingsTab(p: SettingsTabProps) {
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
                           <Image className="w-5 h-5 text-primary" />
-                          {p.language === 'en' ? 'About Page Images' : 'Images de la Page Ã€ Propos'}
+                          {p.language === 'en' ? 'About Page Images' : 'Images de la page À propos'}
                         </CardTitle>
-                        <p className="text-sm text-foreground/70 mt-2">
-                          {p.language === 'en' 
-                            ? 'Manage images displayed on the About page. Upload, reorder, or remove images. Recommended: 4 images for best display.' 
-                            : 'GÃ©rez les images affichÃ©es sur la page Ã€ propos. TÃ©lÃ©chargez, rÃ©organisez ou supprimez des images. RecommandÃ©: 4 images pour un meilleur affichage.'}
-                        </p>
                       </CardHeader>
                       <CardContent className="flex-1 flex flex-col space-y-4">
                         {p.loadingAboutImages ? (
@@ -744,7 +617,7 @@ export function SettingsTab(p: SettingsTabProps) {
                           <>
                             {/* Upload About Image */}
                             <div className="space-y-2">
-                              <Label>{p.language === 'en' ? 'Upload About Image' : 'TÃ©lÃ©charger une Image'}</Label>
+                              <Label>{p.language === 'en' ? 'Upload' : 'Téléverser'}</Label>
                               <FileUpload
                                 onFileSelect={(file) => {
                                   if (file) {
@@ -754,12 +627,12 @@ export function SettingsTab(p: SettingsTabProps) {
                                 onUrlChange={() => {}}
                                 accept="image/*"
                                 maxSize={10}
-                                label={p.uploadingAboutImage ? (p.language === 'en' ? 'Uploading...' : 'TÃ©lÃ©chargement...') : (p.language === 'en' ? 'Upload About Image' : 'TÃ©lÃ©charger une Image')}
+                                label={p.uploadingAboutImage ? (p.language === 'en' ? 'Uploading...' : 'Téléversement...') : (p.language === 'en' ? 'Upload' : 'Téléverser')}
                               />
                               {p.uploadingAboutImage && (
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                   <Loader size="sm" />
-                                  {p.language === 'en' ? 'Uploading image...' : 'TÃ©lÃ©chargement de l\'image...'}
+                                  {p.language === 'en' ? 'Uploading image...' : "Téléversement de l'image..."}
                                 </div>
                               )}
                             </div>
@@ -767,11 +640,11 @@ export function SettingsTab(p: SettingsTabProps) {
                             {/* About Images List */}
                             {p.aboutImages.length === 0 ? (
                               <div className="flex items-center justify-center py-8 text-center text-muted-foreground">
-                                <p>{p.language === 'en' ? 'No about images uploaded yet' : 'Aucune image Ã€ propos tÃ©lÃ©chargÃ©e'}</p>
+                                <p>{p.language === 'en' ? 'No about images uploaded yet' : 'Aucune image À propos téléversée'}</p>
                               </div>
                             ) : (
                               <div className="space-y-3">
-                                <Label className="text-sm">{p.language === 'en' ? 'Reorder Images' : 'RÃ©organiser les Images'}</Label>
+                                <Label className="text-sm">{p.language === 'en' ? 'Reorder Images' : 'Réorganiser les images'}</Label>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                   {p.aboutImages.map((image, index) => (
                                     <Card key={index} className="relative group overflow-hidden">
@@ -848,7 +721,7 @@ export function SettingsTab(p: SettingsTabProps) {
                     </Card>
                   </div>
 
-    </div>
+      </div>
     </TabsContent>
   );
 }

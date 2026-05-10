@@ -3,7 +3,7 @@
  * Extracted from Dashboard.tsx for maintainability.
  */
 
-import React from "react";
+import React, { Fragment } from "react";
 import Loader from "@/components/ui/Loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +57,12 @@ import {
 import { Instagram, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CITIES, SOUSSE_VILLES, TUNIS_VILLES } from "@/lib/constants";
 import { useToast } from "@/hooks/use-toast";
 import type { AmbassadorApplication, Ambassador, SelectedMotivation } from "../types";
@@ -542,10 +548,20 @@ export function ApplicationsTab({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredApplications.map((application) => (
+              <TooltipProvider delayDuration={300}>
+              {filteredApplications.map((application) => {
+                const showReviewerTooltip =
+                  application.status !== "pending" &&
+                  !!(application.reviewed_by_name?.trim() || application.reviewed_at);
+                const reviewerDisplayName =
+                  application.reviewed_by_name?.trim() ||
+                  (language === "en" ? "Not recorded" : "Non enregistré");
+                const row = (
                 <TableRow
-                  key={application.id}
-                  className="transform transition-all duration-300 hover:bg-muted/30"
+                  className={cn(
+                    "transform transition-all duration-300 hover:bg-muted/30",
+                    showReviewerTooltip && "cursor-help",
+                  )}
                 >
                   <TableCell className="font-medium text-xs px-2 py-2">
                     {application.full_name}
@@ -840,7 +856,31 @@ export function ApplicationsTab({
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+                return (
+                  <Fragment key={application.id}>
+                    {showReviewerTooltip ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>{row}</TooltipTrigger>
+                        <TooltipContent side="top" align="center" className="max-w-xs">
+                          <p className="text-xs text-muted-foreground">
+                            {language === "en" ? "Reviewed by" : "Examiné par"}
+                          </p>
+                          <p className="text-sm font-semibold">{reviewerDisplayName}</p>
+                          {application.reviewed_at ? (
+                            <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+                              {format(new Date(application.reviewed_at), "dd/MM/yyyy HH:mm")}
+                            </p>
+                          ) : null}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      row
+                    )}
+                  </Fragment>
+                );
+              })}
+              </TooltipProvider>
               {filteredApplications.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={10} className="text-center py-8">

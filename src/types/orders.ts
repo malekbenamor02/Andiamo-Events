@@ -65,7 +65,17 @@ export interface Order {
   cancelled_at?: string | null;
   created_at: string;
   updated_at: string;
-  
+  approved_by?: string | null;
+  rejected_by?: string | null;
+  rejected_by_name?: string | null;
+  approved_at?: string | null;
+  rejected_at?: string | null;
+  payment_status_set_by?: string | null;
+  payment_status_set_at?: string | null;
+  payment_status_set_by_name?: string | null;
+  approver?: { name?: string | null; email?: string | null } | null;
+  rejector?: { name?: string | null; email?: string | null } | null;
+
   // Relations (when fetched with joins)
   order_passes?: OrderPass[];
   ambassador?: Ambassador;
@@ -131,6 +141,8 @@ export interface CreateOrderData {
   metaFbp?: string;
   metaFbc?: string;
   metaEventSourceUrl?: string;
+  /** Presale checkout: must match active session (server reads HttpOnly cookie). */
+  presaleCsrfToken?: string;
 }
 
 /**

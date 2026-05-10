@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,13 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,11 +23,37 @@ import { fetchSalesSettings, subscribeToSalesSettings } from "@/lib/salesSetting
 import { API_ROUTES, buildFullApiUrl, getApiBaseUrl } from "@/lib/api-routes";
 import { logger } from "@/lib/logger";
 import { cn } from "@/lib/utils";
-import type { AmbassadorDashboardProps, Order, Ambassador } from "./types";
+import { filterAmbassadorDashboardEvents, formatDateDMY } from "@/lib/date-utils";
+import { isLocalhostClient } from "@/lib/localhost";
+import type {
+  AmbassadorDashboardProps,
+  Order,
+  Ambassador,
+  PerformanceData,
+} from "./types";
 import { NewOrdersTab } from "./components/NewOrdersTab";
 import { HistoryTab } from "./components/HistoryTab";
 import { PerformanceTab } from "./components/PerformanceTab";
 import { ProfileTab } from "./components/ProfileTab";
+
+const EMPTY_PERFORMANCE: PerformanceData = {
+  total: 0,
+  paid: 0,
+  completed: 0,
+  cancelled: 0,
+  rejected: 0,
+  ignored: 0,
+  totalPassesSold: 0,
+  baseCommission: 0,
+  totalBonuses: 0,
+  commission: 0,
+  completionRate: "0",
+  cancellationRate: "0",
+  rejectionRate: "0",
+  ignoreRate: "0",
+  totalRevenue: 0,
+  averageResponseTime: 0,
+};
 
 const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   const [ambassador, setAmbassador] = useState<Ambassador | null>(null);
@@ -41,6 +74,20 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
   });
 
   const [salesEnabled, setSalesEnabled] = useState(true);
+  const [filterableEvents, setFilterableEvents] = useState<
+    Array<{
+      id: string;
+      name: string;
+      date: string;
+      event_type?: string | null;
+      event_status?: string | null;
+      is_test?: boolean | null;
+    }>
+  >([]);
+  const [selectedEventFilter, setSelectedEventFilter] = useState<string>("");
+  const [eventsFetchState, setEventsFetchState] = useState<"idle" | "loaded">(
+    "idle"
+  );
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -72,6 +119,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     noCompletedOrders: "No completed orders yet",
     event: "Event",
     selectEvent: "Select event",
+    filterByEvent: "Filter by event",
     save: "Save",
     cancelOrder: "Cancel Order",
     cancelReason: "Cancellation Reason",
@@ -109,7 +157,8 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     salesDisabledTitle: "Sales Temporarily Unavailable",
     suspended: "Account Paused",
     suspendedMessage: "Your ambassador account has been temporarily paused. Please contact support for more information.",
-    suspendedTitle: "Account Temporarily Paused"
+    suspendedTitle: "Account Temporarily Paused",
+    noUpcomingEvents: "No upcoming events"
   } : {
     title: "Tableau de Bord Ambassadeur",
     welcome: "Bienvenue",
@@ -137,6 +186,7 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     noCompletedOrders: "Aucune commande terminée",
     event: "Événement",
     selectEvent: "Sélectionner un événement",
+    filterByEvent: "Filtrer par événement",
     noUpcomingEvents: "Aucun événement à venir",
     save: "Enregistrer",
     cancelOrder: "Annuler la Commande",
@@ -198,23 +248,18 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
         if (!error && latestAmbassador) {
           // Update ambassador state with latest data (including status)
           setAmbassador(latestAmbassador);
-          
-          // Only fetch data if not suspended
-          if (latestAmbassador.status !== 'suspended') {
-            fetchData(user.id);
-          } else {
+
+          if (latestAmbassador.status === 'suspended') {
             setLoading(false);
           }
         } else {
           // If fetch fails, use cached user data
           setAmbassador(user);
-          fetchData(user.id);
         }
       } catch (error) {
         console.error('Error fetching latest ambassador status:', error);
         // If fetch fails, use cached user data
         setAmbassador(user);
-        fetchData(user.id);
       }
     };
     
@@ -269,134 +314,185 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
     return [];
   };
 
-  const fetchData = async (ambassadorId: string) => {
-    setLoading(true);
-    try {
-      const apiBase = getApiBaseUrl();
+  const fetchData = useCallback(
+    async (ambassadorId: string) => {
+      if (eventsFetchState !== "loaded") {
+        return;
+      }
 
-      // Fetch new orders (PENDING_CASH) via API endpoint
-      const newOrdersUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_ORDERS, apiBase) + `?ambassadorId=${ambassadorId}&status=PENDING_CASH`;
-      const newOrdersResponse = await fetch(newOrdersUrl, {
-        credentials: 'include'
+      if (!selectedEventFilter) {
+        setNewOrders([]);
+        setHistoryOrders([]);
+        setPerformance({ ...EMPTY_PERFORMANCE });
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      const eventQs = `&event_id=${encodeURIComponent(selectedEventFilter)}`;
+      try {
+        const apiBase = getApiBaseUrl();
+
+        const newOrdersUrl =
+          buildFullApiUrl(API_ROUTES.AMBASSADOR_ORDERS, apiBase) +
+          `?ambassadorId=${encodeURIComponent(ambassadorId)}&status=PENDING_CASH${eventQs}`;
+        const newOrdersResponse = await fetch(newOrdersUrl, {
+          credentials: "include",
+        });
+
+        if (!newOrdersResponse.ok) {
+          throw new Error("Failed to fetch new orders");
+        }
+
+        const newOrdersResult = await newOrdersResponse.json();
+        const newRows = (newOrdersResult.data || []) as Order[];
+        setNewOrders(
+          newRows.filter((o) => o.event_id === selectedEventFilter)
+        );
+
+        const historyUrl =
+          buildFullApiUrl(API_ROUTES.AMBASSADOR_ORDERS, apiBase) +
+          `?ambassadorId=${encodeURIComponent(ambassadorId)}&limit=100${eventQs}`;
+        const historyResponse = await fetch(historyUrl, {
+          credentials: "include",
+        });
+
+        if (!historyResponse.ok) {
+          throw new Error("Failed to fetch history orders");
+        }
+
+        const historyResult = await historyResponse.json();
+        const filteredHistory = (historyResult.data || [])
+          .filter((order: Order) => order.status !== "PENDING_CASH")
+          .filter((order: Order) => order.event_id === selectedEventFilter);
+        setHistoryOrders(filteredHistory);
+
+        try {
+          const performanceUrl =
+            buildFullApiUrl(API_ROUTES.AMBASSADOR_PERFORMANCE, apiBase) +
+            `?ambassadorId=${encodeURIComponent(ambassadorId)}${eventQs}`;
+          const performanceResponse = await fetch(performanceUrl, {
+            credentials: "include",
+          });
+
+          if (!performanceResponse.ok) {
+            throw new Error("Failed to fetch performance data");
+          }
+
+          const performanceResult = await performanceResponse.json();
+
+          if (!performanceResult.success) {
+            throw new Error(
+              performanceResult.error || "Failed to fetch performance data"
+            );
+          }
+
+          const performanceData = performanceResult.data;
+
+          const total = performanceData.total || 0;
+          const paid = performanceData.paid || 0;
+          const cancelled = performanceData.cancelled || 0;
+          const rejected = performanceData.rejected || 0;
+          const ignored = performanceData.ignored || 0;
+          const totalPassesSold = performanceData.totalPassesSold || 0;
+          const totalRevenue = performanceData.totalRevenue || 0;
+          const avgResponseTime = performanceData.averageResponseTime || 0;
+
+          let baseCommission = 0;
+          if (totalPassesSold > 7) {
+            const paidPasses = totalPassesSold - 7;
+            baseCommission = paidPasses * 3;
+          }
+
+          let totalBonuses = 0;
+          if (totalPassesSold >= 15) {
+            totalBonuses += 15;
+          }
+          if (totalPassesSold >= 25) {
+            totalBonuses += 20;
+          }
+          if (totalPassesSold >= 35) {
+            totalBonuses += 20;
+          }
+
+          const totalCommission = baseCommission + totalBonuses;
+
+          setPerformance({
+            total,
+            paid,
+            completed: 0,
+            cancelled,
+            rejected,
+            ignored,
+            totalPassesSold,
+            baseCommission,
+            totalBonuses,
+            commission: totalCommission,
+            completionRate: total > 0 ? ((paid / total) * 100).toFixed(1) : "0",
+            cancellationRate:
+              total > 0 ? ((cancelled / total) * 100).toFixed(1) : "0",
+            rejectionRate:
+              total > 0 ? ((rejected / total) * 100).toFixed(1) : "0",
+            ignoreRate:
+              total > 0 ? ((ignored / total) * 100).toFixed(1) : "0",
+            totalRevenue,
+            averageResponseTime: Math.round(avgResponseTime * 10) / 10,
+          });
+        } catch (error) {
+          console.error("Error fetching performance:", error);
+        }
+      } catch (error) {
+        console.error("Error fetching data:", error);
+        toast({
+          title: t.error,
+          description: "Failed to fetch data.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [eventsFetchState, selectedEventFilter, t.error, toast]
+  );
+
+  useEffect(() => {
+    if (!ambassador?.id || ambassador.status === "suspended") return;
+    let cancelled = false;
+    setEventsFetchState("idle");
+    (async () => {
+      const { data, error } = await supabase
+        .from("events")
+        .select("id,name,date,event_type,event_status,is_test")
+        .order("date", { ascending: true });
+      if (cancelled) return;
+      const rows = error ? [] : data || [];
+      const filtered = filterAmbassadorDashboardEvents(rows, {
+        showTest: isLocalhostClient(),
       });
-
-      if (!newOrdersResponse.ok) {
-        throw new Error('Failed to fetch new orders');
-      }
-
-      const newOrdersResult = await newOrdersResponse.json();
-      setNewOrders(newOrdersResult.data || []);
-
-      // Fetch history orders (all except PENDING_CASH) via API endpoint
-      // We'll fetch all orders and filter out PENDING_CASH on the frontend for display
-      // (API already excludes REMOVED_BY_ADMIN)
-      const historyUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_ORDERS, apiBase) + `?ambassadorId=${ambassadorId}&limit=100`;
-      const historyResponse = await fetch(historyUrl, {
-        credentials: 'include'
+      setFilterableEvents(filtered);
+      setSelectedEventFilter((prev) => {
+        if (filtered.length === 0) return "";
+        if (prev && filtered.some((e) => e.id === prev)) return prev;
+        return filtered[0].id;
       });
+      setEventsFetchState("loaded");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ambassador?.id, ambassador?.status]);
 
-      if (!historyResponse.ok) {
-        throw new Error('Failed to fetch history orders');
-      }
-
-      const historyResult = await historyResponse.json();
-      // Filter out PENDING_CASH orders (those are in New Orders tab)
-      const filteredHistory = (historyResult.data || []).filter((order: Order) => order.status !== 'PENDING_CASH');
-      setHistoryOrders(filteredHistory);
-
-      // Fetch performance data via API endpoint
-      await fetchPerformance(ambassadorId);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      toast({
-        title: t.error,
-        description: "Failed to fetch data.",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPerformance = async (ambassadorId: string) => {
-    try {
-      // Fetch performance data via API endpoint (excludes REMOVED_BY_ADMIN automatically)
-      const apiBase = getApiBaseUrl();
-      const performanceUrl = buildFullApiUrl(API_ROUTES.AMBASSADOR_PERFORMANCE, apiBase) + `?ambassadorId=${ambassadorId}`;
-      const performanceResponse = await fetch(performanceUrl, {
-        credentials: 'include'
-      });
-
-      if (!performanceResponse.ok) {
-        throw new Error('Failed to fetch performance data');
-      }
-
-      const performanceResult = await performanceResponse.json();
-      
-      if (!performanceResult.success) {
-        throw new Error(performanceResult.error || 'Failed to fetch performance data');
-      }
-
-      // Use data from API (already filtered and calculated)
-      const performanceData = performanceResult.data;
-      
-      const total = performanceData.total || 0;
-      const paid = performanceData.paid || 0;
-      const cancelled = performanceData.cancelled || 0;
-      const rejected = performanceData.rejected || 0;
-      const ignored = performanceData.ignored || 0;
-      const totalPassesSold = performanceData.totalPassesSold || 0;
-      const totalRevenue = performanceData.totalRevenue || 0;
-      const avgResponseTime = performanceData.averageResponseTime || 0;
-
-      // Commission Calculation Rules (calculated in frontend):
-      // - No payment for passes 1-7 (0 DT)
-      // - From pass 8 onwards: 3 DT per pass
-      // - Bonuses: 15 passes = +15 DT, 25 passes = +20 DT, 35 passes = +20 DT (cumulative)
-      
-      // Calculate base commission (only for passes 8+)
-      let baseCommission = 0;
-      if (totalPassesSold > 7) {
-        const paidPasses = totalPassesSold - 7; // Passes 8 onwards
-        baseCommission = paidPasses * 3; // 3 DT per pass
-      }
-      
-      // Calculate cumulative bonuses
-      let totalBonuses = 0;
-      if (totalPassesSold >= 15) {
-        totalBonuses += 15; // 15 DT bonus at 15 passes
-      }
-      if (totalPassesSold >= 25) {
-        totalBonuses += 20; // 20 DT bonus at 25 passes
-      }
-      if (totalPassesSold >= 35) {
-        totalBonuses += 20; // 20 DT bonus at 35 passes
-      }
-
-      const totalCommission = baseCommission + totalBonuses;
-      
-      setPerformance({
-        total,
-        paid,
-        completed: 0, // No longer using completed status
-        cancelled,
-        rejected,
-        ignored,
-        totalPassesSold,
-        baseCommission,
-        totalBonuses,
-        commission: totalCommission, // Total commission = base + bonuses
-        completionRate: total > 0 ? ((paid / total) * 100).toFixed(1) : '0',
-        cancellationRate: total > 0 ? ((cancelled / total) * 100).toFixed(1) : '0',
-        rejectionRate: total > 0 ? ((rejected / total) * 100).toFixed(1) : '0',
-        ignoreRate: total > 0 ? ((ignored / total) * 100).toFixed(1) : '0',
-        totalRevenue,
-        averageResponseTime: Math.round(avgResponseTime * 10) / 10
-      });
-    } catch (error) {
-      console.error('Error fetching performance:', error);
-    }
-  };
+  useEffect(() => {
+    if (!ambassador?.id || ambassador.status === "suspended") return;
+    if (eventsFetchState !== "loaded") return;
+    void fetchData(ambassador.id);
+  }, [
+    ambassador?.id,
+    ambassador?.status,
+    selectedEventFilter,
+    eventsFetchState,
+    fetchData,
+  ]);
 
   const handleConfirmCash = async (orderId: string) => {
     // Check if sales are enabled
@@ -869,6 +965,43 @@ const AmbassadorDashboard = ({ language }: AmbassadorDashboardProps) => {
               <LogOut className="w-4 h-4 mr-2" />
               {t.logout}
             </Button>
+          </div>
+        </div>
+
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+          <Label
+            htmlFor="ambassador-event-filter"
+            className="text-sm font-medium shrink-0 text-muted-foreground"
+          >
+            {t.filterByEvent}
+          </Label>
+          <div className="flex flex-col gap-1 min-w-0 w-full sm:w-auto">
+            <Select
+              value={selectedEventFilter || undefined}
+              onValueChange={setSelectedEventFilter}
+              disabled={filterableEvents.length === 0}
+            >
+              <SelectTrigger
+                id="ambassador-event-filter"
+                className="w-full sm:w-[320px] bg-card border-border"
+              >
+                <SelectValue placeholder={t.selectEvent} />
+              </SelectTrigger>
+              <SelectContent>
+                {filterableEvents.map((event) => (
+                  <SelectItem key={event.id} value={event.id}>
+                    {event.name}
+                    {event.is_test ? " (test)" : ""} —{" "}
+                    {formatDateDMY(event.date, language)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {filterableEvents.length === 0 && (
+              <p className="text-xs text-muted-foreground max-w-md">
+                {t.noUpcomingEvents}
+              </p>
+            )}
           </div>
         </div>
 

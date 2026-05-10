@@ -125,7 +125,7 @@ export function AmbassadorSelector({
               className={`cursor-pointer transition-all ${
                 selectedAmbassadorId === ambassador.id
                   ? 'ring-2 ring-primary'
-                  : 'hover:bg-accent'
+                  : 'hover:bg-muted/40'
               }`}
               onClick={() => onSelect(ambassador.id)}
             >

@@ -1,0 +1,286 @@
+'use strict';
+
+const { getPurchaseChannelLabel } = require('./purchase-channel-label.cjs');
+const { buildPremiumTicketsPdfHtmlDocument } = require('./premium-ticket-page-html.cjs');
+const { getEmailLogoUrl } = require('./email-branding.cjs');
+
+/**
+ * Fetch a remote image and return a data URL (for reliable PDF rendering).
+ * @param {string|null|undefined} url
+ * @param {number} [maxBytes]
+ * @returns {Promise<string|null>}
+ */
+async function fetchUrlAsDataUrl(url, maxBytes = 6 * 1024 * 1024) {
+  if (!url || typeof url !== 'string') return null;
+  const u = url.trim();
+  if (u.startsWith('data:')) return u;
+  if (!/^https?:\/\//i.test(u)) return null;
+  try {
+    const res = await fetch(u, { signal: AbortSignal.timeout(25000) });
+    if (!res.ok) return null;
+    const ab = await res.arrayBuffer();
+    if (ab.byteLength > maxBytes) return null;
+    const buf = Buffer.from(ab);
+    let ct = (res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+    if (!ct.startsWith('image/')) ct = 'image/jpeg';
+    return `data:${ct};base64,${buf.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveLaunchConfig() {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROMIUM_PATH) {
+    return {
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=medium'],
+      headless: true,
+    };
+  }
+  if (process.env.VERCEL) {
+    const chromium = require('@sparticuz/chromium');
+    chromium.setGraphicsMode(false);
+    return {
+      executablePath: await chromium.executablePath(),
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      headless: chromium.headless,
+    };
+  }
+  try {
+    const puppeteer = require('puppeteer');
+    return {
+      executablePath: puppeteer.executablePath(),
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=medium'],
+      headless: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Merge multiple single-page PDF buffers into one PDF.
+ * @param {Buffer[]} buffers
+ * @returns {Promise<Buffer>}
+ */
+async function mergePdfBuffers(buffers) {
+  const { PDFDocument } = require('pdf-lib');
+  const out = await PDFDocument.create();
+  for (const b of buffers) {
+    if (!b || !Buffer.isBuffer(b) || b.length === 0) continue;
+    const src = await PDFDocument.load(b);
+    const idx = src.getPageIndices();
+    const copied = await out.copyPages(src, idx);
+    copied.forEach((p) => out.addPage(p));
+  }
+  return Buffer.from(await out.save());
+}
+
+/**
+ * @param {string} htmlDocument - full HTML document (single ticket page)
+ * @returns {Promise<Buffer>}
+ */
+async function renderSinglePagePdf(htmlDocument) {
+  const puppeteer = require('puppeteer-core');
+  const cfg = await resolveLaunchConfig();
+  if (!cfg || !cfg.executablePath) {
+    throw new Error('No Chromium executable: set PUPPETEER_EXECUTABLE_PATH, or deploy on Vercel, or install puppeteer.');
+  }
+  const browser = await puppeteer.launch({
+    headless: cfg.headless !== undefined ? cfg.headless : true,
+    executablePath: cfg.executablePath,
+    args: cfg.args || [],
+    defaultViewport: cfg.defaultViewport || { width: 1440, height: 820, deviceScaleFactor: 2 },
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1440, height: 820, deviceScaleFactor: 2 });
+    await page.setContent(htmlDocument, { waitUntil: 'domcontentloaded', timeout: 120000 });
+    await page
+      .evaluate(async () => {
+        try {
+          if (document.fonts && document.fonts.ready) await document.fonts.ready;
+        } catch (_) {
+          /* ignore */
+        }
+      })
+      .catch(() => {});
+    await new Promise((r) => setTimeout(r, 1000));
+    const buf = await page.pdf({
+      printBackground: true,
+      width: '1440px',
+      height: '820px',
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+    });
+    await page.close();
+    return Buffer.from(buf);
+  } finally {
+    await browser.close();
+  }
+}
+
+/**
+ * Render one merged PDF for all ticket pages (single browser session, merged with pdf-lib).
+ * @param {string[]} htmlDocuments
+ */
+async function renderMergedPremiumTicketsPdf(htmlDocuments) {
+  const list = (htmlDocuments || []).filter((h) => h && typeof h === 'string');
+  if (list.length === 0) return null;
+
+  const cfg = await resolveLaunchConfig();
+  if (!cfg || !cfg.executablePath) {
+    throw new Error('No Chromium executable: set PUPPETEER_EXECUTABLE_PATH, or deploy on Vercel, or install puppeteer.');
+  }
+  const puppeteer = require('puppeteer-core');
+  const browser = await puppeteer.launch({
+    headless: cfg.headless !== undefined ? cfg.headless : true,
+    executablePath: cfg.executablePath,
+    args: cfg.args || [],
+    defaultViewport: cfg.defaultViewport || { width: 1440, height: 820, deviceScaleFactor: 2 },
+  });
+  try {
+    const parts = [];
+    for (const html of list) {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1440, height: 820, deviceScaleFactor: 2 });
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 120000 });
+      await page
+        .evaluate(async () => {
+          try {
+            if (document.fonts && document.fonts.ready) await document.fonts.ready;
+          } catch (_) {
+            /* ignore */
+          }
+        })
+        .catch(() => {});
+      await new Promise((r) => setTimeout(r, 1000));
+      const buf = await page.pdf({
+        printBackground: true,
+        width: '1440px',
+        height: '820px',
+        margin: { top: '0', right: '0', bottom: '0', left: '0' },
+      });
+      await page.close();
+      parts.push(Buffer.from(buf));
+    }
+    if (parts.length === 1) return parts[0];
+    return mergePdfBuffers(parts);
+  } finally {
+    await browser.close();
+  }
+}
+
+/**
+ * Build optional PDF attachment for an order ticket email.
+ * @param {object} params
+ * @param {object} params.order
+ * @param {object} params.event - joined events row
+ * @param {{ id?: string, qr_code_url?: string|null, order_pass_id?: string|null }[]} params.tickets
+ * @param {{ id?: string, pass_type?: string|null }[]} params.orderPasses
+ * @param {{ invitationMode?: boolean }} [params.opts]
+ * @returns {Promise<{ filename: string, content: Buffer, contentType: string } | null>}
+ */
+async function tryBuildPremiumTicketsPdfAttachment(params) {
+  const { order, event, tickets, orderPasses, opts } = params || {};
+  if (!order || !event || !Array.isArray(tickets) || tickets.length === 0) return null;
+
+  const invitationMode = !!(opts && opts.invitationMode);
+  const channelLabel = getPurchaseChannelLabel(order, invitationMode ? { mode: 'invitation' } : undefined);
+
+  const logoUrl = getEmailLogoUrl();
+  const posterUrl = event.poster_url || null;
+
+  const [logoDataUrl, posterDataUrl] = await Promise.all([
+    fetchUrlAsDataUrl(logoUrl),
+    posterUrl ? fetchUrlAsDataUrl(posterUrl) : Promise.resolve(null),
+  ]);
+  if (!logoDataUrl) return null;
+
+  const passById = new Map();
+  (orderPasses || []).forEach((p) => {
+    if (p && p.id) passById.set(p.id, p);
+  });
+
+  const ticketRows = [];
+  for (const t of tickets) {
+    if (!t || !t.qr_code_url) continue;
+    const qrData = (await fetchUrlAsDataUrl(t.qr_code_url)) || t.qr_code_url;
+    const pass = t.order_pass_id ? passById.get(t.order_pass_id) : null;
+    const passType = (pass && pass.pass_type) || 'Pass';
+    ticketRows.push({ passType, qrDataUrl: qrData });
+  }
+  if (ticketRows.length === 0) return null;
+
+  const orderNum =
+    order.order_number !== null && order.order_number !== undefined
+      ? `#${order.order_number}`
+      : String(order.id || '').slice(0, 8).toUpperCase();
+
+  const base = {
+    eventName: event.name || 'Event',
+    eventDateRaw: event.date,
+    venue: event.venue,
+    city: event.city,
+    posterDataUrl: posterDataUrl || null,
+    logoDataUrl: logoDataUrl,
+    guestName: order.user_name || order.guest_name || 'Guest',
+    orderNumberDisplay: orderNum,
+    channelLabel,
+    organizerLine: null,
+    tickets: ticketRows,
+  };
+
+  const htmlDocs = ticketRows.map((row) =>
+    buildPremiumTicketsPdfHtmlDocument({
+      ...base,
+      tickets: [row],
+    })
+  );
+
+  const pdfBuf = await renderMergedPremiumTicketsPdf(htmlDocs);
+  if (!pdfBuf || pdfBuf.length === 0) return null;
+
+  const safeNum = String(order.order_number != null ? order.order_number : order.id || 'tickets').replace(
+    /[^\w.-]+/g,
+    '-'
+  );
+  return {
+    filename: `Andiamo-Tickets-${safeNum}.pdf`,
+    content: pdfBuf,
+    contentType: 'application/pdf',
+  };
+}
+
+/**
+ * Official invitation emails (no orders row): one merged PDF for all QR rows.
+ */
+async function tryBuildPremiumTicketsPdfAttachmentInvitation(params) {
+  const { event, guestName, invitationNumber, passTypeName, qrCodes } = params || {};
+  if (!event || !guestName || !Array.isArray(qrCodes) || qrCodes.length === 0) return null;
+  return tryBuildPremiumTicketsPdfAttachment({
+    order: {
+      id: 'invitation',
+      user_name: guestName,
+      source: 'official_invitation',
+      payment_method: 'external_app',
+      order_number: invitationNumber,
+    },
+    event,
+    tickets: qrCodes.map((q) => ({
+      qr_code_url: q.qr_code_url,
+      order_pass_id: '__inv_pdf__',
+    })),
+    orderPasses: [{ id: '__inv_pdf__', pass_type: passTypeName || 'Invitation' }],
+    opts: { invitationMode: true },
+  });
+}
+
+module.exports = {
+  fetchUrlAsDataUrl,
+  tryBuildPremiumTicketsPdfAttachment,
+  tryBuildPremiumTicketsPdfAttachmentInvitation,
+  renderMergedPremiumTicketsPdf,
+  renderSinglePagePdf,
+  mergePdfBuffers,
+};

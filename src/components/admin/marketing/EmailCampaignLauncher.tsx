@@ -32,12 +32,12 @@ export function EmailCampaignLauncher({
       ? {
           title: 'Launch email campaign',
           pick: 'Choose a saved draft',
-          hint: 'Pick a template you created above, then select recipients and daily cap.',
+          hint: '',
         }
       : {
           title: 'Lancer une campagne email',
           pick: 'Choisir un brouillon',
-          hint: 'Sélectionnez un modèle créé ci-dessus, puis les destinataires et le plafond journalier.',
+          hint: '',
         };
 
   return (

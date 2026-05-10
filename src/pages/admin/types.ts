@@ -21,6 +21,9 @@ export interface AmbassadorApplication {
   created_at: string;
   reapply_delay_date?: string; // Date when rejected/removed applicants can reapply (30 days after rejection/removal)
   manually_added?: boolean; // Indicator for manually added ambassadors
+  reviewed_by_admin_id?: string | null;
+  reviewed_at?: string | null;
+  reviewed_by_name?: string | null;
 }
 
 /** Selected application motivation for view dialog (Applications tab). */
@@ -62,9 +65,12 @@ export interface Event {
   event_status?: 'active' | 'cancelled' | 'completed' | string | null;
   gallery_images?: string[]; // Array of gallery image URLs
   gallery_videos?: string[]; // Array of gallery video URLs
-  /** Public gallery page: credit under ANDIAMO logo on each tile */
-  gallery_credit?: string | null;
   passes?: EventPass[]; // Array of passes for this event - REQUIRED for publishing
+  /** Code-gated pass listing and online-only checkout window */
+  presale_enabled?: boolean;
+  presale_active_from?: string | null;
+  presale_active_until?: string | null;
+  presale_hide_from_public_list?: boolean;
   created_at: string;
   updated_at: string;
   _uploadFile?: File | null;
@@ -286,6 +292,8 @@ export interface OnlineOrder {
   notes?: string | Record<string, unknown>;
   source?: string;
   order_passes?: OnlineOrderPass[];
+  /** Presale code attribution. Set when the order was placed through a presale-gated event. */
+  presale_code_id?: string | null;
   [key: string]: unknown;
 }
 

@@ -153,14 +153,6 @@ export function validatePassPurchaseFull(args: {
   };
 }
 
-/** Frontend-only Darija hints shown with EN/FR validation messages (name / phone / email / confirm). */
-export const PASS_PURCHASE_FIELD_ERROR_AR: Partial<Record<string, string>> = {
-  full_name: 'تأكد من إسمك صحيح',
-  phone: 'تأكد نومروك صحيح',
-  email: 'تأكد من mail صحيح',
-  email_confirm: 'تأكد من mail صحيح',
-};
-
 const PASS_PURCHASE_ERROR_FIELD_ORDER = [
   'passes',
   'full_name',

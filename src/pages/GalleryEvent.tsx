@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import LoadingScreen from "@/components/ui/LoadingScreen";
-import { generateSlug } from "@/lib/utils";
+import { generateSlug, findEventByPublicUrlSlug } from "@/lib/utils";
 import { formatDateTimeLong } from "@/lib/date-utils";
 import { Card } from "@/components/ui/card";
 import { ExpandableText } from "@/components/ui/expandable-text";
@@ -38,7 +38,6 @@ interface Event {
   gallery_images?: string[];
   gallery_videos?: string[];
   event_status?: 'active' | 'cancelled' | 'completed';
-  gallery_credit?: string | null;
   is_test?: boolean;
   slug?: string;
 }
@@ -153,19 +152,7 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
         ? data 
         : (data || []).filter((event: any) => !event.is_test);
 
-      const foundEvent = filteredData?.find((e: Event) => {
-        const rawSlug = typeof e.slug === "string" ? e.slug.trim() : "";
-        const officialMatch =
-          rawSlug !== "" && rawSlug.toLowerCase() === normalizedSlug;
-
-        const idMatch =
-          normalizedSlug.startsWith("event-") && normalizedSlug === `event-${e.id}`;
-
-        const eventSlugFromName = generateSlug(e.name);
-        const slugMatch = eventSlugFromName.toLowerCase() === normalizedSlug;
-
-        return officialMatch || idMatch || slugMatch;
-      });
+      const foundEvent = findEventByPublicUrlSlug(filteredData as Event[], normalizedSlug);
       
       if (!foundEvent) {
         console.error('❌ Event not found for slug:', normalizedSlug);
@@ -475,7 +462,6 @@ const GalleryEvent = ({ language }: GalleryEventProps) => {
               eventName={event.name}
               onItemClick={openLightbox}
               language={language}
-              creditLine={event.gallery_credit?.trim() || undefined}
             />
           </div>
         </section>

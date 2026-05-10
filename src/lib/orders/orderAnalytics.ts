@@ -45,3 +45,23 @@ export function isPaidPosOrder(order: {
   if (order.status !== 'PAID' && order.status !== 'COMPLETED') return false;
   return order.payment_method === 'pos' || order.source === 'point_de_vente';
 }
+
+/**
+ * True when the order is attributed to a presale code (column and/or snapshot in notes).
+ * Used by Reports KPIs; matches admin order dialog heuristics.
+ */
+export function orderHasPresaleAttribution(order: {
+  presale_code_id?: string | null;
+  notes?: string | Record<string, unknown> | null;
+}): boolean {
+  if (order.presale_code_id) return true;
+  if (order.notes == null || order.notes === '') return false;
+  try {
+    const notesData =
+      typeof order.notes === 'string' ? JSON.parse(order.notes) : order.notes;
+    const presale = (notesData as Record<string, unknown> | null)?.presale;
+    return presale != null && typeof presale === 'object';
+  } catch {
+    return false;
+  }
+}

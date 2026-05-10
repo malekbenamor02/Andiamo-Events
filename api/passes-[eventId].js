@@ -15,13 +15,12 @@ async function getCorsUtils() {
 export default async (req, res) => {
   const { setCORSHeaders, handlePreflight } = await getCorsUtils();
   
-  // Handle preflight requests
-  if (handlePreflight(req, res, { methods: 'GET, OPTIONS', headers: 'Content-Type', credentials: false })) {
+  // Handle preflight requests (credentials when presale gate may apply)
+  if (handlePreflight(req, res, { methods: 'GET, OPTIONS', headers: 'Content-Type', credentials: true })) {
     return; // Preflight handled
   }
   
-  // Set CORS headers for actual requests (no credentials needed for public endpoint)
-  if (!setCORSHeaders(res, req, { methods: 'GET, OPTIONS', headers: 'Content-Type', credentials: false })) {
+  if (!setCORSHeaders(res, req, { methods: 'GET, OPTIONS', headers: 'Content-Type', credentials: true })) {
     if (req.headers.origin) {
       return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
     }
@@ -78,6 +77,25 @@ export default async (req, res) => {
       );
     }
 
+    const { data: eventData, error: eventError } = await dbClient
+      .from('events')
+      .select('id, presale_enabled')
+      .eq('id', eventId)
+      .single();
+    if (eventError || !eventData) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const presaleRequired = !!eventData.presale_enabled;
+    if (eventData.presale_enabled) {
+      const { parseCookie, PRESALE_COOKIE_NAME, fetchValidPresaleSessionRow } = await import('./lib/presale-server.js');
+      const sessionId = parseCookie(req, PRESALE_COOKIE_NAME);
+      const sessionRow = await fetchValidPresaleSessionRow(dbClient, sessionId, eventId);
+      if (!sessionRow) {
+        return res.status(403).json({ error: 'Invalid access', presale_required: true });
+      }
+    }
+
     // Fetch only active passes with stock information
     const { data: passes, error: passesError } = await dbClient
       .from('event_passes')
@@ -124,6 +142,7 @@ export default async (req, res) => {
 
     res.status(200).json({
       success: true,
+      presale_required: presaleRequired,
       passes: passesWithStock
     });
 

@@ -4,6 +4,7 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import { API_ROUTES } from '@/lib/api-routes';
 import { getApiBaseUrl } from '@/lib/api-routes';
 import { useIsMobile } from "@/hooks/use-mobile";
+import { writeAdminVerifyCache } from "@/lib/admin-verify-cache";
 
 interface ProtectedAdminRouteProps {
   children: React.ReactNode;
@@ -34,18 +35,13 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     // Best-effort parse even when res.ok === false, so we can read `{ reason }`
-    const attemptVerify = async (): Promise<{ valid?: boolean; reason?: string } | null> => {
+    const attemptVerify = async (): Promise<Record<string, unknown> | null> => {
       try {
         const res = await fetch(verifyUrl, { method: 'GET', credentials: 'include' });
         if (cancelled.current) return null;
 
-        const body = await res.json().catch(() => ({}));
-        if (res.ok) {
-          return body as { valid?: boolean; reason?: string };
-        }
-
-        // Still return parsed body so we can decide whether to retry
-        return body as { valid?: boolean; reason?: string };
+        const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        return { ...body, _httpOk: res.ok };
       } catch {
         return null;
       }
@@ -57,12 +53,22 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
         if (cancelled.current) return;
 
         if (data1?.valid) {
+          const admin = data1.admin as
+            | { id: string; email: string; name: string; role: string }
+            | undefined;
+          if (admin?.id) {
+            writeAdminVerifyCache({
+              admin,
+              sessionExpiresAt: data1.sessionExpiresAt as number | undefined,
+              sessionTimeRemaining: data1.sessionTimeRemaining as number | null | undefined,
+            });
+          }
           setIsAuthenticated(true);
           return;
         }
 
         // If cookie/token isn't available yet, wait and retry a few times on mobile.
-        const reason = (data1?.reason || "").toLowerCase();
+        const reason = String(data1?.reason || "").toLowerCase();
         const shouldRetryNoToken =
           isMobile &&
           (reason.includes("no token provided") || reason.includes("no token") || reason.includes("not authenticated"));

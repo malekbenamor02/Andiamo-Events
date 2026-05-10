@@ -301,10 +301,10 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
               <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4 pb-4 border-b items-end">
                 <div>
                   <Label className="text-xs mb-2">
-                      {p.language === "en" ? "Order ID" : "ID Commande"}
+                      {p.language === "en" ? "Order Number" : "Numéro de Commande"}
                   </Label>
                   <Input
-                    placeholder={p.language === "en" ? "Order ID (e.g., C29CA564)" : "ID Commande (ex: C29CA564)"}
+                    placeholder={p.language === "en" ? "Order Number (e.g., #807105)" : "Numéro (ex: #807105)"}
                     value={p.orderFilters.orderId}
                     onChange={(e) => p.setOrderFilters({ ...p.orderFilters, orderId: e.target.value })}
                     className="h-8 text-xs font-mono"
@@ -500,15 +500,12 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                             <TableHead className="py-2 whitespace-nowrap text-center">
                               {p.language === "en" ? "Created" : "Créé"}
                             </TableHead>
-                            <TableHead className="py-2 whitespace-nowrap text-center">
-                              {p.language === "en" ? "Actions" : "Actions"}
-                            </TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {p.filteredCodOrders.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                              <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                                 {p.language === "en"
                                   ? "No COD ambassador orders found"
                                   : "Aucune commande COD ambassadeur trouvée"}
@@ -525,8 +522,30 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                               })();
 
                               return (
-                                <TableRow key={order.id} className="text-xs">
-                                  <TableCell className="py-2 text-center">
+                                <TableRow
+                                  key={order.id}
+                                  className="text-xs cursor-pointer"
+                                  onClick={() => p.onViewOrder(order)}
+                                  title={
+                                    p.language === "en"
+                                      ? "Click row to view order details"
+                                      : "Cliquer sur la ligne pour voir la commande"
+                                  }
+                                >
+                                  <TableCell className="py-2 text-center relative overflow-hidden">
+                                    {order.presale_code_id ? (
+                                      <div
+                                        className="absolute top-0 left-0 w-[38px] h-[38px] overflow-hidden pointer-events-none z-10"
+                                        title={p.language === "en" ? "Placed via presale" : "Commande presale"}
+                                      >
+                                        <span
+                                          className="absolute block text-center bg-indigo-500 text-white font-bold uppercase tracking-wider shadow-sm"
+                                          style={{ width: 64, transform: "rotate(-45deg)", top: 6, left: -20, fontSize: 7, lineHeight: "10px", padding: "1px 0" }}
+                                        >
+                                          {p.language === "en" ? "Presale" : "Presale"}
+                                        </span>
+                                      </div>
+                                    ) : null}
                                     {passes.length > 0 ? (
                                       <div className="flex flex-col items-center gap-1">
                                         {passes.map(
@@ -551,7 +570,10 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                     {order.user_email ? (
                                       <button
                                         type="button"
-                                        onClick={() => handleCopyEmail(order.user_email!)}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleCopyEmail(order.user_email!);
+                                        }}
                                         className="hover:text-primary hover:underline cursor-pointer"
                                         title={
                                           p.language === "en"
@@ -575,7 +597,10 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                       <div className="flex flex-col items-center gap-1">
                                         <button
                                           type="button"
-                                          onClick={() => p.onViewAmbassador(order.ambassador_id!)}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            p.onViewAmbassador(order.ambassador_id!);
+                                          }}
                                           className="text-primary hover:underline cursor-pointer text-xs text-left"
                                         >
                                           {order.ambassador_name ?? "—"}
@@ -647,23 +672,6 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                   </TableCell>
 
                                   <TableCell className="py-2 text-center whitespace-nowrap text-xs">{createdText}</TableCell>
-
-                                  <TableCell className="py-2 text-center">
-                                    <Button
-                                      size="sm"
-                                      variant="default"
-                                      className="bg-black hover:bg-gray-800 text-white border-none text-xs px-2 py-1 h-auto"
-                                      onClick={() => p.onViewOrder(order)}
-                                      title={
-                                        p.language === "en"
-                                          ? "View order details and manage actions"
-                                          : "Voir les détails de la commande et gérer les actions"
-                                      }
-                                    >
-                                      <Eye className="w-3 h-3 mr-1 text-white" />
-                                      {p.language === "en" ? "View" : "Voir"}
-                                    </Button>
-                                  </TableCell>
                                 </TableRow>
                               );
                             })
@@ -692,28 +700,55 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                           return `${day}/${month}/${d.getFullYear()}`;
                         })();
 
-                        return (
-                          <Card key={order.id} className="relative">
-                            <CardContent className="p-4">
-                              <div className="flex items-start justify-end gap-3">
-                                <div className="flex items-center gap-2">
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div
-                                        className={`w-3 h-3 rounded-full cursor-help ${getStatusColor(order.status)}`}
-                                      />
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-xs">{getStatusLabel(order.status)}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                  <span className="text-xs" style={{ color: "#B0B0B0" }}>
-                                    {getStatusLabel(order.status)}
-                                  </span>
-                                </div>
-                              </div>
+                        const codMobileStatus = (
+                          <>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div
+                                  className={`h-3 w-3 shrink-0 cursor-help rounded-full ${getStatusColor(order.status)}`}
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs">{getStatusLabel(order.status)}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                            <span
+                              className={cn("text-xs", order.presale_code_id ? "text-left" : "text-right")}
+                              style={{ color: "#B0B0B0" }}
+                            >
+                              {getStatusLabel(order.status)}
+                            </span>
+                          </>
+                        );
 
-                              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        return (
+                          <Card key={order.id} className="relative overflow-hidden">
+                            {order.presale_code_id ? (
+                              <div
+                                className="pointer-events-none absolute right-0 top-0 z-10 h-[80px] w-[80px] overflow-hidden"
+                                title={p.language === "en" ? "Placed via presale" : "Commande presale"}
+                              >
+                                <span
+                                  className="absolute block bg-indigo-500 py-[2px] text-center text-[10px] font-bold uppercase tracking-wider text-white shadow-md"
+                                  style={{ width: 130, transform: "rotate(45deg)", top: 16, right: -38 }}
+                                >
+                                  {p.language === "en" ? "Presale" : "Presale"}
+                                </span>
+                              </div>
+                            ) : null}
+                            <CardContent className="p-4">
+                              {!order.presale_code_id ? (
+                                <div className="flex items-start justify-end gap-3">
+                                  <div className="flex items-center gap-2">{codMobileStatus}</div>
+                                </div>
+                              ) : null}
+
+                              <div
+                                className={cn(
+                                  "mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2",
+                                  order.presale_code_id && "pr-[5.25rem]",
+                                )}
+                              >
                                 <div className="space-y-2">
                                   <div>
                                     <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
@@ -749,9 +784,21 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                     <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
                                       {p.language === "en" ? "Client" : "Client"}
                                     </p>
-                                    <p className="text-sm font-heading font-semibold" style={{ color: "#FFFFFF" }}>
-                                      {order.user_name || "N/A"}
-                                    </p>
+                                    {order.presale_code_id ? (
+                                      <div className="mt-0 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                                        <p
+                                          className="break-words text-sm font-heading font-semibold"
+                                          style={{ color: "#FFFFFF" }}
+                                        >
+                                          {order.user_name || "N/A"}
+                                        </p>
+                                        <div className="flex shrink-0 items-center gap-2">{codMobileStatus}</div>
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm font-heading font-semibold" style={{ color: "#FFFFFF" }}>
+                                        {order.user_name || "N/A"}
+                                      </p>
+                                    )}
                                     <p className="text-xs" style={{ color: "#B0B0B0" }}>
                                       {order.user_phone || "N/A"}
                                     </p>
@@ -805,8 +852,7 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                 </div>
                               </div>
 
-                              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="space-y-1">
+                              <div className="mt-3 space-y-1">
                                   <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
                                     {p.language === "en" ? "Expires At" : "Expire Le"}
                                   </p>
@@ -851,31 +897,29 @@ export function AmbassadorSalesTab(p: AmbassadorSalesTabProps) {
                                   ) : (
                                     <span className="text-xs text-muted-foreground">-</span>
                                   )}
-                                </div>
-
-                                <div className="space-y-1">
-                                  <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
-                                    {p.language === "en" ? "Created" : "Créé"}
-                                  </p>
-                                  <span className="text-xs text-muted-foreground">{createdText}</span>
-                                </div>
                               </div>
 
-                              <div className="mt-4 flex items-center justify-end">
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  className="bg-black hover:bg-gray-800 text-white border-none text-xs px-2 py-1 h-auto"
-                                  onClick={() => p.onViewOrder(order)}
-                                  title={
-                                    p.language === "en"
-                                      ? "View order details and manage actions"
-                                      : "Voir les détails de la commande et gérer les actions"
-                                  }
-                                >
-                                  <Eye className="w-3 h-3 mr-1 text-white" />
-                                  {p.language === "en" ? "View" : "Voir"}
-                                </Button>
+                              <div className="mt-3 w-full max-w-full space-y-1">
+                                <p className="text-[11px] font-heading" style={{ color: "#B0B0B0" }}>
+                                  {p.language === "en" ? "Created" : "Créé"}
+                                </p>
+                                <div className="grid w-full max-w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1">
+                                  <span className="min-w-0 text-xs tabular-nums text-muted-foreground">{createdText}</span>
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="justify-self-end bg-black hover:bg-gray-800 text-white border-none text-xs px-2 py-1 h-auto"
+                                    onClick={() => p.onViewOrder(order)}
+                                    title={
+                                      p.language === "en"
+                                        ? "View order details and manage actions"
+                                        : "Voir les détails de la commande et gérer les actions"
+                                    }
+                                  >
+                                    <Eye className="w-3 h-3 mr-1 text-white" />
+                                    {p.language === "en" ? "View" : "Voir"}
+                                  </Button>
+                                </div>
                               </div>
                             </CardContent>
                           </Card>

@@ -1,5 +1,8 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
+// Same-origin URLs (Vite resolves via package "exports"); avoids unpkg/CDN worker import failures.
+import ffmpegCoreJsUrl from '@ffmpeg/core?url';
+import ffmpegCoreWasmUrl from '@ffmpeg/core/wasm?url';
 
 type ImageVariant = {
   file: File;
@@ -11,7 +14,6 @@ const IMAGE_FULL_EDGE = 1920;
 const IMAGE_MID_EDGE = 1280;
 const IMAGE_THUMB_EDGE = 400;
 
-const FFMPEG_CORE_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
 const VIDEO_MAX_EDGE = 1920;
 const VIDEO_CRF = '28';
 const VIDEO_PRESET = 'veryfast';
@@ -133,8 +135,8 @@ async function getFfmpeg(): Promise<FFmpeg> {
 
   ffmpegLoading = (async () => {
     const ffmpeg = new FFmpeg();
-    const coreURL = await toBlobURL(`${FFMPEG_CORE_BASE}/ffmpeg-core.js`, 'text/javascript');
-    const wasmURL = await toBlobURL(`${FFMPEG_CORE_BASE}/ffmpeg-core.wasm`, 'application/wasm');
+    const coreURL = await toBlobURL(ffmpegCoreJsUrl, 'text/javascript');
+    const wasmURL = await toBlobURL(ffmpegCoreWasmUrl, 'application/wasm');
     await ffmpeg.load({ coreURL, wasmURL });
     ffmpegSingleton = ffmpeg;
     return ffmpeg;
@@ -158,7 +160,7 @@ export async function transcodeHeroVideoToMp4(file: File): Promise<File> {
   const outputName = 'output.mp4';
 
   await ffmpeg.writeFile(inputName, await fetchFile(file));
-  await ffmpeg.exec([
+  const exitCode = await ffmpeg.exec([
     '-i',
     inputName,
     '-vf',
@@ -179,6 +181,11 @@ export async function transcodeHeroVideoToMp4(file: File): Promise<File> {
     '96k',
     outputName,
   ]);
+  if (exitCode !== 0) {
+    throw new Error(
+      `Video compression failed (exit ${exitCode}). Try a smaller file, MP4/MOV/WebM, or a shorter clip.`
+    );
+  }
 
   const data = await ffmpeg.readFile(outputName);
   await ffmpeg.deleteFile(inputName);

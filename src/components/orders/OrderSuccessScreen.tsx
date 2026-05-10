@@ -50,9 +50,16 @@ export function OrderSuccessScreen({
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Success Header */}
         <div className="text-center mb-8">
-          <div className="relative inline-block mb-6">
-            <div className="absolute inset-0 bg-green-500/20 rounded-full blur-2xl animate-pulse" />
-            <CheckCircle className="w-24 h-24 text-green-500 mx-auto relative z-10" />
+          <div className="relative inline-flex mx-auto mb-6">
+            <div
+              className="absolute -inset-6 rounded-full bg-green-500/25 blur-2xl animate-success-check-glow"
+              aria-hidden
+            />
+            <CheckCircle
+              className="relative z-10 h-24 w-24 text-green-500 drop-shadow-[0_0_14px_rgba(34,197,94,0.45)] animate-success-check"
+              strokeWidth={1.75}
+              aria-hidden
+            />
           </div>
           <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-3">
             {t.title}

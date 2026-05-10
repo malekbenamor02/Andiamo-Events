@@ -168,3 +168,25 @@ export function generateSlug(text: string): string {
   // If slug is still empty, return empty string (caller should handle fallback)
   return slug || '';
 }
+
+/**
+ * Resolve `/:eventSlug` (or `/event/:slug`) to a row: DB `slug`, `event-{uuid}`, or slug from `name`.
+ * Keeps pass-purchase and upcoming/gallery pages consistent when `events.slug` is empty or differs from the public URL.
+ */
+export function findEventByPublicUrlSlug<T extends { id: string; name: string; slug?: string | null }>(
+  rows: T[] | null | undefined,
+  urlSlug: string
+): T | null {
+  if (!rows?.length || !urlSlug) return null;
+  const normalizedSlug = decodeURIComponent(urlSlug).toLowerCase().trim();
+  for (const e of rows) {
+    const rawSlug = typeof e.slug === 'string' ? e.slug.trim() : '';
+    const officialMatch = rawSlug !== '' && rawSlug.toLowerCase() === normalizedSlug;
+    const idMatch =
+      normalizedSlug.startsWith('event-') && normalizedSlug === `event-${e.id}`.toLowerCase();
+    const fromName = generateSlug(e.name).toLowerCase();
+    const slugMatch = fromName !== '' && fromName === normalizedSlug;
+    if (officialMatch || idMatch || slugMatch) return e;
+  }
+  return null;
+}

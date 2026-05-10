@@ -13,7 +13,10 @@ import { getApiBaseUrl } from '@/lib/api-routes';
  * Create a new order
  * CRITICAL: Routes to server-side endpoint for stock validation and atomic reservation
  */
-export async function createOrder(data: CreateOrderData): Promise<Order> {
+export async function createOrder(
+  data: CreateOrderData,
+  options?: { signal?: AbortSignal }
+): Promise<Order> {
   const {
     customerInfo,
     passes,
@@ -25,7 +28,8 @@ export async function createOrder(data: CreateOrderData): Promise<Order> {
     metaEventId,
     metaFbp,
     metaFbc,
-    metaEventSourceUrl
+    metaEventSourceUrl,
+    presaleCsrfToken,
   } = data;
   
   // Validate required fields
@@ -42,11 +46,18 @@ export async function createOrder(data: CreateOrderData): Promise<Order> {
   // Use getApiBaseUrl() for consistent API routing
   const apiBase = getApiBaseUrl();
   
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (presaleCsrfToken) {
+    headers['X-Presale-CSRF'] = presaleCsrfToken;
+  }
+
   const response = await fetch(`${apiBase}/api/orders/create`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers,
+    credentials: 'include',
+    signal: options?.signal,
     body: JSON.stringify({
       customerInfo,
       passes,

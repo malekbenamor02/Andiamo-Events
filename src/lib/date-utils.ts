@@ -216,3 +216,26 @@ export function getDefaultAdminDashboardEventId(
   );
   return byCreated[0]?.id ?? '';
 }
+
+/**
+ * Events in the ambassador dashboard filter: same visibility as the admin event selector
+ * (`isEventOnAdminDashboardSelector` — active sales or start within lookback), plus hide
+ * test events off localhost. Gallery events are excluded by that helper. Presale stays included.
+ */
+export function filterAmbassadorDashboardEvents<
+  T extends {
+    date?: string | null;
+    event_type?: string | null;
+    event_status?: string | null;
+    is_test?: boolean | null;
+  },
+>(events: readonly T[], opts: { showTest: boolean }, now: Date = new Date()): T[] {
+  const filtered = events.filter((e) => {
+    if (!opts.showTest && e.is_test === true) return false;
+    return isEventOnAdminDashboardSelector(e.date ?? "", {
+      eventType: e.event_type ?? null,
+      eventStatus: e.event_status ?? null,
+    }, now);
+  });
+  return sortEventsForAdminDashboardSelector(filtered, now);
+}

@@ -33,6 +33,7 @@ import {
   Edit,
   Save,
   X,
+  Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -67,6 +68,12 @@ export interface OnlineOrderDetailsDialogProps {
     payment_confirm_response?: unknown;
     fee_amount?: number | null;
     total_with_fees?: number | null;
+    /** Presale code attribution (set when the order was placed via a presale-gated event). */
+    presale_code_id?: string | null;
+    /** When an admin manually updates payment_status (online orders). */
+    payment_status_set_by?: string | null;
+    payment_status_set_at?: string | null;
+    payment_status_set_by_name?: string | null;
   } | null;
   language: "en" | "fr";
   onUpdateStatus: (orderId: string, newStatus: "PENDING_PAYMENT" | "PAID" | "FAILED" | "REFUNDED" | "EXPIRED") => void | Promise<void>;
@@ -170,6 +177,47 @@ export function OnlineOrderDetailsDialog({
     paymentFees = null;
   }
 
+  // Read presale snapshot persisted by the order-create handler. The admin client uses the anon
+  // key, so the underlying `presale_codes` row is hidden by RLS — the snapshot in `notes.presale`
+  // is the source of truth for this view.
+  let presaleInfo: {
+    code_id?: string;
+    code_label?: string | null;
+    discount_type?: "percent" | "fixed" | string;
+    discount_value?: number;
+    original_subtotal?: number;
+    discounted_subtotal?: number;
+  } | null = null;
+  try {
+    if (order?.notes) {
+      const raw = order.notes as unknown;
+      const notesData = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const p = (notesData as { presale?: Record<string, unknown> } | null)?.presale;
+      if (p && typeof p === "object") {
+        presaleInfo = {
+          code_id: typeof p.code_id === "string" ? (p.code_id as string) : undefined,
+          code_label: typeof p.code_label === "string" ? (p.code_label as string) : null,
+          discount_type: typeof p.discount_type === "string" ? (p.discount_type as string) : undefined,
+          discount_value: typeof p.discount_value === "number" ? (p.discount_value as number) : undefined,
+          original_subtotal: typeof p.original_subtotal === "number" ? (p.original_subtotal as number) : undefined,
+          discounted_subtotal: typeof p.discounted_subtotal === "number" ? (p.discounted_subtotal as number) : undefined,
+        };
+      }
+    }
+  } catch (e) {
+    presaleInfo = null;
+  }
+
+  const isPresaleOrder = !!order?.presale_code_id || !!presaleInfo;
+
+  const formatPresaleDiscount = () => {
+    if (!presaleInfo || presaleInfo.discount_value == null) return null;
+    if (presaleInfo.discount_type === "percent") {
+      return `${Number(presaleInfo.discount_value).toFixed(0)}%`;
+    }
+    return `${Number(presaleInfo.discount_value).toFixed(2)} TND`;
+  };
+
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(
       () => toast({ title: language === "en" ? "Copied" : "Copié", description: `${label} ${language === "en" ? "copied to clipboard" : "copié dans le presse-papiers"}`, variant: "default" }),
@@ -192,7 +240,7 @@ export function OnlineOrderDetailsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-full max-w-[100vw] left-0 translate-x-0 p-3 sm:p-6 sm:left-1/2 sm:translate-x-[-50%] sm:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
+        className="w-full max-w-[100vw] left-0 translate-x-0 p-3 sm:p-6 sm:left-1/2 sm:translate-x-[-50%] sm:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden scrollbar-hidden"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
@@ -266,14 +314,27 @@ export function OnlineOrderDetailsDialog({
                           "outline"
                         }
                         className={
-                          order.payment_status === "PAID" ? "bg-green-500 text-white border-green-600" :
-                          order.payment_status === "EXPIRED" ? "bg-blue-500 text-white border-blue-600" :
-                          order.payment_status === "FAILED" || order.payment_status === "REFUNDED" ? "bg-red-500 text-white border-red-600" :
+                          order.payment_status === "PAID" ? "bg-green-500 hover:bg-green-500 text-white border-green-600" :
+                          order.payment_status === "EXPIRED" ? "bg-blue-500 hover:bg-blue-500 text-white border-blue-600" :
+                          order.payment_status === "FAILED" || order.payment_status === "REFUNDED" ? "bg-red-500 hover:bg-red-500 text-white border-red-600" :
                           ""
                         }
                       >
                         {order.payment_status || "PENDING_PAYMENT"}
                       </Badge>
+                      {isPresaleOrder && (
+                        <Badge
+                          variant="default"
+                          className="bg-indigo-500 hover:bg-indigo-500 text-white border-indigo-600 inline-flex items-center gap-1"
+                          title={presaleInfo?.code_label
+                            ? `${language === "en" ? "Presale code" : "Code presale"}: ${presaleInfo.code_label}`
+                            : (language === "en" ? "Placed via presale" : "Commande presale")}
+                        >
+                          <Tag className="w-3 h-3" />
+                          {language === "en" ? "Presale" : "Presale"}
+                          {presaleInfo?.code_label ? ` · ${presaleInfo.code_label}` : ""}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-1">
@@ -309,6 +370,33 @@ export function OnlineOrderDetailsDialog({
                         const month = String(d.getMonth() + 1).padStart(2, "0");
                         return `${day}/${month}/${d.getFullYear()}, ${d.toLocaleTimeString(language === "en" ? "en-GB" : "fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
                       })()}</p>
+                    </div>
+                  )}
+                  {(order.payment_status_set_by ||
+                    order.payment_status_set_at ||
+                    (order.payment_status_set_by_name && order.payment_status_set_by_name.trim())) && (
+                    <div className="space-y-1 md:col-span-2">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Settings className="w-3 h-3" />
+                        {language === "en" ? "Payment status (manual)" : "Statut de paiement (manuel)"}
+                      </Label>
+                      <p className="text-sm">
+                        {language === "en" ? "Set by" : "Défini par"}:{" "}
+                        <span className="font-medium">
+                          {order.payment_status_set_by_name?.trim() ||
+                            (language === "en" ? "Admin (name not recorded)" : "Admin (nom non enregistré)")}
+                        </span>
+                      </p>
+                      {order.payment_status_set_at ? (
+                        <p className="text-xs text-muted-foreground">
+                          {(() => {
+                            const d = new Date(order.payment_status_set_at);
+                            const day = String(d.getDate()).padStart(2, "0");
+                            const month = String(d.getMonth() + 1).padStart(2, "0");
+                            return `${day}/${month}/${d.getFullYear()}, ${d.toLocaleTimeString(language === "en" ? "en-GB" : "fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+                          })()}
+                        </p>
+                      ) : null}
                     </div>
                   )}
                   {order.total_price && (
@@ -539,9 +627,47 @@ export function OnlineOrderDetailsDialog({
                                   </TableCell>
                                 </TableRow>
                               ))}
+                              {presaleInfo && typeof presaleInfo.original_subtotal === "number" && (
+                                <TableRow>
+                                  <TableCell colSpan={3} className="text-right text-sm text-muted-foreground">
+                                    {language === "en" ? "Original Subtotal" : "Sous-total Initial"}
+                                  </TableCell>
+                                  <TableCell className="text-sm text-muted-foreground line-through">
+                                    {presaleInfo.original_subtotal.toFixed(2)} TND
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                              {presaleInfo && (
+                                <TableRow>
+                                  <TableCell colSpan={3} className="text-right text-sm">
+                                    <span className="inline-flex items-center gap-1.5 justify-end flex-wrap">
+                                      <Tag className="w-3.5 h-3.5 text-indigo-500" />
+                                      <span className="text-muted-foreground">
+                                        {language === "en" ? "Presale Code" : "Code Presale"}:
+                                      </span>
+                                      <span className="font-mono font-semibold">
+                                        {presaleInfo.code_label || (language === "en" ? "(no label)" : "(sans libellé)")}
+                                      </span>
+                                      {formatPresaleDiscount() && (
+                                        <Badge className="bg-indigo-500 hover:bg-indigo-500 text-white border-indigo-600 text-[10px] px-1.5 py-0 h-5">
+                                          -{formatPresaleDiscount()}
+                                        </Badge>
+                                      )}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                    {typeof presaleInfo.original_subtotal === "number" &&
+                                    typeof presaleInfo.discounted_subtotal === "number"
+                                      ? `-${Math.max(0, presaleInfo.original_subtotal - presaleInfo.discounted_subtotal).toFixed(2)} TND`
+                                      : "—"}
+                                  </TableCell>
+                                </TableRow>
+                              )}
                               <TableRow className="font-bold border-t-2">
                                 <TableCell colSpan={3} className="text-right">
-                                  {language === "en" ? "Subtotal (without fees)" : "Sous-total (hors frais)"}
+                                  {presaleInfo
+                                    ? (language === "en" ? "Subtotal (after discount, without fees)" : "Sous-total (après remise, hors frais)")
+                                    : (language === "en" ? "Subtotal (without fees)" : "Sous-total (hors frais)")}
                                 </TableCell>
                                 <TableCell className="text-lg">
                                   {calculatedTotal.toFixed(2)} TND
@@ -610,9 +736,45 @@ export function OnlineOrderDetailsDialog({
                             );
                           })}
 
+                          {presaleInfo && typeof presaleInfo.original_subtotal === "number" && (
+                            <div className="space-y-0.5">
+                              <div className="text-sm text-muted-foreground">
+                                {language === "en" ? "Original Subtotal" : "Sous-total Initial"}
+                              </div>
+                              <div className="text-sm text-muted-foreground line-through">
+                                {presaleInfo.original_subtotal.toFixed(2)} TND
+                              </div>
+                            </div>
+                          )}
+
+                          {presaleInfo && (
+                            <div className="space-y-0.5">
+                              <div className="text-sm text-muted-foreground inline-flex items-center gap-1.5 flex-wrap">
+                                <Tag className="w-3.5 h-3.5 text-indigo-500" />
+                                <span>{language === "en" ? "Presale Code" : "Code Presale"}:</span>
+                                <span className="font-mono font-semibold text-foreground">
+                                  {presaleInfo.code_label || (language === "en" ? "(no label)" : "(sans libellé)")}
+                                </span>
+                                {formatPresaleDiscount() && (
+                                  <Badge className="bg-indigo-500 hover:bg-indigo-500 text-white border-indigo-600 text-[10px] px-1.5 py-0 h-5">
+                                    -{formatPresaleDiscount()}
+                                  </Badge>
+                                )}
+                              </div>
+                              {typeof presaleInfo.original_subtotal === "number" &&
+                                typeof presaleInfo.discounted_subtotal === "number" && (
+                                  <div className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                    -{Math.max(0, presaleInfo.original_subtotal - presaleInfo.discounted_subtotal).toFixed(2)} TND
+                                  </div>
+                                )}
+                            </div>
+                          )}
+
                           <div className="pt-2 border-t border-border">
                             <div className="text-sm font-semibold text-muted-foreground">
-                              {language === "en" ? "Subtotal (without fees)" : "Sous-total (hors frais)"}
+                              {presaleInfo
+                                ? (language === "en" ? "Subtotal (after discount, without fees)" : "Sous-total (après remise, hors frais)")
+                                : (language === "en" ? "Subtotal (without fees)" : "Sous-total (hors frais)")}
                             </div>
                             <div className="text-base font-semibold">
                               {calculatedTotal.toFixed(2)} TND
@@ -692,7 +854,7 @@ export function OnlineOrderDetailsDialog({
                           />
                         </div>
                         <pre
-                          className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-x-auto overflow-y-auto max-h-40 whitespace-pre-wrap break-all w-full"
+                          className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-x-auto overflow-y-auto max-h-40 whitespace-pre-wrap break-all w-full scrollbar-hidden"
                           style={{ WebkitOverflowScrolling: "touch" }}
                         >
                           {JSON.stringify(order.payment_response_data, null, 2)}
@@ -726,7 +888,7 @@ export function OnlineOrderDetailsDialog({
                       />
                     </div>
                     <pre
-                      className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-x-auto overflow-y-auto max-h-40 whitespace-pre-wrap break-all w-full"
+                      className="mt-2 p-3 bg-background border rounded-lg text-xs overflow-x-auto overflow-y-auto max-h-40 whitespace-pre-wrap break-all w-full scrollbar-hidden"
                       style={{ WebkitOverflowScrolling: "touch" }}
                     >
                       {JSON.stringify(order.payment_confirm_response, null, 2)}

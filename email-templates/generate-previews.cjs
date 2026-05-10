@@ -4,6 +4,8 @@
  * Regenerates browser-preview HTML files under email-templates/previews/
  * from the same builders used in production (plus a few fixed-layout snapshots).
  *
+ * Hand-maintained (this script does not overwrite): 12-premium-desktop-ticket.html, 13-premium-desktop-ticket-poster.html
+ *
  * Run from repo root: node email-templates/generate-previews.cjs
  */
 

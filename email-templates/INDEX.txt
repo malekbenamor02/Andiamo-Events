@@ -26,6 +26,10 @@ Files:
   09-security-alert.html                — snapshot (server.cjs inline alert)
   10-order-completion-cod-rich.html     — snapshot (server send-order-completion-email)
   11-order-completion-cod-simple.html   — snapshot (alternate completion template in server)
+  12-premium-desktop-ticket.html      — static mockup (stock bg + white logo); open in browser or gallery
+  13-premium-desktop-ticket-poster.html — poster-style bg (Unsplash, overridable for PDF script); prod PDF: api/lib/premium-ticket-page-html.cjs
+  13-premium-desktop-ticket-poster.pdf — npm run email:ticket-poster-pdf (gitignored; optional EVENT_POSTER_URL / argv poster override)
+  (Premium ticket PDFs for real emails: api/lib/render-premium-ticket-pdf.cjs — local/dev: PUPPETEER_EXECUTABLE_PATH or CHROMIUM_PATH; Vercel: @sparticuz/chromium when VERCEL is set)
 
 Not generated here (still inline in code — similar visual family as 01/03):
   • POS pending + ticket emails: api/pos.js, api/admin-pos.js
@@ -41,3 +45,5 @@ SOURCE MODULES (edit design here, then re-run generate-previews.cjs)
   api/lib/official-invitation-email-html.cjs
   api/lib/campaign-email-html.cjs
   api/lib/career-email-base-html.cjs
+  api/lib/premium-ticket-page-html.cjs  (PDF page HTML + inline CSS)
+  api/lib/purchase-channel-label.cjs   (Online / POS / invitation / COD→ambassador)

@@ -112,11 +112,7 @@ function InvestorContactsAdmin({ language }: { language: "en" | "fr" }) {
         <CardTitle className="text-base">
           {language === "en" ? "Investor email list" : "Liste e-mails investisseurs"}
         </CardTitle>
-        <CardDescription>
-          {language === "en"
-            ? "Used as a source when launching a campaign with “Investor contacts” checked. One email per line."
-            : "Source lors du lancement si « Contacts investisseurs » est coché. Une adresse par ligne."}
-        </CardDescription>
+        <CardDescription />
       </CardHeader>
       <CardContent className="space-y-3">
         {loading ? (
@@ -317,11 +313,7 @@ export function MarketingTab(p: MarketingTabProps) {
                       <CardTitle className="text-base">
                         {p.language === "en" ? "Campaign results" : "Résultats des campagnes"}
                       </CardTitle>
-                      <CardDescription>
-                        {p.language === "en"
-                          ? "OK / Fail / Pending / Total. Rows refresh automatically while an email send is in progress."
-                          : "OK / échecs / en attente / total. Actualisation automatique pendant un envoi email en cours."}
-                      </CardDescription>
+                      <CardDescription />
                     </div>
                     <Button variant="outline" size="sm" onClick={() => fetchCampaigns()}>
                       <RefreshCw className="w-4 h-4 mr-2" />

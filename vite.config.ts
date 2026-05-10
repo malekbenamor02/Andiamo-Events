@@ -72,6 +72,12 @@ export default defineConfig(({ mode }) => {
       },
     },
 
+    // @ffmpeg/ffmpeg spawns ./worker.js relative to import.meta.url; pre-bundling into
+    // node_modules/.vite/deps breaks that path (missing worker.js in deps). Keep it external.
+    optimizeDeps: {
+      exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util"],
+    },
+
     build: {
       outDir: "dist",
       assetsDir: "assets",
