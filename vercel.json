@@ -44,6 +44,10 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/verify-admin",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin-logout",
       "destination": "/api/misc.js"
     },
@@ -97,35 +101,35 @@
     },
     {
       "source": "/api/presale/required",
-      "destination": "/api/presale-required.js"
+      "destination": "/api/presale.js"
     },
     {
       "source": "/api/presale/redeem",
-      "destination": "/api/presale-redeem.js"
+      "destination": "/api/presale.js"
     },
     {
       "source": "/api/presale/session/clear",
-      "destination": "/api/presale-session.js"
+      "destination": "/api/presale.js"
     },
     {
       "source": "/api/presale/session",
-      "destination": "/api/presale-session.js"
+      "destination": "/api/presale.js"
     },
     {
       "source": "/api/admin/presale/codes/:id/max-redemptions",
-      "destination": "/api/presale-admin-codes.js"
+      "destination": "/api/presale.js"
     },
     {
       "source": "/api/admin/presale/codes/:id/unpause",
-      "destination": "/api/presale-admin-codes.js"
+      "destination": "/api/presale.js"
     },
     {
       "source": "/api/admin/presale/codes/:id/pause",
-      "destination": "/api/presale-admin-codes.js"
+      "destination": "/api/presale.js"
     },
     {
       "source": "/api/admin/presale/codes",
-      "destination": "/api/presale-admin-codes.js"
+      "destination": "/api/presale.js"
     },
     {
       "source": "/api/aio-events/save-submission",
@@ -515,26 +519,14 @@
       "maxDuration": 60,
       "memory": 1024
     },
-    "api/verify-admin.js": {
-      "maxDuration": 30
-    },
     "api/orders-create.js": {
       "maxDuration": 60
     },
     "api/passes-[eventId].js": {
       "maxDuration": 30
     },
-    "api/presale-required.js": {
-      "maxDuration": 15
-    },
-    "api/presale-redeem.js": {
-      "maxDuration": 30
-    },
-    "api/presale-session.js": {
-      "maxDuration": 15
-    },
-    "api/presale-admin-codes.js": {
-      "maxDuration": 30
+    "api/presale.js": {
+      "maxDuration": 60
     },
     "api/misc.js": {
       "maxDuration": 60,

@@ -4,6 +4,7 @@
 
 import '../lib/sentry-server.js';
 import { verifyAdminAuth } from './lib/admin-verify.js';
+import { handleVerifyAdmin } from './lib/verify-admin-http.js';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -1024,6 +1025,10 @@ export default async (req, res) => {
   }
   if (/^\/wp-includes\//.test(path)) {
     return res.status(410).end();
+  }
+
+  if (path === '/api/verify-admin') {
+    return handleVerifyAdmin(req, res);
   }
 
   // Career routes (public + admin) — handled by Express app from careerRoutes.cjs

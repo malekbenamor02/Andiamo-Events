@@ -12408,81 +12408,22 @@ async function handleClicToPayConfirm(req, res, next) {
 }
 app.all('/api/clictopay-confirm-payment', (req, res, next) => handleClicToPayConfirm(req, res, next));
 
-// Presale (local dev — Vercel uses vercel.json rewrites)
-async function handlePresaleRedeem(req, res, next) {
+// Presale (local dev — same handler as Vercel: api/presale.js)
+async function handlePresaleApi(req, res, next) {
   try {
-    const handler = (await import('./api/presale-redeem.js')).default;
+    const handler = (await import('./api/presale.js')).default;
     req.url = req.originalUrl || req.url;
     await handler(req, res);
   } catch (e) {
-    console.error('[/api/presale/redeem]', e);
+    console.error('[/api/presale]', e);
     next(e);
   }
 }
-app.all('/api/presale/redeem', (req, res, next) => handlePresaleRedeem(req, res, next));
-
-async function handlePresaleRequired(req, res, next) {
-  try {
-    req.url = req.originalUrl || req.url;
-    const raw = req.query?.eventId;
-    const eventId = Array.isArray(raw) ? raw[0] : raw;
-    if (!eventId || !String(eventId).trim()) {
-      return res.status(400).json({ error: 'eventId required' });
-    }
-    const id = String(eventId).trim();
-    const dbClient = supabaseService || supabase;
-    if (!dbClient) {
-      return res.status(503).json({ error: 'Supabase not configured' });
-    }
-    const { data, error } = await dbClient
-      .from('events')
-      .select('presale_enabled')
-      .eq('id', id)
-      .maybeSingle();
-    if (error) {
-      console.error('presale-required', error);
-      const msg = error.message || String(error);
-      const network = /fetch failed|ECONNREFUSED|ENOTFOUND|getaddrinfo|certificate/i.test(msg);
-      return res.status(network ? 503 : 500).json({
-        error: network ? 'supabase_unreachable' : 'query failed',
-        details: msg,
-      });
-    }
-    if (!data) {
-      return res.status(404).json({ required: false, found: false });
-    }
-    return res.status(200).json({ required: !!data.presale_enabled, found: true });
-  } catch (e) {
-    console.error('[/api/presale/required]', e);
-    next(e);
-  }
-}
-app.all('/api/presale/required', (req, res, next) => handlePresaleRequired(req, res, next));
-
-async function handlePresaleSession(req, res, next) {
-  try {
-    const handler = (await import('./api/presale-session.js')).default;
-    req.url = req.originalUrl || req.url;
-    await handler(req, res);
-  } catch (e) {
-    console.error('[/api/presale/session]', e);
-    next(e);
-  }
-}
-app.all('/api/presale/session/clear', (req, res, next) => handlePresaleSession(req, res, next));
-app.all('/api/presale/session', (req, res, next) => handlePresaleSession(req, res, next));
-
-async function handlePresaleAdminCodes(req, res, next) {
-  try {
-    const handler = (await import('./api/presale-admin-codes.js')).default;
-    req.url = req.originalUrl || req.url;
-    await handler(req, res);
-  } catch (e) {
-    console.error('[/api/admin/presale/codes]', e);
-    next(e);
-  }
-}
-app.all(/^\/api\/admin\/presale\/codes.*$/, (req, res, next) => handlePresaleAdminCodes(req, res, next));
+app.all('/api/presale/redeem', (req, res, next) => handlePresaleApi(req, res, next));
+app.all('/api/presale/required', (req, res, next) => handlePresaleApi(req, res, next));
+app.all('/api/presale/session/clear', (req, res, next) => handlePresaleApi(req, res, next));
+app.all('/api/presale/session', (req, res, next) => handlePresaleApi(req, res, next));
+app.all(/^\/api\/admin\/presale\/codes.*$/, (req, res, next) => handlePresaleApi(req, res, next));
 
 // Catch-all 404 handler for undefined API routes
 app.use('/api', (req, res) => {

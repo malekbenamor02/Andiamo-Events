@@ -1,9 +1,7 @@
 /**
- * GET /api/presale/session?eventId= — validate cookie session (no CSRF in body; use POST for CSRF).
- * POST /api/presale/session — JSON { eventId } — same validation + returns csrfToken (no-store).
- * POST /api/presale/session/clear — invalidate session (by cookie id) + clear cookie (no CSRF; gate reset on each load)
+ * GET/POST /api/presale/session, POST /api/presale/session/clear
  */
-import '../lib/sentry-server.js';
+import '../../lib/sentry-server.js';
 import { createClient } from '@supabase/supabase-js';
 import {
   parseCookie,
@@ -11,11 +9,11 @@ import {
   PRESALE_CSRF_HEADER,
   fetchValidPresaleSessionRow,
   clearPresaleCookieHeader,
-} from './lib/presale-server.js';
+} from './presale-server.js';
 
 let corsUtils = null;
 async function getCorsUtils() {
-  if (!corsUtils) corsUtils = await import('../lib/cors.js');
+  if (!corsUtils) corsUtils = await import('../../lib/cors.js');
   return corsUtils;
 }
 
@@ -43,7 +41,7 @@ async function readJsonBody(req) {
   }
 }
 
-export default async function handler(req, res) {
+export async function handlePresaleSession(req, res) {
   const { setCORSHeaders, handlePreflight } = await getCorsUtils();
   if (handlePreflight(req, res, {
     methods: 'GET, POST, OPTIONS',

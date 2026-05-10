@@ -1,6 +1,6 @@
 /**
  * Shared presale helpers (HMAC code hash, CSRF, cookie name, IP, order gate, pricing).
- * Used by presale-redeem, presale-session, passes-[eventId], orders-create, server.cjs.
+ * Used by presale routes, passes-[eventId], orders-create, server.cjs.
  */
 import crypto from 'crypto';
 

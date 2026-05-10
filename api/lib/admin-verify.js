@@ -1,5 +1,5 @@
 /**
- * Shared admin JWT + DB verification (used by misc.js and presale-admin-codes).
+ * Shared admin JWT + DB verification (used by misc.js and presale-route-admin-codes).
  */
 export async function verifyAdminAuth(req) {
   try {

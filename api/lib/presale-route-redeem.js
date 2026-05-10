@@ -1,8 +1,7 @@
 /**
  * POST /api/presale/redeem
- * Body: { eventId, code, recaptchaToken }
  */
-import '../lib/sentry-server.js';
+import '../../lib/sentry-server.js';
 import { createClient } from '@supabase/supabase-js';
 import {
   getClientIp,
@@ -10,11 +9,11 @@ import {
   newCsrfToken,
   presaleCookieHeaderValue,
   requirePresalePepperOr503,
-} from './lib/presale-server.js';
+} from './presale-server.js';
 
 let corsUtils = null;
 async function getCorsUtils() {
-  if (!corsUtils) corsUtils = await import('../lib/cors.js');
+  if (!corsUtils) corsUtils = await import('../../lib/cors.js');
   return corsUtils;
 }
 
@@ -44,7 +43,7 @@ function requireServiceDb(res) {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-export default async function handler(req, res) {
+export async function handlePresaleRedeem(req, res) {
   const { setCORSHeaders, handlePreflight } = await getCorsUtils();
   if (handlePreflight(req, res, {
     methods: 'POST, OPTIONS',

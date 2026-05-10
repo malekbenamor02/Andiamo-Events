@@ -1,13 +1,11 @@
 /**
- * Admin presale codes: GET/POST /api/admin/presale/codes,
- * POST .../:id/pause|unpause|max-redemptions
+ * Admin presale codes API (paths under /api/admin/presale/codes)
  */
-import '../lib/sentry-server.js';
+import '../../lib/sentry-server.js';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAdminAuth } from './lib/admin-verify.js';
-import { hashPresaleCode, requirePresalePepperOr503 } from './lib/presale-server.js';
+import { verifyAdminAuth } from './admin-verify.js';
+import { hashPresaleCode, requirePresalePepperOr503 } from './presale-server.js';
 
-/** Pathname only; supports `req.url` as `/path?qs` or absolute `https://host/path?qs` (some serverless adapters). */
 function getPathname(req) {
   const raw = String(req.url || req.path || '');
   if (!raw) return '';
@@ -40,7 +38,7 @@ async function readJsonBody(req) {
   }
 }
 
-export default async function handler(req, res) {
+export async function handlePresaleAdminCodes(req, res) {
   try {
     const auth = await verifyAdminAuth(req);
     if (!auth.valid) {
@@ -117,7 +115,6 @@ export default async function handler(req, res) {
           console.error('presale_codes insert label repair failed', repairErr);
         }
       }
-      // Always echo the submitted plaintext as `label` for the admin UI (same value persisted in `row.label`).
       return res.status(200).json({
         success: true,
         id,

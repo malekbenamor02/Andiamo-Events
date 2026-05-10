@@ -1,14 +1,13 @@
 /**
  * GET /api/presale/required?eventId=
- * Authoritative presale flag from DB (same source as /api/passes gating).
- * Public read — events.presale_enabled is readable with anon RLS; service role preferred when set.
+ * (Bundled into api/presale.js for Vercel Hobby serverless count.)
  */
-import '../lib/sentry-server.js';
+import '../../lib/sentry-server.js';
 import { createClient } from '@supabase/supabase-js';
 
 let corsUtils = null;
 async function getCorsUtils() {
-  if (!corsUtils) corsUtils = await import('../lib/cors.js');
+  if (!corsUtils) corsUtils = await import('../../lib/cors.js');
   return corsUtils;
 }
 
@@ -27,7 +26,7 @@ function dbClient() {
   return createClient(url, anon);
 }
 
-export default async function handler(req, res) {
+export async function handlePresaleRequired(req, res) {
   const { setCORSHeaders, handlePreflight } = await getCorsUtils();
   if (handlePreflight(req, res, { methods: 'GET, OPTIONS', headers: 'Content-Type', credentials: true })) return;
   if (!setCORSHeaders(res, req, { methods: 'GET, OPTIONS', headers: 'Content-Type', credentials: true })) {
