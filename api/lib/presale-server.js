@@ -180,7 +180,8 @@ function roundPresaleMoney(n) {
 }
 
 /**
- * Mutates validatedPasses[].price from list prices using presale code row (percent or fixed spread).
+ * Mutates validatedPasses[].price from list prices using presale code row.
+ * Percent: same % off each pass list price. Fixed: subtract discount_value from each unit (per pass).
  * @param {Array<{ price: number, quantity: number, eventPass: { price: unknown } }>} validatedPasses
  * @param {Record<string, unknown>} codeRow presale_codes row
  */
@@ -195,15 +196,10 @@ export function applyPresaleDiscountToPasses(validatedPasses, codeRow) {
     }
     return;
   }
-  const subtotal = validatedPasses.reduce(
-    (s, p) => s + parseFloat(p.eventPass.price) * p.quantity,
-    0
-  );
-  const fixed = Math.min(subtotal, Math.max(0, parseFloat(codeRow.discount_value)));
-  const factor = subtotal <= 0 ? 1 : Math.max(0, (subtotal - fixed) / subtotal);
+  const fixedPerUnit = Math.max(0, parseFloat(codeRow.discount_value));
   for (const vp of validatedPasses) {
     const base = parseFloat(vp.eventPass.price);
-    vp.price = roundPresaleMoney(Math.max(0, base * factor));
+    vp.price = roundPresaleMoney(Math.max(0, base - fixedPerUnit));
   }
 }
 

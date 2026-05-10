@@ -1123,8 +1123,8 @@ export function EventsTab(p: EventsTabProps) {
                                             className="flex rounded-md border border-input bg-background shadow-sm overflow-hidden"
                                             title={
                                               p.language === "en"
-                                                ? "Left: % or TND. Right: number (e.g. 10 = 10% or 10 TND off)."
-                                                : "Gauche : % ou TND. Droite : nombre (ex. 10 = 10 % ou 10 TND)."
+                                                ? "Left: % or TND per unit. Right: number (e.g. 10 = 10% off list, or 10 TND off each pass)."
+                                                : "Gauche : % ou TND par unité. Droite : nombre (ex. 10 = 10 % sur le prix, ou 10 TND par pass)."
                                             }
                                           >
                                             <Select
@@ -1153,8 +1153,8 @@ export function EventsTab(p: EventsTabProps) {
                                                     ? "Amount e.g. 10 (= 10% off)"
                                                     : "Montant ex. 10 (= 10 %)"
                                                   : p.language === "en"
-                                                    ? "Amount e.g. 10 (= 10 TND off)"
-                                                    : "Montant ex. 10 (= 10 TND)"
+                                                    ? "Amount e.g. 10 (= 10 TND off each pass)"
+                                                    : "Montant ex. 10 (= 10 TND par pass)"
                                               }
                                               value={newPresale.discount_value}
                                               onChange={(e) =>

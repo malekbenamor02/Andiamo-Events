@@ -134,7 +134,7 @@ function clearPresaleCsrfFromStorage(eventId: string) {
   }
 }
 
-/** Same proportional rules as server `applyPresaleDiscountToPasses` (fixed = spread across line totals). */
+/** Same rules as server `applyPresaleDiscountToPasses` (fixed = amount off each unit). */
 function presaleAdjustedUnitPrice(
   unitList: number,
   cartLines: { unitList: number; qty: number }[],
@@ -147,9 +147,8 @@ function presaleAdjustedUnitPrice(
     const pct = Math.min(100, Math.max(0, disc.discount_value));
     return roundMoneyDisplay(Math.max(0, unitList * (1 - pct / 100)));
   }
-  const fixed = Math.min(subtotal, Math.max(0, disc.discount_value));
-  const factor = Math.max(0, (subtotal - fixed) / subtotal);
-  return roundMoneyDisplay(Math.max(0, unitList * factor));
+  const fixedPerUnit = Math.max(0, disc.discount_value);
+  return roundMoneyDisplay(Math.max(0, unitList - fixedPerUnit));
 }
 
 function mapPassesFromApiResponse(passesData: unknown[]): EventPass[] {
@@ -1732,11 +1731,11 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                         const remainingQuantity = pass.remaining_quantity ?? 0;
                         const maxAllowed = Math.min(10, remainingQuantity);
                         const isLowStock = !isSoldOut && remainingQuantity <= 5;
-                        const pricePreviewLines =
-                          quantity > 0 ? presaleLineList : [{ unitList: pass.price, qty: 1 }];
+                        /** Card shows unit price for this pass type only (qty 1); checkout uses full cart lines. */
+                        const pricePreviewLinesForCard = [{ unitList: pass.price, qty: 1 }];
                         const displayUnitPrice = presaleAdjustedUnitPrice(
                           pass.price,
-                          pricePreviewLines,
+                          pricePreviewLinesForCard,
                           presaleDiscountMeta
                         );
                         const showPresaleStrike =
