@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
 const { sendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/transactional-email.cjs'));
+const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/can-send-transactional-email.cjs'));
 const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./lib/render-premium-ticket-pdf.cjs');
 
 // Helper function to format event time
@@ -636,7 +637,7 @@ export default async (req, res) => {
         `).join('');
         
         // Send email with QR codes
-        if (fullOrder.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
+        if (fullOrder.user_email && canSendTransactionalEmail()) {
           try {
             const nodemailer = await import('nodemailer');
             const getEmailTransporter = () =>

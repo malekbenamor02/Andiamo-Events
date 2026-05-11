@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
 const { sendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/transactional-email.cjs'));
+const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/can-send-transactional-email.cjs'));
 import querystring from 'querystring';
 
 // Import shared CORS utility (using dynamic import for ES modules)
@@ -487,7 +488,7 @@ async function handleOrdersCreate(req, res, supabase, outletSlug) {
   } catch (smsE) { console.warn('POS order SMS failed:', smsE); }
 
   // Email (same structure as Payment Processing / ambassador order-received)
-  if (order.user_email && process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  if (order.user_email && canSendTransactionalEmail()) {
     try {
       const nodemailer = (await import('nodemailer')).default;
       const getEmailTransporter = () =>

@@ -42,6 +42,7 @@ const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot
 
 const { uploadTicketQrToR2OrSupabase } = requireFromRoot(path.join(__dirname, 'lib', 'r2-media.cjs'));
 const { sendTransactionalEmail } = requireFromRoot(path.join(__dirname, 'lib', 'transactional-email.cjs'));
+const { canSendTransactionalEmail } = requireFromRoot(path.join(__dirname, 'lib', 'can-send-transactional-email.cjs'));
 
 // Eager load with a static specifier so @vercel/nft bundles transitive deps (@sparticuz/chromium, puppeteer-core, pdf-lib).
 // Lazy require(path.join(...)) omitted those packages → runtime "Cannot find module '@sparticuz/chromium'" on Vercel.
@@ -3429,7 +3430,7 @@ ${fallbackUrls.map((u) => `  <url>\n    <loc>${esc(u.loc)}</loc>\n    <changefre
             const totalAmountFirst = fullOrder.total_with_fees ?? fullOrder.total_price ?? 0;
             const feeAmountFirst = typeof fullOrder.fee_amount === 'number' ? fullOrder.fee_amount : undefined;
             const subtotalAmountFirst = feeAmountFirst != null ? totalAmountFirst - feeAmountFirst : undefined;
-            if (fullOrder.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
+            if (fullOrder.user_email && canSendTransactionalEmail()) {
               try {
                 const nodemailer = await import('nodemailer');
                 const getEmailTransporter = () =>
@@ -3926,7 +3927,7 @@ We Create Memories`;
             }
             const feeAmount = typeof fullOrder.fee_amount === 'number' ? fullOrder.fee_amount : (isOnlineOrder && totalAmount > 0 ? inferFeeFromInclusiveTotal(totalAmount) : undefined);
             const subtotalAmount = feeAmount != null ? totalAmount - feeAmount : undefined;
-            if (fullOrder.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
+            if (fullOrder.user_email && canSendTransactionalEmail()) {
               try {
                 const nodemailer = await import('nodemailer');
                 const getEmailTransporter = () =>
@@ -4701,7 +4702,7 @@ Billets envoyés par email. We Create Memories`;
         let emailSent = false;
         let emailError = null;
         
-        if (order.user_email && process.env.EMAIL_USER && process.env.EMAIL_PASS && process.env.EMAIL_HOST) {
+        if (order.user_email && canSendTransactionalEmail()) {
           try {
             const nodemailer = await import('nodemailer');
             const getEmailTransporter = () =>

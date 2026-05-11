@@ -142,10 +142,26 @@ async function renderSinglePagePdf(htmlDocument) {
 }
 
 /**
- * Render one merged PDF for all ticket pages (single browser session, merged with pdf-lib).
- * @param {string[]} htmlDocuments
+ * PostgREST embed `events` is sometimes null; callers may omit `event` when only `order.event_id` exists.
+ * @param {object|null|undefined} order
+ * @param {object|null|undefined} event
  */
-async function renderMergedPremiumTicketsPdf(htmlDocuments) {
+function resolveEventForPdf(order, event) {
+  const fromOrder = order?.events && typeof order.events === 'object' ? order.events : null;
+  const primary = event && typeof event === 'object' ? event : fromOrder;
+  if (primary && (primary.name != null || primary.date != null || primary.id != null)) {
+    return primary;
+  }
+  return {
+    name: order?.event_name || fromOrder?.name || 'Event',
+    date: order?.event_date ?? fromOrder?.date ?? null,
+    venue: order?.event_venue ?? fromOrder?.venue ?? null,
+    city: order?.city ?? fromOrder?.city ?? null,
+    poster_url: order?.poster_url ?? fromOrder?.poster_url ?? null,
+  };
+}
+
+async function renderMergedPremiumTicketsPdfOnce(htmlDocuments) {
   const list = (htmlDocuments || []).filter((h) => h && typeof h === 'string');
   if (list.length === 0) return null;
 
@@ -193,10 +209,34 @@ async function renderMergedPremiumTicketsPdf(htmlDocuments) {
 }
 
 /**
+ * Render one merged PDF for all ticket pages (single browser session, merged with pdf-lib).
+ * Retries once on transient Chromium / page failures (common on cold serverless).
+ * @param {string[]} htmlDocuments
+ */
+async function renderMergedPremiumTicketsPdf(htmlDocuments) {
+  const list = (htmlDocuments || []).filter((h) => h && typeof h === 'string');
+  if (list.length === 0) return null;
+
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await renderMergedPremiumTicketsPdfOnce(list);
+    } catch (e) {
+      lastErr = e;
+      if (attempt === 0) {
+        console.warn('[premium-ticket-pdf] PDF render failed, retrying once:', e && e.message);
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+/**
  * Build optional PDF attachment for an order ticket email.
  * @param {object} params
  * @param {object} params.order
- * @param {object} params.event - joined events row
+ * @param {object} [params.event] - joined events row (optional if order.events or flat order fields exist)
  * @param {{ id?: string, qr_code_url?: string|null, order_pass_id?: string|null }[]} params.tickets
  * @param {{ id?: string, pass_type?: string|null }[]} params.orderPasses
  * @param {{ invitationMode?: boolean }} [params.opts]
@@ -204,13 +244,15 @@ async function renderMergedPremiumTicketsPdf(htmlDocuments) {
  */
 async function tryBuildPremiumTicketsPdfAttachment(params) {
   const { order, event, tickets, orderPasses, opts } = params || {};
-  if (!order || !event || !Array.isArray(tickets) || tickets.length === 0) return null;
+  if (!order || !Array.isArray(tickets) || tickets.length === 0) return null;
+
+  const eventResolved = resolveEventForPdf(order, event);
 
   const invitationMode = !!(opts && opts.invitationMode);
   const channelLabel = getPurchaseChannelLabel(order, invitationMode ? { mode: 'invitation' } : undefined);
 
   const logoUrl = getEmailLogoUrl();
-  const posterUrl = event.poster_url || null;
+  const posterUrl = eventResolved.poster_url || null;
 
   const [logoFetched, posterDataUrl] = await Promise.all([
     fetchUrlAsDataUrl(logoUrl),
@@ -244,10 +286,10 @@ async function tryBuildPremiumTicketsPdfAttachment(params) {
       : String(order.id || '').slice(0, 8).toUpperCase();
 
   const base = {
-    eventName: event.name || 'Event',
-    eventDateRaw: event.date,
-    venue: event.venue,
-    city: event.city,
+    eventName: eventResolved.name || 'Event',
+    eventDateRaw: eventResolved.date,
+    venue: eventResolved.venue,
+    city: eventResolved.city,
     posterDataUrl: posterDataUrl || null,
     logoDataUrl: logoResolved.src,
     guestName: order.user_name || order.guest_name || 'Guest',
