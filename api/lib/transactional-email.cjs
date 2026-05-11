@@ -76,6 +76,8 @@ function attachmentToBrevo(att) {
   const filename = att.filename || att.fileName || att.name || 'attachment';
   let buf;
   if (Buffer.isBuffer(att.content)) buf = att.content;
+  else if (att.content instanceof Uint8Array) buf = Buffer.from(att.content);
+  else if (att.content instanceof ArrayBuffer) buf = Buffer.from(att.content);
   else if (typeof att.content === 'string') {
     buf = Buffer.from(att.content, att.encoding === 'base64' ? 'base64' : 'utf8');
   } else {

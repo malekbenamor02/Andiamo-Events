@@ -4610,6 +4610,23 @@ Billets envoyés par email. We Create Memories`;
             details: orderError?.message || 'No order matches this id',
           });
         }
+
+        // PostgREST may return `events` as [{ ... }]; PDF/email need a single object. Fetch by event_id if embed missing.
+        if (Array.isArray(order.events) && order.events.length > 0 && typeof order.events[0] === 'object') {
+          order.events = order.events[0];
+        }
+        if ((!order.events || (!order.events.name && !order.events.date && !order.events.id)) && order.event_id) {
+          try {
+            const { data: evFetched, error: evFetchErr } = await dbClient
+              .from('events')
+              .select('id, name, date, venue, city, poster_url')
+              .eq('id', order.event_id)
+              .maybeSingle();
+            if (!evFetchErr && evFetched) order.events = evFetched;
+          } catch (e) {
+            console.warn('[admin-resend-ticket-email] Optional event fetch failed:', e && e.message);
+          }
+        }
         
         // Step 2: Validate order is PAID
         if (order.status !== 'PAID' && order.payment_status !== 'PAID') {
@@ -4794,6 +4811,22 @@ Billets envoyés par email. We Create Memories`;
               });
             } catch (pdfErr) {
               console.warn('Premium ticket PDF skipped (resend):', pdfErr && pdfErr.message);
+            }
+            if (premiumPdfResend && premiumPdfResend.content && !Buffer.isBuffer(premiumPdfResend.content)) {
+              premiumPdfResend = {
+                filename: premiumPdfResend.filename,
+                contentType: premiumPdfResend.contentType,
+                content: Buffer.from(premiumPdfResend.content),
+              };
+            }
+            if (!premiumPdfResend) {
+              const withQr = (tickets || []).filter((t) => t && t.qr_code_url).length;
+              console.warn('[admin-resend-ticket-email] No PDF attachment (build returned null)', {
+                orderId,
+                tickets: tickets?.length,
+                withQr,
+                hasEvent: !!order.events,
+              });
             }
             const mailOptsResend = {
               from: '"Andiamo Events" <contact@andiamoevents.com>',

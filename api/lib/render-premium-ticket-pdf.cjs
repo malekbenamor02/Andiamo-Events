@@ -2,7 +2,7 @@
 
 const { getPurchaseChannelLabel } = require('./purchase-channel-label.cjs');
 const { buildPremiumTicketsPdfHtmlDocument } = require('./premium-ticket-page-html.cjs');
-const { getEmailLogoUrl } = require('./email-branding.cjs');
+const { getEmailLogoUrl, getPublicSiteOrigin } = require('./email-branding.cjs');
 
 /**
  * Fetch a remote image and return a data URL (for reliable PDF rendering).
@@ -141,14 +141,26 @@ async function renderSinglePagePdf(htmlDocument) {
   }
 }
 
+/** PostgREST may return a joined row as `events` or `events: [{ ... }]` depending on relationship hints. */
+function normalizeEmbeddedRow(embed) {
+  if (!embed) return null;
+  if (Array.isArray(embed)) {
+    const first = embed[0];
+    return first && typeof first === 'object' ? first : null;
+  }
+  if (typeof embed === 'object') return embed;
+  return null;
+}
+
 /**
  * PostgREST embed `events` is sometimes null; callers may omit `event` when only `order.event_id` exists.
  * @param {object|null|undefined} order
  * @param {object|null|undefined} event
  */
 function resolveEventForPdf(order, event) {
-  const fromOrder = order?.events && typeof order.events === 'object' ? order.events : null;
-  const primary = event && typeof event === 'object' ? event : fromOrder;
+  const fromOrder = normalizeEmbeddedRow(order?.events);
+  const explicit = normalizeEmbeddedRow(event);
+  const primary = explicit || fromOrder;
   if (primary && (primary.name != null || primary.date != null || primary.id != null)) {
     return primary;
   }
@@ -159,6 +171,22 @@ function resolveEventForPdf(order, event) {
     city: order?.city ?? fromOrder?.city ?? null,
     poster_url: order?.poster_url ?? fromOrder?.poster_url ?? null,
   };
+}
+
+/** Puppeteer needs absolute https URLs for QR images (relative paths fail on file:// / blank origin). */
+function toAbsolutePublicUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const u = url.trim();
+  if (!u) return null;
+  if (u.startsWith('data:')) return u;
+  if (/^https?:\/\//i.test(u)) return u;
+  try {
+    const origin = getPublicSiteOrigin().replace(/\/$/, '');
+    if (u.startsWith('/')) return `${origin}${u}`;
+    return `${origin}/${u}`;
+  } catch {
+    return u;
+  }
 }
 
 async function renderMergedPremiumTicketsPdfOnce(htmlDocuments) {
@@ -273,7 +301,8 @@ async function tryBuildPremiumTicketsPdfAttachment(params) {
   const ticketRows = [];
   for (const t of tickets) {
     if (!t || !t.qr_code_url) continue;
-    const qrData = (await fetchUrlAsDataUrl(t.qr_code_url)) || t.qr_code_url;
+    const qrResolved = toAbsolutePublicUrl(t.qr_code_url) || t.qr_code_url;
+    const qrData = (await fetchUrlAsDataUrl(qrResolved)) || qrResolved;
     const pass = t.order_pass_id ? passById.get(t.order_pass_id) : null;
     const passType = (pass && pass.pass_type) || 'Pass';
     ticketRows.push({ passType, qrDataUrl: qrData });
