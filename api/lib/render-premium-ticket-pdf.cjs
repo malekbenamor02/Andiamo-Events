@@ -60,7 +60,14 @@ async function resolveLaunchConfig() {
   }
   if (process.env.VERCEL) {
     const chromium = require('@sparticuz/chromium');
-    chromium.setGraphicsMode(false);
+    // Removed in @sparticuz/chromium ≥ ~147; calling it throws and skips PDF generation.
+    if (typeof chromium.setGraphicsMode === 'function') {
+      try {
+        chromium.setGraphicsMode(false);
+      } catch (_) {
+        /* ignore */
+      }
+    }
     return {
       executablePath: await chromium.executablePath(),
       args: chromium.args,
