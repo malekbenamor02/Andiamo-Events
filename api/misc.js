@@ -4577,7 +4577,6 @@ Billets envoyés par email. We Create Memories`;
             total_with_fees,
             fee_amount,
             notes,
-            pass_type,
             quantity,
             events (
               id,
@@ -4685,15 +4684,22 @@ Billets envoyés par email. We Create Memories`;
           });
         }
         
-        const passes = orderPasses && orderPasses.length > 0
-          ? orderPasses
-          : [{
-              id: 'legacy',
-              order_id: orderId,
-              pass_type: order.pass_type || 'Standard',
-              quantity: order.quantity || 1,
-              price: order.total_price / (order.quantity || 1)
-            }];
+        const legacyTicketCount = Math.max(
+          1,
+          tickets.filter((t) => t && t.qr_code_url).length || tickets.length
+        );
+        const passes =
+          orderPasses && orderPasses.length > 0
+            ? orderPasses
+            : [
+                {
+                  id: 'legacy',
+                  order_id: orderId,
+                  pass_type: 'Standard',
+                  quantity: legacyTicketCount,
+                  price: Number(order.total_price || 0) / legacyTicketCount,
+                },
+              ];
         
         // Step 6: Build email HTML (reuse same template as ticket generation)
         // Group tickets by pass type
