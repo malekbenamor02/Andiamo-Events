@@ -39,6 +39,31 @@ async function verifyAdminAuth(req) {
   }
 }
 
+/** PostgREST may return `events` as [{…}]; PDF builder needs one row + poster URL when embed is missing. */
+async function ensureOrderEventsForPdf(sb, order) {
+  if (!order || typeof order !== 'object') return;
+  if (Array.isArray(order.events) && order.events.length > 0 && typeof order.events[0] === 'object') {
+    order.events = order.events[0];
+  }
+  if ((!order.events || (!order.events.name && !order.events.date && !order.events.id)) && order.event_id) {
+    const { data } = await sb
+      .from('events')
+      .select('id, name, date, venue, city, poster_url')
+      .eq('id', order.event_id)
+      .maybeSingle();
+    if (data) order.events = data;
+  }
+}
+
+function normalizeTicketPdfAttachment(att) {
+  if (!att || !att.content || Buffer.isBuffer(att.content)) return att;
+  return {
+    filename: att.filename,
+    contentType: att.contentType,
+    content: Buffer.from(att.content),
+  };
+}
+
 async function getSupabase() {
   const { createClient } = await import('@supabase/supabase-js');
   const url = process.env.SUPABASE_URL;
@@ -473,6 +498,7 @@ async function ordersResendTickets(sb, id, auth, req, res) {
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>Your Digital Tickets - Andiamo Events</title><style>${transactionalEmailDarkStylesCss()}</style></head><body>${emailLogoHeaderHtml()}<div class="email-wrapper"><div class="content-card"><div class="title-section"><h1 class="title">Your Tickets Are Ready</h1><p class="subtitle">Order Confirmation - Andiamo Events</p></div><p class="greeting">Dear <strong>${(order.user_name || 'Valued Customer').replace(/</g, '&lt;')}</strong>,</p><p class="message">We're excited to confirm that your order has been successfully processed! Your digital tickets with unique QR codes are shown below.</p><div class="order-info-block"><div class="info-row"><div class="info-label">Order Number</div><div class="info-value">${orderNum}</div></div><div class="info-row"><div class="info-label">Event</div><div style="font-size:18px;color:#E21836;font-weight:600">${(order.events?.name || 'Event').replace(/</g, '&lt;')}</div></div><div class="info-row"><div class="info-label">Event Time</div><div style="font-size:18px;color:#E21836;font-weight:600">${(eventTime || 'TBA').replace(/</g, '&lt;')}</div></div><div class="info-row"><div class="info-label">Venue</div><div style="font-size:18px;color:#E21836;font-weight:600">${(order.events?.venue || 'Venue to be announced').replace(/</g, '&lt;')}</div></div></div><div class="order-info-block"><h3 style="color:#E21836;margin-bottom:20px;font-size:18px;font-weight:600">Passes Purchased</h3><table class="passes-table"><thead><tr><th>Pass Type</th><th style="text-align:center">Quantity</th><th style="text-align:right">Price</th></tr></thead><tbody>${passesSummaryHtml}<tr class="total-row"><td colspan="2" style="text-align:right;padding-right:20px"><strong>Total Amount Paid:</strong></td><td style="text-align:right"><strong>${(order.total_price || 0).toFixed(2)} TND</strong></td></tr></tbody></table></div><div class="tickets-section"><h3 style="color:#E21836;margin-bottom:20px;font-size:18px;font-weight:600">Your Digital Tickets</h3><p class="message" style="margin-bottom:25px">Please present these QR codes at the event entrance. Each ticket has a unique QR code for verification.</p>${ticketsHtml}</div><div class="support-section"><p class="support-text">Need assistance? Contact us at <a href="mailto:Contact@andiamoevents.com" class="support-email">Contact@andiamoevents.com</a> or in our Instagram page <a href="https://www.instagram.com/andiamo.events/" target="_blank" class="support-email">@andiamo.events</a> or contact with <a href="tel:28070128" class="support-email">28070128</a>.</p></div><div class="closing-section"><p class="slogan">We Create Memories</p><p class="signature">Best regards,<br>The Andiamo Events Team</p></div></div></div><div class="footer"><p class="footer-text">Developed by <span style="color:#E21836!important">Malek Ben Amor</span></p><div class="footer-links"><a href="https://www.instagram.com/malekbenamor.dev/" target="_blank" class="footer-link">Instagram</a><span style="color:#999999">•</span><a href="https://malekbenamor.dev/" target="_blank" class="footer-link">Website</a></div></div></body></html>`;
   if (!canSendTransactionalEmail()) return res.status(500).json({ error: 'Email not configured' });
   try {
+    await ensureOrderEventsForPdf(sb, order);
     const nodemailer = (await import('nodemailer')).default;
     const getEmailTransporter = () =>
       nodemailer.createTransport({
@@ -492,6 +518,7 @@ async function ordersResendTickets(sb, id, auth, req, res) {
     } catch (pdfErr) {
       console.warn('Premium ticket PDF skipped (POS resend):', pdfErr && pdfErr.message);
     }
+    premiumPdfPosResend = normalizeTicketPdfAttachment(premiumPdfPosResend);
     const mailPosResend = {
       from: '"Andiamo Events" <contact@andiamoevents.com>',
       replyTo: '"Andiamo Events" <contact@andiamoevents.com>',
@@ -647,6 +674,7 @@ async function ordersApprove(sb, id, auth, req, res) {
 
   if (order.user_email && canSendTransactionalEmail()) {
     try {
+      await ensureOrderEventsForPdf(sb, order);
       const nodemailer = (await import('nodemailer')).default;
       const getEmailTransporter = () =>
         nodemailer.createTransport({
@@ -666,6 +694,7 @@ async function ordersApprove(sb, id, auth, req, res) {
       } catch (pdfErr) {
         console.warn('Premium ticket PDF skipped (POS approve):', pdfErr && pdfErr.message);
       }
+      premiumPdfPosApprove = normalizeTicketPdfAttachment(premiumPdfPosApprove);
       const mailPosApprove = {
         from: '"Andiamo Events" <contact@andiamoevents.com>',
         replyTo: '"Andiamo Events" <contact@andiamoevents.com>',

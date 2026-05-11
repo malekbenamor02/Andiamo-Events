@@ -180,7 +180,20 @@ function toAbsolutePublicUrl(url) {
   if (!u) return null;
   if (u.startsWith('data:')) return u;
   if (/^https?:\/\//i.test(u)) return u;
+  // Supabase Storage paths stored relative to project URL (server-side fetch + Chromium)
+  if (u.startsWith('/storage/') || u.startsWith('/rest/')) {
+    const supabaseBase = String(process.env.SUPABASE_URL || '')
+      .trim()
+      .replace(/\/$/, '');
+    if (supabaseBase) return `${supabaseBase}${u.startsWith('/') ? u : `/${u}`}`;
+  }
   try {
+    const assetsBase = String(process.env.PUBLIC_ASSETS_BASE_URL || '')
+      .trim()
+      .replace(/\/$/, '');
+    if (assetsBase && !u.startsWith('/')) {
+      return `${assetsBase}/${u.replace(/^\//, '')}`;
+    }
     const origin = getPublicSiteOrigin().replace(/\/$/, '');
     if (u.startsWith('/')) return `${origin}${u}`;
     return `${origin}/${u}`;

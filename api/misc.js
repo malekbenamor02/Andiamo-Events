@@ -4628,8 +4628,13 @@ Billets envoyés par email. We Create Memories`;
           }
         }
         
-        // Step 2: Validate order is PAID
-        if (order.status !== 'PAID' && order.payment_status !== 'PAID') {
+        // Step 2: Validate order is paid / completed (COD may use COMPLETED + tickets)
+        const paidEnoughForTicketResend =
+          order.status === 'PAID' ||
+          order.payment_status === 'PAID' ||
+          (String(order.source || '') === 'platform_cod' && order.status === 'COMPLETED');
+
+        if (!paidEnoughForTicketResend) {
           // Log security event
           try {
             await dbClient.from('security_audit_logs').insert({

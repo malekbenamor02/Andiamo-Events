@@ -1,6 +1,9 @@
 /**
  * Prefer Brevo REST API when BREVO_API_KEY is set so From stays on the verified
  * domain (e.g. contact@andiamoevents.com). Falls back to nodemailer SMTP.
+ *
+ * Emails with attachments (PDF tickets): prefer SMTP when EMAIL_* is configured — Brevo REST
+ * often delivers HTML but omit or mishandle large base64 attachments in production.
  */
 
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
@@ -177,12 +180,56 @@ async function sendViaBrevoApi(mailOptions, apiKeyOverride) {
   return postJson(BREVO_API_URL, apiKey, body);
 }
 
+function smtpEnvConfigured() {
+  return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+}
+
 /**
  * @param {{ getEmailTransporter?: () => unknown }} deps
  * @param {object} mailOptions nodemailer-compatible sendMail options
  */
 async function sendTransactionalEmail(deps, mailOptions) {
   const { brevoApiKey, ...mailRest } = mailOptions || {};
+  const hasAttachments =
+    Array.isArray(mailRest.attachments) && mailRest.attachments.length > 0;
+
+  const buildMergedForSmtp = () => {
+    const extra = brevoSmtpExtraHeaders();
+    const cleanedHeaders = sanitizeCustomHeaders(mailRest.headers || {}, {
+      suppressListUnsubscribe: mailRest.suppressListUnsubscribe === true,
+    });
+    return {
+      ...mailRest,
+      headers: {
+        ...extra,
+        ...cleanedHeaders,
+      },
+    };
+  };
+
+  const sendViaSmtp = async () => {
+    const getT = deps && deps.getEmailTransporter;
+    if (typeof getT !== 'function') {
+      throw new Error('getEmailTransporter is required when Brevo API is unavailable');
+    }
+    const transporter = getT();
+    if (!transporter || typeof transporter.sendMail !== 'function') {
+      throw new Error('Email transporter not available');
+    }
+    const merged = buildMergedForSmtp();
+    return transporter.sendMail(merged);
+  };
+
+  // PDF / binary attachments: SMTP (nodemailer) is reliable; Brevo REST often sends HTML without attachment.
+  if (hasAttachments && smtpEnvConfigured()) {
+    try {
+      const info = await sendViaSmtp();
+      return { via: 'smtp', info, messageId: info && info.messageId };
+    } catch (e) {
+      console.error('[transactional-email] SMTP failed for message with attachments:', e.message || e);
+    }
+  }
+
   const effectiveKey =
     (typeof brevoApiKey === 'string' && brevoApiKey.trim() !== '' ? brevoApiKey.trim() : null) ||
     process.env.BREVO_API_KEY;
@@ -195,27 +242,7 @@ async function sendTransactionalEmail(deps, mailOptions) {
     }
   }
 
-  const getT = deps && deps.getEmailTransporter;
-  if (typeof getT !== 'function') {
-    throw new Error('getEmailTransporter is required when Brevo API is unavailable');
-  }
-  const transporter = getT();
-  if (!transporter || typeof transporter.sendMail !== 'function') {
-    throw new Error('Email transporter not available');
-  }
-
-  const extra = brevoSmtpExtraHeaders();
-  const cleanedHeaders = sanitizeCustomHeaders(mailOptions.headers || {}, {
-    suppressListUnsubscribe: mailOptions.suppressListUnsubscribe === true,
-  });
-  const merged = {
-    ...mailRest,
-    headers: {
-      ...extra,
-      ...cleanedHeaders,
-    },
-  };
-  const info = await transporter.sendMail(merged);
+  const info = await sendViaSmtp();
   return { via: 'smtp', info, messageId: info && info.messageId };
 }
 
