@@ -2,29 +2,25 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { formatDateDMY } from "@/lib/date-utils";
 import { API_ROUTES } from "@/lib/api-routes";
 import Loader from "@/components/ui/Loader";
-import { LogOut, History, RotateCw, PenLine, Square, CheckCircle2, XCircle, Copy, MapPinOff, ScanLine, WifiOff, Cloud, BatteryWarning, BarChart2, ExternalLink } from "lucide-react";
+import { LogOut, History, RotateCw, PenLine, Square, CheckCircle2, XCircle, Copy, MapPinOff, ScanLine, WifiOff, Cloud, BatteryWarning, BarChart2 } from "lucide-react";
 
 const STORAGE_KEY = "scanner_selected_event";
 const TIMEOUT_MS = 90000; // 90s
 const READER_ID = "scanner-qr-reader";
 const RECENT_SCANS_LIMIT = 6;
 const UNDO_WINDOW_SEC = 5;
-
-function scannerInspectDetailPath(qrTicketId: string, eventId: string): string {
-  const base = import.meta.env.BASE_URL || "/";
-  const prefix = base.endsWith("/") ? base.slice(0, -1) : base;
-  const q = new URLSearchParams({ qr_ticket_id: qrTicketId, event_id: eventId }).toString();
-  return `${prefix}/scanner/inspect-detail?${q}`;
-}
-
-function scannerInspectDetailAbsoluteUrl(qrTicketId: string, eventId: string): string {
-  if (typeof window === "undefined") return scannerInspectDetailPath(qrTicketId, eventId);
-  return `${window.location.origin}${scannerInspectDetailPath(qrTicketId, eventId)}`;
-}
 
 function triggerHaptic(status: string) {
   if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
@@ -186,9 +182,14 @@ export default function ScannerScan() {
   const [lowBattery, setLowBattery] = useState(false);
   const [expandedScanId, setExpandedScanId] = useState<string | null>(null);
   const [undoSecondsLeft, setUndoSecondsLeft] = useState(0);
+  const [inspectReportExpanded, setInspectReportExpanded] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedRef = useRef(false);
+
+  useEffect(() => {
+    if (!result) setInspectReportExpanded(false);
+  }, [result]);
 
   useEffect(() => {
     if (!event?.id) {
@@ -333,7 +334,12 @@ export default function ScannerScan() {
         setResult({
           success: !!d.success,
           result: res,
-          message: d.message || "Error",
+          message:
+            typeof d.message === "string" && d.message.trim()
+              ? d.message
+              : d.success
+                ? "Lookup successful"
+                : "Error",
           ticket: d.ticket && typeof d.ticket === "object" && !Array.isArray(d.ticket) ? d.ticket : undefined,
           previous_scan: d.previous_scan,
           correct_event: d.correct_event,
@@ -370,7 +376,12 @@ export default function ScannerScan() {
         setResult({
           success: !!d.success,
           result: res,
-          message: d.message || "Error",
+          message:
+            typeof d.message === "string" && d.message.trim()
+              ? d.message
+              : d.success
+                ? "Ticket validated"
+                : "Error",
           ticket: d.ticket,
           previous_scan: d.previous_scan,
           correct_event: d.correct_event,
@@ -544,165 +555,282 @@ export default function ScannerScan() {
           </div>
         )}
 
-        {/* Result Display Overlay */}
-        {result && !validating && sc && StatusIcon && (
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className={`w-full max-w-md rounded-2xl border-2 ${sc.border} ${sc.bg} p-6 shadow-2xl`}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className={`p-3 rounded-xl ${sc.bg}`}>
-                  <StatusIcon className={`w-8 h-8 ${sc.color}`} />
-                </div>
-                <div>
-                  <p className={`text-2xl font-bold ${sc.color}`}>{sc.label}</p>
-                  <p className="text-[#A3A3A3] text-sm mt-0.5">{result.message}</p>
-                </div>
-              </div>
-              
-              {result.ticket && !(result.lookup && result.inspect_panel) && (
-                <div className="space-y-3 mb-4 p-4 rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A]">
-                  <div>
-                    <p className="text-xs text-[#737373] mb-1">Pass Type</p>
-                    <p className="text-lg font-semibold text-white">{result.ticket.pass_type || "—"}</p>
+        {/* Result dialog */}
+        <Dialog
+          open={Boolean(result && !validating && sc && StatusIcon)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setInspectReportExpanded(false);
+              setResult(null);
+            }
+          }}
+        >
+          <DialogContent
+            className={`max-h-[90vh] overflow-y-auto border-2 bg-[#141414] p-6 pt-10 text-white shadow-2xl sm:max-w-md ${sc?.border ?? ""} gap-4`}
+            onPointerDownOutside={(e) => e.preventDefault()}
+          >
+            {result && sc && StatusIcon && (
+              <>
+                <DialogHeader className="space-y-0 text-left">
+                  <div className="flex items-center gap-3 pr-6">
+                    <div className={`shrink-0 rounded-xl p-3 ${sc.bg}`}>
+                      <StatusIcon className={`h-8 w-8 ${sc.color}`} />
+                    </div>
+                    <div className="min-w-0">
+                      <DialogTitle className={`text-2xl font-bold tracking-tight ${sc.color}`}>{sc.label}</DialogTitle>
+                      <DialogDescription className="mt-1 text-sm font-normal text-[#A3A3A3]">
+                        {result.message}
+                      </DialogDescription>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-[#737373] mb-1">Name</p>
-                    <p className="text-base font-medium text-[#F5F5F5]">{result.ticket.is_invitation ? (result.ticket.recipient_name || result.ticket.buyer_name || "—") : (result.ticket.buyer_name || "—")}</p>
-                  </div>
-                  {result.ticket.is_invitation && (result.ticket.invitation_number || result.ticket.recipient_email) && (
-                    <div>
-                      <p className="text-xs text-[#737373] mb-1">Invitation Details</p>
-                      <p className="text-sm text-[#A3A3A3]">{(result.ticket.invitation_number ? `#${result.ticket.invitation_number}` : "") + (result.ticket.recipient_email ? ` · ${result.ticket.recipient_email}` : "")}</p>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  {result.ticket && !(result.lookup && result.inspect_panel) && (
+                    <div className="space-y-3 rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-4">
+                      <div>
+                        <p className="mb-1 text-xs text-[#737373]">Pass Type</p>
+                        <p className="text-lg font-semibold text-white">{result.ticket.pass_type || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="mb-1 text-xs text-[#737373]">Name</p>
+                        <p className="text-base font-medium text-[#F5F5F5]">
+                          {result.ticket.is_invitation
+                            ? result.ticket.recipient_name || result.ticket.buyer_name || "—"
+                            : result.ticket.buyer_name || "—"}
+                        </p>
+                      </div>
+                      {result.ticket.is_invitation && (result.ticket.invitation_number || result.ticket.recipient_email) && (
+                        <div>
+                          <p className="mb-1 text-xs text-[#737373]">Invitation Details</p>
+                          <p className="text-sm text-[#A3A3A3]">
+                            {(result.ticket.invitation_number ? `#${result.ticket.invitation_number}` : "") +
+                              (result.ticket.recipient_email ? ` · ${result.ticket.recipient_email}` : "")}
+                          </p>
+                        </div>
+                      )}
+                      {!result.ticket.is_invitation && result.ticket.ambassador_name && (
+                        <div>
+                          <p className="mb-1 text-xs text-[#737373]">Ambassador</p>
+                          <p className="text-sm text-[#A3A3A3]">{result.ticket.ambassador_name}</p>
+                        </div>
+                      )}
+                      {result.ticket.source === "point_de_vente" && (
+                        <div className="inline-block rounded bg-[#1A1A1A] border border-[#2A2A2A] px-2 py-1">
+                          <p className="text-xs text-[#A3A3A3]">Point de vente</p>
+                        </div>
+                      )}
                     </div>
                   )}
-                  {!result.ticket.is_invitation && result.ticket.ambassador_name && (
-                    <div>
-                      <p className="text-xs text-[#737373] mb-1">Ambassador</p>
-                      <p className="text-sm text-[#A3A3A3]">{result.ticket.ambassador_name}</p>
+
+                  {result.lookup && result.inspect_panel && event?.id && !inspectReportExpanded && (
+                    <div className="space-y-3 rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-4">
+                      <p className="text-xs font-medium uppercase tracking-wide text-[#737373]">Summary</p>
+                      <p className="text-lg font-semibold text-white">{result.inspect_panel.pass_type || "—"}</p>
+                      <p className="text-sm text-[#E5E5E5]">{result.inspect_panel.buyer_name || "—"}</p>
+                      <p className="text-xs leading-relaxed text-[#737373]">
+                        Open the full report for email, phone, event, payment, price, order number, and every pass on this order.
+                      </p>
+                      <Button
+                        type="button"
+                        className="h-11 w-full border border-[#2A2A2A] bg-[#1A1A1A] text-white hover:bg-[#252525]"
+                        onClick={() => setInspectReportExpanded(true)}
+                      >
+                        Open full report
+                      </Button>
                     </div>
                   )}
-                  {result.ticket.source === 'point_de_vente' && (
-                    <div className="inline-block px-2 py-1 rounded bg-[#1A1A1A] border border-[#2A2A2A]">
-                      <p className="text-xs text-[#A3A3A3]">Point de vente</p>
+
+                  {result.lookup && result.inspect_panel && inspectReportExpanded && (
+                    <div className="space-y-4 rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[#737373]">Full report</p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 shrink-0 text-[#A3A3A3] hover:bg-[#1A1A1A] hover:text-white"
+                          onClick={() => setInspectReportExpanded(false)}
+                        >
+                          Back to summary
+                        </Button>
+                      </div>
+                      <dl className="space-y-3 text-sm">
+                        <div>
+                          <dt className="text-xs text-[#737373]">Pass type</dt>
+                          <dd className="mt-0.5 font-semibold text-white">{result.inspect_panel.pass_type || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-[#737373]">Name</dt>
+                          <dd className="mt-0.5 text-[#E5E5E5]">{result.inspect_panel.buyer_name || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-[#737373]">Email</dt>
+                          <dd className="mt-0.5 break-all text-[#E5E5E5]">{result.inspect_panel.buyer_email || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-[#737373]">Phone</dt>
+                          <dd className="mt-0.5 text-[#E5E5E5]">{result.inspect_panel.buyer_phone || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-[#737373]">Event</dt>
+                          <dd className="mt-0.5 text-[#E5E5E5]">{result.inspect_panel.event_name || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-[#737373]">Payment</dt>
+                          <dd className="mt-0.5 text-[#E5E5E5]">
+                            {result.inspect_panel.payment_method_label || result.inspect_panel.payment_method || "—"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-[#737373]">Price</dt>
+                          <dd className="mt-0.5 text-[#E5E5E5]">
+                            {result.inspect_panel.pass_price_formatted != null
+                              ? `${result.inspect_panel.pass_price_formatted} TND`
+                              : "—"}
+                          </dd>
+                        </div>
+                        {result.inspect_panel.order_number != null && (
+                          <div>
+                            <dt className="text-xs text-[#737373]">Order number</dt>
+                            <dd className="mt-0.5 font-mono text-white">#{result.inspect_panel.order_number}</dd>
+                          </div>
+                        )}
+                      </dl>
+                      {result.order_passes && result.order_passes.length > 0 && (
+                        <div>
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#737373]">Passes on this order</p>
+                          <ul className="max-h-48 space-y-2 overflow-y-auto">
+                            {result.order_passes.map((p) => (
+                              <li
+                                key={p.qr_ticket_id}
+                                className={`rounded-lg border px-3 py-2 text-xs ${
+                                  p.is_current ? "border-[#E21836]/50 bg-[#E21836]/10" : "border-[#1A1A1A] bg-[#0F0F0F]"
+                                }`}
+                              >
+                                <div className="flex justify-between gap-2 text-white">
+                                  <span className="font-medium">{p.pass_type || "—"}</span>
+                                  <span className="shrink-0 text-[#737373]">{p.ticket_status || "—"}</span>
+                                </div>
+                                {p.token_preview && (
+                                  <p className="mt-1 font-mono text-[#737373]">{p.token_preview}</p>
+                                )}
+                                {p.is_current && (
+                                  <p className="mt-1 text-[10px] font-semibold uppercase text-[#E21836]">This QR</p>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {result.previous_scan && (
+                    <div className="rounded-lg border border-[#F59E0B]/20 bg-[#F59E0B]/10 p-3">
+                      <p className="mb-1 text-xs font-medium text-[#F59E0B]">Previously Scanned</p>
+                      <p className="text-xs text-[#A3A3A3]">
+                        {result.previous_scan.scanner_name || "—"} at{" "}
+                        {result.previous_scan.scanned_at
+                          ? new Date(result.previous_scan.scanned_at).toLocaleString()
+                          : "—"}
+                      </p>
+                    </div>
+                  )}
+
+                  {result.correct_event && (
+                    <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                      <p className="mb-1 text-xs text-[#737373]">Correct Event</p>
+                      <p className="text-sm text-[#A3A3A3]">
+                        {result.correct_event.event_name} —{" "}
+                        {result.correct_event.event_date ? formatDateDMY(result.correct_event.event_date) : ""}
+                      </p>
+                    </div>
+                  )}
+
+                  {result.lookup && result.ticket_status != null && (
+                    <div className="rounded-lg border border-[#2A2A2A] bg-[#0A0A0A]/80 p-2">
+                      <p className="text-xs text-[#737373]">Ticket status</p>
+                      <p className="text-sm font-semibold text-white">{result.ticket_status}</p>
+                    </div>
+                  )}
+
+                  {result.lookup && result.ticket && typeof result.ticket === "object" && !result.inspect_panel && (
+                    <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-3">
+                      <p className="mb-2 text-xs font-medium text-[#737373]">All ticket fields</p>
+                      {formatTicketFields(result.ticket as Record<string, unknown>).map(({ key, value }) => (
+                        <div key={key} className="flex gap-2 text-xs">
+                          <span className="w-28 shrink-0 truncate text-[#737373]" title={key}>
+                            {key}
+                          </span>
+                          <span className="break-all text-[#E5E5E5]">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {result.lookup &&
+                    !result.inspect_panel &&
+                    result.invitation &&
+                    typeof result.invitation === "object" &&
+                    !Array.isArray(result.invitation) &&
+                    Object.keys(result.invitation).length > 0 && (
+                      <div className="max-h-40 overflow-y-auto rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-3">
+                        <p className="mb-2 text-xs font-medium text-[#737373]">Invitation</p>
+                        {formatTicketFields(result.invitation as Record<string, unknown>).map(({ key, value }) => (
+                          <div key={key} className="mb-1 flex gap-2 text-xs">
+                            <span className="w-28 shrink-0 truncate text-[#737373]">{key}</span>
+                            <span className="break-all text-[#E5E5E5]">{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                  {result.lookup && !result.inspect_panel && Array.isArray(result.scan_history) && result.scan_history.length > 0 && (
+                    <div className="max-h-40 overflow-y-auto rounded-xl border border-[#1A1A1A] bg-[#0A0A0A]/50 p-3">
+                      <p className="mb-2 text-xs font-medium text-[#737373]">Scan history</p>
+                      <ul className="space-y-2 text-xs">
+                        {result.scan_history.map((h) => (
+                          <li key={h.id} className="border-b border-[#1A1A1A] pb-2 last:border-0">
+                            <span className="text-[#F5F5F5]">{h.scan_result}</span>
+                            <span className="ml-2 text-[#737373]">{h.scan_time ? new Date(h.scan_time).toLocaleString() : ""}</span>
+                            <p className="text-[#A3A3A3]">
+                              {h.scanner_name || "—"}
+                              {h.notes ? ` · ${h.notes}` : ""}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                 </div>
-              )}
-              
-              {result.lookup && result.inspect_panel && event?.id && (
-                <div className="mb-4 p-4 rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A] space-y-3">
-                  <p className="text-xs text-[#737373] uppercase tracking-wide">Summary</p>
-                  <p className="text-lg font-semibold text-white">{result.inspect_panel.pass_type || "—"}</p>
-                  <p className="text-sm text-[#E5E5E5]">{result.inspect_panel.buyer_name || "—"}</p>
-                  <p className="text-xs text-[#737373] leading-relaxed">
-                    Full report includes email, phone, event, payment, price, order number, and every pass on this order.
-                  </p>
-                  <div className="flex flex-col gap-2">
+
+                <DialogFooter className="flex-col gap-3 sm:flex-col">
+                  {result.result === "valid" && undoSecondsLeft > 0 && (
                     <Button
-                      type="button"
-                      className="w-full h-11 bg-[#1A1A1A] border border-[#2A2A2A] text-white hover:bg-[#252525]"
-                      onClick={() =>
-                        navigate(scannerInspectDetailPath(result.inspect_panel!.qr_ticket_id, event.id))
-                      }
-                    >
-                      Open full report
-                    </Button>
-                    <Button
-                      type="button"
                       variant="outline"
-                      className="w-full h-11 border-[#2A2A2A] text-[#E5E5E5] hover:bg-[#1A1A1A]"
-                      onClick={() =>
-                        window.open(
-                          scannerInspectDetailAbsoluteUrl(result.inspect_panel!.qr_ticket_id, event.id),
-                          "_blank",
-                          "noopener,noreferrer"
-                        )
-                      }
+                      className="h-12 w-full border-[#2A2A2A] text-[#A3A3A3] hover:bg-[#1A1A1A] hover:text-white"
+                      onClick={() => {}}
                     >
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      Open in new tab
+                      Undo ({undoSecondsLeft}s)
                     </Button>
-                  </div>
-                </div>
-              )}
-
-              {result.previous_scan && (
-                <div className="mb-4 p-3 rounded-lg bg-[#F59E0B]/10 border border-[#F59E0B]/20">
-                  <p className="text-xs text-[#F59E0B] font-medium mb-1">Previously Scanned</p>
-                  <p className="text-xs text-[#A3A3A3]">{result.previous_scan.scanner_name || "—"} at {result.previous_scan.scanned_at ? new Date(result.previous_scan.scanned_at).toLocaleString() : "—"}</p>
-                </div>
-              )}
-              
-              {result.correct_event && (
-                <div className="mb-4 p-3 rounded-lg bg-[#1A1A1A] border border-[#2A2A2A]">
-                  <p className="text-xs text-[#737373] mb-1">Correct Event</p>
-                  <p className="text-sm text-[#A3A3A3]">{result.correct_event.event_name} — {result.correct_event.event_date ? formatDateDMY(result.correct_event.event_date) : ""}</p>
-                </div>
-              )}
-
-              {result.lookup && result.ticket_status != null && (
-                <div className="mb-3 p-2 rounded-lg bg-[#0A0A0A]/80 border border-[#2A2A2A]">
-                  <p className="text-xs text-[#737373]">Ticket status</p>
-                  <p className="text-sm font-semibold text-white">{result.ticket_status}</p>
-                </div>
-              )}
-
-              {result.lookup && result.ticket && typeof result.ticket === "object" && !result.inspect_panel && (
-                <div className="mb-4 max-h-48 overflow-y-auto rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A] p-3 space-y-1.5">
-                  <p className="text-xs text-[#737373] font-medium mb-2">All ticket fields</p>
-                  {formatTicketFields(result.ticket as Record<string, unknown>).map(({ key, value }) => (
-                    <div key={key} className="flex gap-2 text-xs">
-                      <span className="text-[#737373] shrink-0 w-28 truncate" title={key}>{key}</span>
-                      <span className="text-[#E5E5E5] break-all">{value}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {result.lookup &&
-                !result.inspect_panel &&
-                result.invitation &&
-                typeof result.invitation === "object" &&
-                !Array.isArray(result.invitation) &&
-                Object.keys(result.invitation).length > 0 && (
-                <div className="mb-4 max-h-40 overflow-y-auto rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A] p-3">
-                  <p className="text-xs text-[#737373] font-medium mb-2">Invitation</p>
-                  {formatTicketFields(result.invitation as Record<string, unknown>).map(({ key, value }) => (
-                    <div key={key} className="flex gap-2 text-xs mb-1">
-                      <span className="text-[#737373] shrink-0 w-28 truncate">{key}</span>
-                      <span className="text-[#E5E5E5] break-all">{value}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {result.lookup && !result.inspect_panel && Array.isArray(result.scan_history) && result.scan_history.length > 0 && (
-                <div className="mb-4 max-h-40 overflow-y-auto rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A] p-3">
-                  <p className="text-xs text-[#737373] font-medium mb-2">Scan history</p>
-                  <ul className="space-y-2 text-xs">
-                    {result.scan_history.map((h) => (
-                      <li key={h.id} className="border-b border-[#1A1A1A] pb-2 last:border-0">
-                        <span className="text-[#F5F5F5]">{h.scan_result}</span>
-                        <span className="text-[#737373] ml-2">{h.scan_time ? new Date(h.scan_time).toLocaleString() : ""}</span>
-                        <p className="text-[#A3A3A3]">{h.scanner_name || "—"}{h.notes ? ` · ${h.notes}` : ""}</p>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                {result.result === "valid" && undoSecondsLeft > 0 && (
-                  <Button variant="outline" className="flex-1 h-12 border-[#2A2A2A] text-[#A3A3A3] hover:bg-[#1A1A1A] hover:text-white" onClick={() => {}}>
-                    Undo ({undoSecondsLeft}s)
+                  )}
+                  <Button
+                    className="h-12 w-full rounded-xl bg-[#E21836] font-semibold text-base shadow-lg hover:bg-[#c4142e]"
+                    onClick={() => {
+                      setInspectReportExpanded(false);
+                      setResult(null);
+                      onStart();
+                    }}
+                  >
+                    <ScanLine className="mr-2 h-5 w-5" />
+                    Scan Next
                   </Button>
-                )}
-                <Button className="flex-1 h-12 rounded-xl bg-[#E21836] hover:bg-[#c4142e] font-semibold text-base shadow-lg" onClick={() => { setResult(null); onStart(); }}>
-                  <ScanLine className="w-5 h-5 mr-2" />Scan Next
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Error Message */}
         {err && (
