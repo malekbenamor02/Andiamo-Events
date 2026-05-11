@@ -196,6 +196,14 @@
       "destination": "/api/misc.js"
     },
     {
+      "source": "/api/resend-order-completion-email",
+      "destination": "/api/misc.js"
+    },
+    {
+      "source": "/api/email-delivery-logs/:orderId",
+      "destination": "/api/misc.js"
+    },
+    {
       "source": "/api/admin-remove-order",
       "destination": "/api/misc.js"
     },

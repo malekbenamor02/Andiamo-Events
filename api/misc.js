@@ -4468,11 +4468,60 @@ Billets envoyés par email. We Create Memories`;
         });
       }
     }
+
+    // ============================================
+    // GET /api/email-delivery-logs/:orderId (admin)
+    // ============================================
+    if (method === 'GET') {
+      const emailLogsPathMatch = path.match(/^\/api\/email-delivery-logs\/([^/]+)$/);
+      if (emailLogsPathMatch) {
+        try {
+          const authResult = await verifyAdminAuth(req);
+          if (!authResult.valid) {
+            return res.status(authResult.statusCode || 401).json({
+              error: authResult.error,
+              reason: authResult.reason || 'Authentication failed',
+              valid: false,
+            });
+          }
+          if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+            return res.status(503).json({
+              error: 'Server configuration error',
+              details:
+                'SUPABASE_SERVICE_ROLE_KEY is required for admin email logs. Add it to your server environment.',
+            });
+          }
+          const orderIdParam = decodeURIComponent(emailLogsPathMatch[1]);
+          const { createClient } = await import('@supabase/supabase-js');
+          const dbLogs = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+          const { data: logs, error: logsErr } = await dbLogs
+            .from('email_delivery_logs')
+            .select('*')
+            .eq('order_id', orderIdParam)
+            .order('created_at', { ascending: false });
+          if (logsErr) {
+            return res.status(500).json({ error: 'Failed to fetch email logs', details: logsErr.message });
+          }
+          res.setHeader('Content-Type', 'application/json');
+          return res.status(200).json({ success: true, logs: logs || [] });
+        } catch (emailLogsErr) {
+          console.error('Error in /api/email-delivery-logs:', emailLogsErr);
+          return res.status(500).json({
+            error: 'Internal server error',
+            details: emailLogsErr.message,
+          });
+        }
+      }
+    }
     
     // ============================================
-    // /api/admin-resend-ticket-email (POST)
+    // POST /api/admin-resend-ticket-email
+    // POST /api/resend-order-completion-email (same: ticket HTML + PDF attachment)
     // ============================================
-    if (path === '/api/admin-resend-ticket-email' && method === 'POST') {
+    if (
+      (path === '/api/admin-resend-ticket-email' || path === '/api/resend-order-completion-email') &&
+      method === 'POST'
+    ) {
       try {
         const authResult = await verifyAdminAuth(req);
         
@@ -4484,12 +4533,23 @@ Billets envoyés par email. We Create Memories`;
           });
         }
         
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-          return res.status(500).json({ error: 'Supabase not configured' });
+        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          return res.status(503).json({
+            error: 'Server configuration error',
+            details:
+              'SUPABASE_SERVICE_ROLE_KEY is required for admin ticket resend so orders are readable under RLS. Add it to Vercel (or server) environment variables.',
+          });
         }
         
         const bodyData = await parseBody(req);
-        const { orderId } = bodyData;
+        const rawOrderId =
+          bodyData.orderId ?? bodyData.order_id ?? bodyData.id ?? bodyData.OrderId;
+        const orderId =
+          typeof rawOrderId === 'string'
+            ? rawOrderId.trim()
+            : rawOrderId != null
+              ? String(rawOrderId).trim()
+              : '';
         const adminId = authResult.admin?.id;
         const adminEmail = authResult.admin?.email;
         
@@ -4498,26 +4558,14 @@ Billets envoyés par email. We Create Memories`;
         }
         
         const { createClient } = await import('@supabase/supabase-js');
-        const supabase = createClient(
-          process.env.SUPABASE_URL,
-          process.env.SUPABASE_ANON_KEY
-        );
+        const dbClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
         
-        let supabaseService = null;
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          supabaseService = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-          );
-        }
-        
-        const dbClient = supabaseService || supabase;
-        
-        // Step 1: Verify order exists and is PAID
+        // Step 1: Verify order exists and is PAID (service role bypasses RLS)
         const { data: order, error: orderError } = await dbClient
           .from('orders')
           .select(`
-            id, 
+            id,
+            event_id,
             order_number,
             status, 
             payment_status,
@@ -4526,6 +4574,9 @@ Billets envoyés par email. We Create Memories`;
             user_email,
             user_name,
             total_price,
+            total_with_fees,
+            fee_amount,
+            notes,
             pass_type,
             quantity,
             events (
@@ -4549,7 +4600,16 @@ Billets envoyés par email. We Create Memories`;
           .single();
         
         if (orderError || !order) {
-          return res.status(404).json({ error: 'Order not found' });
+          console.error('[admin-resend-ticket-email] Order fetch failed:', {
+            orderId,
+            code: orderError?.code,
+            message: orderError?.message,
+            details: orderError?.details,
+          });
+          return res.status(404).json({
+            error: 'Order not found',
+            details: orderError?.message || 'No order matches this id',
+          });
         }
         
         // Step 2: Validate order is PAID

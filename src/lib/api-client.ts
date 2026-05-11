@@ -55,9 +55,12 @@ export const apiFetch = async (
     // BUT: Only redirect for admin endpoints, not for ambassador/login endpoints
     if (response.status === 401) {
       // Check if this is an admin endpoint that requires token-based auth
-      const isAdminEndpoint = url.includes('/api/admin-') || 
-                              url.includes('/api/verify-admin') ||
-                              url.includes('/api/send-email');
+      const isAdminEndpoint =
+        url.includes('/api/admin-') ||
+        url.includes('/api/verify-admin') ||
+        url.includes('/api/send-email') ||
+        url.includes('/api/resend-order-completion-email') ||
+        url.includes('/api/email-delivery-logs');
       
       // Only redirect for admin endpoints (token expiration)
       // For ambassador/login endpoints, 401 just means invalid credentials - don't redirect
@@ -88,15 +91,17 @@ export const apiFetch = async (
       // so the error message can be displayed to the user
     }
 
-    // Handle 404 Not Found responses gracefully
+    // Handle 404: unknown routes vs valid JSON errors (e.g. "Order not found")
     if (response.status === 404) {
-      // Don't log 404 errors to console - handle them silently
-      // Return a response with a user-friendly error message
+      const ct = response.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        return response;
+      }
       return new Response(
-        JSON.stringify({ 
-          error: 'API endpoint not found', 
+        JSON.stringify({
+          error: 'API endpoint not found',
           message: 'The requested API endpoint does not exist. Please check the route configuration.',
-          status: 404
+          status: 404,
         }),
         {
           status: 404,
