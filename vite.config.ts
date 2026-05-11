@@ -6,6 +6,12 @@ import path from "path";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
 
+  // Only upload Sentry sourcemaps on Vercel production deploys. Preview/branch
+  // deploys skip the upload entirely so they're fast; local prod builds also skip
+  // unless explicitly opted-in via VERCEL_ENV=production.
+  const isProdDeploy =
+    mode === "production" && process.env.VERCEL_ENV === "production";
+
   return {
     base: "/",
 
@@ -45,13 +51,21 @@ export default defineConfig(({ mode }) => {
 
     plugins: [
       react(),
-      ...(env.SENTRY_AUTH_TOKEN && env.SENTRY_ORG && env.SENTRY_PROJECT
+      ...(isProdDeploy &&
+      env.SENTRY_AUTH_TOKEN &&
+      env.SENTRY_ORG &&
+      env.SENTRY_PROJECT
         ? [
             sentryVitePlugin({
               org: env.SENTRY_ORG,
               project: env.SENTRY_PROJECT,
               authToken: env.SENTRY_AUTH_TOKEN,
-              sourcemaps: { assets: "./dist/assets" },
+              telemetry: false,
+              sourcemaps: {
+                assets: "./dist/assets/**/*.js.map",
+                filesToDeleteAfterUpload: "./dist/assets/**/*.js.map",
+              },
+              release: { create: false, finalize: false },
             }),
           ]
         : []),
@@ -85,9 +99,51 @@ export default defineConfig(({ mode }) => {
       // linked in JS, so DevTools won't show original sources (like big platforms).
       sourcemap: mode === "production" ? "hidden" : true,
       emptyOutDir: true,
+      // Skip gzip-size reporting on every chunk (saves several seconds on big bundles).
+      reportCompressedSize: false,
+      target: "es2020",
       rollupOptions: {
         output: {
-          manualChunks: undefined,
+          // Explicit vendor splitting: smaller initial chunks, better browser caching
+          // across deploys, and faster Rollup since chunks are independent.
+          manualChunks: {
+            "react-vendor": ["react", "react-dom", "react-router-dom"],
+            query: ["@tanstack/react-query"],
+            radix: [
+              "@radix-ui/react-accordion",
+              "@radix-ui/react-alert-dialog",
+              "@radix-ui/react-aspect-ratio",
+              "@radix-ui/react-avatar",
+              "@radix-ui/react-checkbox",
+              "@radix-ui/react-collapsible",
+              "@radix-ui/react-context-menu",
+              "@radix-ui/react-dialog",
+              "@radix-ui/react-dropdown-menu",
+              "@radix-ui/react-hover-card",
+              "@radix-ui/react-label",
+              "@radix-ui/react-menubar",
+              "@radix-ui/react-navigation-menu",
+              "@radix-ui/react-popover",
+              "@radix-ui/react-progress",
+              "@radix-ui/react-radio-group",
+              "@radix-ui/react-scroll-area",
+              "@radix-ui/react-select",
+              "@radix-ui/react-separator",
+              "@radix-ui/react-slider",
+              "@radix-ui/react-slot",
+              "@radix-ui/react-switch",
+              "@radix-ui/react-tabs",
+              "@radix-ui/react-toast",
+              "@radix-ui/react-toggle",
+              "@radix-ui/react-toggle-group",
+              "@radix-ui/react-tooltip",
+            ],
+            charts: ["recharts"],
+            icons: ["lucide-react"],
+            sentry: ["@sentry/react"],
+            forms: ["react-hook-form", "@hookform/resolvers", "zod"],
+            animation: ["gsap", "embla-carousel-react"],
+          },
           // Production: hash-only names so DevTools/Network do not expose module paths
           // (e.g. adminLogs, api-client). Development keeps [name] for easier debugging.
           ...(mode === "production"

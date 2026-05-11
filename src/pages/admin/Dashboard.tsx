@@ -16,7 +16,10 @@ import { Switch } from "@/components/ui/switch";
 import FileUpload from "@/components/ui/file-upload";
 import { uploadImage, uploadHeroImage, deleteHeroImage } from "@/lib/upload";
 import { captureVideoPosterFromFile } from "@/lib/video-poster-capture";
-import { optimizeImageToWebp, preprocessHeroImageVariants, transcodeHeroVideoToMp4 } from "@/lib/hero-media-preprocess";
+// hero-media-preprocess pulls in @ffmpeg/ffmpeg + @ffmpeg/core (multi-MB WASM).
+// Load it on-demand via dynamic import so the admin bundle stays small and the
+// production build is faster.
+const loadHeroMediaPreprocess = () => import("@/lib/hero-media-preprocess");
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, sendEmailWithDetails, createAdminCredentialsEmail } from "@/lib/email";
@@ -2351,6 +2354,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
               : 'Conversion en MP4 (H.264) avant le téléchargement.',
           duration: 3500,
         });
+        const { transcodeHeroVideoToMp4 } = await loadHeroMediaPreprocess();
         uploadFile = await transcodeHeroVideoToMp4(file);
 
         const posterBlob = await Promise.race([
@@ -2377,6 +2381,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
           duration: 3500,
         });
 
+        const { preprocessHeroImageVariants } = await loadHeroMediaPreprocess();
         const variants = await preprocessHeroImageVariants(file);
         uploadFile = variants.full;
 
@@ -8165,6 +8170,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       // Upload image if file is provided
       if (uploadedFile) {
         setUploadingImage(true);
+        const { optimizeImageToWebp } = await loadHeroMediaPreprocess();
         const optimizedPoster = await optimizeImageToWebp(uploadedFile, { maxEdge: 1920, quality: 0.84 });
         const uploadResult = await uploadImage(optimizedPoster, 'posters');
         
@@ -9861,6 +9867,8 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
 
     const uploadedUrls: string[] = [];
     
+    const { optimizeImageToWebp, transcodeHeroVideoToMp4 } = await loadHeroMediaPreprocess();
+
     for (const file of files) {
       const optimizedFile =
         type === 'images'

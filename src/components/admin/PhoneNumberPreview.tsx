@@ -11,7 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Phone, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import type { PhoneNumberWithMetadata } from '@/types/bulk-sms';
 import { formatPhoneForDisplay, getSourceDisplayName } from '@/lib/phone-numbers';
-import ExcelJS from 'exceljs';
+// exceljs (~750 KB) is loaded on-demand inside handleExport so it doesn't ship
+// with the admin bundle until the user actually exports phone numbers.
 
 interface PhoneNumberPreviewProps {
   phoneNumbers: PhoneNumberWithMetadata[];
@@ -33,6 +34,7 @@ export function PhoneNumberPreview({ phoneNumbers, language, onExport }: PhoneNu
 
     setExporting(true);
     try {
+      const { default: ExcelJS } = await import('exceljs');
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Phone Numbers');
 

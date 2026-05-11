@@ -2,7 +2,10 @@
  * Branded Excel export for Reports (online, ambassador cash, and POS paid orders).
  */
 
-import ExcelJS from 'exceljs';
+// Type-only import — erased at compile time. The runtime module (~750 KB) is
+// loaded dynamically inside downloadReportsExcel below so it never lands in the
+// admin bundle.
+import type ExcelJS from 'exceljs';
 import type { WorksheetProtection } from 'exceljs';
 import { supabase } from '@/integrations/supabase/client';
 import { OrderStatus, PaymentMethod } from '@/lib/constants/orderStatuses';
@@ -969,7 +972,8 @@ export async function downloadReportsExcel(params: {
     posByPass = accumulatePassesSoldByType(pos);
   }
 
-  const workbook = new ExcelJS.Workbook();
+  const { default: ExcelJSRuntime } = await import('exceljs');
+  const workbook = new ExcelJSRuntime.Workbook();
   workbook.creator = 'Andiamo Events';
   workbook.created = new Date();
 

@@ -14,7 +14,8 @@ import {
   Phone, Send, TrendingUp
 } from 'lucide-react';
 import { formatPhoneForDisplay, getSourceDisplayName } from '@/lib/phone-numbers';
-import ExcelJS from 'exceljs';
+// exceljs (~750 KB) is loaded on-demand inside handleExport so it doesn't ship
+// with the admin bundle until the user actually exports results.
 
 interface BulkSmsResultsProps {
   results: {
@@ -49,6 +50,7 @@ export function BulkSmsResults({ results, language, onExport }: BulkSmsResultsPr
 
     setExporting(true);
     try {
+      const { default: ExcelJS } = await import('exceljs');
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('SMS Results');
 
