@@ -182,6 +182,9 @@ export const API_ROUTES = {
   SCANNER_STATISTICS: '/api/scanner/statistics',
   SCANNER_SESSION: '/api/scanner/session',
   SCANNER_LOOKUP_TICKET: '/api/scanner/lookup-ticket',
+  /** Supervisor inspect full page: pass qr_ticket_id and event_id query params. */
+  SCANNER_INSPECT_DETAIL: (qrTicketId: string, eventId: string) =>
+    `/api/scanner/inspect-detail?qr_ticket_id=${encodeURIComponent(qrTicketId)}&event_id=${encodeURIComponent(eventId)}`,
   SCANNER_EVENT_SCANS: '/api/scanner/event-scans',
   SCANNER_EVENT_STATISTICS: '/api/scanner/event-statistics',
   ADMIN_SCAN_SYSTEM_CONFIG: '/api/admin/scan-system-config',

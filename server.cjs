@@ -1887,6 +1887,20 @@ app.post('/api/scanner/lookup-ticket', requireScannerAuth, requireSupervisorAuth
   }
 });
 
+// GET /api/scanner/inspect-detail — supervisor only, read-only (full inspect payload by qr_ticket_id)
+app.get('/api/scanner/inspect-detail', requireScannerAuth, requireSupervisorAuth, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).json({ success: false, error: 'Service unavailable' });
+    const db = supabaseService || supabase;
+    const qr_ticket_id = typeof req.query.qr_ticket_id === 'string' ? req.query.qr_ticket_id.trim() : '';
+    const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : '';
+    const out = await scanSupervisor.supervisorInspectDetail(db, { qr_ticket_id, event_id });
+    return res.status(out.status).json(out.body);
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
 // GET /api/scanner/event-scans — supervisor only
 app.get('/api/scanner/event-scans', requireScannerAuth, requireSupervisorAuth, async (req, res) => {
   try {

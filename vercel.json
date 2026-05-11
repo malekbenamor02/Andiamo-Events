@@ -352,6 +352,10 @@
       "destination": "/api/scan.js"
     },
     {
+      "source": "/api/scanner/inspect-detail",
+      "destination": "/api/scan.js"
+    },
+    {
       "source": "/api/scanner/event-scans",
       "destination": "/api/scan.js"
     },

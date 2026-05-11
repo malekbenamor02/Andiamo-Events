@@ -7,6 +7,7 @@ import ScannerEvents from "./ScannerEvents";
 import ScannerScan from "./ScannerScan";
 import ScannerHistory from "./ScannerHistory";
 import ScannerEventActivity from "./ScannerEventActivity";
+import ScannerInspectDetail from "./ScannerInspectDetail";
 
 interface ScannerAppProps {
   language: "en" | "fr";
@@ -56,6 +57,7 @@ export default function ScannerApp({ language }: ScannerAppProps) {
       <Route path="/scan" element={<ScannerScan />} />
       <Route path="/history" element={<ScannerHistory />} />
       <Route path="/event-activity" element={<ScannerEventActivity />} />
+      <Route path="/inspect-detail" element={<ScannerInspectDetail />} />
       <Route path="*" element={<ScannerEvents />} />
     </Routes>
   );

@@ -34,6 +34,8 @@ interface Stats {
   byScannerStatus?: Record<string, { total: number; valid: number; invalid: number; already_scanned: number; wrong_event: number }>;
   scannerNames?: Record<string, string>;
   remaining_valid_passes?: number | null;
+  total_qr_tickets?: number | null;
+  checked_in_distinct?: number | null;
 }
 
 export default function ScannerEventActivity() {
@@ -108,6 +110,8 @@ export default function ScannerEventActivity() {
               byScannerStatus: dStats.byScannerStatus,
               scannerNames: dStats.scannerNames,
               remaining_valid_passes: dStats.remaining_valid_passes,
+              total_qr_tickets: dStats.total_qr_tickets,
+              checked_in_distinct: dStats.checked_in_distinct,
             }
           : null
       );
@@ -184,8 +188,13 @@ export default function ScannerEventActivity() {
               <p className="text-xl font-bold text-[#22C55E]">{stats.byStatus.valid ?? 0}</p>
             </div>
             <div className="rounded-lg bg-[#1F1F1F] border border-[#2A2A2A] p-3">
-              <p className="text-xs text-[#737373]">Remaining passes</p>
+              <p className="text-xs text-[#737373]">Not checked in</p>
               <p className="text-xl font-bold text-[#A3A3A3]">{(stats.remaining_valid_passes ?? 0).toLocaleString()}</p>
+              {stats.total_qr_tickets != null && stats.checked_in_distinct != null && (
+                <p className="text-[10px] text-[#525252] mt-1">
+                  {stats.checked_in_distinct.toLocaleString()} checked in · {stats.total_qr_tickets.toLocaleString()} QR passes
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -195,7 +204,7 @@ export default function ScannerEventActivity() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#737373]" />
             <Input
               className="pl-9 bg-[#1F1F1F] border-[#2A2A2A] text-white"
-              placeholder="Search name, email, phone, or token (min 3 chars)"
+              placeholder="Search name, email, phone, order #, or token (min 3 chars)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {

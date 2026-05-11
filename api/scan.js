@@ -4,7 +4,7 @@
  * admin/scanners, admin/scanners/:id, admin/scanners/:id/scans, admin/scanners/:id/statistics,
  * admin/scan-history, admin/scan-statistics, scanner/validate-ticket, scanner/events,
  * scanner/scans, scanner/statistics, scanner/session, scanner/lookup-ticket,
- * scanner/event-scans, scanner/event-statistics.
+ * scanner/event-scans, scanner/event-statistics, scanner/inspect-detail.
  */
 
 import { createRequire } from 'module';
@@ -654,6 +654,20 @@ export default async function handler(req, res) {
       if (!db) return res.status(500).json({ success: false, result: 'error', message: 'Service unavailable' });
       const body = await parseBody(req);
       const out = await scanSupervisor.supervisorLookupTicket(db, { secure_token: body.secure_token, event_id: body.event_id });
+      return res.status(out.status).json(out.body);
+    }
+
+    // ——— GET /api/scanner/inspect-detail (supervisor)
+    if (path === '/api/scanner/inspect-detail' && method === 'GET') {
+      const auth = await requireScannerAuth(req);
+      if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
+      const supErr = requireSupervisorFromAuth(auth);
+      if (supErr.err) return res.status(supErr.err.statusCode).json(supErr.err.body);
+      if (!db) return res.status(500).json({ success: false, error: 'Service unavailable' });
+      const qsp = (req.url || '').includes('?') ? new URLSearchParams((req.url || '').split('?')[1] || '') : new URLSearchParams('');
+      const qr_ticket_id = (qsp.get('qr_ticket_id') || '').trim();
+      const event_id = (qsp.get('event_id') || '').trim();
+      const out = await scanSupervisor.supervisorInspectDetail(db, { qr_ticket_id, event_id });
       return res.status(out.status).json(out.body);
     }
 

@@ -6,13 +6,25 @@ import { getApiBaseUrl } from "@/lib/api-routes";
 import { formatDateDMY } from "@/lib/date-utils";
 import { API_ROUTES } from "@/lib/api-routes";
 import Loader from "@/components/ui/Loader";
-import { LogOut, History, RotateCw, PenLine, Square, CheckCircle2, XCircle, Copy, MapPinOff, ScanLine, WifiOff, Cloud, BatteryWarning, BarChart2 } from "lucide-react";
+import { LogOut, History, RotateCw, PenLine, Square, CheckCircle2, XCircle, Copy, MapPinOff, ScanLine, WifiOff, Cloud, BatteryWarning, BarChart2, ExternalLink } from "lucide-react";
 
 const STORAGE_KEY = "scanner_selected_event";
 const TIMEOUT_MS = 90000; // 90s
 const READER_ID = "scanner-qr-reader";
 const RECENT_SCANS_LIMIT = 6;
 const UNDO_WINDOW_SEC = 5;
+
+function scannerInspectDetailPath(qrTicketId: string, eventId: string): string {
+  const base = import.meta.env.BASE_URL || "/";
+  const prefix = base.endsWith("/") ? base.slice(0, -1) : base;
+  const q = new URLSearchParams({ qr_ticket_id: qrTicketId, event_id: eventId }).toString();
+  return `${prefix}/scanner/inspect-detail?${q}`;
+}
+
+function scannerInspectDetailAbsoluteUrl(qrTicketId: string, eventId: string): string {
+  if (typeof window === "undefined") return scannerInspectDetailPath(qrTicketId, eventId);
+  return `${window.location.origin}${scannerInspectDetailPath(qrTicketId, eventId)}`;
+}
 
 function triggerHaptic(status: string) {
   if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
@@ -69,6 +81,28 @@ type ScanHistoryRow = {
   notes?: string | null;
 };
 
+type InspectPanel = {
+  qr_ticket_id: string;
+  pass_type: string | null;
+  buyer_name: string | null;
+  buyer_email: string | null;
+  buyer_phone: string | null;
+  event_name: string | null;
+  payment_method: string | null;
+  payment_method_label: string | null;
+  pass_price: number | null;
+  pass_price_formatted: string | null;
+  order_number: string | null;
+};
+
+type OrderPassRow = {
+  qr_ticket_id: string;
+  pass_type: string | null;
+  ticket_status: string | null;
+  token_preview: string | null;
+  is_current: boolean;
+};
+
 type Result = {
   success: boolean;
   result: string;
@@ -77,6 +111,8 @@ type Result = {
   invitation?: Record<string, unknown> | null;
   scan_history?: ScanHistoryRow[];
   ticket_status?: string | null;
+  inspect_panel?: InspectPanel | null;
+  order_passes?: OrderPassRow[] | null;
   ticket?: {
     pass_type?: string;
     buyer_name?: string;
@@ -306,6 +342,11 @@ export default function ScannerScan() {
           invitation: invitationNorm,
           scan_history: scanHistoryNorm,
           ticket_status: d.ticket_status ?? null,
+          inspect_panel:
+            d.inspect_panel && typeof d.inspect_panel === "object" && d.inspect_panel.qr_ticket_id
+              ? (d.inspect_panel as InspectPanel)
+              : null,
+          order_passes: Array.isArray(d.order_passes) ? (d.order_passes as OrderPassRow[]) : null,
         });
         triggerHaptic(d.success ? "ok" : res === "wrong_event" ? "wrong_event" : "invalid");
       } else {
@@ -517,7 +558,7 @@ export default function ScannerScan() {
                 </div>
               </div>
               
-              {result.ticket && (
+              {result.ticket && !(result.lookup && result.inspect_panel) && (
                 <div className="space-y-3 mb-4 p-4 rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A]">
                   <div>
                     <p className="text-xs text-[#737373] mb-1">Pass Type</p>
@@ -547,6 +588,43 @@ export default function ScannerScan() {
                 </div>
               )}
               
+              {result.lookup && result.inspect_panel && event?.id && (
+                <div className="mb-4 p-4 rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A] space-y-3">
+                  <p className="text-xs text-[#737373] uppercase tracking-wide">Summary</p>
+                  <p className="text-lg font-semibold text-white">{result.inspect_panel.pass_type || "—"}</p>
+                  <p className="text-sm text-[#E5E5E5]">{result.inspect_panel.buyer_name || "—"}</p>
+                  <p className="text-xs text-[#737373] leading-relaxed">
+                    Full report includes email, phone, event, payment, price, order number, and every pass on this order.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      type="button"
+                      className="w-full h-11 bg-[#1A1A1A] border border-[#2A2A2A] text-white hover:bg-[#252525]"
+                      onClick={() =>
+                        navigate(scannerInspectDetailPath(result.inspect_panel!.qr_ticket_id, event.id))
+                      }
+                    >
+                      Open full report
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full h-11 border-[#2A2A2A] text-[#E5E5E5] hover:bg-[#1A1A1A]"
+                      onClick={() =>
+                        window.open(
+                          scannerInspectDetailAbsoluteUrl(result.inspect_panel!.qr_ticket_id, event.id),
+                          "_blank",
+                          "noopener,noreferrer"
+                        )
+                      }
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Open in new tab
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {result.previous_scan && (
                 <div className="mb-4 p-3 rounded-lg bg-[#F59E0B]/10 border border-[#F59E0B]/20">
                   <p className="text-xs text-[#F59E0B] font-medium mb-1">Previously Scanned</p>
@@ -568,7 +646,7 @@ export default function ScannerScan() {
                 </div>
               )}
 
-              {result.lookup && result.ticket && typeof result.ticket === "object" && (
+              {result.lookup && result.ticket && typeof result.ticket === "object" && !result.inspect_panel && (
                 <div className="mb-4 max-h-48 overflow-y-auto rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A] p-3 space-y-1.5">
                   <p className="text-xs text-[#737373] font-medium mb-2">All ticket fields</p>
                   {formatTicketFields(result.ticket as Record<string, unknown>).map(({ key, value }) => (
@@ -581,6 +659,7 @@ export default function ScannerScan() {
               )}
 
               {result.lookup &&
+                !result.inspect_panel &&
                 result.invitation &&
                 typeof result.invitation === "object" &&
                 !Array.isArray(result.invitation) &&
@@ -596,7 +675,7 @@ export default function ScannerScan() {
                 </div>
               )}
 
-              {result.lookup && Array.isArray(result.scan_history) && result.scan_history.length > 0 && (
+              {result.lookup && !result.inspect_panel && Array.isArray(result.scan_history) && result.scan_history.length > 0 && (
                 <div className="mb-4 max-h-40 overflow-y-auto rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A] p-3">
                   <p className="text-xs text-[#737373] font-medium mb-2">Scan history</p>
                   <ul className="space-y-2 text-xs">
