@@ -35,6 +35,9 @@ export const API_ROUTES = {
 
   /** Create pass for an event (service role; required when event has presale — anon cannot SELECT inserted row). */
   ADMIN_PASS_CREATE: '/api/admin/passes/create',
+  /** Admin auth + service role; required when event.presale_enabled hides passes from anon client. */
+  ADMIN_PASSES_FOR_EVENT: (eventId: string) =>
+    `/api/admin/passes/${encodeURIComponent(eventId)}`,
   
   // Application Management
   ADMIN_UPDATE_APPLICATION: '/api/admin-update-application',

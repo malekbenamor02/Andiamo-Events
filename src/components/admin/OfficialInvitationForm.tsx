@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { API_ROUTES, buildFullApiUrl } from '@/lib/api-routes';
+import { apiFetch } from '@/lib/api-client';
 import { formatDateDMY } from '@/lib/date-utils';
 import Loader from '@/components/ui/Loader';
 import { Mail, User, Phone, Calendar, Ticket, Hash } from 'lucide-react';
@@ -18,6 +19,7 @@ interface Event {
   date: string;
   venue: string;
   city: string;
+  is_test?: boolean | null;
 }
 
 interface EventPass {
@@ -58,20 +60,25 @@ export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [selectedPass, setSelectedPass] = useState<EventPass | null>(null);
 
-  // Fetch upcoming events
+  // Fetch events (align with dashboard: future dates, not only event_type=upcoming — avoids empty list / mismatch with header filter)
   useEffect(() => {
     const fetchEvents = async () => {
       setLoadingEvents(true);
       try {
+        const showTest =
+          typeof window !== 'undefined' &&
+          (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
         const { data, error } = await supabase
           .from('events')
-          .select('id, name, date, venue, city')
-          .eq('event_type', 'upcoming')
-          .gte('date', new Date().toISOString())
+          .select('id, name, date, venue, city, is_test')
+          .gte('date', startOfToday.toISOString())
           .order('date', { ascending: true });
 
         if (error) throw error;
-        setEvents(data || []);
+        const rows = (data || []).filter((e) => showTest || e.is_test !== true);
+        setEvents(rows);
       } catch (error) {
         console.error('Error fetching events:', error);
         toast({
@@ -107,20 +114,31 @@ export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({
     const fetchPasses = async () => {
       setLoadingPasses(true);
       try {
-        const { data, error } = await supabase
-          .from('event_passes')
-          .select('id, name, price, description')
-          .eq('event_id', selectedEventId)
-          .order('name', { ascending: true });
+        const apiUrl = buildFullApiUrl(API_ROUTES.ADMIN_PASSES_FOR_EVENT(selectedEventId));
+        if (!apiUrl) throw new Error('Failed to build API URL');
+        const response = await apiFetch(apiUrl, { method: 'GET' });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            (result && (result.details || result.error)) || `HTTP ${response.status}`,
+          );
+        }
+        const raw = Array.isArray(result.passes) ? result.passes : [];
+        const active = raw.filter((p: { is_active?: boolean }) => p.is_active !== false);
+        setPasses(
+          active.map((p: { id: string; name: string; price: number; description?: string | null }) => ({
+            id: p.id,
+            name: p.name,
+            price: typeof p.price === 'number' ? p.price : parseFloat(String(p.price || 0)),
+            description: p.description || '',
+          })),
+        );
 
-        if (error) throw error;
-        setPasses(data || []);
-        
-        // Reset pass selection
         setSelectedPassTypeId('');
         setSelectedPass(null);
       } catch (error) {
         console.error('Error fetching passes:', error);
+        setPasses([]);
         toast({
           title: language === 'en' ? 'Error' : 'Erreur',
           description: language === 'en' 
@@ -371,13 +389,7 @@ export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({
             <Select
               value={selectedEventId}
               onValueChange={setSelectedEventId}
-              disabled={
-                loading ||
-                loadingEvents ||
-                Boolean(
-                  dashboardSelectedEventId && String(dashboardSelectedEventId).trim() !== ''
-                )
-              }
+              disabled={loading || loadingEvents}
             >
               <SelectTrigger id="event">
                 <SelectValue placeholder={language === 'en' ? 'Select an event' : 'Sélectionnez un événement'} />
@@ -409,8 +421,8 @@ export const OfficialInvitationForm: React.FC<OfficialInvitationFormProps> = ({
               String(dashboardSelectedEventId).trim() !== '' && (
                 <p className="text-xs text-muted-foreground">
                   {language === 'en'
-                    ? 'Event matches the dashboard filter above.'
-                    : 'L’événement correspond au filtre du tableau de bord ci-dessus.'}
+                    ? 'Prefilled from the dashboard event filter; you can change it below.'
+                    : 'Prérempli depuis le filtre événement du tableau de bord ; vous pouvez le modifier ci-dessous.'}
                 </p>
               )}
           </div>
