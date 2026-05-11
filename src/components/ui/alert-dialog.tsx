@@ -25,22 +25,59 @@ const AlertDialogOverlay = React.forwardRef<
 ))
 AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName
 
+// See dialog.tsx for the rationale: Radix logs an a11y warning when no
+// description is supplied. We auto-suppress it (by passing
+// aria-describedby={undefined}) only when no `AlertDialogDescription` is
+// detected in the children tree.
+const ALERT_DESCRIPTION_DISPLAY_NAME = AlertDialogPrimitive.Description.displayName;
+function containsAlertDialogDescription(node: React.ReactNode): boolean {
+  let found = false;
+  const visit = (n: React.ReactNode): void => {
+    if (found || n == null || typeof n === "boolean") return;
+    React.Children.forEach(n, (child) => {
+      if (found || !React.isValidElement(child)) return;
+      const type = child.type as { displayName?: string; name?: string } | string | undefined;
+      if (typeof type !== "string") {
+        const name = type?.displayName ?? type?.name;
+        if (name === ALERT_DESCRIPTION_DISPLAY_NAME) {
+          found = true;
+          return;
+        }
+      }
+      const inner = (child.props as { children?: React.ReactNode } | undefined)?.children;
+      if (inner != null) visit(inner);
+    });
+  };
+  visit(node);
+  return found;
+}
+
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <AlertDialogPortal>
-    <AlertDialogOverlay />
-    <AlertDialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
-        className
-      )}
-      {...props}
-    />
-  </AlertDialogPortal>
-))
+>(({ className, children, ...props }, ref) => {
+  const userProvidedDescribedBy = "aria-describedby" in props;
+  const ariaOverride =
+    !userProvidedDescribedBy && !containsAlertDialogDescription(children)
+      ? { "aria-describedby": undefined }
+      : undefined;
+  return (
+    <AlertDialogPortal>
+      <AlertDialogOverlay />
+      <AlertDialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+          className
+        )}
+        {...ariaOverride}
+        {...props}
+      >
+        {children}
+      </AlertDialogPrimitive.Content>
+    </AlertDialogPortal>
+  );
+});
 AlertDialogContent.displayName = AlertDialogPrimitive.Content.displayName
 
 const AlertDialogHeader = ({

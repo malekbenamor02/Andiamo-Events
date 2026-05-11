@@ -11623,6 +11623,7 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
         onUpdateStatus={updateOnlineOrderStatus}
         onUpdateEmail={updateOnlineOrderEmail}
         onResendTicket={handleResendTicketEmail}
+        resendingTicketEmail={resendingTicketEmail}
         isSuperAdmin={currentAdminRole === "super_admin"}
       />
 

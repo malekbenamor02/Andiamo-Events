@@ -50,6 +50,11 @@ export function initSentry() {
       // reCAPTCHA timeout in in-app browsers (e.g. Instagram WebView) – we handle in UI
       /reCAPTCHA Timeout/i,
       'RECAPTCHA_TIMEOUT',
+      // Apollo.io browser extension / sales-engagement scripts inject Apollo Client
+      // and log invariant warnings (we don't ship Apollo Client). Filter by the
+      // canonical invariant URL and the ApolloClient `headers`/`HttpLink` message.
+      /go\.apollo\.dev\/c\/err/i,
+      /Please initialize an instance of `HttpLink` with `headers`/i,
     ],
     denyUrls: [
       /chrome-extension:\/\//i,
@@ -65,6 +70,9 @@ export function initSentry() {
       // Google reCAPTCHA (timeouts in in-app browsers; we handle in UI)
       /google\.com\/recaptcha/i,
       /recaptcha.*\.js/i,
+      // Apollo.io / Apollo Client scripts injected by sales/CRM extensions
+      /apollo\.dev/i,
+      /apollo-client/i,
     ],
   });
 }

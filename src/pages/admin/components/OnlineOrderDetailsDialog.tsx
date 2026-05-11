@@ -4,13 +4,14 @@
  */
 
 import React, { useRef, useState } from "react";
+import Loader from "@/components/ui/Loader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Package,
@@ -80,6 +81,8 @@ export interface OnlineOrderDetailsDialogProps {
   onUpdateEmail: (orderId: string, newEmail: string) => void | Promise<void>;
   /** Optional: resend ticket email (only shown for paid orders when provided) */
   onResendTicket?: (orderId: string) => void | Promise<void>;
+  /** True while admin ticket email resend request is in flight (shared with COD dialog handler). */
+  resendingTicketEmail?: boolean;
   /** When true, loads and shows QR ticket images and statuses (API allows super_admin only). */
   isSuperAdmin?: boolean;
 }
@@ -92,6 +95,7 @@ export function OnlineOrderDetailsDialog({
   onUpdateStatus,
   onUpdateEmail,
   onResendTicket,
+  resendingTicketEmail = false,
   isSuperAdmin = false,
 }: OnlineOrderDetailsDialogProps) {
   const { toast } = useToast();
@@ -248,6 +252,11 @@ export function OnlineOrderDetailsDialog({
           <DialogTitle>
             {language === "en" ? "Online Order Details" : "Détails de la Commande en Ligne"}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            {language === "en"
+              ? "Detailed information about this online order: customer, passes, payment status, gateway data and admin actions."
+              : "Informations détaillées sur cette commande en ligne : client, passes, statut de paiement, données passerelle et actions administrateur."}
+          </DialogDescription>
         </DialogHeader>
         {order && (
           <div className="space-y-4 sm:space-y-6 w-full break-words">
@@ -933,9 +942,20 @@ export function OnlineOrderDetailsDialog({
                     <Button
                       variant="outline"
                       onClick={() => onResendTicket(order.id)}
+                      disabled={resendingTicketEmail}
                     >
-                      <Send className="w-4 h-4 mr-2" />
-                      {language === "en" ? "Resend Email" : "Renvoyer l'Email"}
+                      {resendingTicketEmail ? (
+                        <Loader size="sm" className="mr-2" />
+                      ) : (
+                        <Send className="w-4 h-4 mr-2" />
+                      )}
+                      {resendingTicketEmail
+                        ? language === "en"
+                          ? "Resending..."
+                          : "Renvoi en cours..."
+                        : language === "en"
+                          ? "Resend Email"
+                          : "Renvoyer l'Email"}
                     </Button>
                   )}
                 </div>
