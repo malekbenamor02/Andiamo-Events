@@ -32,6 +32,7 @@ const querystring = require('querystring');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const scanSupervisor = require('./lib/scanner-supervisor-handlers.cjs');
 
 // Official online ticket email template — run `node email-templates/generate-previews.cjs` to refresh browser previews
 const { buildOnlineTicketEmailHtml, formatEventTime } = require('./api/lib/online-ticket-email-html.cjs');
@@ -1523,6 +1524,18 @@ app.get('/api/scan-system-status', async (req, res) => {
   }
 });
 
+// Scanner cookie: match admin pattern — Secure only over HTTPS so LAN/mobile HTTP (prod build) still stores the cookie.
+function scannerTokenCookieSecure(req) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (!isProduction) return false;
+  return !!(req.secure || (req.headers['x-forwarded-proto'] || '').toString().includes('https'));
+}
+
+function clearScannerTokenCookie(req, res) {
+  const secure = scannerTokenCookieSecure(req);
+  res.clearCookie('scannerToken', { path: '/', httpOnly: true, sameSite: 'lax', secure });
+}
+
 // POST /api/scanner-login — rate limited. Password checked server-side only; never trust client.
 app.post('/api/scanner-login', scannerLoginLimiter, async (req, res) => {
   try {
@@ -1534,16 +1547,22 @@ app.post('/api/scanner-login', scannerLoginLimiter, async (req, res) => {
     if (!em || !pw) return res.status(400).json({ error: 'Email and password required' });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'Invalid email' });
     if (pw.length < 6) return res.status(400).json({ error: 'Invalid credentials' });
-    const { data: sc, error: e } = await db.from('scanners').select('id, email, name, password_hash, is_active').eq('email', em).single();
+    const { data: sc, error: e } = await db.from('scanners').select('id, email, name, password_hash, is_active, role').eq('email', em).single();
     if (e || !sc || !sc.is_active) return res.status(401).json({ error: 'Invalid credentials' });
     const ok = await bcrypt.compare(pw, sc.password_hash);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret && process.env.NODE_ENV === 'production') return res.status(500).json({ error: 'Server error' });
-    const token = jwt.sign({ scannerId: sc.id, email: sc.email, type: 'scanner' }, jwtSecret || 'fallback-secret-dev-only', { expiresIn: '8h' });
-    const isProd = process.env.NODE_ENV === 'production';
-    res.cookie('scannerToken', token, { httpOnly: true, secure: isProd, sameSite: 'lax', path: '/', maxAge: 8 * 60 * 60 * 1000 });
-    return res.json({ success: true, scanner: { id: sc.id, email: sc.email, name: sc.name } });
+    const scannerRole = sc.role === 'supervisor' ? 'supervisor' : 'scanner';
+    const token = jwt.sign({ scannerId: sc.id, email: sc.email, type: 'scanner', scannerRole }, jwtSecret || 'fallback-secret-dev-only', { expiresIn: '8h' });
+    res.cookie('scannerToken', token, {
+      httpOnly: true,
+      secure: scannerTokenCookieSecure(req),
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 8 * 60 * 60 * 1000,
+    });
+    return res.json({ success: true, scanner: { id: sc.id, email: sc.email, name: sc.name, role: scannerRole } });
   } catch (err) {
     return res.status(500).json({ error: 'Server error' });
   }
@@ -1551,7 +1570,7 @@ app.post('/api/scanner-login', scannerLoginLimiter, async (req, res) => {
 
 // POST /api/scanner-logout
 app.post('/api/scanner-logout', (req, res) => {
-  res.clearCookie('scannerToken', { path: '/' });
+  clearScannerTokenCookie(req, res);
   return res.json({ success: true });
 });
 
@@ -1601,7 +1620,7 @@ app.get('/api/admin/scanners', requireAdminAuth, requireSuperAdmin, async (req, 
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const db = supabaseService || supabase;
-    const { data: rows, error } = await db.from('scanners').select('id, name, email, is_active, created_by, created_at').order('created_at', { ascending: false });
+    const { data: rows, error } = await db.from('scanners').select('id, name, email, is_active, role, created_by, created_at').order('created_at', { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     const adminIds = [...new Set((rows || []).map(r => r.created_by).filter(Boolean))];
     let names = {};
@@ -1614,47 +1633,66 @@ app.get('/api/admin/scanners', requireAdminAuth, requireSuperAdmin, async (req, 
   } catch (e) { return res.status(500).json({ error: 'Server error' }); }
 });
 
-// POST /api/admin/scanners — super_admin only. Body: { name, email, password }
+// POST /api/admin/scanners — super_admin only. Body: { name, email, password, role? }
 app.post('/api/admin/scanners', requireAdminAuth, requireSuperAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
-    const { name, email, password } = req.body || {};
+    const { name, email, password, role } = req.body || {};
     const n = typeof name === 'string' ? name.trim() : '';
     const em = typeof email === 'string' ? email.trim().toLowerCase() : '';
     const pw = typeof password === 'string' ? password : '';
     if (!n || !em || !pw) return res.status(400).json({ error: 'Name, email and password required' });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'Invalid email' });
     if (pw.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    let roleVal = 'scanner';
+    if (typeof role === 'string' && role.trim() === 'supervisor') roleVal = 'supervisor';
     const db = supabaseService || supabase;
-    const { data: ex } = await db.from('scanners').select('id').eq('email', em).single();
-    if (ex) return res.status(400).json({ error: 'Email already used' });
+    const { data: existingRow, error: findErr } = await db.from('scanners').select('id').eq('email', em).maybeSingle();
+    if (findErr) return res.status(500).json({ error: findErr.message });
+    if (existingRow?.id) return res.status(400).json({ error: 'Email already used' });
     const hash = await bcrypt.hash(pw, 10);
-    const { data: ins, error } = await db.from('scanners').insert({ name: n, email: em, password_hash: hash, created_by: req.admin.id }).select('id, name, email, is_active, created_at').single();
-    if (error) return res.status(500).json({ error: error.message });
+    const { data: ins, error } = await db.from('scanners').insert({ name: n, email: em, password_hash: hash, created_by: req.admin.id, role: roleVal }).select('id, name, email, is_active, role, created_at').single();
+    if (error) {
+      const msg = error.message || '';
+      if (error.code === '23505' || /duplicate key|unique constraint/i.test(msg)) {
+        return res.status(400).json({ error: 'Email already used' });
+      }
+      if (/violates check constraint.*role|check constraint.*scanners_role/i.test(msg)) {
+        return res.status(400).json({ error: 'Invalid role: run DB migration for scanners.role (scanner | supervisor).' });
+      }
+      if (/column.*role|does not exist/i.test(msg)) {
+        return res.status(400).json({ error: 'Database missing scanners.role column. Apply migration 20260511120000_scanners_role_supervisor.sql' });
+      }
+      return res.status(500).json({ error: msg });
+    }
     return res.status(201).json(ins);
   } catch (e) { return res.status(500).json({ error: 'Server error' }); }
 });
 
-// PATCH /api/admin/scanners/:id — super_admin only. Body: { name?, email?, is_active?, password? } (password optional)
+// PATCH /api/admin/scanners/:id — super_admin only. Body: { name?, email?, is_active?, password?, role? } (password optional)
 app.patch('/api/admin/scanners/:id', requireAdminAuth, requireSuperAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
     const id = req.params.id;
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'Invalid id' });
-    const { name, email, is_active, password } = req.body || {};
+    const { name, email, is_active, password, role } = req.body || {};
     const db = supabaseService || supabase;
     const up = {};
     if (typeof name === 'string' && name.trim()) up.name = name.trim();
     if (typeof email === 'string' && email.trim()) { const e = email.trim().toLowerCase(); if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) up.email = e; }
     if (typeof is_active === 'boolean') up.is_active = is_active;
     if (typeof password === 'string' && password.length >= 8) up.password_hash = await bcrypt.hash(password, 10);
+    if (typeof role === 'string') {
+      const r = role.trim();
+      if (r === 'scanner' || r === 'supervisor') up.role = r;
+    }
     if (Object.keys(up).length === 0) return res.status(400).json({ error: 'No valid fields to update' });
     up.updated_at = new Date().toISOString();
     if (up.email) {
       const { data: ex } = await db.from('scanners').select('id').eq('email', up.email).neq('id', id).single();
       if (ex) return res.status(400).json({ error: 'Email already used' });
     }
-    const { data: u, error } = await db.from('scanners').update(up).eq('id', id).select('id, name, email, is_active, updated_at').single();
+    const { data: u, error } = await db.from('scanners').update(up).eq('id', id).select('id, name, email, is_active, role, updated_at').single();
     if (error) return res.status(500).json({ error: error.message });
     if (!u) return res.status(404).json({ error: 'Not found' });
     return res.json(u);
@@ -1817,6 +1855,68 @@ app.get('/api/scanner/statistics', requireScannerAuth, async (req, res) => {
     }
     return res.json({ total, byStatus, byPass });
   } catch (e) { return res.status(500).json({ error: 'Server error' }); }
+});
+
+// GET /api/scanner/session — requireScannerAuth; DB role is source of truth for UI
+app.get('/api/scanner/session', requireScannerAuth, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
+    const db = supabaseService || supabase;
+    const { data: sc, error } = await db.from('scanners').select('id, name, email, role, is_active').eq('id', req.scanner.scannerId).single();
+    if (error || !sc || !sc.is_active) {
+      clearScannerTokenCookie(req, res);
+      return res.status(401).json({ error: 'Invalid or inactive scanner' });
+    }
+    const role = sc.role === 'supervisor' ? 'supervisor' : 'scanner';
+    return res.json({ id: sc.id, name: sc.name, email: sc.email, role });
+  } catch (e) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/scanner/lookup-ticket — supervisor only, read-only
+app.post('/api/scanner/lookup-ticket', requireScannerAuth, requireSupervisorAuth, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).json({ success: false, result: 'error', message: 'Service unavailable' });
+    const db = supabaseService || supabase;
+    const { secure_token, event_id } = req.body || {};
+    const out = await scanSupervisor.supervisorLookupTicket(db, { secure_token, event_id });
+    return res.status(out.status).json(out.body);
+  } catch (e) {
+    return res.status(500).json({ success: false, result: 'error', message: 'Server error' });
+  }
+});
+
+// GET /api/scanner/event-scans — supervisor only
+app.get('/api/scanner/event-scans', requireScannerAuth, requireSupervisorAuth, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
+    const db = supabaseService || supabase;
+    const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : '';
+    const date_from = typeof req.query.date_from === 'string' ? req.query.date_from : null;
+    const date_to = typeof req.query.date_to === 'string' ? req.query.date_to : null;
+    const scan_result = typeof req.query.scan_result === 'string' ? req.query.scan_result.trim() : null;
+    const q = typeof req.query.q === 'string' ? req.query.q : null;
+    const out = await scanSupervisor.supervisorEventScans(db, { event_id, date_from, date_to, scan_result, q });
+    return res.status(out.status).json(out.body);
+  } catch (e) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/scanner/event-statistics — supervisor only
+app.get('/api/scanner/event-statistics', requireScannerAuth, requireSupervisorAuth, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).json({ error: 'Supabase not configured' });
+    const db = supabaseService || supabase;
+    const event_id = typeof req.query.event_id === 'string' ? req.query.event_id.trim() : '';
+    const date_from = typeof req.query.date_from === 'string' ? req.query.date_from : null;
+    const date_to = typeof req.query.date_to === 'string' ? req.query.date_to : null;
+    const out = await scanSupervisor.supervisorEventStatistics(db, { event_id, date_from, date_to });
+    return res.status(out.status).json(out.body);
+  } catch (e) {
+    return res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // GET /api/admin/scanners/:id/scans — super_admin
@@ -2448,19 +2548,27 @@ function requireScannerAuth(req, res, next) {
     try {
       decoded = jwt.verify(token, jwtSecret || 'fallback-secret-dev-only');
     } catch (e) {
-      res.clearCookie('scannerToken', { path: '/' });
+      clearScannerTokenCookie(req, res);
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
     if (decoded.type !== 'scanner' || !decoded.scannerId || !decoded.email) {
-      res.clearCookie('scannerToken', { path: '/' });
+      clearScannerTokenCookie(req, res);
       return res.status(401).json({ error: 'Invalid token' });
     }
-    req.scanner = { scannerId: decoded.scannerId, email: decoded.email };
+    const scannerRole = decoded.scannerRole === 'supervisor' ? 'supervisor' : 'scanner';
+    req.scanner = { scannerId: decoded.scannerId, email: decoded.email, role: scannerRole };
     next();
   } catch (e) {
-    res.clearCookie('scannerToken', { path: '/' });
+    clearScannerTokenCookie(req, res);
     return res.status(500).json({ error: 'Authentication error' });
   }
+}
+
+function requireSupervisorAuth(req, res, next) {
+  if (!req.scanner || req.scanner.role !== 'supervisor') {
+    return res.status(403).json({ error: 'Forbidden', reason: 'Supervisor role required' });
+  }
+  next();
 }
 
 // Helper function to log invitation actions

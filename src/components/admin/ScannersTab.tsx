@@ -22,6 +22,7 @@ interface Scanner {
   name: string;
   email: string;
   is_active: boolean;
+  role?: string;
   created_by: string | null;
   created_at: string;
   created_by_name?: string | null;
@@ -72,10 +73,13 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
   const [createName, setCreateName] = useState("");
   const [createEmail, setCreateEmail] = useState("");
   const [createPassword, setCreatePassword] = useState("");
+  const [createRole, setCreateRole] = useState<"scanner" | "supervisor">("scanner");
+  const [createError, setCreateError] = useState("");
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editActive, setEditActive] = useState(true);
   const [editPassword, setEditPassword] = useState("");
+  const [editRole, setEditRole] = useState<"scanner" | "supervisor">("scanner");
   const [toggleLoading, setToggleLoading] = useState(false);
   const [configLoading, setConfigLoading] = useState(true);
   const configReqRef = useRef(0);
@@ -184,8 +188,19 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
 
   const onCreate = async () => {
     if (!createName.trim() || !createEmail.trim() || createPassword.length < 8) return;
-    const r = await fetcher(API_ROUTES.ADMIN_SCANNERS, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: createName.trim(), email: createEmail.trim().toLowerCase(), password: createPassword }) });
-    if (r.ok) { setCreateOpen(false); setCreateName(""); setCreateEmail(""); setCreatePassword(""); await loadScanners(); }
+    setCreateError("");
+    const r = await fetcher(API_ROUTES.ADMIN_SCANNERS, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: createName.trim(), email: createEmail.trim().toLowerCase(), password: createPassword, role: createRole }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) {
+      setCreateOpen(false);
+      setCreateName("");
+      setCreateEmail("");
+      setCreatePassword("");
+      setCreateRole("scanner");
+      await loadScanners();
+      return;
+    }
+    setCreateError(typeof d.error === "string" ? d.error : `Request failed (${r.status})`);
   };
 
   const onEdit = async () => {
@@ -194,6 +209,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
     if (editName.trim()) body.name = editName.trim();
     if (editEmail.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmail)) body.email = editEmail.trim().toLowerCase();
     body.is_active = editActive;
+    body.role = editRole;
     if (editPassword.length >= 8) body.password = editPassword;
     if (Object.keys(body).length === 0) return;
     const r = await fetcher(API_ROUTES.ADMIN_SCANNER(editScanner.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -205,7 +221,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
     if (r.ok) await loadScanners();
   };
 
-  const t = language === "en" ? { start: "Start Scan", stop: "Stop Scan", toggleScan: "Toggle Scan", status: "Status", on: "ON", off: "OFF", scanners: "Scanners", create: "Create Scanner", name: "Name", email: "Email", password: "Password", active: "Active", actions: "Actions", edit: "Edit", deactivate: "Deactivate", all: "All Scanners", total: "Total", valid: "Valid", invalid: "Invalid", alreadyScanned: "Already scanned", wrongEvent: "Wrong event", history: "History", time: "Time", result: "Result", buyer: "Buyer", pass: "Pass", ambassador: "Ambassador", event: "Event", scanner: "Scanner", noScans: "No scans", remainingValidPasses: "Remaining valid passes", scannerPerformance: "Scanner performance", selectEventHint: "Select an event to see remaining valid passes", processing: "Processing...", remainingVsStatus: "Remaining valid vs scan statuses" } : { start: "Démarrer le scan", stop: "Arrêter le scan", toggleScan: "Basculer le scan", status: "État", on: "ACTIF", off: "INACTIF", scanners: "Scanners", create: "Créer un scanner", name: "Nom", email: "Email", password: "Mot de passe", active: "Actif", actions: "Actions", edit: "Modifier", deactivate: "Désactiver", all: "Tous les scanners", total: "Total", valid: "Valide", invalid: "Invalide", alreadyScanned: "Déjà scanné", wrongEvent: "Mauvais événement", history: "Historique", time: "Heure", result: "Résultat", buyer: "Acheteur", pass: "Pass", ambassador: "Ambassadeur", event: "Événement", scanner: "Scanner", noScans: "Aucun scan", remainingValidPasses: "Pass valides restants", scannerPerformance: "Performance des scanners", selectEventHint: "Sélectionnez un événement pour voir les pass valides restants", processing: "Traitement...", remainingVsStatus: "Pass valides restants vs statuts de scan" };
+  const t = language === "en" ? { start: "Start Scan", stop: "Stop Scan", toggleScan: "Toggle Scan", status: "Status", on: "ON", off: "OFF", scanners: "Scanners", create: "Create Scanner", name: "Name", email: "Email", password: "Password", active: "Active", actions: "Actions", edit: "Edit", deactivate: "Deactivate", all: "All Scanners", total: "Total", valid: "Valid", invalid: "Invalid", alreadyScanned: "Already scanned", wrongEvent: "Wrong event", history: "History", time: "Time", result: "Result", buyer: "Buyer", pass: "Pass", ambassador: "Ambassador", event: "Event", scanner: "Scanner", noScans: "No scans", remainingValidPasses: "Remaining valid passes", scannerPerformance: "Scanner performance", selectEventHint: "Select an event to see remaining valid passes", processing: "Processing...", remainingVsStatus: "Remaining valid vs scan statuses", roleLabel: "Role", roleScanner: "Scanner", roleSupervisor: "Supervisor" } : { start: "Démarrer le scan", stop: "Arrêter le scan", toggleScan: "Basculer le scan", status: "État", on: "ACTIF", off: "INACTIF", scanners: "Scanners", create: "Créer un scanner", name: "Nom", email: "Email", password: "Mot de passe", active: "Actif", actions: "Actions", edit: "Modifier", deactivate: "Désactiver", all: "Tous les scanners", total: "Total", valid: "Valide", invalid: "Invalide", alreadyScanned: "Déjà scanné", wrongEvent: "Mauvais événement", history: "Historique", time: "Heure", result: "Résultat", buyer: "Acheteur", pass: "Pass", ambassador: "Ambassadeur", event: "Événement", scanner: "Scanner", noScans: "Aucun scan", remainingValidPasses: "Pass valides restants", scannerPerformance: "Performance des scanners", selectEventHint: "Sélectionnez un événement pour voir les pass valides restants", processing: "Traitement...", remainingVsStatus: "Pass valides restants vs statuts de scan", roleLabel: "Rôle", roleScanner: "Scanner", roleSupervisor: "Superviseur" };
 
   return (
     <div className="space-y-6">
@@ -233,7 +249,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
       <Card className="bg-card border-border">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-foreground">{t.scanners}</CardTitle>
-          <Button onClick={() => setCreateOpen(true)} className="bg-[#E21836] hover:bg-[#c4142e]"><Plus className="w-4 h-4 mr-2" />{t.create}</Button>
+          <Button onClick={() => { setCreateRole("scanner"); setCreateOpen(true); }} className="bg-[#E21836] hover:bg-[#c4142e]"><Plus className="w-4 h-4 mr-2" />{t.create}</Button>
         </CardHeader>
         <CardContent>
           <Table>
@@ -241,6 +257,7 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
               <TableRow className="border-border">
                 <TableHead className="text-muted-foreground">{t.name}</TableHead>
                 <TableHead className="text-muted-foreground">{t.email}</TableHead>
+                <TableHead className="text-muted-foreground">{t.roleLabel}</TableHead>
                 <TableHead className="text-muted-foreground">{t.active}</TableHead>
                 <TableHead className="text-muted-foreground">{t.actions}</TableHead>
               </TableRow>
@@ -250,9 +267,10 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
                 <TableRow key={s.id} className="border-border">
                   <TableCell className="text-foreground">{s.name}</TableCell>
                   <TableCell className="text-muted-foreground">{s.email}</TableCell>
+                  <TableCell className="text-muted-foreground">{s.role === "supervisor" ? t.roleSupervisor : t.roleScanner}</TableCell>
                   <TableCell><span className={s.is_active ? "text-[#10B981]" : "text-[#EF4444]"}>{s.is_active ? "✓" : "✗"}</span></TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground mr-2" onClick={() => { setEditScanner(s); setEditName(s.name); setEditEmail(s.email); setEditActive(s.is_active); setEditPassword(""); setEditOpen(true); }}>{t.edit}</Button>
+                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground mr-2" onClick={() => { setEditScanner(s); setEditName(s.name); setEditEmail(s.email); setEditActive(s.is_active); setEditRole(s.role === "supervisor" ? "supervisor" : "scanner"); setEditPassword(""); setEditOpen(true); }}>{t.edit}</Button>
                     {s.is_active && <Button variant="ghost" size="sm" className="text-[#EF4444]" onClick={() => onDeactivate(s)}>{t.deactivate}</Button>}
                   </TableCell>
                 </TableRow>
@@ -384,16 +402,25 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
         </CardContent>
       </Card>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCreateError(""); }}>
         <DialogContent className="bg-card border-border">
           <DialogHeader><DialogTitle className="text-foreground">{t.create}</DialogTitle></DialogHeader>
           <div className="space-y-3">
+            {createError && <p className="text-sm text-[#EF4444]">{createError}</p>}
             <Label className="text-muted-foreground">{t.name}</Label>
             <Input value={createName} onChange={e => setCreateName(e.target.value)} />
             <Label className="text-muted-foreground">{t.email}</Label>
             <Input type="email" value={createEmail} onChange={e => setCreateEmail(e.target.value)} />
             <Label className="text-muted-foreground">{t.password} (min 8)</Label>
             <Input type="password" value={createPassword} onChange={e => setCreatePassword(e.target.value)} />
+            <Label className="text-muted-foreground">{t.roleLabel}</Label>
+            <Select value={createRole} onValueChange={(v) => setCreateRole(v === "supervisor" ? "supervisor" : "scanner")}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="scanner">{t.roleScanner}</SelectItem>
+                <SelectItem value="supervisor">{t.roleSupervisor}</SelectItem>
+              </SelectContent>
+            </Select>
             <Button className="w-full bg-[#E21836] hover:bg-[#c4142e]" onClick={onCreate}>Create</Button>
           </div>
         </DialogContent>
@@ -412,6 +439,14 @@ export function ScannersTab({ language, selectedEventId }: ScannersTabProps) {
                 <Switch checked={editActive} onCheckedChange={setEditActive} />
                 <Label className="text-muted-foreground">{t.active}</Label>
               </div>
+              <Label className="text-muted-foreground">{t.roleLabel}</Label>
+              <Select value={editRole} onValueChange={(v) => setEditRole(v === "supervisor" ? "supervisor" : "scanner")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="scanner">{t.roleScanner}</SelectItem>
+                  <SelectItem value="supervisor">{t.roleSupervisor}</SelectItem>
+                </SelectContent>
+              </Select>
               <Label className="text-muted-foreground">{t.password} (leave blank to keep)</Label>
               <Input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="••••••••" />
               <Button className="w-full bg-[#E21836] hover:bg-[#c4142e]" onClick={onEdit}>Save</Button>

@@ -1,31 +1,35 @@
 import React, { useState, useEffect } from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
 import ScannerLogin from "./ScannerLogin";
 import ScannerEvents from "./ScannerEvents";
 import ScannerScan from "./ScannerScan";
 import ScannerHistory from "./ScannerHistory";
+import ScannerEventActivity from "./ScannerEventActivity";
 
 interface ScannerAppProps {
   language: "en" | "fr";
 }
 
 export default function ScannerApp({ language }: ScannerAppProps) {
-  const location = useLocation();
   const [status, setStatus] = useState<"loading" | "disabled" | "enabled">("loading");
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const r = await fetch(`${getApiBaseUrl()}${API_ROUTES.SCAN_SYSTEM_STATUS}`, { credentials: "include" });
         const d = await r.json().catch(() => ({}));
-        setStatus(d.enabled ? "enabled" : "disabled");
+        if (!cancelled) setStatus(d.enabled ? "enabled" : "disabled");
       } catch {
-        setStatus("disabled");
+        if (!cancelled) setStatus("disabled");
       }
     })();
-  }, [location.pathname]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (status === "loading") {
     return (
@@ -51,6 +55,7 @@ export default function ScannerApp({ language }: ScannerAppProps) {
       <Route path="/events" element={<ScannerEvents />} />
       <Route path="/scan" element={<ScannerScan />} />
       <Route path="/history" element={<ScannerHistory />} />
+      <Route path="/event-activity" element={<ScannerEventActivity />} />
       <Route path="*" element={<ScannerEvents />} />
     </Routes>
   );

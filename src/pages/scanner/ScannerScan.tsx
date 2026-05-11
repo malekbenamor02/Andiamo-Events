@@ -6,7 +6,7 @@ import { getApiBaseUrl } from "@/lib/api-routes";
 import { formatDateDMY } from "@/lib/date-utils";
 import { API_ROUTES } from "@/lib/api-routes";
 import Loader from "@/components/ui/Loader";
-import { LogOut, History, Play, RotateCw, PenLine, Square, CheckCircle2, XCircle, Copy, MapPinOff, ScanLine, WifiOff, Cloud, BatteryWarning } from "lucide-react";
+import { LogOut, History, RotateCw, PenLine, Square, CheckCircle2, XCircle, Copy, MapPinOff, ScanLine, WifiOff, Cloud, BatteryWarning, BarChart2 } from "lucide-react";
 
 const STORAGE_KEY = "scanner_selected_event";
 const TIMEOUT_MS = 90000; // 90s
@@ -17,6 +17,7 @@ const UNDO_WINDOW_SEC = 5;
 function triggerHaptic(status: string) {
   if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
   switch (status) {
+    case "ok":
     case "valid": navigator.vibrate(50); break;
     case "invalid":
     case "already_scanned": navigator.vibrate([40, 30, 40]); break;
@@ -26,6 +27,7 @@ function triggerHaptic(status: string) {
 
 function getStatusConfig(result: string): { color: string; border: string; bg: string; icon: React.ElementType; label: string } {
   switch (result) {
+    case "ok": return { color: "text-[#22C55E]", border: "border-[#22C55E]", bg: "bg-[#22C55E]/10", icon: CheckCircle2, label: "INFO" };
     case "valid": return { color: "text-[#22C55E]", border: "border-[#22C55E]", bg: "bg-[#22C55E]/10", icon: CheckCircle2, label: "VALID" };
     case "already_scanned": return { color: "text-[#F59E0B]", border: "border-[#F59E0B]", bg: "bg-[#F59E0B]/10", icon: Copy, label: "ALREADY SCANNED" };
     case "wrong_event": return { color: "text-[#F59E0B]", border: "border-[#F59E0B]", bg: "bg-[#F59E0B]/10", icon: MapPinOff, label: "WRONG EVENT" };
@@ -44,6 +46,7 @@ function formatSyncAgo(d: Date | null): string {
 
 function getStatusEdgeColor(r: string): string {
   switch (r) {
+    case "ok":
     case "valid": return "#22C55E";
     case "already_scanned":
     case "wrong_event": return "#F59E0B";
@@ -58,10 +61,22 @@ interface SelectedEvent {
   venue: string;
 }
 
+type ScanHistoryRow = {
+  id: string;
+  scan_time: string;
+  scan_result: string;
+  scanner_name?: string | null;
+  notes?: string | null;
+};
+
 type Result = {
   success: boolean;
   result: string;
   message: string;
+  lookup?: boolean;
+  invitation?: Record<string, unknown> | null;
+  scan_history?: ScanHistoryRow[];
+  ticket_status?: string | null;
   ticket?: {
     pass_type?: string;
     buyer_name?: string;
@@ -74,9 +89,10 @@ type Result = {
     recipient_name?: string | null;
     recipient_phone?: string | null;
     recipient_email?: string | null;
+    [key: string]: unknown;
   };
   previous_scan?: { scanned_at?: string; scanner_name?: string };
-  correct_event?: { event_name?: string; event_date?: string };
+  correct_event?: { event_name?: string; event_date?: string; event_id?: string };
   event_date?: string;
   enabled?: boolean;
 };
@@ -84,9 +100,41 @@ type Result = {
 type ScanRow = { id: string; scan_time: string; scan_result: string; buyer_name: string | null; pass_type: string | null };
 type Stats = { total: number; byStatus: Record<string, number>; byPass: Record<string, number> };
 
+function safeFieldString(v: unknown): string {
+  if (v == null || v === "") return "";
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return "[unserializable]";
+  }
+}
+
+function formatTicketFields(ticket: Record<string, unknown>): { key: string; value: string }[] {
+  const skip = new Set(["secure_token"]);
+  return Object.keys(ticket)
+    .filter((k) => !skip.has(k) && ticket[k] != null && ticket[k] !== "")
+    .sort()
+    .map((key) => ({ key, value: safeFieldString(ticket[key]) }));
+}
+
+function readStoredSelectedEvent(): SelectedEvent | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if (!s) return null;
+    const o = JSON.parse(s) as SelectedEvent;
+    return o?.id ? o : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function ScannerScan() {
   const navigate = useNavigate();
-  const [event, setEvent] = useState<SelectedEvent | null>(null);
+  const [scannerRole, setScannerRole] = useState<"scanner" | "supervisor" | null>(null);
+  const [scanMode, setScanMode] = useState<"gate" | "inspect">("gate");
+  const [event, setEvent] = useState<SelectedEvent | null>(readStoredSelectedEvent);
   const [scanning, setScanning] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
@@ -107,14 +155,26 @@ export default function ScannerScan() {
   const processedRef = useRef(false);
 
   useEffect(() => {
-    try {
-      const s = localStorage.getItem(STORAGE_KEY);
-      if (s) {
-        const o = JSON.parse(s) as SelectedEvent;
-        if (o && o.id) setEvent(o);
+    if (!event?.id) {
+      navigate("/scanner/events", { replace: true });
+    }
+  }, [event?.id, navigate]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${getApiBaseUrl()}${API_ROUTES.SCANNER_SESSION}`, { credentials: "include" });
+        if (r.status === 401) {
+          navigate("/scanner/login", { replace: true });
+          return;
+        }
+        const d = await r.json().catch(() => ({}));
+        setScannerRole(d.role === "supervisor" ? "supervisor" : "scanner");
+      } catch {
+        setScannerRole("scanner");
       }
-    } catch {}
-  }, []);
+    })();
+  }, [navigate]);
 
   useEffect(() => {
     if (!event?.id) return;
@@ -210,42 +270,81 @@ export default function ScannerScan() {
     setValidating(true);
     setErr("");
     processedRef.current = true;
+    const isInspect = scannerRole === "supervisor" && scanMode === "inspect";
     try {
-      const r = await fetch(`${getApiBaseUrl()}${API_ROUTES.SCANNER_VALIDATE_TICKET}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          secure_token: secure_token.trim(),
-          event_id: event.id,
-          scan_location: "",
-          device_info: typeof navigator !== "undefined" ? navigator.userAgent : "",
-        }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (r.status === 503 && d.enabled === false) {
-        setResult({ success: false, result: "disabled", message: "Scan system is not started", enabled: false });
-        return;
+      if (isInspect) {
+        const r = await fetch(`${getApiBaseUrl()}${API_ROUTES.SCANNER_LOOKUP_TICKET}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            secure_token: secure_token.trim(),
+            event_id: event.id,
+            scan_location: "",
+            device_info: typeof navigator !== "undefined" ? navigator.userAgent : "",
+          }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.status === 503 && d.enabled === false) {
+          setResult({ success: false, result: "disabled", message: "Scan system is not started", enabled: false, lookup: true });
+          return;
+        }
+        const res = d.result || "invalid";
+        const inv = d.invitation;
+        const invitationNorm =
+          inv && typeof inv === "object" && !Array.isArray(inv) ? (inv as Record<string, unknown>) : null;
+        const scanHistoryNorm = Array.isArray(d.scan_history) ? d.scan_history : [];
+        setResult({
+          success: !!d.success,
+          result: res,
+          message: d.message || "Error",
+          ticket: d.ticket && typeof d.ticket === "object" && !Array.isArray(d.ticket) ? d.ticket : undefined,
+          previous_scan: d.previous_scan,
+          correct_event: d.correct_event,
+          event_date: d.event_date,
+          lookup: true,
+          invitation: invitationNorm,
+          scan_history: scanHistoryNorm,
+          ticket_status: d.ticket_status ?? null,
+        });
+        triggerHaptic(d.success ? "ok" : res === "wrong_event" ? "wrong_event" : "invalid");
+      } else {
+        const r = await fetch(`${getApiBaseUrl()}${API_ROUTES.SCANNER_VALIDATE_TICKET}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            secure_token: secure_token.trim(),
+            event_id: event.id,
+            scan_location: "",
+            device_info: typeof navigator !== "undefined" ? navigator.userAgent : "",
+          }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.status === 503 && d.enabled === false) {
+          setResult({ success: false, result: "disabled", message: "Scan system is not started", enabled: false });
+          return;
+        }
+        const res = d.result || "invalid";
+        setResult({
+          success: !!d.success,
+          result: res,
+          message: d.message || "Error",
+          ticket: d.ticket,
+          previous_scan: d.previous_scan,
+          correct_event: d.correct_event,
+          event_date: d.event_date,
+        });
+        triggerHaptic(res);
       }
-      const res = d.result || "invalid";
-      setResult({
-        success: !!d.success,
-        result: res,
-        message: d.message || "Error",
-        ticket: d.ticket,
-        previous_scan: d.previous_scan,
-        correct_event: d.correct_event,
-        event_date: d.event_date,
-      });
-      triggerHaptic(res);
     } catch {
-      setResult({ success: false, result: "error", message: "Network error" });
+      setResult({ success: false, result: "error", message: "Network error", lookup: isInspect });
       triggerHaptic("invalid");
     } finally {
       setValidating(false);
       loadScansAndStats();
     }
-  }, [event?.id, loadScansAndStats]);
+  }, [event?.id, loadScansAndStats, scannerRole, scanMode]);
 
   const onStart = useCallback(() => {
     if (!event?.id) return;
@@ -259,36 +358,54 @@ export default function ScannerScan() {
   useEffect(() => {
     if (!scanning || !event?.id) return;
     let mounted = true;
-    const run = async () => {
-      try {
-        const sc = new Html5Qrcode(READER_ID);
-        scannerRef.current = sc;
-        await sc.start(
-          { facingMode: "environment" },
-          { fps: 8 },
-          (decodedText) => {
-            if (processedRef.current || !mounted) return;
-            stopCamera().then(() => mounted && validate(decodedText));
-          },
-          () => {}
-        );
-        if (!mounted) { sc.stop().catch(() => {}); return; }
-        timeoutRef.current = setTimeout(() => {
-          timeoutRef.current = null;
-          stopCamera();
-          setTimedOut(true);
-        }, TIMEOUT_MS);
-      } catch {
-        if (mounted) { setErr("Camera not available. Use Manual entry."); setScanning(false); }
-      }
-    };
-    run();
+    // Defer camera bind so React 18 Strict Mode cleanup can run first (avoids Html5Qrcode "element in use" / race on iOS Safari).
+    const startTimer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const sc = new Html5Qrcode(READER_ID);
+          scannerRef.current = sc;
+          await sc.start(
+            { facingMode: "environment" },
+            { fps: 8 },
+            (decodedText) => {
+              if (processedRef.current || !mounted) return;
+              void stopCamera().then(() => {
+                if (mounted) void validate(decodedText);
+              });
+            },
+            () => {}
+          );
+          if (!mounted) {
+            sc.stop().catch(() => {});
+            return;
+          }
+          timeoutRef.current = setTimeout(() => {
+            timeoutRef.current = null;
+            void stopCamera();
+            setTimedOut(true);
+          }, TIMEOUT_MS);
+        } catch {
+          if (mounted) {
+            setErr("Camera not available. Use Manual entry.");
+            setScanning(false);
+          }
+        }
+      })();
+    }, 0);
     return () => {
       mounted = false;
-      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
-      if (scannerRef.current) { scannerRef.current.stop().catch(() => {}); scannerRef.current.clear().catch(() => {}); scannerRef.current = null; }
+      window.clearTimeout(startTimer);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {});
+        scannerRef.current.clear().catch(() => {});
+        scannerRef.current = null;
+      }
     };
-  }, [scanning, event?.id, stopCamera, validate]);
+  }, [scanning, event?.id, stopCamera, validate, scannerRole, scanMode]);
 
   const onManualSubmit = () => {
     const t = manualToken.trim();
@@ -307,11 +424,15 @@ export default function ScannerScan() {
   };
 
   if (!event?.id) {
-    navigate("/scanner/events", { replace: true });
-    return null;
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center p-4">
+        <p className="text-[#A3A3A3] text-sm">Loading…</p>
+      </div>
+    );
   }
 
-  const sc = result ? getStatusConfig(result.result) : null;
+  const sc = result ? getStatusConfig(result.result === "disabled" ? "invalid" : result.result) : null;
+  const StatusIcon = sc?.icon;
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col">
@@ -320,6 +441,11 @@ export default function ScannerScan() {
         <div className="flex justify-between items-center gap-2">
           <h1 className="text-sm font-semibold text-white truncate flex-1">{event.name}</h1>
           <div className="flex items-center gap-1 shrink-0">
+            {scannerRole === "supervisor" && (
+              <Button variant="ghost" size="icon" className="h-9 w-9 text-[#A3A3A3] hover:text-white hover:bg-[#1A1A1A]" onClick={() => navigate("/scanner/event-activity")} aria-label="Event activity" title="Event activity">
+                <BarChart2 className="w-4 h-4" />
+              </Button>
+            )}
             {isOffline && <span className="p-1.5 text-[#EF4444]" title="Offline — scans will sync when back"><WifiOff className="w-4 h-4" /></span>}
             {!isOffline && lastSyncedAt && <span className="p-1.5 text-[#22C55E]" title={`Synced ${formatSyncAgo(lastSyncedAt)}`}><Cloud className="w-4 h-4" /></span>}
             {lowBattery && <span className="p-1.5 text-[#F59E0B]" title="Low battery"><BatteryWarning className="w-4 h-4" /></span>}
@@ -327,6 +453,16 @@ export default function ScannerScan() {
             <Button variant="ghost" size="icon" className="h-9 w-9 text-[#A3A3A3] hover:text-white hover:bg-[#1A1A1A]" onClick={logout} aria-label="Logout"><LogOut className="w-4 h-4" /></Button>
           </div>
         </div>
+        {scannerRole === "supervisor" && (
+          <div className="flex gap-2 mt-2">
+            <Button size="sm" className={scanMode === "gate" ? "bg-[#E21836] hover:bg-[#c4142e]" : "bg-[#1A1A1A] border border-[#2A2A2A] text-[#A3A3A3]"} variant={scanMode === "gate" ? "default" : "outline"} onClick={() => setScanMode("gate")}>
+              Gate
+            </Button>
+            <Button size="sm" className={scanMode === "inspect" ? "bg-[#E21836] hover:bg-[#c4142e]" : "bg-[#1A1A1A] border border-[#2A2A2A] text-[#A3A3A3]"} variant={scanMode === "inspect" ? "default" : "outline"} onClick={() => setScanMode("inspect")}>
+              Inspect
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Camera View - Top Section */}
@@ -337,7 +473,9 @@ export default function ScannerScan() {
             {/* Overlay instructions */}
             <div className="absolute top-4 left-0 right-0 px-4">
               <div className="bg-black/70 backdrop-blur-sm rounded-lg px-3 py-2 text-center">
-                <p className="text-white text-sm font-medium">Point camera at QR code</p>
+                <p className="text-white text-sm font-medium">
+                  {scannerRole === "supervisor" && scanMode === "inspect" ? "Point camera at QR (inspect — no entry)" : "Point camera at QR code"}
+                </p>
               </div>
             </div>
           </div>
@@ -358,18 +496,20 @@ export default function ScannerScan() {
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="text-center">
               <Loader size="xl" className="mx-auto mb-4 [background:#E21836]" />
-              <p className="text-white text-base font-medium">Validating ticket...</p>
+              <p className="text-white text-base font-medium">
+                {scannerRole === "supervisor" && scanMode === "inspect" ? "Loading ticket info…" : "Validating ticket…"}
+              </p>
             </div>
           </div>
         )}
 
         {/* Result Display Overlay */}
-        {result && !validating && sc && (
+        {result && !validating && sc && StatusIcon && (
           <div className="absolute inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className={`w-full max-w-md rounded-2xl border-2 ${sc.border} ${sc.bg} p-6 shadow-2xl`}>
               <div className="flex items-center gap-3 mb-4">
                 <div className={`p-3 rounded-xl ${sc.bg}`}>
-                  <sc.icon className={`w-8 h-8 ${sc.color}`} />
+                  <StatusIcon className={`w-8 h-8 ${sc.color}`} />
                 </div>
                 <div>
                   <p className={`text-2xl font-bold ${sc.color}`}>{sc.label}</p>
@@ -420,7 +560,57 @@ export default function ScannerScan() {
                   <p className="text-sm text-[#A3A3A3]">{result.correct_event.event_name} — {result.correct_event.event_date ? formatDateDMY(result.correct_event.event_date) : ""}</p>
                 </div>
               )}
-              
+
+              {result.lookup && result.ticket_status != null && (
+                <div className="mb-3 p-2 rounded-lg bg-[#0A0A0A]/80 border border-[#2A2A2A]">
+                  <p className="text-xs text-[#737373]">Ticket status</p>
+                  <p className="text-sm font-semibold text-white">{result.ticket_status}</p>
+                </div>
+              )}
+
+              {result.lookup && result.ticket && typeof result.ticket === "object" && (
+                <div className="mb-4 max-h-48 overflow-y-auto rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A] p-3 space-y-1.5">
+                  <p className="text-xs text-[#737373] font-medium mb-2">All ticket fields</p>
+                  {formatTicketFields(result.ticket as Record<string, unknown>).map(({ key, value }) => (
+                    <div key={key} className="flex gap-2 text-xs">
+                      <span className="text-[#737373] shrink-0 w-28 truncate" title={key}>{key}</span>
+                      <span className="text-[#E5E5E5] break-all">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {result.lookup &&
+                result.invitation &&
+                typeof result.invitation === "object" &&
+                !Array.isArray(result.invitation) &&
+                Object.keys(result.invitation).length > 0 && (
+                <div className="mb-4 max-h-40 overflow-y-auto rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A] p-3">
+                  <p className="text-xs text-[#737373] font-medium mb-2">Invitation</p>
+                  {formatTicketFields(result.invitation as Record<string, unknown>).map(({ key, value }) => (
+                    <div key={key} className="flex gap-2 text-xs mb-1">
+                      <span className="text-[#737373] shrink-0 w-28 truncate">{key}</span>
+                      <span className="text-[#E5E5E5] break-all">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {result.lookup && Array.isArray(result.scan_history) && result.scan_history.length > 0 && (
+                <div className="mb-4 max-h-40 overflow-y-auto rounded-xl bg-[#0A0A0A]/50 border border-[#1A1A1A] p-3">
+                  <p className="text-xs text-[#737373] font-medium mb-2">Scan history</p>
+                  <ul className="space-y-2 text-xs">
+                    {result.scan_history.map((h) => (
+                      <li key={h.id} className="border-b border-[#1A1A1A] pb-2 last:border-0">
+                        <span className="text-[#F5F5F5]">{h.scan_result}</span>
+                        <span className="text-[#737373] ml-2">{h.scan_time ? new Date(h.scan_time).toLocaleString() : ""}</span>
+                        <p className="text-[#A3A3A3]">{h.scanner_name || "—"}{h.notes ? ` · ${h.notes}` : ""}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div className="flex gap-3">
                 {result.result === "valid" && undoSecondsLeft > 0 && (
                   <Button variant="outline" className="flex-1 h-12 border-[#2A2A2A] text-[#A3A3A3] hover:bg-[#1A1A1A] hover:text-white" onClick={() => {}}>
@@ -588,7 +778,9 @@ export default function ScannerScan() {
             <input className="w-full rounded-lg bg-[#252525] border border-[#2A2A2A] px-3 py-2 text-white text-base" value={manualToken} onChange={e => setManualToken(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
             <div className="flex gap-2 mt-3">
               <Button variant="outline" className="flex-1 border-[#2A2A2A] text-[#A3A3A3] hover:text-white" onClick={() => { setManualOpen(false); setManualToken(""); }}>Cancel</Button>
-              <Button className="flex-1 bg-[#E21836] hover:bg-[#c4142e]" onClick={onManualSubmit}>Validate</Button>
+              <Button className="flex-1 bg-[#E21836] hover:bg-[#c4142e]" onClick={onManualSubmit}>
+                {scannerRole === "supervisor" && scanMode === "inspect" ? "Lookup" : "Validate"}
+              </Button>
             </div>
           </div>
         </div>

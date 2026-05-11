@@ -344,6 +344,22 @@
       "destination": "/api/scan.js"
     },
     {
+      "source": "/api/scanner/session",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/scanner/lookup-ticket",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/scanner/event-scans",
+      "destination": "/api/scan.js"
+    },
+    {
+      "source": "/api/scanner/event-statistics",
+      "destination": "/api/scan.js"
+    },
+    {
       "source": "/api/admin/pos-outlets",
       "destination": "/api/admin-pos.js"
     },

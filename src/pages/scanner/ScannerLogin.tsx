@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,7 +6,6 @@ import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
 
 export default function ScannerLogin() {
-  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,7 +28,10 @@ export default function ScannerLogin() {
       });
       const d = await r.json().catch(() => ({}));
       if (r.ok && d.success) {
-        navigate("/scanner/events", { replace: true });
+        // Full navigation so the cookie from this response is committed before any /scanner/* fetches (Safari/WebKit can miss it on immediate client-side navigate).
+        const base = import.meta.env.BASE_URL || "/";
+        const prefix = base.endsWith("/") ? base.slice(0, -1) : base;
+        window.location.replace(`${prefix}/scanner/events`);
         return;
       }
       setError(d.error || "Invalid credentials");

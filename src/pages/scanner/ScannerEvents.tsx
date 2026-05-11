@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { getApiBaseUrl } from "@/lib/api-routes";
 import { API_ROUTES } from "@/lib/api-routes";
 import { formatDateDMY } from "@/lib/date-utils";
-import { QrCode, LogOut, History } from "lucide-react";
+import { QrCode, LogOut, History, BarChart2 } from "lucide-react";
 
 const STORAGE_KEY = "scanner_selected_event";
 
@@ -22,14 +22,24 @@ export default function ScannerEvents() {
   const [events, setEvents] = useState<Evt[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [sessionRole, setSessionRole] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       setErr("");
       try {
-        const r = await fetch(`${getApiBaseUrl()}${API_ROUTES.SCANNER_EVENTS}`, { credentials: "include" });
-        if (r.status === 401) {
+        const [rSession, r] = await Promise.all([
+          fetch(`${getApiBaseUrl()}${API_ROUTES.SCANNER_SESSION}`, { credentials: "include" }),
+          fetch(`${getApiBaseUrl()}${API_ROUTES.SCANNER_EVENTS}`, { credentials: "include" }),
+        ]);
+        if (rSession.ok) {
+          const sd = await rSession.json().catch(() => ({}));
+          setSessionRole(sd.role === "supervisor" ? "supervisor" : "scanner");
+        } else {
+          setSessionRole("scanner");
+        }
+        if (rSession.status === 401 || r.status === 401) {
           navigate("/scanner/login", { replace: true });
           return;
         }
@@ -69,6 +79,11 @@ export default function ScannerEvents() {
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-lg font-semibold text-white">Select Event</h1>
           <div className="flex gap-2">
+            {sessionRole === "supervisor" && (
+              <Button variant="ghost" size="icon" className="text-[#B0B0B0]" title="Event activity" onClick={() => navigate("/scanner/event-activity")}>
+                <BarChart2 className="w-5 h-5" />
+              </Button>
+            )}
             <Button variant="ghost" size="icon" className="text-[#B0B0B0]" onClick={() => navigate("/scanner/history")}><History className="w-5 h-5" /></Button>
             <Button variant="ghost" size="icon" className="text-[#B0B0B0]" onClick={logout}><LogOut className="w-5 h-5" /></Button>
           </div>

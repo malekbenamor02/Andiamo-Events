@@ -3,10 +3,18 @@
  * Handles: scan-system-status, scanner-login, scanner-logout, admin/scan-system-config,
  * admin/scanners, admin/scanners/:id, admin/scanners/:id/scans, admin/scanners/:id/statistics,
  * admin/scan-history, admin/scan-statistics, scanner/validate-ticket, scanner/events,
- * scanner/scans, scanner/statistics.
+ * scanner/scans, scanner/statistics, scanner/session, scanner/lookup-ticket,
+ * scanner/event-scans, scanner/event-statistics.
  */
 
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import '../lib/sentry-server.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const scanSupervisor = require(join(__dirname, '../lib/scanner-supervisor-handlers.cjs'));
 import { createClient } from '@supabase/supabase-js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
@@ -35,6 +43,22 @@ function getCookie(req, name) {
   const s = req.headers?.cookie || '';
   const m = s.match(new RegExp(name + '=([^;]+)'));
   return m ? decodeURIComponent(m[1].trim()) : null;
+}
+
+/** Secure flag only when "production-like" AND request is HTTPS (matches server.cjs admin/scanner cookies; fixes HTTP LAN/mobile). */
+function scannerTokenSecureFromReq(req) {
+  const treatAsProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+  if (!treatAsProd) return false;
+  const p = (req.headers['x-forwarded-proto'] || '').toString().split(',')[0].trim().toLowerCase();
+  return p === 'https';
+}
+
+function buildScannerTokenCookieHeader(value, req, maxAgeSec) {
+  const sec = scannerTokenSecureFromReq(req);
+  const v = encodeURIComponent(value);
+  let h = `scannerToken=${v}; HttpOnly; Path=/; Max-Age=${maxAgeSec}; SameSite=Lax`;
+  if (sec) h += '; Secure';
+  return h;
 }
 
 // Import shared CORS utility (using dynamic import for ES modules)
@@ -84,10 +108,18 @@ async function requireScannerAuth(req) {
   try {
     const d = jwt.verify(token, secret);
     if (d?.type !== 'scanner' || !d?.scannerId) return { err: { statusCode: 401, body: { error: 'Invalid scanner token' } } };
-    return { scanner: { scannerId: d.scannerId, email: d.email } };
+    const role = d.scannerRole === 'supervisor' ? 'supervisor' : 'scanner';
+    return { scanner: { scannerId: d.scannerId, email: d.email, role } };
   } catch {
     return { err: { statusCode: 401, body: { error: 'Invalid or expired scanner token' } } };
   }
+}
+
+function requireSupervisorFromAuth(auth) {
+  if (!auth.scanner || auth.scanner.role !== 'supervisor') {
+    return { err: { statusCode: 403, body: { error: 'Forbidden', reason: 'Supervisor role required' } } };
+  }
+  return {};
 }
 
 export default async function handler(req, res) {
@@ -138,20 +170,20 @@ export default async function handler(req, res) {
       if (!em || !pw) return res.status(400).json({ error: 'Email and password required' });
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'Invalid email' });
       if (pw.length < 6) return res.status(401).json({ error: 'Invalid credentials' });
-      const { data: sc, error: e } = await db.from('scanners').select('id, email, name, password_hash, is_active').eq('email', em).single();
+      const { data: sc, error: e } = await db.from('scanners').select('id, email, name, password_hash, is_active, role').eq('email', em).single();
       if (e || !sc || !sc.is_active) return res.status(401).json({ error: 'Invalid credentials' });
       const ok = await bcrypt.compare(pw, sc.password_hash || '');
       if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
       const secret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
-      const token = jwt.sign({ scannerId: sc.id, email: sc.email, type: 'scanner' }, secret, { expiresIn: '8h' });
-      const isProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
-      res.setHeader('Set-Cookie', `scannerToken=${token}; HttpOnly; Path=/; Max-Age=28800; SameSite=Lax${isProd ? '; Secure' : ''}`);
-      return res.status(200).json({ success: true, scanner: { id: sc.id, email: sc.email, name: sc.name } });
+      const scannerRole = sc.role === 'supervisor' ? 'supervisor' : 'scanner';
+      const token = jwt.sign({ scannerId: sc.id, email: sc.email, type: 'scanner', scannerRole }, secret, { expiresIn: '8h' });
+      res.setHeader('Set-Cookie', buildScannerTokenCookieHeader(token, req, 28800));
+      return res.status(200).json({ success: true, scanner: { id: sc.id, email: sc.email, name: sc.name, role: scannerRole } });
     }
 
     // ——— POST /api/scanner-logout
     if (path === '/api/scanner-logout' && method === 'POST') {
-      res.setHeader('Set-Cookie', 'scannerToken=; HttpOnly; Path=/; Max-Age=0');
+      res.setHeader('Set-Cookie', buildScannerTokenCookieHeader('', req, 0));
       return res.status(200).json({ success: true });
     }
 
@@ -203,7 +235,7 @@ export default async function handler(req, res) {
       if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
       if (auth.admin.role !== 'super_admin') return res.status(403).json({ error: 'Forbidden' });
       if (!db) return res.status(500).json({ error: 'Supabase not configured' });
-      const { data: rows, error } = await db.from('scanners').select('id, name, email, is_active, created_by, created_at').order('created_at', { ascending: false });
+      const { data: rows, error } = await db.from('scanners').select('id, name, email, is_active, role, created_by, created_at').order('created_at', { ascending: false });
       if (error) return res.status(500).json({ error: error.message });
       const adminIds = [...new Set((rows || []).map((r) => r.created_by).filter(Boolean))];
       let names = {};
@@ -225,14 +257,29 @@ export default async function handler(req, res) {
       const n = (typeof body.name === 'string' ? body.name.trim() : '') || '';
       const em = (typeof body.email === 'string' ? body.email.trim().toLowerCase() : '') || '';
       const pw = typeof body.password === 'string' ? body.password : '';
+      let roleVal = 'scanner';
+      if (typeof body.role === 'string' && body.role.trim() === 'supervisor') roleVal = 'supervisor';
       if (!n || !em || !pw) return res.status(400).json({ error: 'Name, email and password required' });
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'Invalid email' });
       if (pw.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
-      const { data: ex } = await db.from('scanners').select('id').eq('email', em).single();
-      if (ex) return res.status(400).json({ error: 'Email already used' });
+      const { data: existingRow, error: findErr } = await db.from('scanners').select('id').eq('email', em).maybeSingle();
+      if (findErr) return res.status(500).json({ error: findErr.message });
+      if (existingRow?.id) return res.status(400).json({ error: 'Email already used' });
       const hash = await bcrypt.hash(pw, 10);
-      const { data: ins, error } = await db.from('scanners').insert({ name: n, email: em, password_hash: hash, created_by: auth.admin.id }).select('id, name, email, is_active, created_at').single();
-      if (error) return res.status(500).json({ error: error.message });
+      const { data: ins, error } = await db.from('scanners').insert({ name: n, email: em, password_hash: hash, created_by: auth.admin.id, role: roleVal }).select('id, name, email, is_active, role, created_at').single();
+      if (error) {
+        const msg = error.message || '';
+        if (error.code === '23505' || /duplicate key|unique constraint/i.test(msg)) {
+          return res.status(400).json({ error: 'Email already used' });
+        }
+        if (/violates check constraint.*role|check constraint.*scanners_role/i.test(msg)) {
+          return res.status(400).json({ error: 'Invalid role: run DB migration for scanners.role (scanner | supervisor).' });
+        }
+        if (/column.*role|does not exist/i.test(msg)) {
+          return res.status(400).json({ error: 'Database missing scanners.role column. Apply migration 20260511120000_scanners_role_supervisor.sql' });
+        }
+        return res.status(500).json({ error: msg });
+      }
       return res.status(201).json(ins);
     }
 
@@ -246,7 +293,7 @@ export default async function handler(req, res) {
       const id = patchScannersId[1];
       if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: 'Invalid id' });
       const body = await parseBody(req);
-      const { name, email, is_active, password } = body || {};
+      const { name, email, is_active, password, role } = body || {};
       const up = {};
       if (typeof name === 'string' && name.trim()) up.name = name.trim();
       if (typeof email === 'string' && email.trim()) {
@@ -255,13 +302,17 @@ export default async function handler(req, res) {
       }
       if (typeof is_active === 'boolean') up.is_active = is_active;
       if (typeof password === 'string' && password.length >= 8) up.password_hash = await bcrypt.hash(password, 10);
+      if (typeof role === 'string') {
+        const r = role.trim();
+        if (r === 'scanner' || r === 'supervisor') up.role = r;
+      }
       if (Object.keys(up).length === 0) return res.status(400).json({ error: 'No valid fields to update' });
       up.updated_at = new Date().toISOString();
       if (up.email) {
         const { data: ex } = await db.from('scanners').select('id').eq('email', up.email).neq('id', id).single();
         if (ex) return res.status(400).json({ error: 'Email already used' });
       }
-      const { data: u, error } = await db.from('scanners').update(up).eq('id', id).select('id, name, email, is_active, updated_at').single();
+      const { data: u, error } = await db.from('scanners').update(up).eq('id', id).select('id, name, email, is_active, role, updated_at').single();
       if (error) return res.status(500).json({ error: error.message });
       if (!u) return res.status(404).json({ error: 'Not found' });
       return res.status(200).json(u);
@@ -578,6 +629,64 @@ export default async function handler(req, res) {
       let byPass = {};
       if (qids.length) { const { data: qr } = await db.from('qr_tickets').select('id, pass_type').in('id', qids); (qr || []).forEach((x) => { byPass[x.pass_type] = (byPass[x.pass_type] || 0) + 1; }); }
       return res.status(200).json({ total, byStatus, byPass });
+    }
+
+    // ——— GET /api/scanner/session
+    if (path === '/api/scanner/session' && method === 'GET') {
+      const auth = await requireScannerAuth(req);
+      if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
+      if (!db) return res.status(500).json({ error: 'Supabase not configured' });
+      const { data: sc, error } = await db.from('scanners').select('id, name, email, role, is_active').eq('id', auth.scanner.scannerId).single();
+      if (error || !sc || !sc.is_active) {
+        res.setHeader('Set-Cookie', buildScannerTokenCookieHeader('', req, 0));
+        return res.status(401).json({ error: 'Invalid or inactive scanner' });
+      }
+      const role = sc.role === 'supervisor' ? 'supervisor' : 'scanner';
+      return res.status(200).json({ id: sc.id, name: sc.name, email: sc.email, role });
+    }
+
+    // ——— POST /api/scanner/lookup-ticket (supervisor)
+    if (path === '/api/scanner/lookup-ticket' && method === 'POST') {
+      const auth = await requireScannerAuth(req);
+      if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
+      const supErr = requireSupervisorFromAuth(auth);
+      if (supErr.err) return res.status(supErr.err.statusCode).json(supErr.err.body);
+      if (!db) return res.status(500).json({ success: false, result: 'error', message: 'Service unavailable' });
+      const body = await parseBody(req);
+      const out = await scanSupervisor.supervisorLookupTicket(db, { secure_token: body.secure_token, event_id: body.event_id });
+      return res.status(out.status).json(out.body);
+    }
+
+    // ——— GET /api/scanner/event-scans (supervisor)
+    if (path === '/api/scanner/event-scans' && method === 'GET') {
+      const auth = await requireScannerAuth(req);
+      if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
+      const supErr = requireSupervisorFromAuth(auth);
+      if (supErr.err) return res.status(supErr.err.statusCode).json(supErr.err.body);
+      if (!db) return res.status(500).json({ error: 'Supabase not configured' });
+      const qsp = (req.url || '').includes('?') ? new URLSearchParams((req.url || '').split('?')[1] || '') : new URLSearchParams('');
+      const event_id = (qsp.get('event_id') || '').trim();
+      const date_from = qsp.get('date_from') || null;
+      const date_to = qsp.get('date_to') || null;
+      const scan_result = (qsp.get('scan_result') || '').trim() || null;
+      const q = qsp.get('q') || null;
+      const out = await scanSupervisor.supervisorEventScans(db, { event_id, date_from, date_to, scan_result, q });
+      return res.status(out.status).json(out.body);
+    }
+
+    // ——— GET /api/scanner/event-statistics (supervisor)
+    if (path === '/api/scanner/event-statistics' && method === 'GET') {
+      const auth = await requireScannerAuth(req);
+      if (auth.err) return res.status(auth.err.statusCode).json(auth.err.body);
+      const supErr = requireSupervisorFromAuth(auth);
+      if (supErr.err) return res.status(supErr.err.statusCode).json(supErr.err.body);
+      if (!db) return res.status(500).json({ error: 'Supabase not configured' });
+      const qsp = (req.url || '').includes('?') ? new URLSearchParams((req.url || '').split('?')[1] || '') : new URLSearchParams('');
+      const event_id = (qsp.get('event_id') || '').trim();
+      const date_from = qsp.get('date_from') || null;
+      const date_to = qsp.get('date_to') || null;
+      const out = await scanSupervisor.supervisorEventStatistics(db, { event_id, date_from, date_to });
+      return res.status(out.status).json(out.body);
     }
 
     // Route not found
