@@ -281,7 +281,7 @@ const About = ({ language }: AboutProps) => {
                   {t.btlHero.label}
                 </span>
               </div>
-              <h1 className="text-4xl md:text-6xl lg:text-7xl font-heading font-bold mb-6 text-gradient-neon leading-tight uppercase">
+              <h1 className="text-4xl md:text-6xl lg:text-7xl font-heading font-bold mb-6 text-primary leading-tight uppercase">
                 {t.btlHero.title}
               </h1>
               <p className="text-lg md:text-xl text-foreground/80 leading-relaxed whitespace-pre-line">
@@ -301,7 +301,7 @@ const About = ({ language }: AboutProps) => {
               ? 'opacity-100 translate-y-0' 
               : 'opacity-0 translate-y-12'
           }`}>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-4 text-gradient-neon uppercase">
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-4 text-primary uppercase">
               {t.btlBrands.title}
             </h2>
           </div>
@@ -338,7 +338,7 @@ const About = ({ language }: AboutProps) => {
               ? 'opacity-100 translate-y-0' 
               : 'opacity-0 translate-y-12'
           }`}>
-            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-6 text-gradient-neon uppercase">
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-6 text-primary uppercase">
               {t.btlVision.title}
             </h2>
             <p className="text-base md:text-lg text-foreground/80 leading-relaxed max-w-3xl mx-auto">
@@ -362,7 +362,7 @@ const About = ({ language }: AboutProps) => {
                 {t.andiamoHero.label}
               </span>
             </div>
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-heading font-bold mb-6 text-gradient-neon leading-tight uppercase">
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-heading font-bold mb-6 text-primary leading-tight uppercase">
               {t.andiamoHero.title}
             </h1>
             <p className="text-lg md:text-xl lg:text-2xl text-foreground/80 max-w-4xl mx-auto leading-relaxed">
@@ -472,7 +472,7 @@ const About = ({ language }: AboutProps) => {
               : 'opacity-0 translate-y-12'
           }`}>
             <div className="space-y-4">
-              <h3 className="text-2xl md:text-3xl font-heading font-bold mb-4 text-gradient-neon uppercase">
+              <h3 className="text-2xl md:text-3xl font-heading font-bold mb-4 text-primary uppercase">
                 {t.andiamoDetails.international.title}
               </h3>
               <p className="text-base md:text-lg text-foreground/80 leading-relaxed">
@@ -480,7 +480,7 @@ const About = ({ language }: AboutProps) => {
               </p>
             </div>
             <div className="space-y-4">
-              <h3 className="text-2xl md:text-3xl font-heading font-bold mb-4 text-gradient-neon uppercase">
+              <h3 className="text-2xl md:text-3xl font-heading font-bold mb-4 text-primary uppercase">
                 {t.andiamoDetails.mission.title}
               </h3>
               <p className="text-base md:text-lg text-foreground/80 leading-relaxed">

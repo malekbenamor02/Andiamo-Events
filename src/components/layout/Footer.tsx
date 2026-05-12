@@ -354,9 +354,9 @@ const Footer = ({ language }: FooterProps) => {
                 {content[language].terms}
               </RouterLink>
               <div className="flex items-center gap-4">
-                <img src="/assets/Visa.svg" alt="Visa" className="h-8 w-14 object-contain opacity-90" />
-                <img src="/assets/mastercard.svg" alt="Mastercard" className="h-8 w-14 object-contain opacity-90" />
-                <img src="/assets/edinar.svg" alt="eDinar" className="h-6 w-10 object-contain opacity-90" />
+                <img src="/assets/Visa.svg" alt="Visa" className="h-8 w-14 object-contain opacity-90 grayscale transition-[filter] duration-300 ease-out hover:grayscale-0" />
+                <img src="/assets/mastercard.svg" alt="Mastercard" className="h-8 w-14 object-contain opacity-90 grayscale transition-[filter] duration-300 ease-out hover:grayscale-0" />
+                <img src="/assets/edinar.svg" alt="eDinar" className="h-6 w-10 object-contain opacity-90 grayscale transition-[filter] duration-300 ease-out hover:grayscale-0" />
               </div>
             </div>
           </div>
@@ -389,9 +389,9 @@ const Footer = ({ language }: FooterProps) => {
                 {content[language].terms}
               </RouterLink>
               <div className="flex items-center gap-3">
-                <img src="/assets/Visa.svg" alt="Visa" className="h-8 w-14 object-contain opacity-90" />
-                <img src="/assets/mastercard.svg" alt="Mastercard" className="h-8 w-14 object-contain opacity-90" />
-                <img src="/assets/edinar.svg" alt="eDinar" className="h-6 w-10 object-contain opacity-90" />
+                <img src="/assets/Visa.svg" alt="Visa" className="h-8 w-14 object-contain opacity-90 grayscale transition-[filter] duration-300 ease-out hover:grayscale-0" />
+                <img src="/assets/mastercard.svg" alt="Mastercard" className="h-8 w-14 object-contain opacity-90 grayscale transition-[filter] duration-300 ease-out hover:grayscale-0" />
+                <img src="/assets/edinar.svg" alt="eDinar" className="h-6 w-10 object-contain opacity-90 grayscale transition-[filter] duration-300 ease-out hover:grayscale-0" />
               </div>
             </div>
           </div>

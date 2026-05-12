@@ -14,6 +14,12 @@ import { formatDateDMY, isPassPurchaseWindowClosed } from '@/lib/date-utils';
 import { cn, generateSlug, findEventByPublicUrlSlug, normalizeCommonEmailTypos } from '@/lib/utils';
 import { isLocalhostClient } from '@/lib/localhost';
 import { computeOnlinePaymentFeesDisplay } from '@/lib/onlinePaymentFee';
+import { useCountdownBannerSettings } from '@/hooks/useCountdownBannerSettings';
+import { PassPurchaseCountdownStrip } from '@/components/countdown/PassPurchaseCountdownStrip';
+import {
+  COUNTDOWN_LABEL_DEFAULT_EN,
+  COUNTDOWN_LABEL_DEFAULT_FR,
+} from '@/lib/countdownBannerSettings';
 
 // New unified order system components
 import { CustomerInfoForm } from '@/components/orders/CustomerInfoForm';
@@ -252,6 +258,19 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     customerInfo.city, 
     customerInfo.ville
   );
+
+  const { data: countdownSettings, isSuccess: countdownSettingsReady } = useCountdownBannerSettings();
+
+  /** Presale countdown targeting when row flag, API, or locked gate says presale (server `false` wins). */
+  const effectivePresaleForCountdown = useMemo(() => {
+    if (!event) return false;
+    if (serverPresaleRequired === false) return false;
+    return (
+      isPresaleEnabledOnEvent(event) ||
+      passesForbiddenPresale ||
+      serverPresaleRequired === true
+    );
+  }, [event, passesForbiddenPresale, serverPresaleRequired]);
 
   const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 
@@ -667,9 +686,8 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
       // Type cast to access additional properties that might not be in the inferred type
       const event = eventData as any;
 
-      // Block test events on production (not local dev)
-      if (!isLocal && event?.is_test) {
-        // Redirect to home page or show error
+      // Block test events on production — except code-gated presale (direct URL / QA; still not on public lists)
+      if (!isLocal && event?.is_test && !isPresaleEnabledOnEvent(event)) {
         toast({
           title: t[language].error,
           description: language === 'en' 
@@ -933,15 +951,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         });
         return;
       }
-      if (typeof body.csrfToken === 'string' && body.csrfToken.trim()) {
-        const tok = body.csrfToken.trim();
-        setPresaleCsrfToken(tok);
-        writePresaleCsrfToStorage(event.id, tok);
-      }
-      const disc = parsePresaleDiscountFromApi(body as Record<string, unknown>);
-      if (disc) setPresaleDiscountMeta(disc);
-      setPassesForbiddenPresale(false);
-      setPresaleCodeDraft('');
+      const csrfFromRedeem =
+        typeof body.csrfToken === 'string' && body.csrfToken.trim()
+          ? body.csrfToken.trim()
+          : null;
+      const discFromRedeem = parsePresaleDiscountFromApi(body as Record<string, unknown>);
+
       const passesRes = await fetch(`${apiBase}/api/passes/${event.id}`, { credentials: 'include' });
       if (!passesRes.ok) {
         toast({
@@ -956,6 +971,15 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
         setServerPresaleRequired(passesJson.presale_required);
       }
       const mapped = mapPassesFromApiResponse(passesJson.passes || []);
+
+      // Unlock only after passes are loaded so `presaleLocked` never goes false while `event.passes` is still empty (avoids "no passes" flash).
+      if (csrfFromRedeem) {
+        setPresaleCsrfToken(csrfFromRedeem);
+        writePresaleCsrfToStorage(event.id, csrfFromRedeem);
+      }
+      if (discFromRedeem) setPresaleDiscountMeta(discFromRedeem);
+      setPassesForbiddenPresale(false);
+      setPresaleCodeDraft('');
       setEvent((prev) => (prev ? ({ ...prev, passes: mapped } as Event) : prev));
     } finally {
       setPresaleRedeeming(false);
@@ -1416,6 +1440,27 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     }
   };
 
+  const countdownLeftLabel =
+    language === "en"
+      ? (countdownSettings?.label_en ?? COUNTDOWN_LABEL_DEFAULT_EN)
+      : (countdownSettings?.label_fr ?? COUNTDOWN_LABEL_DEFAULT_FR);
+
+  const passCountdownBanner =
+    !presaleLocked &&
+    event &&
+    countdownSettingsReady &&
+    countdownSettings?.enabled === true ? (
+      <PassPurchaseCountdownStrip
+        event={event}
+        language={language}
+        leftLabel={countdownLeftLabel}
+        countdownEnabled={
+          event.event_status !== 'completed' && event.event_status !== 'cancelled'
+        }
+        treatAsPresale={effectivePresaleForCountdown}
+      />
+    ) : null;
+
   if (loading) {
     return (
       <LoadingScreen 
@@ -1477,11 +1522,12 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     const purchaseTitle =
       language === 'en' ? `Presale – ${event.name} | Andiamo Events` : `Prévente – ${event.name} | Andiamo Events`;
     return (
-      <main className="min-h-screen bg-gradient-dark flex flex-col items-center justify-center px-4 pt-20 pb-12" id="main-content">
+      <main className="min-h-screen bg-gradient-dark flex flex-col pt-16" id="main-content">
         <PageMeta title={purchaseTitle} description={event.description?.slice(0, 155) ?? ''} path={purchasePath} />
+        <div className="flex flex-1 flex-col items-center justify-center px-4 pb-12">
         <Card className="flex w-full max-w-md flex-col items-stretch text-left glass border-border/60">
           <CardHeader className="items-stretch text-left">
-            <h2 className="w-full text-left text-2xl font-semibold font-heading leading-snug tracking-tight text-gradient-neon [background-position:0%_50%]">
+            <h2 className="w-full text-left text-2xl font-semibold font-heading leading-snug tracking-tight text-primary">
               {t[language].presaleTitle}
             </h2>
           </CardHeader>
@@ -1516,6 +1562,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             </form>
           </CardContent>
         </Card>
+        </div>
       </main>
     );
   }
@@ -1554,7 +1601,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     
     // Fallback for other payment methods
     return (
-      <div className="min-h-screen bg-gradient-dark pt-16">
+      <div className="min-h-screen bg-gradient-dark pt-[calc(4rem+var(--site-countdown-offset,0px))]">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Card className="glass border-2 border-green-500/30">
             <CardContent className="p-8 text-center">
@@ -1569,7 +1616,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                   aria-hidden
                 />
               </div>
-              <h2 className="text-3xl font-bold text-gradient-neon mb-4">
+              <h2 className="text-3xl font-bold text-primary mb-4">
                 {t[language].thankYou}
               </h2>
               <p className="text-lg text-muted-foreground mb-6">
@@ -1607,8 +1654,9 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
     : 'Purchase event passes and tickets for Andiamo Events. Secure online payment. Tunisia.';
 
   return (
-    <main className="min-h-screen bg-gradient-dark pt-16" id="main-content">
+    <main className="min-h-screen bg-gradient-dark pt-[calc(4rem+var(--site-countdown-offset,0px))]" id="main-content">
       <PageMeta title={purchaseTitle} description={purchaseDescription} path={purchasePath} />
+      {passCountdownBanner}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8 flex flex-col items-center sm:flex-row sm:items-center sm:gap-0">
@@ -1620,7 +1668,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
             <ArrowLeft className="w-4 h-4 mr-2" />
             {t[language].backToEvents}
           </Button>
-          <h1 className="w-full text-center text-2xl font-heading font-bold uppercase leading-tight text-gradient-neon sm:ml-4 sm:w-auto sm:text-left sm:text-3xl">
+          <h1 className="w-full text-center text-2xl font-heading font-bold uppercase leading-tight text-primary sm:ml-4 sm:w-auto sm:text-left sm:text-3xl">
             {t[language].title}
           </h1>
         </div>
@@ -1631,50 +1679,57 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
           }}
         >
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Event Details — first on all breakpoints */}
-            <div className="lg:col-span-1">
-              <Card className="glass">
-                <CardHeader>
-                  <CardTitle className="text-gradient-neon">{t[language].eventDetails}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {event.poster_url ? (
-                    <img
-                      src={event.poster_url}
-                      alt={event.name}
-                      className="w-full h-48 object-cover rounded-lg"
-                    />
-                  ) : null}
-                  <div className="mb-4">
-                    <h3 className="text-xl font-bold text-primary mb-3">{event.name}</h3>
-                    {event.description && (
-                      <div className="mb-4">
-                        <ExpandableText
-                          text={event.description}
-                          maxLength={150}
-                          className="text-foreground text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words"
-                          showMoreText={language === 'en' ? 'Show more' : 'Voir plus'}
-                          showLessText={language === 'en' ? 'Show less' : 'Voir moins'}
-                        />
+            {/* Public pass purchase only: presale flow omits this block so poster/description are not mounted or fetched by the browser */}
+            {!effectivePresaleForCountdown && (
+              <div className="lg:col-span-1">
+                <Card className="glass">
+                  <CardHeader>
+                    <CardTitle className="text-primary">{t[language].eventDetails}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {event.poster_url ? (
+                      <img
+                        src={event.poster_url}
+                        alt={event.name}
+                        className="w-full h-48 object-cover rounded-lg"
+                      />
+                    ) : null}
+                    <div className="mb-4">
+                      <h3 className="text-xl font-bold text-primary mb-3">{event.name}</h3>
+                      {event.description && (
+                        <div className="mb-4">
+                          <ExpandableText
+                            text={event.description}
+                            maxLength={150}
+                            className="text-foreground text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words"
+                            showMoreText={language === 'en' ? 'Show more' : 'Voir plus'}
+                            showLessText={language === 'en' ? 'Show less' : 'Voir moins'}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center">
+                        <Calendar className="w-4 h-4 mr-2 text-primary" />
+                        <span>{formatDateDMY(event.date, language)}</span>
                       </div>
-                    )}
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center">
-                      <Calendar className="w-4 h-4 mr-2 text-primary" />
-                      <span>{formatDateDMY(event.date, language)}</span>
+                      <div className="flex items-center">
+                        <MapPin className="w-4 h-4 mr-2 text-primary" />
+                        <span>{event.venue}, {event.city}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center">
-                      <MapPin className="w-4 h-4 mr-2 text-primary" />
-                      <span>{event.venue}, {event.city}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
             {/* Main Form — wizard; scroll-into-view on step change keeps this card visible after Continue/Back */}
-            <div className="lg:col-span-2 flex flex-col gap-4">
+            <div
+              className={cn(
+                'flex flex-col gap-4',
+                effectivePresaleForCountdown ? 'lg:col-span-3' : 'lg:col-span-2'
+              )}
+            >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm text-muted-foreground">
                 <span aria-live="polite">
                   {t[language].stepOf.replace('{n}', String(wizardStep)).replace('{total}', String(WIZARD_STEP_COUNT))}
@@ -1702,7 +1757,7 @@ const PassPurchase = ({ language }: PassPurchaseProps) => {
                 <CardHeader>
                   <CardTitle
                     className={cn(
-                      'text-gradient-neon',
+                      'text-primary',
                       wizardStep <= 4 && 'leading-snug'
                     )}
                   >

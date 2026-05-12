@@ -19,7 +19,9 @@
     "email:smtp:test-investor": "node scripts/send-brevo-smtp-test.cjs --via smtp",
     "email:api:test-investor": "node scripts/send-brevo-smtp-test.cjs --via api",
     "email:ticket-poster-pdf": "node scripts/render-premium-ticket-poster-pdf.cjs",
-    "test:purchase-channel": "node --test api/lib/purchase-channel-label.test.cjs"
+    "test:purchase-channel": "node --test api/lib/purchase-channel-label.test.cjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1024.0",
@@ -128,6 +130,7 @@
     "tailwindcss": "^3.4.11",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
-    "vite": "^5.4.1"
+    "vite": "^5.4.1",
+    "vitest": "^2.1.9"
   }
 }

@@ -27,7 +27,7 @@ export function ConsultationInquiriesTab({
     <>
       <TabsContent value="consultation-inquiries" className="space-y-6">
         <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-gradient-neon">B2B Leads</h2>
+          <h2 className="text-2xl font-bold text-primary">B2B Leads</h2>
           <div className="flex items-center gap-4">
             <Badge variant="secondary" className="animate-pulse">
               {filteredConsultationInquiries.length} of {consultationInquiries.length} inquiries

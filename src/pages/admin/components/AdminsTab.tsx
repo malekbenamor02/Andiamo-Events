@@ -78,7 +78,7 @@ export function AdminsTab({
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gradient-neon">
+        <h2 className="text-2xl font-bold text-primary">
           {language === "en" ? "Admin Management" : "Gestion des Administrateurs"}
         </h2>
         <Dialog open={isAddAdminDialogOpen} onOpenChange={setIsAddAdminDialogOpen}>

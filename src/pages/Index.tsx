@@ -7,6 +7,7 @@ import CounterSection from "@/components/home/CounterSection";
 import FeaturedEventsSection from "@/components/home/FeaturedEventsSection";
 import SponsorsSection from "@/components/home/SponsorsSection";
 import LoadingScreen from "@/components/ui/LoadingScreen";
+import { HomeCountdownBannerSection } from "@/components/countdown/HomeCountdownBannerSection";
 
 interface IndexProps {
   language: 'en' | 'fr';
@@ -112,6 +113,7 @@ const Index = ({ language }: IndexProps) => {
         description={PAGE_DESCRIPTIONS.home.en}
         path="/"
       />
+      <HomeCountdownBannerSection language={language} />
       {/* Loading Screen - Appears instantly to prevent blank screen */}
       {/* Only waits for critical hero assets: images (decoded) + videos (first frame) */}
       {!heroMediaLoaded && (
@@ -130,10 +132,10 @@ const Index = ({ language }: IndexProps) => {
           heroMediaLoaded ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
-        {/* `pt-16` clears fixed nav (h-16); HeroSection height uses calc(100svh - 4rem) */}
+        {/* Clears fixed nav (4rem) + optional home countdown strip (`--site-countdown-offset`) */}
         <div 
           ref={heroRef}
-          className="transform transition-all duration-1000 ease-out opacity-100 translate-y-0 scale-100 pt-16"
+          className="transform transition-all duration-1000 ease-out opacity-100 translate-y-0 scale-100 pt-[calc(4rem+var(--site-countdown-offset,0px))]"
           style={{ position: 'relative', zIndex: 0 }}
         >
         <HeroSection language={language} onMediaLoaded={() => setHeroMediaLoaded(true)} />

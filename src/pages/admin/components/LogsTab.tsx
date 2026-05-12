@@ -119,7 +119,7 @@ export function LogsTab({
     <TabsContent value="logs" className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-gradient-neon">
+          <h2 className="text-2xl font-bold text-primary">
             {language === "en" ? "Site Logs & Analytics" : "Journaux et Analytiques du Site"}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">

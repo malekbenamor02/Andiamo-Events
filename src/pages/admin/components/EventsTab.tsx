@@ -315,7 +315,7 @@ export function EventsTab(p: EventsTabProps) {
   return (
     <TabsContent value="events" className="space-y-6">
       <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-bold text-gradient-neon">Events Management</h2>
+                  <h2 className="text-2xl font-bold text-primary">Events Management</h2>
                   <Dialog open={p.isEventDialogOpen} onOpenChange={p.setIsEventDialogOpen}>
                     <DialogTrigger asChild>
                       <Button 

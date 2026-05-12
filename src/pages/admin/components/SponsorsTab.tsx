@@ -57,7 +57,7 @@ export function SponsorsTab({
   return (
     <TabsContent value="sponsors" className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gradient-neon">
+        <h2 className="text-2xl font-bold text-primary">
           Sponsors
         </h2>
         <Button

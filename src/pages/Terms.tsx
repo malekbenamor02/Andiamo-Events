@@ -304,7 +304,7 @@ const Terms = ({ language }: TermsProps) => {
       <JsonLdBreadcrumb items={[{ name: "Home", url: "/" }, { name: "Terms and Conditions", url: "/terms" }]} />
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-4 uppercase">
+          <h1 className="text-4xl md:text-5xl font-heading font-bold text-primary mb-4 uppercase">
             {pageContent.title}
           </h1>
           <p className="text-lg font-semibold text-muted-foreground mb-2 uppercase">{pageContent.organization}</p>

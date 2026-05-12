@@ -86,7 +86,7 @@ export function ReportsAnalytics({ language = 'en', dashboardSelectedEventId, ad
       <div className="space-y-4 animate-in slide-in-from-top-4 fade-in duration-700">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h2 className="text-3xl md:text-4xl font-heading font-bold text-gradient-neon mb-2 animate-in slide-in-from-left-4 duration-1000">
+            <h2 className="text-3xl md:text-4xl font-heading font-bold text-primary mb-2 animate-in slide-in-from-left-4 duration-1000">
               Reports & Analytics
             </h2>
             <p className="text-sm md:text-base text-muted-foreground font-heading animate-in slide-in-from-left-4 duration-1000 delay-200">

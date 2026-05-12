@@ -61,7 +61,7 @@ export function OrderSuccessScreen({
               aria-hidden
             />
           </div>
-          <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-3">
+          <h1 className="text-4xl md:text-5xl font-heading font-bold text-primary mb-3">
             {t.title}
           </h1>
           <p className="text-xl text-muted-foreground">

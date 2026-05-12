@@ -243,7 +243,7 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
 
   return (
     <>
-      <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-xl">
+      <nav className="fixed top-[var(--site-countdown-offset,0px)] w-full z-50 bg-background/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
@@ -360,7 +360,7 @@ const Navigation = ({ language, toggleLanguage, theme, toggleTheme }: Navigation
           />
           {/* Menu Panel */}
           <div 
-            className="md:hidden fixed top-16 left-0 right-0 z-[90] shadow-2xl"
+            className="md:hidden fixed left-0 right-0 z-[90] shadow-2xl top-[calc(4rem+var(--site-countdown-offset,0px))]"
             onClick={(e) => {
               // Close if clicking on the menu panel itself (not on content)
               if (e.target === e.currentTarget) {

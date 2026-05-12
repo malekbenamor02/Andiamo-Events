@@ -45,7 +45,7 @@ export function AioEventsTab({
     <TabsContent value="aio-events" className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-gradient-neon">
+          <h2 className="text-2xl font-bold text-primary">
             AIO Events Submissions
           </h2>
           <p className="text-sm text-muted-foreground mt-1">

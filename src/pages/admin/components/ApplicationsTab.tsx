@@ -185,7 +185,7 @@ export function ApplicationsTab({
   return (
     <TabsContent value="applications" className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gradient-neon">
+        <h2 className="text-2xl font-bold text-primary">
           Ambassador Applications
         </h2>
         <div className="flex items-center gap-3">

@@ -31,6 +31,14 @@ export interface SettingsTabProps {
   salesEnabled: boolean;
   updateSalesSettingsData: (enabled: boolean) => void;
   loadingSalesSettings: boolean;
+  countdownBannerEnabled: boolean;
+  updateCountdownBannerSettingsData: (enabled: boolean) => void;
+  loadingCountdownBannerSettings: boolean;
+  countdownBannerLabelEn: string;
+  countdownBannerLabelFr: string;
+  setCountdownBannerLabelEn: (v: string) => void;
+  setCountdownBannerLabelFr: (v: string) => void;
+  commitCountdownBannerSettings: () => void | Promise<void>;
   maintenanceEnabled: boolean;
   maintenanceMessage: string;
   allowAmbassadorApplication: boolean;
@@ -95,6 +103,54 @@ export function SettingsTab(p: SettingsTabProps) {
                 disabled={p.loadingSalesSettings}
                 onCheckedChange={(checked) => p.updateSalesSettingsData(checked)}
               />
+            </div>
+            <div className="h-px bg-border" />
+
+            {/* Countdown banner (public site) */}
+            <div className="p-4 space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {p.language === "en" ? "Countdown banner" : "Bannière compte à rebours"}
+                    </span>
+                    {p.loadingCountdownBannerSettings ? <Loader size="sm" /> : null}
+                  </div>
+                </div>
+                <Switch
+                  checked={p.countdownBannerEnabled}
+                  disabled={p.loadingCountdownBannerSettings}
+                  onCheckedChange={(checked) => p.updateCountdownBannerSettingsData(checked)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="countdown-label-en" className="text-xs text-foreground/80">
+                  {p.language === "en" ? "Left line (English)" : "Phrase à gauche (anglais)"}
+                </Label>
+                <Input
+                  id="countdown-label-en"
+                  value={p.countdownBannerLabelEn}
+                  disabled={p.loadingCountdownBannerSettings}
+                  onChange={(e) => p.setCountdownBannerLabelEn(e.target.value)}
+                  onBlur={() => void p.commitCountdownBannerSettings()}
+                  className="text-sm bg-background text-foreground"
+                  maxLength={120}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="countdown-label-fr" className="text-xs text-foreground/80">
+                  {p.language === "en" ? "Left line (French)" : "Phrase à gauche (français)"}
+                </Label>
+                <Input
+                  id="countdown-label-fr"
+                  value={p.countdownBannerLabelFr}
+                  disabled={p.loadingCountdownBannerSettings}
+                  onChange={(e) => p.setCountdownBannerLabelFr(e.target.value)}
+                  onBlur={() => void p.commitCountdownBannerSettings()}
+                  className="text-sm bg-background text-foreground"
+                  maxLength={120}
+                />
+              </div>
             </div>
             <div className="h-px bg-border" />
 

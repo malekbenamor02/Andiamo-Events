@@ -17,7 +17,7 @@ export function OfficialInvitationsTab({ language, selectedEventId }: OfficialIn
   return (
     <TabsContent value="official-invitations" className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gradient-neon">
+        <h2 className="text-2xl font-bold text-primary">
           {language === "en" ? "Official Invitations" : "Invitations Officielles"}
         </h2>
       </div>

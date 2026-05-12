@@ -290,7 +290,7 @@ const Suggestions = ({ language }: SuggestionsProps) => {
                 animatedSections.has("hero") ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-8 scale-95"
               }`}
             >
-              <h1 className="text-4xl md:text-5xl font-heading font-bold text-gradient-neon mb-4 uppercase">{t.title}</h1>
+              <h1 className="text-4xl md:text-5xl font-heading font-bold text-primary mb-4 uppercase">{t.title}</h1>
               <p className="text-xl text-muted-foreground max-w-2xl mx-auto">{t.description}</p>
             </div>
 

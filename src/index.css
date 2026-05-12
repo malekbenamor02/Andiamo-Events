@@ -570,9 +570,9 @@ All colors MUST be HSL.
     background-image: var(--gradient-primary);
   }
   
+  /* Solid primary red (legacy name kept for any stragglers) */
   .text-gradient-neon {
-    @apply text-transparent bg-clip-text;
-    background-image: var(--gradient-neon);
+    @apply text-primary;
   }
   
   /* ============================================

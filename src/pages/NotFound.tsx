@@ -101,7 +101,7 @@ const NotFound = () => {
         }`}>
           {/* 404 Number - Large and Animated */}
           <div className="relative mb-8">
-            <h1 className="text-9xl md:text-[12rem] font-heading font-bold text-gradient-neon leading-none mb-4 animate-pulse-glow">
+            <h1 className="text-9xl md:text-[12rem] font-heading font-bold text-primary leading-none mb-4 animate-pulse-glow">
               404
             </h1>
             {/* Glow effect behind 404 */}
@@ -116,7 +116,7 @@ const NotFound = () => {
               </span>
             </div>
             
-            <h2 className="text-3xl md:text-5xl font-heading font-bold text-gradient-neon mb-4 uppercase">
+            <h2 className="text-3xl md:text-5xl font-heading font-bold text-primary mb-4 uppercase">
               {content.title === "404" ? "Lost in the Night?" : content.title}
             </h2>
             

@@ -25,6 +25,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { createApprovalEmail, createRejectionEmail, generatePassword, sendEmail, sendEmailWithDetails, createAdminCredentialsEmail } from "@/lib/email";
 import { fetchSalesSettings, updateSalesSettings } from "@/lib/salesSettings";
 import {
+  COUNTDOWN_BANNER_SETTINGS_KEY,
+  COUNTDOWN_LABEL_DEFAULT_EN,
+  COUNTDOWN_LABEL_DEFAULT_FR,
+  fetchCountdownBannerSettings,
+  upsertCountdownBannerSettings,
+} from "@/lib/countdownBannerSettings";
+import {
   CheckCircle,
   XCircle,
   Users,
@@ -352,6 +359,11 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
   // Sales settings state
   const [salesEnabled, setSalesEnabled] = useState(true);
   const [loadingSalesSettings, setLoadingSalesSettings] = useState(false);
+
+  const [countdownBannerEnabled, setCountdownBannerEnabled] = useState(false);
+  const [countdownBannerLabelEn, setCountdownBannerLabelEn] = useState(COUNTDOWN_LABEL_DEFAULT_EN);
+  const [countdownBannerLabelFr, setCountdownBannerLabelFr] = useState(COUNTDOWN_LABEL_DEFAULT_FR);
+  const [loadingCountdownBannerSettings, setLoadingCountdownBannerSettings] = useState(false);
   
   // Order expiration settings state
   const [expirationSettings, setExpirationSettings] = useState<Array<{
@@ -1971,6 +1983,15 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
       setSalesEnabled(settings.enabled);
     } catch (error) {
       console.error('Error fetching sales settings:', error);
+    }
+
+    try {
+      const countdown = await fetchCountdownBannerSettings();
+      setCountdownBannerEnabled(countdown.enabled);
+      setCountdownBannerLabelEn(countdown.label_en);
+      setCountdownBannerLabelFr(countdown.label_fr);
+    } catch (error) {
+      console.error("Error fetching countdown banner settings:", error);
     }
     
     // Fetch order expiration settings
@@ -7837,6 +7858,80 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
     }
   };
 
+  const commitCountdownBannerSettings = useCallback(async () => {
+    try {
+      await upsertCountdownBannerSettings({
+        enabled: countdownBannerEnabled,
+        label_en: countdownBannerLabelEn.trim() || COUNTDOWN_LABEL_DEFAULT_EN,
+        label_fr: countdownBannerLabelFr.trim() || COUNTDOWN_LABEL_DEFAULT_FR,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["site_content", COUNTDOWN_BANNER_SETTINGS_KEY] });
+    } catch (error: unknown) {
+      console.error("Error saving countdown banner settings:", error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : language === "en"
+            ? "Failed to save countdown banner text"
+            : "Échec de l'enregistrement du texte de la bannière";
+      toast({
+        title: t.error,
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  }, [
+    countdownBannerEnabled,
+    countdownBannerLabelEn,
+    countdownBannerLabelFr,
+    language,
+    queryClient,
+    t.error,
+  ]);
+
+  const updateCountdownBannerSettingsData = async (enabled: boolean) => {
+    setLoadingCountdownBannerSettings(true);
+    try {
+      await upsertCountdownBannerSettings({
+        enabled,
+        label_en: countdownBannerLabelEn.trim() || COUNTDOWN_LABEL_DEFAULT_EN,
+        label_fr: countdownBannerLabelFr.trim() || COUNTDOWN_LABEL_DEFAULT_FR,
+      });
+      setCountdownBannerEnabled(enabled);
+      toast({
+        title: language === "en" ? "Settings updated" : "Paramètres mis à jour",
+        description:
+          language === "en"
+            ? enabled
+              ? "The countdown banner is visible on the site when events qualify."
+              : "The countdown banner is hidden on the public site."
+            : enabled
+              ? "La bannière compte à rebours s’affiche sur le site lorsque les événements sont éligibles."
+              : "La bannière compte à rebours est masquée sur le site public.",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["site_content", COUNTDOWN_BANNER_SETTINGS_KEY] });
+      const countdown = await fetchCountdownBannerSettings();
+      setCountdownBannerEnabled(countdown.enabled);
+      setCountdownBannerLabelEn(countdown.label_en);
+      setCountdownBannerLabelFr(countdown.label_fr);
+    } catch (error: unknown) {
+      console.error("Error updating countdown banner settings:", error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : language === "en"
+            ? "Failed to update settings"
+            : "Échec de la mise à jour des paramètres";
+      toast({
+        title: t.error,
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingCountdownBannerSettings(false);
+    }
+  };
+
   const updateMaintenanceSettings = async (enabled: boolean, message?: string, allowAmbassador?: boolean) => {
     setLoadingMaintenanceSettings(true);
     try {
@@ -11504,6 +11599,14 @@ const AdminDashboard = ({ language }: AdminDashboardProps) => {
                   salesEnabled={salesEnabled}
                   updateSalesSettingsData={updateSalesSettingsData}
                   loadingSalesSettings={loadingSalesSettings}
+                  countdownBannerEnabled={countdownBannerEnabled}
+                  updateCountdownBannerSettingsData={updateCountdownBannerSettingsData}
+                  loadingCountdownBannerSettings={loadingCountdownBannerSettings}
+                  countdownBannerLabelEn={countdownBannerLabelEn}
+                  countdownBannerLabelFr={countdownBannerLabelFr}
+                  setCountdownBannerLabelEn={setCountdownBannerLabelEn}
+                  setCountdownBannerLabelFr={setCountdownBannerLabelFr}
+                  commitCountdownBannerSettings={commitCountdownBannerSettings}
                   maintenanceEnabled={maintenanceEnabled}
                   maintenanceMessage={maintenanceMessage}
                   allowAmbassadorApplication={allowAmbassadorApplication}
