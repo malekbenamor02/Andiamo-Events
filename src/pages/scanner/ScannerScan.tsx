@@ -520,28 +520,64 @@ export default function ScannerScan() {
       {/* Camera View - Top Section */}
       <div className="relative flex-1 flex flex-col min-h-0">
         {scanning ? (
-          <div className="relative flex-1 bg-black overflow-hidden">
-            <div id={READER_ID} className="w-full h-full" />
-            {/* Overlay instructions */}
-            <div className="absolute top-4 left-0 right-0 px-4">
-              <div className="bg-black/70 backdrop-blur-sm rounded-lg px-3 py-2 text-center">
-                <p className="text-white text-sm font-medium">
-                  {scannerRole === "supervisor" && scanMode === "inspect" ? "Point camera at QR (inspect — no entry)" : "Point camera at QR code"}
-                </p>
+          <div className="flex min-h-0 flex-1 flex-col bg-black">
+            <div className="relative min-h-0 flex-1 overflow-hidden">
+              <div id={READER_ID} className="h-full w-full" />
+              <div className="absolute left-0 right-0 top-4 px-4">
+                <div className="rounded-lg bg-black/70 px-3 py-2 text-center backdrop-blur-sm">
+                  <p className="text-sm font-medium text-white">
+                    {scannerRole === "supervisor" && scanMode === "inspect"
+                      ? "Point camera at QR (inspect — no entry)"
+                      : "Point camera at QR code"}
+                  </p>
+                </div>
               </div>
+            </div>
+            <div className="flex shrink-0 justify-center border-t border-[#1A1A1A] bg-black/90 px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
+              <Button
+                className="h-20 w-20 rounded-full border-4 border-white/10 bg-[#EF4444] shadow-2xl transition-transform hover:scale-105 hover:bg-[#DC2626]"
+                onClick={stopCamera}
+                size="lg"
+              >
+                <Square className="h-10 w-10 fill-white" />
+              </Button>
             </div>
           </div>
         ) : !result ? (
-          <div className="flex-1 bg-gradient-to-b from-[#1A1A1A] to-[#0A0A0A] flex items-center justify-center">
-            <div className="text-center px-4">
-              <div className="w-24 h-24 mx-auto mb-4 rounded-2xl bg-[#1A1A1A] border-2 border-dashed border-[#2A2A2A] flex items-center justify-center">
-                <ScanLine className="w-12 h-12 text-[#404040]" />
+          <>
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto bg-gradient-to-b from-[#1A1A1A] to-[#0A0A0A] px-4 py-8">
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-2xl border-2 border-dashed border-[#2A2A2A] bg-[#1A1A1A]">
+                  <ScanLine className="h-12 w-12 text-[#404040]" />
+                </div>
+                <p className="text-sm font-medium text-[#737373]">Camera ready</p>
+                <p className="mt-1 text-xs text-[#525252]">Use the controls below to start</p>
               </div>
-              <p className="text-[#737373] text-sm font-medium">Camera ready</p>
-              <p className="text-[#525252] text-xs mt-1">Press start to begin scanning</p>
             </div>
-          </div>
-        ) : null}
+            {!timedOut && (
+              <div className="shrink-0 flex flex-col items-center gap-3 border-t border-[#1A1A1A] bg-[#0A0A0A]/95 px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))]">
+                <Button
+                  className="h-20 w-20 rounded-full border-4 border-white/10 bg-[#E21836] shadow-2xl transition-transform hover:scale-105 hover:bg-[#c4142e]"
+                  onClick={onStart}
+                  size="lg"
+                >
+                  <ScanLine className="h-10 w-10" />
+                </Button>
+                <p className="text-base font-semibold text-white">Start Scanning</p>
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-full border-[#2A2A2A] px-6 text-[#A3A3A3] hover:border-[#404040] hover:bg-[#1A1A1A] hover:text-white"
+                  onClick={() => setManualOpen(true)}
+                >
+                  <PenLine className="mr-2 h-4 w-4" />
+                  Manual Entry
+                </Button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="min-h-0 flex-1 bg-[#0A0A0A]" aria-hidden />
+        )}
 
         {/* Validation Status Overlay */}
         {validating && (
@@ -857,41 +893,6 @@ export default function ScannerScan() {
           </div>
         )}
 
-        {/* Center Action Button - Always visible when not scanning */}
-        {!scanning && !result && !timedOut && (
-          <div className="absolute bottom-32 left-0 right-0 flex justify-center z-30">
-            <div className="flex flex-col items-center gap-3">
-              <Button 
-                className="h-20 w-20 rounded-full bg-[#E21836] hover:bg-[#c4142e] shadow-2xl border-4 border-white/10 hover:scale-105 transition-transform" 
-                onClick={onStart}
-                size="lg"
-              >
-                <ScanLine className="w-10 h-10" />
-              </Button>
-              <p className="text-white text-base font-semibold">Start Scanning</p>
-              <Button 
-                variant="outline" 
-                className="h-11 px-6 rounded-full border-[#2A2A2A] text-[#A3A3A3] hover:bg-[#1A1A1A] hover:text-white hover:border-[#404040]" 
-                onClick={() => setManualOpen(true)}
-              >
-                <PenLine className="w-4 h-4 mr-2" />Manual Entry
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Stop Button - When scanning */}
-        {scanning && (
-          <div className="absolute bottom-32 left-0 right-0 flex justify-center z-30">
-            <Button 
-              className="h-20 w-20 rounded-full bg-[#EF4444] hover:bg-[#DC2626] shadow-2xl border-4 border-white/10 hover:scale-105 transition-transform" 
-              onClick={stopCamera}
-              size="lg"
-            >
-              <Square className="w-10 h-10 fill-white" />
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* History Section - Bottom */}
