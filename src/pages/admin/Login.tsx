@@ -12,7 +12,7 @@ import { logger } from "@/lib/logger";
 import { API_ROUTES } from "@/lib/api-routes";
 import { supabase } from "@/integrations/supabase/client";
 import { logAdminAction } from "@/lib/adminLogs";
-import { writeAdminVerifyCache } from "@/lib/admin-verify-cache";
+import { ADMIN_SESSION_PENDING_KEY, writeAdminVerifyCache } from "@/lib/admin-verify-cache";
 
 interface AdminLoginProps {
   language: 'en' | 'fr';
@@ -208,6 +208,19 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
         } catch (e) {
           errorMessage = response.statusText || errorMessage;
         }
+
+        if (response.status === 429) {
+          errorMessage =
+            language === 'en'
+              ? 'Too many login attempts. Please wait before trying again.'
+              : 'Trop de tentatives de connexion. Veuillez patienter avant de réessayer.';
+        }
+        if (response.status === 503) {
+          errorMessage =
+            language === 'en'
+              ? 'Login is temporarily unavailable. Please try again later.'
+              : 'La connexion est temporairement indisponible. Veuillez réessayer plus tard.';
+        }
         
         // Log failed admin login attempt
         logger.warning('Admin login failed', {
@@ -218,9 +231,20 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
 
         setError(errorMessage);
         toast({
-          title: language === 'en' ? "Login Failed" : "Échec de connexion",
+          title:
+            response.status === 503
+              ? language === 'en'
+                ? 'Unavailable'
+                : 'Indisponible'
+              : response.status === 429
+                ? language === 'en'
+                  ? 'Too many attempts'
+                  : 'Trop de tentatives'
+                : language === 'en'
+                  ? 'Login Failed'
+                  : 'Échec de connexion',
           description: errorMessage,
-          variant: "destructive",
+          variant: 'destructive',
         });
         setLoading(false);
         return;
@@ -292,7 +316,12 @@ const AdminLogin = ({ language }: AdminLoginProps) => {
           });
         }
 
-        navigate('/admin', { state: { fromLogin: true }, replace: true });
+        try {
+          sessionStorage.setItem(ADMIN_SESSION_PENDING_KEY, '1');
+        } catch {
+          /* ignore */
+        }
+        navigate('/admin', { replace: true, state: { fromLogin: true } });
       } else {
         // Login failed
         setError(data.error || t[language].error);

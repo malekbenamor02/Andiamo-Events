@@ -1,40 +1,38 @@
 import { useEffect, useState, useRef } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import { API_ROUTES } from '@/lib/api-routes';
 import { getApiBaseUrl } from '@/lib/api-routes';
 import { useIsMobile } from "@/hooks/use-mobile";
-import { writeAdminVerifyCache } from "@/lib/admin-verify-cache";
+import { ADMIN_SESSION_PENDING_KEY, writeAdminVerifyCache } from "@/lib/admin-verify-cache";
 
 interface ProtectedAdminRouteProps {
   children: React.ReactNode;
   language: 'en' | 'fr';
 }
 
+const clearAdminSessionPending = () => {
+  try {
+    sessionStorage.removeItem(ADMIN_SESSION_PENDING_KEY);
+  } catch {
+    /* ignore */
+  }
+};
+
 const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
-  const location = useLocation();
   const cancelled = useRef(false);
   const isMobile = useIsMobile();
 
   useEffect(() => {
     cancelled.current = false;
 
-    const fromLogin = (location.state as { fromLogin?: boolean })?.fromLogin === true;
-
-    if (fromLogin) {
-      setIsAuthenticated(true);
-      setLoading(false);
-      return;
-    }
-
     const base = getApiBaseUrl();
     const verifyUrl = base ? `${base}${API_ROUTES.VERIFY_ADMIN}` : API_ROUTES.VERIFY_ADMIN;
 
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-    // Best-effort parse even when res.ok === false, so we can read `{ reason }`
     const attemptVerify = async (): Promise<Record<string, unknown> | null> => {
       try {
         const res = await fetch(verifyUrl, { method: 'GET', credentials: 'include' });
@@ -47,40 +45,74 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
       }
     };
 
-    const verifyWithMobileRetry = async () => {
+    const verifyWithRetries = async () => {
+      let pending = false;
       try {
-        const data1 = await attemptVerify();
-        if (cancelled.current) return;
+        pending = sessionStorage.getItem(ADMIN_SESSION_PENDING_KEY) === '1';
+      } catch {
+        pending = false;
+      }
 
-        if (data1?.valid) {
-          const admin = data1.admin as
-            | { id: string; email: string; name: string; role: string }
-            | undefined;
-          if (admin?.id) {
-            writeAdminVerifyCache({
-              admin,
-              sessionExpiresAt: data1.sessionExpiresAt as number | undefined,
-              sessionTimeRemaining: data1.sessionTimeRemaining as number | null | undefined,
-            });
+      const postLoginSchedule = [0, 120, 250, 500, 1000, 2000];
+      const schedule = pending ? postLoginSchedule : [0];
+
+      let lastData: Record<string, unknown> | null = null;
+
+      try {
+        let prev = 0;
+        for (const targetMs of schedule) {
+          const wait = targetMs - prev;
+          prev = targetMs;
+          if (wait > 0) await delay(wait);
+          if (cancelled.current) return;
+
+          const data = await attemptVerify();
+          if (cancelled.current) return;
+          lastData = data;
+
+          if (data?.valid) {
+            const admin = data.admin as
+              | { id: string; email: string; name: string; role: string }
+              | undefined;
+            if (admin?.id) {
+              writeAdminVerifyCache({
+                admin,
+                sessionExpiresAt: data.sessionExpiresAt as number | undefined,
+                sessionTimeRemaining: data.sessionTimeRemaining as number | null | undefined,
+              });
+            }
+            setIsAuthenticated(true);
+            clearAdminSessionPending();
+            return;
           }
-          setIsAuthenticated(true);
-          return;
         }
 
-        // If cookie/token isn't available yet, wait and retry a few times on mobile.
-        const reason = String(data1?.reason || "").toLowerCase();
+        if (pending) {
+          clearAdminSessionPending();
+        }
+
+        const reason = String(lastData?.reason || "").toLowerCase();
         const shouldRetryNoToken =
           isMobile &&
           (reason.includes("no token provided") || reason.includes("no token") || reason.includes("not authenticated"));
 
         if (shouldRetryNoToken) {
-          // Total warm-up window ~3s (immediate + a couple retries).
           const retryDelays = [900, 1200];
           for (const ms of retryDelays) {
             await delay(ms);
             const data = await attemptVerify();
             if (cancelled.current) return;
             if (data?.valid) {
+              const admin = data.admin as
+                | { id: string; email: string; name: string; role: string }
+                | undefined;
+              if (admin?.id) {
+                writeAdminVerifyCache({
+                  admin,
+                  sessionExpiresAt: data.sessionExpiresAt as number | undefined,
+                  sessionTimeRemaining: data.sessionTimeRemaining as number | null | undefined,
+                });
+              }
               setIsAuthenticated(true);
               return;
             }
@@ -93,10 +125,10 @@ const ProtectedAdminRoute = ({ children, language }: ProtectedAdminRouteProps) =
       }
     };
 
-    verifyWithMobileRetry();
+    verifyWithRetries();
 
     return () => { cancelled.current = true; };
-  }, [location.state, isMobile]);
+  }, [isMobile]);
 
   if (loading) {
     return (

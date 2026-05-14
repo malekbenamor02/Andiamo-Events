@@ -2,6 +2,9 @@
 
 export const ADMIN_VERIFY_CACHE_KEY = "andiamo_admin_verify_cache_v1";
 
+/** After successful login, set so ProtectedAdminRoute retries verify while the HttpOnly cookie is established. */
+export const ADMIN_SESSION_PENDING_KEY = "andiamo_admin_session_pending_v1";
+
 export type AdminVerifyCacheAdmin = {
   id: string;
   email: string;

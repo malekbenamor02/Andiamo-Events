@@ -932,11 +932,6 @@ export function EventsTab(p: EventsTabProps) {
                                                       {presaleCodeDisplayName(c, p.language)}
                                                       <span
                                                         className="font-normal text-muted-foreground tabular-nums"
-                                                        title={
-                                                          p.language === "en"
-                                                            ? "Times the code was entered successfully (includes no purchase)"
-                                                            : "Nombre de fois que le code a été saisi avec succès (sans achat inclus)"
-                                                        }
                                                       >
                                                         {" "}
                                                         ({c.successful_unlock_count})
@@ -1047,11 +1042,6 @@ export function EventsTab(p: EventsTabProps) {
                                                               placeholder={
                                                                 p.language === "en" ? "New max" : "Nouveau max"
                                                               }
-                                                              title={
-                                                                p.language === "en"
-                                                                  ? "Raise the cap (cannot go below orders already completed)."
-                                                                  : "Augmenter le plafond (pas en dessous des commandes déjà faites)."
-                                                              }
                                                               value={codeMaxDrafts[c.id] ?? ""}
                                                               onChange={(e) =>
                                                                 setCodeMaxDrafts((prev) => ({
@@ -1112,14 +1102,8 @@ export function EventsTab(p: EventsTabProps) {
                                         )}
                                         <div className="space-y-3 pt-2">
                                           <Input
-                                            required
                                             placeholder={
                                               p.language === "en" ? "Code name" : "Nom du code"
-                                            }
-                                            title={
-                                              p.language === "en"
-                                                ? "Buyers enter this on the pass page. Same code can be used for many orders until the max below is reached."
-                                                : "Saisi sur la page d’achat. Réutilisable jusqu’au maximum ci-dessous."
                                             }
                                             value={newPresale.code}
                                             autoCapitalize="characters"
@@ -1129,27 +1113,14 @@ export function EventsTab(p: EventsTabProps) {
                                             }
                                           />
                                           <Input
-                                            required
                                             inputMode="numeric"
                                             placeholder={p.language === "en" ? "Quantity" : "Quantité"}
-                                            title={
-                                              p.language === "en"
-                                                ? "Total successful checkouts allowed with this code. After each successful order the remaining count drops (e.g. 200 → 199). You can raise the max later."
-                                                : "Nombre total de commandes réussies avec ce code. Chaque commande payée diminue le reste. Vous pouvez augmenter le max plus tard."
-                                            }
                                             value={newPresale.max_total_redemptions}
                                             onChange={(e) =>
                                               setNewPresale((s) => ({ ...s, max_total_redemptions: e.target.value }))
                                             }
                                           />
-                                          <div
-                                            className="flex rounded-md border border-input bg-background shadow-sm overflow-hidden"
-                                            title={
-                                              p.language === "en"
-                                                ? "Left: % or TND per unit. Right: number (e.g. 10 = 10% off list, or 10 TND off each pass)."
-                                                : "Gauche : % ou TND par unité. Droite : nombre (ex. 10 = 10 % sur le prix, ou 10 TND par pass)."
-                                            }
-                                          >
+                                          <div className="flex rounded-md border border-input bg-background shadow-sm overflow-hidden">
                                             <Select
                                               value={newPresale.discount_type}
                                               onValueChange={(v: "percent" | "fixed") =>
@@ -1166,7 +1137,6 @@ export function EventsTab(p: EventsTabProps) {
                                             </Select>
                                             <Input
                                               type="number"
-                                              required
                                               min={0.01}
                                               step="0.01"
                                               className="h-10 flex-1 min-w-0 rounded-none border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"

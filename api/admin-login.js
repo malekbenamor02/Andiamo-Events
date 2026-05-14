@@ -1,7 +1,13 @@
 // Clean, minimal admin login endpoint for Vercel
 // Using ES module syntax because package.json has "type": "module"
 
-// Import shared CORS utility (using dynamic import for ES modules)
+import {
+  checkAdminLoginIpRateLimit,
+  checkAdminLoginEmailRateLimit,
+  getAdminLoginClientIp,
+} from './lib/admin-login-rate-limit.js';
+import { checkAdminLoginDistributedLimits } from './lib/admin-login-upstash.js';
+
 let corsUtils = null;
 async function getCorsUtils() {
   if (!corsUtils) {
@@ -10,153 +16,207 @@ async function getCorsUtils() {
   return corsUtils;
 }
 
+/** Bcrypt hash of "password" — used only to normalize timing when email is unknown. */
+const DUMMY_BCRYPT_HASH =
+  '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+
+function isVercelProduction() {
+  return process.env.VERCEL_ENV === 'production';
+}
+
+function isProductionRuntime() {
+  return (
+    process.env.NODE_ENV === 'production' ||
+    process.env.VERCEL === '1' ||
+    !!process.env.VERCEL_URL
+  );
+}
+
 export default async (req, res) => {
   const { setCORSHeaders, handlePreflight } = await getCorsUtils();
-  
-  // Handle preflight requests
+
   if (handlePreflight(req, res, { methods: 'POST, OPTIONS', headers: 'Content-Type', credentials: true })) {
-    return; // Preflight handled
+    return;
   }
-  
-  // Set CORS headers for actual requests (credentials needed for cookies)
+
   if (!setCORSHeaders(res, req, { methods: 'POST, OPTIONS', headers: 'Content-Type', credentials: true })) {
-    // No origin or origin not allowed - this is fine for same-origin requests
-    // Only fail if there's an origin that's not allowed
     if (req.headers.origin) {
       return res.status(403).json({ error: 'CORS policy: Origin not allowed' });
     }
   }
-  
-  // Only allow POST
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
-  
+
+  const clientIp = getAdminLoginClientIp(req);
+  if (!checkAdminLoginIpRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
+  }
+
+  const isProduction = isProductionRuntime();
+
   try {
-    // Parse request body - Vercel provides body directly or as stream
     let bodyData;
-    
+
     if (req.body) {
-      // Body already parsed (Vercel does this automatically)
       bodyData = req.body;
     } else {
-      // Need to read from stream
       let body = '';
       for await (const chunk of req) {
         body += chunk.toString();
       }
-      bodyData = JSON.parse(body);
+      try {
+        bodyData = body.trim() ? JSON.parse(body) : {};
+      } catch {
+        return res.status(400).json({ error: 'Invalid JSON' });
+      }
     }
-    
-    const { email, password, recaptchaToken } = bodyData;
-    
-    // Validate input
+
+    const { email, password, recaptchaToken } = bodyData || {};
+
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password required' });
     }
-    
-    // Check environment variables
+
+    const emailNorm = String(email).toLowerCase().trim();
+
+    if (!checkAdminLoginEmailRateLimit(emailNorm)) {
+      return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
+    }
+
+    const dist = await checkAdminLoginDistributedLimits(clientIp, emailNorm);
+    if (!dist.allowed) {
+      return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
+    }
+
+    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
+    const recaptchaRequired =
+      isVercelProduction() || process.env.FORCE_ADMIN_RECAPTCHA === '1';
+
+    if (recaptchaRequired && !RECAPTCHA_SECRET_KEY) {
+      console.error('Admin login: RECAPTCHA_SECRET_KEY missing while reCAPTCHA is required');
+      return res.status(503).json({ error: 'Login temporarily unavailable' });
+    }
+
+    if (RECAPTCHA_SECRET_KEY) {
+      if (!recaptchaToken || recaptchaToken === '') {
+        return res.status(400).json({ error: 'reCAPTCHA verification required' });
+      }
+      if (recaptchaToken !== 'localhost-bypass-token') {
+        try {
+          const verifyResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              secret: RECAPTCHA_SECRET_KEY,
+              response: String(recaptchaToken),
+            }).toString(),
+          });
+          const verifyData = await verifyResponse.json();
+          if (!verifyData.success) {
+            return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+          }
+          const minScore = Number.parseFloat(process.env.ADMIN_RECAPTCHA_MIN_SCORE || '0.25');
+          if (
+            typeof verifyData.score === 'number' &&
+            Number.isFinite(minScore) &&
+            verifyData.score < minScore
+          ) {
+            return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+          }
+        } catch (recaptchaError) {
+          console.error('Admin login reCAPTCHA error:', recaptchaError);
+          return res.status(500).json({ error: 'reCAPTCHA verification service unavailable' });
+        }
+      }
+    }
+
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
       console.error('Missing environment variables:', {
         hasSupabaseUrl: !!process.env.SUPABASE_URL,
-        hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY
+        hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
       });
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Server configuration error',
-        details: 'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.'
+        ...(isProduction
+          ? {}
+          : {
+              details:
+                'Supabase not configured. Please check SUPABASE_URL and SUPABASE_ANON_KEY environment variables.',
+            }),
       });
     }
-    
-    // Initialize Supabase - use dynamic import for ES modules
+
     const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
-    );
-    
-    // Find admin
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+
     const { data: admin, error: dbError } = await supabase
       .from('admins')
       .select('*')
-      .eq('email', email.toLowerCase().trim())
+      .eq('email', emailNorm)
       .single();
-    
+
+    const bcrypt = await import('bcryptjs');
+
     if (dbError || !admin) {
+      await bcrypt.default.compare(String(password), DUMMY_BCRYPT_HASH);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
-    // Verify password - use dynamic import for ES modules
-    const bcrypt = await import('bcryptjs');
+
     const isMatch = await bcrypt.default.compare(password, admin.password);
-    
+
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
-    // Generate JWT - use dynamic import for ES modules
+
     const jwt = await import('jsonwebtoken');
     const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-dev-only';
-    
-    // Check if we're in production (Vercel or NODE_ENV=production)
-    const isProduction = process.env.NODE_ENV === 'production' || 
-                         process.env.VERCEL === '1' || 
-                         !!process.env.VERCEL_URL;
-    
+
     if (!jwtSecret || jwtSecret === 'fallback-secret-dev-only') {
       if (isProduction) {
-        return res.status(500).json({ 
-          error: 'Server configuration error',
-          details: 'JWT_SECRET is required in production'
-        });
+        return res.status(500).json({ error: 'Server configuration error' });
       }
     }
-    
-    // STRICT: Generate JWT with fixed 5-hour expiration
-    // The 'exp' field in the token is immutable and cannot be changed
-    // This ensures the session always ends exactly 5 hours after login
-    // No refresh, no extension, no reset - only logout or expiration
+
     const token = jwt.default.sign(
       { id: admin.id, email: admin.email, role: admin.role },
       jwtSecret,
-      { expiresIn: '5h' } // Fixed 5-hour expiration - immutable 'exp' field
+      { expiresIn: '5h' }
     );
-    
-    // Set cookie
+
     const cookieParts = [
       `adminToken=${token}`,
       'HttpOnly',
       'Path=/',
       `Max-Age=${18000}`,
       isProduction ? 'Secure' : '',
-      'SameSite=Lax'
+      'SameSite=Lax',
     ].filter(Boolean);
-    
+
     if (isProduction && process.env.COOKIE_DOMAIN) {
       cookieParts.push(`Domain=${process.env.COOKIE_DOMAIN}`);
     }
-    
+
     res.setHeader('Set-Cookie', cookieParts.join('; '));
     res.setHeader('Content-Type', 'application/json');
-    
-    // Return admin info for logging purposes
-    return res.status(200).json({ 
+
+    return res.status(200).json({
       success: true,
       admin: {
         id: admin.id,
         email: admin.email,
         name: admin.name,
-        role: admin.role
-      }
+        role: admin.role,
+      },
     });
-    
   } catch (error) {
     console.error('Admin login error:', error);
     console.error('Error stack:', error.stack);
     console.error('Error name:', error.name);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Server error',
-      details: error.message,
-      type: error.name
+      ...(isProduction ? {} : { details: error.message, type: error.name }),
     });
   }
 };
