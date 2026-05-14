@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-andiamo-admin-login",
     "name": "Andiamo Admin Login API",
-    "description": "Smoke tests for admin auth on `baseUrl` (default production).\n\n**Rate limits** apply only **after** reCAPTCHA passes (real login attempts). Invalid reCAPTCHA returns **400** and does **not** consume IP/email quota — so Newman and bots cannot lock you out before a human solves CAPTCHA.\n\n**reCAPTCHA:** For a real **200** login, set collection variable `recaptchaToken` from the browser Network tab on a manual login.",
+    "description": "Smoke tests for admin auth on collection variable `baseUrl`.\n\n**Where to see tests:** Click each request in the sidebar → open the **Tests** tab (same row as Params, Authorization). Or use **Collection Runner** (⋯ on collection → Run collection) to see pass/fail.\n\n**Rate limits** apply only after reCAPTCHA passes. Invalid reCAPTCHA → **400** (does not consume quota).\n\n**reCAPTCHA:** For a real **200** login, set variable `recaptchaToken` from the browser Network tab on a manual login.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -11,16 +11,20 @@
   ],
   "item": [
     {
+      "id": "a1b2c3d4-1001-4000-8000-000000000001",
       "name": "Admin login page",
       "request": {
         "method": "GET",
         "header": [],
-        "url": "{{baseUrl}}/admin/login"
+        "url": "{{baseUrl}}/admin/login",
+        "description": "Assertions are in the **Tests** tab (not visible until you select this request)."
       },
+      "response": [],
       "event": [
         {
           "listen": "test",
           "script": {
+            "id": "a1b2c3d4-s101-4000-8000-000000000001",
             "exec": [
               "pm.test('Status 200', () => pm.response.to.have.status(200));",
               "pm.test('HTML response', () => (pm.response.headers.get('Content-Type') || '').includes('text/html'));"
@@ -31,6 +35,7 @@
       ]
     },
     {
+      "id": "a1b2c3d4-1002-4000-8000-000000000001",
       "name": "POST admin-login — CORS blocked (bad Origin)",
       "request": {
         "method": "POST",
@@ -42,12 +47,15 @@
           "mode": "raw",
           "raw": "{\"email\":\"test@invalid.local\",\"password\":\"wrong\",\"recaptchaToken\":\"x\"}"
         },
-        "url": "{{baseUrl}}/api/admin-login"
+        "url": "{{baseUrl}}/api/admin-login",
+        "description": "See **Tests** tab for assertions."
       },
+      "response": [],
       "event": [
         {
           "listen": "test",
           "script": {
+            "id": "a1b2c3d4-s102-4000-8000-000000000001",
             "exec": [
               "pm.test('Status 403 CORS', () => pm.response.to.have.status(403));",
               "const j = pm.response.json();",
@@ -59,9 +67,11 @@
       ]
     },
     {
+      "id": "a1b2c3d4-f001-4000-8000-000000000001",
       "name": "Rate limit build-up (run first)",
       "item": [
         {
+          "id": "a1b2c3d4-2001-4000-8000-000000000001",
           "name": "RL 1/6 invalid recaptcha",
           "request": {
             "method": "POST",
@@ -75,10 +85,12 @@
             },
             "url": "{{baseUrl}}/api/admin-login"
           },
+          "response": [],
           "event": [
             {
               "listen": "test",
               "script": {
+                "id": "a1b2c3d4-s201-4000-8000-000000000001",
                 "exec": [
                   "pm.test('400 bad recaptcha or 429 if IP/email window active', () => [400, 429].includes(pm.response.code));"
                 ],
@@ -88,6 +100,7 @@
           ]
         },
         {
+          "id": "a1b2c3d4-2002-4000-8000-000000000001",
           "name": "RL 2/6",
           "request": {
             "method": "POST",
@@ -101,10 +114,12 @@
             },
             "url": "{{baseUrl}}/api/admin-login"
           },
+          "response": [],
           "event": [
             {
               "listen": "test",
               "script": {
+                "id": "a1b2c3d4-s202-4000-8000-000000000001",
                 "exec": ["pm.test('400 or 429', () => [400, 429].includes(pm.response.code));"],
                 "type": "text/javascript"
               }
@@ -112,6 +127,7 @@
           ]
         },
         {
+          "id": "a1b2c3d4-2003-4000-8000-000000000001",
           "name": "RL 3/6",
           "request": {
             "method": "POST",
@@ -125,10 +141,12 @@
             },
             "url": "{{baseUrl}}/api/admin-login"
           },
+          "response": [],
           "event": [
             {
               "listen": "test",
               "script": {
+                "id": "a1b2c3d4-s203-4000-8000-000000000001",
                 "exec": ["pm.test('400 or 429', () => [400, 429].includes(pm.response.code));"],
                 "type": "text/javascript"
               }
@@ -136,6 +154,7 @@
           ]
         },
         {
+          "id": "a1b2c3d4-2004-4000-8000-000000000001",
           "name": "RL 4/6",
           "request": {
             "method": "POST",
@@ -149,10 +168,12 @@
             },
             "url": "{{baseUrl}}/api/admin-login"
           },
+          "response": [],
           "event": [
             {
               "listen": "test",
               "script": {
+                "id": "a1b2c3d4-s204-4000-8000-000000000001",
                 "exec": ["pm.test('400 or 429', () => [400, 429].includes(pm.response.code));"],
                 "type": "text/javascript"
               }
@@ -160,6 +181,7 @@
           ]
         },
         {
+          "id": "a1b2c3d4-2005-4000-8000-000000000001",
           "name": "RL 5/6",
           "request": {
             "method": "POST",
@@ -173,10 +195,12 @@
             },
             "url": "{{baseUrl}}/api/admin-login"
           },
+          "response": [],
           "event": [
             {
               "listen": "test",
               "script": {
+                "id": "a1b2c3d4-s205-4000-8000-000000000001",
                 "exec": ["pm.test('400 or 429', () => [400, 429].includes(pm.response.code));"],
                 "type": "text/javascript"
               }
@@ -184,6 +208,7 @@
           ]
         },
         {
+          "id": "a1b2c3d4-2006-4000-8000-000000000001",
           "name": "RL 6/6 expect 429",
           "request": {
             "method": "POST",
@@ -197,10 +222,12 @@
             },
             "url": "{{baseUrl}}/api/admin-login"
           },
+          "response": [],
           "event": [
             {
               "listen": "test",
               "script": {
+                "id": "a1b2c3d4-s206-4000-8000-000000000001",
                 "exec": [
                   "pm.test('400 invalid recaptcha or 429 if password attempts exhausted window', () => [400, 429].includes(pm.response.code));"
                 ],
@@ -212,6 +239,7 @@
       ]
     },
     {
+      "id": "a1b2c3d4-1003-4000-8000-000000000001",
       "name": "POST admin-login — invalid JSON",
       "request": {
         "method": "POST",
@@ -222,10 +250,12 @@
         "body": { "mode": "raw", "raw": "not-json-at-all" },
         "url": "{{baseUrl}}/api/admin-login"
       },
+      "response": [],
       "event": [
         {
           "listen": "test",
           "script": {
+            "id": "a1b2c3d4-s103-4000-8000-000000000001",
             "exec": [
               "pm.test('400 invalid JSON, 429 if rate window, or 500 legacy parse', () => [400, 429, 500].includes(pm.response.code));",
               "if (pm.response.code === 400) {",
@@ -238,6 +268,7 @@
       ]
     },
     {
+      "id": "a1b2c3d4-1004-4000-8000-000000000001",
       "name": "POST admin-login — missing reCAPTCHA token",
       "request": {
         "method": "POST",
@@ -251,31 +282,32 @@
         },
         "url": "{{baseUrl}}/api/admin-login"
       },
+      "response": [],
       "event": [
         {
           "listen": "test",
           "script": {
-            "exec": [
-              "pm.test('400 or 429', () => [400, 429].includes(pm.response.code));"
-            ],
+            "id": "a1b2c3d4-s104-4000-8000-000000000001",
+            "exec": ["pm.test('400 or 429', () => [400, 429].includes(pm.response.code));"],
             "type": "text/javascript"
           }
         }
       ]
     },
     {
+      "id": "a1b2c3d4-1005-4000-8000-000000000001",
       "name": "GET verify-admin — no cookie",
       "request": {
         "method": "GET",
-        "header": [
-          { "key": "Origin", "value": "{{baseUrl}}" }
-        ],
+        "header": [{ "key": "Origin", "value": "{{baseUrl}}" }],
         "url": "{{baseUrl}}/api/verify-admin"
       },
+      "response": [],
       "event": [
         {
           "listen": "test",
           "script": {
+            "id": "a1b2c3d4-s105-4000-8000-000000000001",
             "exec": [
               "pm.test('Status 401 without session', () => pm.response.to.have.status(401));",
               "const j = pm.response.json();",
