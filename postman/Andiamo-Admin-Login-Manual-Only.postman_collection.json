@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b2c3d4e5-andiamo-admin-manual-only",
     "name": "Andiamo Admin Login — manual only",
-    "description": "Only the two requests for a **real** login test.\n\n1. Set **Variables**: `admin_email`, `admin_password` (Secret), `recaptcha_token` (copy from browser Network → `admin-login` request body — use within ~2 min).\n2. **Send** POST first, then GET.\n\nOr CLI: `npx newman run postman/Andiamo-Admin-Login-Manual-Only.postman_collection.json --env-var admin_email=... --env-var admin_password=... --env-var recaptcha_token=...`",
+    "description": "Only the two requests for a **real** login test.\n\n1. Set **Variables** (collection or environment): `admin_email`, `admin_password` (Secret), `recaptcha_token` — copy **only** the token value from the browser Network tab → **Payload** → `recaptchaToken` (no quotes; use within ~2 min).\n2. The POST request uses a **Pre-request script** that builds JSON with `JSON.stringify` so passwords with `\"` and full tokens never break the body (raw `{{…}}` substitution often causes Google `invalid-input-response`).\n3. **Send** POST first, then GET.\n\nOr CLI: `npx newman run postman/Andiamo-Admin-Login-Manual-Only.postman_collection.json --env-var admin_email=... --env-var admin_password=... --env-var recaptcha_token=...`",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -29,6 +29,22 @@
       },
       "response": [],
       "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "id": "b2c3d4e5-pr01-4000-8000-000000000001",
+            "exec": [
+              "const email = pm.variables.get('admin_email');",
+              "const password = pm.variables.get('admin_password');",
+              "const recaptchaToken = pm.variables.get('recaptcha_token');",
+              "pm.request.body.update({",
+              "  mode: 'raw',",
+              "  raw: JSON.stringify({ email, password, recaptchaToken }),",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        },
         {
           "listen": "test",
           "script": {

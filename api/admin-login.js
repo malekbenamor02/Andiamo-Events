@@ -32,6 +32,15 @@ function isProductionRuntime() {
   );
 }
 
+/** Remove invisible chars / accidental quotes from pasted reCAPTCHA tokens (Postman, DevTools). */
+function sanitizeRecaptchaTokenForVerify(raw) {
+  if (raw === undefined || raw === null) return '';
+  let s = String(raw).trim();
+  s = s.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
+  s = s.replace(/^[\s"'`“”‘’]+|[\s"'`“”‘’]+$/g, '');
+  return s.trim();
+}
+
 export default async (req, res) => {
   const { setCORSHeaders, handlePreflight } = await getCorsUtils();
 
@@ -92,10 +101,7 @@ export default async (req, res) => {
 
     const emailNorm = String(email).toLowerCase().trim();
 
-    const recapTrim =
-      recaptchaToken === undefined || recaptchaToken === null
-        ? ''
-        : String(recaptchaToken).trim();
+    const recapTrim = sanitizeRecaptchaTokenForVerify(recaptchaToken);
 
     const clientIp = getAdminLoginClientIp(req);
 
@@ -118,7 +124,11 @@ export default async (req, res) => {
             secret: RECAPTCHA_SECRET_KEY,
             response: recapTrim,
           });
-          if (clientIp && clientIp !== 'unknown') {
+          if (
+            clientIp &&
+            clientIp !== 'unknown' &&
+            process.env.RECAPTCHA_OMIT_REMOTEIP !== '1'
+          ) {
             params.set('remoteip', clientIp);
           }
           const verifyResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
@@ -137,10 +147,15 @@ export default async (req, res) => {
               : null;
 
           if (!verifyData.success) {
+            const rawCodes = verifyData['error-codes'];
+            const codes = Array.isArray(rawCodes) ? rawCodes : rawCodes ? [rawCodes] : [];
             console.error('Admin login reCAPTCHA rejected', {
-              errorCodes: verifyData['error-codes'],
+              errorCodes: codes,
               score: verifyData.score,
               hostname: verifyData.hostname,
+              ...(codes.includes('invalid-input-response')
+                ? { responseTokenLength: recapTrim.length }
+                : {}),
             });
             return res.status(400).json({
               error: 'reCAPTCHA verification failed',

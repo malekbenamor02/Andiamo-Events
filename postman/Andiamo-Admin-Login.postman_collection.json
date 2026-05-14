@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-andiamo-admin-login",
     "name": "Andiamo Admin Login API",
-    "description": "Smoke tests for admin auth on collection variable `baseUrl`.\n\n**Manual login with real email/password in Postman**\n1. In Postman: collection **Variables** tab → set `admin_email` and `admin_password` (use **Secret** type for the password). Leave them empty in git — only in your app.\n2. Open **Chrome/Edge** → `https://www.andiamoevents.com/admin/login` → **F12** → **Network** → filter `admin-login`.\n3. In the login form, enter your password once (you can cancel after) OR submit once on a **wrong** password if you only need the token shape — either way find the **`admin-login`** request → **Payload** / Request body → copy the **`recaptchaToken`** string (long token).\n4. Paste that value into Postman variable **`recaptcha_token`** (tokens expire in about **1–2 minutes** — send the Postman request immediately).\n5. Run **`POST … real credentials`**, then **`GET verify-admin — after login`** to confirm the cookie (Postman stores `Set-Cookie` in the cookie jar for the domain).\n\n**Headers:** Real browser sends `Origin: https://www.andiamoevents.com` — the template sets `Origin` to `{{baseUrl}}` (must match).\n\n**Where to see automated tests:** Click each request → **Tests** tab. Or **Run collection**.\n\n**Rate limits** apply after reCAPTCHA passes (wrong password attempts count).",
+    "description": "Smoke tests for admin auth on collection variable `baseUrl`.\n\n**Manual login with real email/password in Postman**\n1. In Postman: collection **Variables** tab → set `admin_email` and `admin_password` (use **Secret** type for the password). Leave them empty in git — only in your app.\n2. Open **Chrome/Edge** → `https://www.andiamoevents.com/admin/login` → **F12** → **Network** → filter `admin-login`.\n3. In the login form, enter your password once (you can cancel after) OR submit once on a **wrong** password if you only need the token shape — either way find the **`admin-login`** request → **Payload** / Request body → copy the **`recaptchaToken`** string (long token).\n4. Paste that value into Postman variable **`recaptcha_token`** (tokens expire in about **1–2 minutes** — send the Postman request immediately).\n5. Run **`POST … real credentials`**, then **`GET verify-admin — after login`** to confirm the cookie (Postman stores `Set-Cookie` in the cookie jar for the domain).\n\n**Postman JSON:** The manual POST request runs a **Pre-request** script that builds the body with `JSON.stringify`. That avoids broken JSON when the password contains `\"` or other characters — a frequent cause of Google **`invalid-input-response`** because the server receives a truncated or wrong `recaptchaToken`.\n\n**Headers:** Real browser sends `Origin: https://www.andiamoevents.com` — the template sets `Origin` to `{{baseUrl}}` (must match).\n\n**Where to see automated tests:** Click each request → **Tests** tab. Or **Run collection**.\n\n**Rate limits** apply after reCAPTCHA passes (wrong password attempts count).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -16,7 +16,7 @@
     {
       "id": "a1b2c3d4-m000-4000-8000-000000000001",
       "name": "Manual real login (variables)",
-      "description": "Set `admin_email`, `admin_password`, and a fresh `recaptcha_token` from the browser Network tab (see collection description). Run POST first, then GET verify-admin.",
+      "description": "Set `admin_email`, `admin_password`, and a fresh `recaptcha_token` from the browser Network tab (see collection description). The POST request uses a Pre-request script to JSON-encode the body. Run POST first, then GET verify-admin.",
       "item": [
         {
           "id": "a1b2c3d4-m001-4000-8000-000000000001",
@@ -36,6 +36,22 @@
           },
           "response": [],
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "id": "a1b2c3d4-prm1-4000-8000-000000000001",
+                "exec": [
+                  "const email = pm.variables.get('admin_email');",
+                  "const password = pm.variables.get('admin_password');",
+                  "const recaptchaToken = pm.variables.get('recaptcha_token');",
+                  "pm.request.body.update({",
+                  "  mode: 'raw',",
+                  "  raw: JSON.stringify({ email, password, recaptchaToken }),",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            },
             {
               "listen": "test",
               "script": {
