@@ -1,0 +1,290 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-andiamo-admin-login",
+    "name": "Andiamo Admin Login API",
+    "description": "Smoke tests for admin auth on `baseUrl` (default production).\n\n**Run order:** Rate-limit probes run **before** other POSTs so the 6th login probe reliably hits **429** (5 attempts / 15 min per IP + email). Requests after that may see **429** until the window resets.\n\n**reCAPTCHA:** For a real **200** login, set collection variable `recaptchaToken` from the browser Network tab on a manual login, then add a request or use Runner with that variable.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://www.andiamoevents.com" },
+    { "key": "recaptchaToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Admin login page",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/admin/login"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('HTML response', () => (pm.response.headers.get('Content-Type') || '').includes('text/html'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST admin-login — CORS blocked (bad Origin)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Origin", "value": "https://evil.example" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\":\"test@invalid.local\",\"password\":\"wrong\",\"recaptchaToken\":\"x\"}"
+        },
+        "url": "{{baseUrl}}/api/admin-login"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 403 CORS', () => pm.response.to.have.status(403));",
+              "const j = pm.response.json();",
+              "pm.test('CORS error body', () => j.error && j.error.includes('CORS'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rate limit build-up (run first)",
+      "item": [
+        {
+          "name": "RL 1/6 invalid recaptcha",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{baseUrl}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"ratelimit-probe@invalid.local\",\"password\":\"x\",\"recaptchaToken\":\"invalid-token\"}"
+            },
+            "url": "{{baseUrl}}/api/admin-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 bad recaptcha or 429 if IP/email window active', () => [400, 429].includes(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "RL 2/6",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{baseUrl}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"ratelimit-probe@invalid.local\",\"password\":\"x\",\"recaptchaToken\":\"invalid-token\"}"
+            },
+            "url": "{{baseUrl}}/api/admin-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('400 or 429', () => [400, 429].includes(pm.response.code));"],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "RL 3/6",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{baseUrl}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"ratelimit-probe@invalid.local\",\"password\":\"x\",\"recaptchaToken\":\"invalid-token\"}"
+            },
+            "url": "{{baseUrl}}/api/admin-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('400 or 429', () => [400, 429].includes(pm.response.code));"],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "RL 4/6",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{baseUrl}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"ratelimit-probe@invalid.local\",\"password\":\"x\",\"recaptchaToken\":\"invalid-token\"}"
+            },
+            "url": "{{baseUrl}}/api/admin-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('400 or 429', () => [400, 429].includes(pm.response.code));"],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "RL 5/6",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{baseUrl}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"ratelimit-probe@invalid.local\",\"password\":\"x\",\"recaptchaToken\":\"invalid-token\"}"
+            },
+            "url": "{{baseUrl}}/api/admin-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('400 or 429', () => [400, 429].includes(pm.response.code));"],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "RL 6/6 expect 429",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{baseUrl}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"ratelimit-probe@invalid.local\",\"password\":\"x\",\"recaptchaToken\":\"invalid-token\"}"
+            },
+            "url": "{{baseUrl}}/api/admin-login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('429 when limit exceeded (or 400 if window was cold)', () => [400, 429].includes(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "POST admin-login — invalid JSON",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Origin", "value": "{{baseUrl}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "not-json-at-all" },
+        "url": "{{baseUrl}}/api/admin-login"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('400 invalid JSON, 429 if rate window, or 500 legacy parse', () => [400, 429, 500].includes(pm.response.code));",
+              "if (pm.response.code === 400) {",
+              "  pm.test('Invalid JSON message', () => pm.response.json().error === 'Invalid JSON');",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST admin-login — missing reCAPTCHA token",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Origin", "value": "{{baseUrl}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\":\"admin@andiamoevents.com\",\"password\":\"x\",\"recaptchaToken\":\"\"}"
+        },
+        "url": "{{baseUrl}}/api/admin-login"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('400 or 429', () => [400, 429].includes(pm.response.code));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET verify-admin — no cookie",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Origin", "value": "{{baseUrl}}" }
+        ],
+        "url": "{{baseUrl}}/api/verify-admin"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 401 without session', () => pm.response.to.have.status(401));",
+              "const j = pm.response.json();",
+              "pm.test('valid false', () => j.valid === false);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

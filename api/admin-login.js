@@ -59,8 +59,24 @@ export default async (req, res) => {
   try {
     let bodyData;
 
-    if (req.body) {
-      bodyData = req.body;
+    if (req.body !== undefined && req.body !== null) {
+      const raw = req.body;
+      if (typeof raw === 'string') {
+        try {
+          bodyData = raw.trim() ? JSON.parse(raw) : {};
+        } catch {
+          return res.status(400).json({ error: 'Invalid JSON' });
+        }
+      } else if (Buffer.isBuffer(raw)) {
+        try {
+          const t = raw.toString('utf8');
+          bodyData = t.trim() ? JSON.parse(t) : {};
+        } catch {
+          return res.status(400).json({ error: 'Invalid JSON' });
+        }
+      } else {
+        bodyData = raw;
+      }
     } else {
       let body = '';
       for await (const chunk of req) {
