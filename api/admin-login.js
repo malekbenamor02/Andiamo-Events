@@ -49,11 +49,6 @@ export default async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const clientIp = getAdminLoginClientIp(req);
-  if (!checkAdminLoginIpRateLimit(clientIp)) {
-    return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
-  }
-
   const isProduction = isProductionRuntime();
 
   try {
@@ -97,15 +92,6 @@ export default async (req, res) => {
 
     const emailNorm = String(email).toLowerCase().trim();
 
-    if (!checkAdminLoginEmailRateLimit(emailNorm)) {
-      return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
-    }
-
-    const dist = await checkAdminLoginDistributedLimits(clientIp, emailNorm);
-    if (!dist.allowed) {
-      return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
-    }
-
     const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
     const recaptchaRequired =
       isVercelProduction() || process.env.FORCE_ADMIN_RECAPTCHA === '1';
@@ -146,6 +132,18 @@ export default async (req, res) => {
           return res.status(500).json({ error: 'reCAPTCHA verification service unavailable' });
         }
       }
+    }
+
+    const clientIp = getAdminLoginClientIp(req);
+    if (!checkAdminLoginIpRateLimit(clientIp)) {
+      return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
+    }
+    if (!checkAdminLoginEmailRateLimit(emailNorm)) {
+      return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
+    }
+    const dist = await checkAdminLoginDistributedLimits(clientIp, emailNorm);
+    if (!dist.allowed) {
+      return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
     }
 
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {

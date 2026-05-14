@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-andiamo-admin-login",
     "name": "Andiamo Admin Login API",
-    "description": "Smoke tests for admin auth on `baseUrl` (default production).\n\n**Run order:** Rate-limit probes run **before** other POSTs so the 6th login probe reliably hits **429** (5 attempts / 15 min per IP + email). Requests after that may see **429** until the window resets.\n\n**reCAPTCHA:** For a real **200** login, set collection variable `recaptchaToken` from the browser Network tab on a manual login, then add a request or use Runner with that variable.",
+    "description": "Smoke tests for admin auth on `baseUrl` (default production).\n\n**Rate limits** apply only **after** reCAPTCHA passes (real login attempts). Invalid reCAPTCHA returns **400** and does **not** consume IP/email quota — so Newman and bots cannot lock you out before a human solves CAPTCHA.\n\n**reCAPTCHA:** For a real **200** login, set collection variable `recaptchaToken` from the browser Network tab on a manual login.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -202,7 +202,7 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('429 when limit exceeded (or 400 if window was cold)', () => [400, 429].includes(pm.response.code));"
+                  "pm.test('400 invalid recaptcha or 429 if password attempts exhausted window', () => [400, 429].includes(pm.response.code));"
                 ],
                 "type": "text/javascript"
               }
