@@ -2,14 +2,94 @@
   "info": {
     "_postman_id": "a1b2c3d4-andiamo-admin-login",
     "name": "Andiamo Admin Login API",
-    "description": "Smoke tests for admin auth on collection variable `baseUrl`.\n\n**Where to see tests:** Click each request in the sidebar → open the **Tests** tab (same row as Params, Authorization). Or use **Collection Runner** (⋯ on collection → Run collection) to see pass/fail.\n\n**Rate limits** apply only after reCAPTCHA passes. Invalid reCAPTCHA → **400** (does not consume quota).\n\n**reCAPTCHA:** For a real **200** login, set variable `recaptchaToken` from the browser Network tab on a manual login.",
+    "description": "Smoke tests for admin auth on collection variable `baseUrl`.\n\n**Manual login with real email/password in Postman**\n1. In Postman: collection **Variables** tab → set `admin_email` and `admin_password` (use **Secret** type for the password). Leave them empty in git — only in your app.\n2. Open **Chrome/Edge** → `https://www.andiamoevents.com/admin/login` → **F12** → **Network** → filter `admin-login`.\n3. In the login form, enter your password once (you can cancel after) OR submit once on a **wrong** password if you only need the token shape — either way find the **`admin-login`** request → **Payload** / Request body → copy the **`recaptchaToken`** string (long token).\n4. Paste that value into Postman variable **`recaptcha_token`** (tokens expire in about **1–2 minutes** — send the Postman request immediately).\n5. Run **`POST … real credentials`**, then **`GET verify-admin — after login`** to confirm the cookie (Postman stores `Set-Cookie` in the cookie jar for the domain).\n\n**Headers:** Real browser sends `Origin: https://www.andiamoevents.com` — the template sets `Origin` to `{{baseUrl}}` (must match).\n\n**Where to see automated tests:** Click each request → **Tests** tab. Or **Run collection**.\n\n**Rate limits** apply after reCAPTCHA passes (wrong password attempts count).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "https://www.andiamoevents.com" },
-    { "key": "recaptchaToken", "value": "" }
+    { "key": "recaptchaToken", "value": "" },
+    { "key": "admin_email", "value": "" },
+    { "key": "admin_password", "value": "" },
+    { "key": "recaptcha_token", "value": "" }
   ],
   "item": [
+    {
+      "id": "a1b2c3d4-m000-4000-8000-000000000001",
+      "name": "Manual real login (variables)",
+      "description": "Set `admin_email`, `admin_password`, and a fresh `recaptcha_token` from the browser Network tab (see collection description). Run POST first, then GET verify-admin.",
+      "item": [
+        {
+          "id": "a1b2c3d4-m001-4000-8000-000000000001",
+          "name": "POST admin-login — real credentials",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "{{baseUrl}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\",\n  \"recaptchaToken\": \"{{recaptcha_token}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/admin-login",
+            "description": "Requires valid `recaptcha_token` from the browser (expires quickly). Use collection Variables; mark `admin_password` as Secret in Postman."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "a1b2c3d4-sm01-4000-8000-000000000001",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('Login success', () => pm.response.json().success === true);",
+                  "  pm.test('Admin object returned', () => !!pm.response.json().admin);",
+                  "} else if (pm.response.code === 401) {",
+                  "  pm.test('Invalid credentials', () => pm.response.json().error === 'Invalid credentials');",
+                  "} else if (pm.response.code === 400) {",
+                  "  pm.test('Bad request (often reCAPTCHA)', () => !!pm.response.json().error);",
+                  "} else if (pm.response.code === 429) {",
+                  "  pm.test('Rate limited', () => true);",
+                  "} else {",
+                  "  pm.test('Unexpected status ' + pm.response.code, () => false);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "id": "a1b2c3d4-m002-4000-8000-000000000001",
+          "name": "GET verify-admin — after login (cookie jar)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Origin", "value": "{{baseUrl}}" }],
+            "url": "{{baseUrl}}/api/verify-admin",
+            "description": "Run **after** a successful POST login. Postman saves `adminToken` from Set-Cookie for this domain."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "a1b2c3d4-sm02-4000-8000-000000000001",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  pm.test('Session valid', () => j.valid === true);",
+                  "  pm.test('Has admin', () => !!j.admin);",
+                  "} else {",
+                  "  pm.test('Not authenticated (run POST login first, or cookie expired)', () => [401, 403].includes(pm.response.code));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
     {
       "id": "a1b2c3d4-1001-4000-8000-000000000001",
       "name": "Admin login page",
