@@ -1,0 +1,84 @@
+{
+  "info": {
+    "_postman_id": "b2c3d4e5-andiamo-admin-manual-only",
+    "name": "Andiamo Admin Login — manual only",
+    "description": "Only the two requests for a **real** login test.\n\n1. Set **Variables**: `admin_email`, `admin_password` (Secret), `recaptcha_token` (copy from browser Network → `admin-login` request body — use within ~2 min).\n2. **Send** POST first, then GET.\n\nOr CLI: `npx newman run postman/Andiamo-Admin-Login-Manual-Only.postman_collection.json --env-var admin_email=... --env-var admin_password=... --env-var recaptcha_token=...`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://www.andiamoevents.com" },
+    { "key": "admin_email", "value": "" },
+    { "key": "admin_password", "value": "" },
+    { "key": "recaptcha_token", "value": "" }
+  ],
+  "item": [
+    {
+      "id": "b2c3d4e5-m001-4000-8000-000000000001",
+      "name": "1 POST admin-login — real credentials",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Origin", "value": "{{baseUrl}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\",\n  \"recaptchaToken\": \"{{recaptcha_token}}\"\n}"
+        },
+        "url": "{{baseUrl}}/api/admin-login"
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "b2c3d4e5-s01-4000-8000-000000000001",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  pm.test('Login success', () => pm.response.json().success === true);",
+              "  pm.test('Admin object returned', () => !!pm.response.json().admin);",
+              "} else if (pm.response.code === 401) {",
+              "  pm.test('Invalid credentials', () => pm.response.json().error === 'Invalid credentials');",
+              "} else if (pm.response.code === 400) {",
+              "  pm.test('Bad request', () => !!pm.response.json().error);",
+              "} else if (pm.response.code === 429) {",
+              "  pm.test('Rate limited', () => true);",
+              "} else {",
+              "  pm.test('Unexpected status ' + pm.response.code, () => false);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "id": "b2c3d4e5-m002-4000-8000-000000000001",
+      "name": "2 GET verify-admin — after login",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Origin", "value": "{{baseUrl}}" }],
+        "url": "{{baseUrl}}/api/verify-admin"
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "id": "b2c3d4e5-s02-4000-8000-000000000001",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  const j = pm.response.json();",
+              "  pm.test('Session valid', () => j.valid === true);",
+              "  pm.test('Has admin', () => !!j.admin);",
+              "} else {",
+              "  pm.test('Not authenticated', () => [401, 403].includes(pm.response.code));",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}
