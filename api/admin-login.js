@@ -92,6 +92,13 @@ export default async (req, res) => {
 
     const emailNorm = String(email).toLowerCase().trim();
 
+    const recapTrim =
+      recaptchaToken === undefined || recaptchaToken === null
+        ? ''
+        : String(recaptchaToken).trim();
+
+    const clientIp = getAdminLoginClientIp(req);
+
     const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
     const recaptchaRequired =
       isVercelProduction() || process.env.FORCE_ADMIN_RECAPTCHA === '1';
@@ -102,22 +109,43 @@ export default async (req, res) => {
     }
 
     if (RECAPTCHA_SECRET_KEY) {
-      if (!recaptchaToken || recaptchaToken === '') {
+      if (!recapTrim || recapTrim === '') {
         return res.status(400).json({ error: 'reCAPTCHA verification required' });
       }
-      if (recaptchaToken !== 'localhost-bypass-token') {
+      if (recapTrim !== 'localhost-bypass-token') {
         try {
+          const params = new URLSearchParams({
+            secret: RECAPTCHA_SECRET_KEY,
+            response: recapTrim,
+          });
+          if (clientIp && clientIp !== 'unknown') {
+            params.set('remoteip', clientIp);
+          }
           const verifyResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-              secret: RECAPTCHA_SECRET_KEY,
-              response: String(recaptchaToken),
-            }).toString(),
+            body: params.toString(),
           });
           const verifyData = await verifyResponse.json();
+          const diag =
+            process.env.RECAPTCHA_RETURN_DIAGNOSTICS === '1'
+              ? {
+                  errorCodes: verifyData['error-codes'] || null,
+                  score: typeof verifyData.score === 'number' ? verifyData.score : null,
+                  hostname: verifyData.hostname || null,
+                }
+              : null;
+
           if (!verifyData.success) {
-            return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+            console.error('Admin login reCAPTCHA rejected', {
+              errorCodes: verifyData['error-codes'],
+              score: verifyData.score,
+              hostname: verifyData.hostname,
+            });
+            return res.status(400).json({
+              error: 'reCAPTCHA verification failed',
+              ...(diag ? { recaptcha: diag } : {}),
+            });
           }
           const minScore = Number.parseFloat(process.env.ADMIN_RECAPTCHA_MIN_SCORE || '0.25');
           if (
@@ -125,7 +153,17 @@ export default async (req, res) => {
             Number.isFinite(minScore) &&
             verifyData.score < minScore
           ) {
-            return res.status(400).json({ error: 'reCAPTCHA verification failed' });
+            console.error('Admin login reCAPTCHA score too low', {
+              score: verifyData.score,
+              minScore,
+              hostname: verifyData.hostname,
+            });
+            return res.status(400).json({
+              error: 'reCAPTCHA verification failed',
+              ...(diag
+                ? { recaptcha: { ...diag, minScore } }
+                : {}),
+            });
           }
         } catch (recaptchaError) {
           console.error('Admin login reCAPTCHA error:', recaptchaError);
@@ -134,7 +172,6 @@ export default async (req, res) => {
       }
     }
 
-    const clientIp = getAdminLoginClientIp(req);
     if (!checkAdminLoginIpRateLimit(clientIp)) {
       return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
     }
