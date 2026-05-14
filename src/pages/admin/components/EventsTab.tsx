@@ -73,6 +73,8 @@ type PresaleCodeRow = {
   paused_at: string | null;
   revoked_at: string | null;
   successful_order_count: number | null;
+  /** Successful redeem (code accepted); includes visitors who did not purchase. */
+  successful_unlock_count: number;
 };
 
 function parsePresaleLabelFromApiRow(row: Record<string, unknown>): string | null {
@@ -111,6 +113,8 @@ function mergePresaleCodeRows(
       revoked_at: row.revoked_at != null ? String(row.revoked_at) : null,
       successful_order_count:
         row.successful_order_count != null ? Number(row.successful_order_count) : null,
+      successful_unlock_count:
+        row.successful_unlock_count != null ? Number(row.successful_unlock_count) : 0,
     };
   });
 }
@@ -924,8 +928,19 @@ export function EventsTab(p: EventsTabProps) {
                                                       )}
                                                       aria-hidden
                                                     />
-                                                    <span className="truncate text-sm font-medium text-foreground break-all">
+                                                    <span className="truncate text-sm font-medium text-foreground break-all min-w-0">
                                                       {presaleCodeDisplayName(c, p.language)}
+                                                      <span
+                                                        className="font-normal text-muted-foreground tabular-nums"
+                                                        title={
+                                                          p.language === "en"
+                                                            ? "Times the code was entered successfully (includes no purchase)"
+                                                            : "Nombre de fois que le code a été saisi avec succès (sans achat inclus)"
+                                                        }
+                                                      >
+                                                        {" "}
+                                                        ({c.successful_unlock_count})
+                                                      </span>
                                                     </span>
                                                     {c.revoked_at ? (
                                                       <Badge variant="destructive" className="text-[10px] shrink-0">
@@ -1003,6 +1018,14 @@ export function EventsTab(p: EventsTabProps) {
                                                               : `${c.discount_value}%`}
                                                           </Badge>
                                                           <span className="text-[10px] text-muted-foreground leading-snug">
+                                                            {p.language === "en" ? "Code unlocks" : "Déblocages"}
+                                                            {": "}
+                                                            <span className="font-medium text-foreground">
+                                                              {c.successful_unlock_count}
+                                                            </span>
+                                                            <span className="text-muted-foreground/80">
+                                                              {" · "}
+                                                            </span>
                                                             {p.language === "en"
                                                               ? "Successful orders"
                                                               : "Commandes réussies"}
@@ -1252,6 +1275,7 @@ export function EventsTab(p: EventsTabProps) {
                                                 paused_at: null,
                                                 revoked_at: null,
                                                 successful_order_count: 0,
+                                                successful_unlock_count: 0,
                                               };
                                               setPresaleCodes((prev) => [
                                                 optimistic,

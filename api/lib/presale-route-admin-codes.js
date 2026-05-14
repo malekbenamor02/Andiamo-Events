@@ -62,7 +62,36 @@ export async function handlePresaleAdminCodes(req, res) {
         .eq('event_id', q)
         .order('created_at', { ascending: false });
       if (error) return res.status(500).json({ error: error.message });
-      return res.status(200).json({ success: true, codes: data || [] });
+      const codes = data || [];
+      /** Successful presale redeem (code accepted, session created) per code id */
+      const unlockCountByCodeId = Object.create(null);
+      const PAGE = 1000;
+      let from = 0;
+      for (;;) {
+        const { data: attemptRows, error: attErr } = await db
+          .from('presale_code_attempts')
+          .select('presale_code_id')
+          .eq('event_id', q)
+          .eq('success', true)
+          .not('presale_code_id', 'is', null)
+          .range(from, from + PAGE - 1);
+        if (attErr) {
+          console.error('presale_code_attempts admin aggregate', attErr);
+          return res.status(500).json({ error: attErr.message });
+        }
+        const batch = attemptRows || [];
+        for (const row of batch) {
+          const cid = row.presale_code_id != null ? String(row.presale_code_id) : '';
+          if (cid) unlockCountByCodeId[cid] = (unlockCountByCodeId[cid] || 0) + 1;
+        }
+        if (batch.length < PAGE) break;
+        from += PAGE;
+      }
+      const enriched = codes.map((c) => ({
+        ...c,
+        successful_unlock_count: unlockCountByCodeId[String(c.id)] || 0,
+      }));
+      return res.status(200).json({ success: true, codes: enriched });
     }
 
     if (method === 'POST' && path === '/api/admin/presale/codes') {
