@@ -21,12 +21,12 @@ function write(name, html) {
   console.log('wrote', name);
 }
 
-const { buildOnlineTicketEmailHtml } = require(path.join(root, 'api/lib/online-ticket-email-html.cjs'));
-const { buildOrderConfirmationEmailHtml } = require(path.join(root, 'api/lib/order-confirmation-email-html.cjs'));
-const { createOfficialInvitationEmailHTML } = require(path.join(root, 'api/lib/official-invitation-email-html.cjs'));
-const { buildCampaignEmailHtml } = require(path.join(root, 'api/lib/campaign-email-html.cjs'));
-const { getBaseEmailHtml } = require(path.join(root, 'api/lib/career-email-base-html.cjs'));
-const { emailLogoHeaderHtml } = require(path.join(root, 'api/lib/email-branding.cjs'));
+const { buildOnlineTicketEmailHtml } = require(path.join(root, 'api/_lib/online-ticket-email-html.cjs'));
+const { buildOrderConfirmationEmailHtml } = require(path.join(root, 'api/_lib/order-confirmation-email-html.cjs'));
+const { createOfficialInvitationEmailHTML } = require(path.join(root, 'api/_lib/official-invitation-email-html.cjs'));
+const { buildCampaignEmailHtml } = require(path.join(root, 'api/_lib/campaign-email-html.cjs'));
+const { getBaseEmailHtml } = require(path.join(root, 'api/_lib/career-email-base-html.cjs'));
+const { emailLogoHeaderHtml } = require(path.join(root, 'api/_lib/email-branding.cjs'));
 
 const PLACEHOLDER_QR = 'https://placehold.co/280x280/png?text=QR+Preview';
 
@@ -195,7 +195,7 @@ const {
   buildAcademyOnlineConfirmedEmailHtml,
   buildAcademyManualPaymentReceivedEmailHtml,
   buildAcademyApprovedEmailHtml,
-} = require(path.join(root, 'api/lib/academy-email-html.cjs'));
+} = require(path.join(root, 'api/_lib/academy-email-html.cjs'));
 
 const academyManualFixture = { ...PREVIEW_FIXTURE, payment_method: 'd17' };
 

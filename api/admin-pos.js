@@ -10,7 +10,7 @@ const requireCjs = createRequire(import.meta.url);
 const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = requireCjs(path.join(__dirname, 'lib/email-branding.cjs'));
 const { sendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/transactional-email.cjs'));
 const { canSendTransactionalEmail } = requireCjs(path.join(__dirname, 'lib/can-send-transactional-email.cjs'));
-const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./lib/render-premium-ticket-pdf.cjs');
+const { tryBuildPremiumTicketsPdfAttachment } = requireCjs('./_lib/render-premium-ticket-pdf.cjs');
 const { uploadTicketQrToR2OrSupabase } = requireCjs(path.join(__dirname, 'lib/r2-media.cjs'));
 
 async function verifyAdminAuth(req) {

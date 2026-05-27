@@ -12,7 +12,7 @@ const require = createRequire(import.meta.url);
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const { registerAcademyRoutes } = require(path.join(__dirname, '..', 'academyRoutes.cjs'));
-const { requireAdminAuth } = require(path.join(__dirname, 'lib', 'admin-auth-express.cjs'));
+const { requireAdminAuth } = require(path.join(__dirname, '_lib', 'admin-auth-express.cjs'));
 
 const app = express();
 app.use(cookieParser());

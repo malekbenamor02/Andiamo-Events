@@ -27,7 +27,7 @@
 const path = require('path');
 const dotenv = require('dotenv');
 const nodemailer = require('nodemailer');
-const { sendViaBrevoApi } = require('../api/lib/transactional-email.cjs');
+const { sendViaBrevoApi } = require('../api/_lib/transactional-email.cjs');
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 

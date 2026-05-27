@@ -35,19 +35,19 @@ const fs = require('fs');
 const scanSupervisor = require('./lib/scanner-supervisor-handlers.cjs');
 
 // Official online ticket email template — run `node email-templates/generate-previews.cjs` to refresh browser previews
-const { buildOnlineTicketEmailHtml, formatEventTime } = require('./api/lib/online-ticket-email-html.cjs');
-const { createOfficialInvitationEmailHTML } = require('./api/lib/official-invitation-email-html.cjs');
-const { buildOrderConfirmationEmailHtml } = require('./api/lib/order-confirmation-email-html.cjs');
-const { fetchAmbassadorSocialLinkFromApplications } = require('./api/lib/ambassador-social-link.cjs');
-const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./api/lib/email-branding.cjs');
-const { uploadTicketQrToR2OrSupabase } = require('./api/lib/r2-media.cjs');
-const { computeOnlinePaymentFees } = require('./api/lib/online-payment-fee.cjs');
-const { sendTransactionalEmail } = require('./api/lib/transactional-email.cjs');
+const { buildOnlineTicketEmailHtml, formatEventTime } = require('./api/_lib/online-ticket-email-html.cjs');
+const { createOfficialInvitationEmailHTML } = require('./api/_lib/official-invitation-email-html.cjs');
+const { buildOrderConfirmationEmailHtml } = require('./api/_lib/order-confirmation-email-html.cjs');
+const { fetchAmbassadorSocialLinkFromApplications } = require('./api/_lib/ambassador-social-link.cjs');
+const { emailLogoHeaderHtml, transactionalEmailDarkStylesCss } = require('./api/_lib/email-branding.cjs');
+const { uploadTicketQrToR2OrSupabase } = require('./api/_lib/r2-media.cjs');
+const { computeOnlinePaymentFees } = require('./api/_lib/online-payment-fee.cjs');
+const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
 const {
   tryBuildPremiumTicketsPdfAttachment,
   tryBuildPremiumTicketsPdfAttachmentInvitation,
-} = require('./api/lib/render-premium-ticket-pdf.cjs');
-const { buildCampaignEmailHtml } = require('./api/lib/campaign-email-html.cjs');
+} = require('./api/_lib/render-premium-ticket-pdf.cjs');
+const { buildCampaignEmailHtml } = require('./api/_lib/campaign-email-html.cjs');
 
 // Import centralized SMS template helpers
 const {
@@ -3599,7 +3599,7 @@ function requireAdminAuth(req, res, next) {
 
 // R2 + WebP/AVIF media upload (same handlers as api/media.js on Vercel)
 try {
-  const { registerMediaRoutes } = require('./api/lib/register-media-routes.cjs');
+  const { registerMediaRoutes } = require('./api/_lib/register-media-routes.cjs');
   registerMediaRoutes(app, { requireAdminAuth });
 } catch (mediaRegErr) {
   console.error('Media routes registration failed:', mediaRegErr.message);
@@ -6020,7 +6020,7 @@ app.get('/api/passes/:eventId', async (req, res) => {
 
     const presaleRequired = !!eventData.presale_enabled;
     if (eventData.presale_enabled) {
-      const { parseCookie, PRESALE_COOKIE_NAME, fetchValidPresaleSessionRow } = await import('./api/lib/presale-server.js');
+      const { parseCookie, PRESALE_COOKIE_NAME, fetchValidPresaleSessionRow } = await import('./api/_lib/presale-server.js');
       const sessionId = parseCookie(req, PRESALE_COOKIE_NAME);
       const sessionRow = await fetchValidPresaleSessionRow(dbClient, sessionId, eventId);
       if (!sessionRow) {
@@ -11641,7 +11641,7 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
     const {
       rejectForbiddenOrderCreateKeys,
       buildValidatedPassLineItem,
-    } = await import('./api/lib/order-create-pricing-guard.js');
+    } = await import('./api/_lib/order-create-pricing-guard.js');
     const forbiddenBody = rejectForbiddenOrderCreateKeys(req.body);
     if (!forbiddenBody.ok) {
       console.warn('orders/create: rejected forbidden body keys', forbiddenBody.keys);
@@ -11933,7 +11933,7 @@ app.post('/api/orders/create', orderCreateLimiter, async (req, res) => {
       validatedPasses.push(line);
     }
 
-    const { resolvePresaleForOrderCreate } = await import('./api/lib/presale-server.js');
+    const { resolvePresaleForOrderCreate } = await import('./api/_lib/presale-server.js');
     const presaleResult = await resolvePresaleForOrderCreate(dbClient, req, {
       primaryEventId,
       validatedPasses,

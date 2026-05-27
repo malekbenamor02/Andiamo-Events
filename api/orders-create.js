@@ -8,17 +8,17 @@ import { createRequire } from 'module';
 import nodemailer from 'nodemailer';
 import querystring from 'querystring';
 import https from 'https';
-import { getClientIp, resolvePresaleForOrderCreate } from './lib/presale-server.js';
+import { getClientIp, resolvePresaleForOrderCreate } from './_lib/presale-server.js';
 import {
   rejectForbiddenOrderCreateKeys,
   buildValidatedPassLineItem,
-} from './lib/order-create-pricing-guard.js';
+} from './_lib/order-create-pricing-guard.js';
 
 const requireCjs = createRequire(import.meta.url);
-const { buildOrderConfirmationEmailHtml } = requireCjs('./lib/order-confirmation-email-html.cjs');
-const { fetchAmbassadorSocialLinkFromApplications } = requireCjs('./lib/ambassador-social-link.cjs');
-const { computeOnlinePaymentFees } = requireCjs('./lib/online-payment-fee.cjs');
-const { sendTransactionalEmail } = requireCjs('./lib/transactional-email.cjs');
+const { buildOrderConfirmationEmailHtml } = requireCjs('./_lib/order-confirmation-email-html.cjs');
+const { fetchAmbassadorSocialLinkFromApplications } = requireCjs('./_lib/ambassador-social-link.cjs');
+const { computeOnlinePaymentFees } = requireCjs('./_lib/online-payment-fee.cjs');
+const { sendTransactionalEmail } = requireCjs('./_lib/transactional-email.cjs');
 
 // --- Basic helpers (shared within this module) ---
 

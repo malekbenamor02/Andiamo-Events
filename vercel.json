@@ -586,49 +586,49 @@
     "api/admin-approve-order.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{api/lib/**,node_modules/@sparticuz/chromium/**}"
+      "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**}"
     },
     "api/orders-create.js": {
       "maxDuration": 60,
-      "includeFiles": "api/lib/**"
+      "includeFiles": "api/_lib/**"
     },
     "api/passes-[eventId].js": {
       "maxDuration": 30,
-      "includeFiles": "api/lib/**"
+      "includeFiles": "api/_lib/**"
     },
     "api/presale.js": {
       "maxDuration": 60,
-      "includeFiles": "api/lib/**"
+      "includeFiles": "api/_lib/**"
     },
     "api/clictopay-generate-payment.js": {
       "maxDuration": 30,
-      "includeFiles": "api/lib/**"
+      "includeFiles": "api/_lib/**"
     },
     "api/academy.js": {
       "maxDuration": 60,
-      "includeFiles": "{api/lib/**,academyRoutes.cjs}"
+      "includeFiles": "{api/_lib/**,academyRoutes.cjs}"
     },
     "api/misc.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{api/lib/**,node_modules/@sparticuz/chromium/**}"
+      "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**}"
     },
     "api/media.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "api/lib/**"
+      "includeFiles": "api/_lib/**"
     },
     "api/admin/logs.js": {
       "maxDuration": 60
     },
     "api/pos.js": {
       "maxDuration": 30,
-      "includeFiles": "api/lib/**"
+      "includeFiles": "api/_lib/**"
     },
     "api/admin-pos.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{api/lib/**,node_modules/@sparticuz/chromium/**}"
+      "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**}"
     },
     "api/scan.js": {
       "maxDuration": 30

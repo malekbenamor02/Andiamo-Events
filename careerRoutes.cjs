@@ -3,8 +3,8 @@
  * Register with: registerCareerRoutes(app, { supabase, supabaseService, requireAdminAuth, careerApplicationLimiter, getEmailTransporter })
  */
 const ExcelJS = require('exceljs');
-const { getBaseEmailHtml } = require('./api/lib/career-email-base-html.cjs');
-const { sendTransactionalEmail } = require('./api/lib/transactional-email.cjs');
+const { getBaseEmailHtml } = require('./api/_lib/career-email-base-html.cjs');
+const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
 
 const CAREER_SETTINGS_KEY = 'career_applications_settings';
 

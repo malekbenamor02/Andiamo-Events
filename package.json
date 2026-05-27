@@ -19,7 +19,7 @@
     "email:smtp:test-investor": "node scripts/send-brevo-smtp-test.cjs --via smtp",
     "email:api:test-investor": "node scripts/send-brevo-smtp-test.cjs --via api",
     "email:ticket-poster-pdf": "node scripts/render-premium-ticket-poster-pdf.cjs",
-    "test:purchase-channel": "node --test api/lib/purchase-channel-label.test.cjs",
+    "test:purchase-channel": "node --test api/_lib/purchase-channel-label.test.cjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

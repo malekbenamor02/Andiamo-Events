@@ -3,13 +3,13 @@
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
-const { computeRegistrationAmounts } = require('./api/lib/academy-pricing.cjs');
+const { computeRegistrationAmounts } = require('./api/_lib/academy-pricing.cjs');
 const {
   validateRegistrationPayload,
   requiresPaymentProof,
   isAllowedProofMime,
   PROOF_MAX_BYTES,
-} = require('./api/lib/academy-registration-validation.cjs');
+} = require('./api/_lib/academy-registration-validation.cjs');
 const {
   getServiceDb,
   getAcademySettings,
@@ -20,19 +20,19 @@ const {
   resolvePromoCode,
   computePromoDiscount,
   incrementPromoUsed,
-} = require('./api/lib/academy-db.cjs');
+} = require('./api/_lib/academy-db.cjs');
 const {
   registerClicToPayPayment,
   fetchClicToPayOrderStatus,
   resolvePublicBaseUrl,
-} = require('./api/lib/clictopay-client.cjs');
+} = require('./api/_lib/clictopay-client.cjs');
 const {
   buildAcademyOnlineConfirmedEmailHtml,
   buildAcademyManualPaymentReceivedEmailHtml,
   buildAcademyApprovedEmailHtml,
-} = require('./api/lib/academy-email-html.cjs');
-const { getFormulaBasePrice, FORMULA_IDS } = require('./api/lib/academy-pricing.cjs');
-const { normalizeAcademyPromoCode } = require('./api/lib/academy-registration-validation.cjs');
+} = require('./api/_lib/academy-email-html.cjs');
+const { getFormulaBasePrice, FORMULA_IDS } = require('./api/_lib/academy-pricing.cjs');
+const { normalizeAcademyPromoCode } = require('./api/_lib/academy-registration-validation.cjs');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -96,7 +96,7 @@ function requireSuperAdmin(req, res, next) {
 
 function getEmailTransporterBundle() {
   try {
-    const { sendTransactionalEmail } = require('./api/lib/transactional-email.cjs');
+    const { sendTransactionalEmail } = require('./api/_lib/transactional-email.cjs');
     return { sendTransactionalEmail };
   } catch {
     return null;

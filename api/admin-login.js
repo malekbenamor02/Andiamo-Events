@@ -5,8 +5,8 @@ import {
   checkAdminLoginIpRateLimit,
   checkAdminLoginEmailRateLimit,
   getAdminLoginClientIp,
-} from './lib/admin-login-rate-limit.js';
-import { checkAdminLoginDistributedLimits } from './lib/admin-login-upstash.js';
+} from './_lib/admin-login-rate-limit.js';
+import { checkAdminLoginDistributedLimits } from './_lib/admin-login-upstash.js';
 
 let corsUtils = null;
 async function getCorsUtils() {

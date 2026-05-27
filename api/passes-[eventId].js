@@ -88,7 +88,7 @@ export default async (req, res) => {
 
     const presaleRequired = !!eventData.presale_enabled;
     if (eventData.presale_enabled) {
-      const { parseCookie, PRESALE_COOKIE_NAME, fetchValidPresaleSessionRow } = await import('./lib/presale-server.js');
+      const { parseCookie, PRESALE_COOKIE_NAME, fetchValidPresaleSessionRow } = await import('./_lib/presale-server.js');
       const sessionId = parseCookie(req, PRESALE_COOKIE_NAME);
       const sessionRow = await fetchValidPresaleSessionRow(dbClient, sessionId, eventId);
       if (!sessionRow) {

@@ -3,10 +3,10 @@
  * (Hobby plan: 12 function limit).
  */
 import '../lib/sentry-server.js';
-import { handlePresaleRequired } from './lib/presale-route-required.js';
-import { handlePresaleSession } from './lib/presale-route-session.js';
-import { handlePresaleRedeem } from './lib/presale-route-redeem.js';
-import { handlePresaleAdminCodes } from './lib/presale-route-admin-codes.js';
+import { handlePresaleRequired } from './_lib/presale-route-required.js';
+import { handlePresaleSession } from './_lib/presale-route-session.js';
+import { handlePresaleRedeem } from './_lib/presale-route-redeem.js';
+import { handlePresaleAdminCodes } from './_lib/presale-route-admin-codes.js';
 
 function getPathname(req) {
   const raw = String(req.url || req.path || '');

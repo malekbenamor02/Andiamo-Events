@@ -3,24 +3,24 @@
 // This reduces function count from 7 to 1
 
 import '../lib/sentry-server.js';
-import { verifyAdminAuth } from './lib/admin-verify.js';
-import { handleVerifyAdmin } from './lib/verify-admin-http.js';
-import { applyClearAdminTokenCookie } from './lib/clear-admin-token-cookie.js';
-import { agentDebugLog } from './lib/agent-debug-log.js';
+import { verifyAdminAuth } from './_lib/admin-verify.js';
+import { handleVerifyAdmin } from './_lib/verify-admin-http.js';
+import { applyClearAdminTokenCookie } from './_lib/clear-admin-token-cookie.js';
+import { agentDebugLog } from './_lib/agent-debug-log.js';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const requireFromRoot = createRequire(import.meta.url);
 const { fetchAmbassadorSocialLinkFromApplications } = requireFromRoot(
-  path.join(__dirname, 'lib', 'ambassador-social-link.cjs')
+  path.join(__dirname, '_lib', 'ambassador-social-link.cjs')
 );
 
 // Lazy-load ticket email builder so ambassador-sales/orders and other routes don't crash if this file is missing
 let _buildOnlineTicketEmailHtml = null;
 function getBuildOnlineTicketEmailHtml() {
   if (_buildOnlineTicketEmailHtml) return _buildOnlineTicketEmailHtml;
-  const mod = requireFromRoot(path.join(__dirname, 'lib', 'online-ticket-email-html.cjs'));
+  const mod = requireFromRoot(path.join(__dirname, '_lib', 'online-ticket-email-html.cjs'));
   _buildOnlineTicketEmailHtml = mod.buildOnlineTicketEmailHtml;
   return _buildOnlineTicketEmailHtml;
 }
@@ -29,24 +29,24 @@ const {
   buildCampaignEmailHtml,
   normalizeMarketingHeaderImageUrl,
   sanitizeCampaignCtaLabel,
-} = requireFromRoot(path.join(__dirname, 'lib', 'campaign-email-html.cjs'));
+} = requireFromRoot(path.join(__dirname, '_lib', 'campaign-email-html.cjs'));
 
 const {
   buildInvestorVanguardEmailHtml,
   buildInvestorVanguardEmailPlainText,
-} = requireFromRoot(path.join(__dirname, 'lib', 'investor-campaign-email-html.cjs'));
+} = requireFromRoot(path.join(__dirname, '_lib', 'investor-campaign-email-html.cjs'));
 
 const { computeOnlinePaymentFees, inferFeeFromInclusiveTotal } = requireFromRoot(
-  path.join(__dirname, 'lib', 'online-payment-fee.cjs')
+  path.join(__dirname, '_lib', 'online-payment-fee.cjs')
 );
 
-const { uploadTicketQrToR2OrSupabase } = requireFromRoot(path.join(__dirname, 'lib', 'r2-media.cjs'));
-const { sendTransactionalEmail } = requireFromRoot(path.join(__dirname, 'lib', 'transactional-email.cjs'));
-const { canSendTransactionalEmail } = requireFromRoot(path.join(__dirname, 'lib', 'can-send-transactional-email.cjs'));
+const { uploadTicketQrToR2OrSupabase } = requireFromRoot(path.join(__dirname, '_lib', 'r2-media.cjs'));
+const { sendTransactionalEmail } = requireFromRoot(path.join(__dirname, '_lib', 'transactional-email.cjs'));
+const { canSendTransactionalEmail } = requireFromRoot(path.join(__dirname, '_lib', 'can-send-transactional-email.cjs'));
 
 // Eager load with a static specifier so @vercel/nft bundles transitive deps (@sparticuz/chromium, puppeteer-core, pdf-lib).
 // Lazy require(path.join(...)) omitted those packages → runtime "Cannot find module '@sparticuz/chromium'" on Vercel.
-const renderPremiumTicketPdfModule = requireFromRoot('./lib/render-premium-ticket-pdf.cjs');
+const renderPremiumTicketPdfModule = requireFromRoot('./_lib/render-premium-ticket-pdf.cjs');
 function getRenderPremiumTicketPdf() {
   return renderPremiumTicketPdfModule;
 }
@@ -54,7 +54,7 @@ function getRenderPremiumTicketPdf() {
 let _createOfficialInvitationEmailHTML = null;
 function getCreateOfficialInvitationEmailHTML() {
   if (_createOfficialInvitationEmailHTML) return _createOfficialInvitationEmailHTML;
-  const mod = requireFromRoot(path.join(__dirname, 'lib', 'official-invitation-email-html.cjs'));
+  const mod = requireFromRoot(path.join(__dirname, '_lib', 'official-invitation-email-html.cjs'));
   _createOfficialInvitationEmailHTML = mod.createOfficialInvitationEmailHTML;
   return _createOfficialInvitationEmailHTML;
 }

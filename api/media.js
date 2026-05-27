@@ -11,8 +11,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const express = require('express');
 const cookieParser = require('cookie-parser');
-const { registerMediaRoutes } = require(path.join(__dirname, 'lib', 'register-media-routes.cjs'));
-const { requireAdminAuth } = require(path.join(__dirname, 'lib', 'admin-auth-express.cjs'));
+const { registerMediaRoutes } = require(path.join(__dirname, '_lib', 'register-media-routes.cjs'));
+const { requireAdminAuth } = require(path.join(__dirname, '_lib', 'admin-auth-express.cjs'));
 
 const app = express();
 app.use(cookieParser());

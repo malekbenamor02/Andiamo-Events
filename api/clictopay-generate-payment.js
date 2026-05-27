@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createRequire } from 'module';
 
 const requireFee = createRequire(import.meta.url);
-const { computeOnlinePaymentFees } = requireFee('./lib/online-payment-fee.cjs');
+const { computeOnlinePaymentFees } = requireFee('./_lib/online-payment-fee.cjs');
 
 let corsUtils = null;
 async function getCorsUtils() {
