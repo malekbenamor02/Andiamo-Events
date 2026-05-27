@@ -223,6 +223,31 @@ async function getCareerApp() {
   return careerAppPromise;
 }
 
+// Lazy academy Express app (runs via misc.js to avoid an extra serverless function on Hobby)
+let academyAppPromise = null;
+async function getAcademyApp() {
+  if (academyAppPromise) return academyAppPromise;
+  academyAppPromise = (async () => {
+    const expressModule = await import('express');
+    const express = expressModule.default || expressModule;
+    const cookieParserModule = await import('cookie-parser');
+    const cookieParser = cookieParserModule.default || cookieParserModule;
+    const { requireAdminAuth } = requireFromRoot(
+      path.join(__dirname, '_lib', 'admin-auth-express.cjs')
+    );
+    const { registerAcademyRoutes } = requireFromRoot(
+      path.join(__dirname, '..', 'academyRoutes.cjs')
+    );
+    const app = express();
+    app.use(cookieParser());
+    app.use(express.json({ limit: '256kb' }));
+    app.use(express.urlencoded({ extended: true, limit: '256kb' }));
+    registerAcademyRoutes(app, { requireAdminAuth });
+    return app;
+  })();
+  return academyAppPromise;
+}
+
 // Import shared CORS utility
 import { setCORSHeaders as setCORSHeadersUtil, handlePreflight } from '../lib/cors.js';
 
@@ -1093,6 +1118,32 @@ export default async (req, res) => {
     } catch (err) {
       console.error('Career app error:', err);
       return res.status(500).json({ error: err.message || 'Career service unavailable' });
+    }
+  }
+
+  // Academy routes (public + admin) — handled by Express app from academyRoutes.cjs
+  if (
+    path.startsWith('/api/academy') ||
+    path.startsWith('/api/admin/academy')
+  ) {
+    try {
+      const app = await getAcademyApp();
+      await new Promise((resolve) => {
+        const onFinish = () => resolve();
+        res.on('finish', onFinish);
+        res.on('close', onFinish);
+        app(req, res, (err) => {
+          if (err) {
+            console.error('Academy route error:', err);
+            if (!res.headersSent) res.status(500).json({ error: err.message || 'Server error' });
+          }
+          resolve();
+        });
+      });
+      return;
+    } catch (err) {
+      console.error('Academy app error:', err);
+      return res.status(500).json({ error: err.message || 'Academy service unavailable' });
     }
   }
 

@@ -145,31 +145,31 @@
     },
     {
       "source": "/api/academy/status",
-      "destination": "/api/academy.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/academy/register",
-      "destination": "/api/academy.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/academy/validate-promo",
-      "destination": "/api/academy.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/academy/clictopay-generate-payment",
-      "destination": "/api/academy.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/academy/clictopay-confirm-payment",
-      "destination": "/api/academy.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/academy/registration/:id/status",
-      "destination": "/api/academy.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/admin/academy/:path*",
-      "destination": "/api/academy.js"
+      "destination": "/api/misc.js"
     },
     {
       "source": "/api/career-application",
@@ -604,14 +604,10 @@
       "maxDuration": 30,
       "includeFiles": "api/_lib/**"
     },
-    "api/academy.js": {
-      "maxDuration": 60,
-      "includeFiles": "{api/_lib/**,academyRoutes.cjs}"
-    },
     "api/misc.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{api/_lib/**,node_modules/@sparticuz/chromium/**}"
+      "includeFiles": "{api/_lib/**,academyRoutes.cjs,node_modules/@sparticuz/chromium/**}"
     },
     "api/media.js": {
       "maxDuration": 60,

@@ -1,0 +1,246 @@
+﻿node.exe : Vercel CLI 44.7.0
+Au caractère C:\Users\ASUS\AppData\Roaming\npm\vercel.ps1:24 : 5
++     & "node$exe"  "$basedir/node_modules/vercel/dist/vc.js" $args
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Vercel CLI 44.7.0:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Fetching deployment "dpl_2GoTMsWfQH7RfWG66pyVcszMCs95" in fmalekbenamorf-6393s-projects
+2026-05-27T02:30:02.238Z  Running build in Washington, D.C., USA (East) ÔÇô iad1
+2026-05-27T02:30:02.238Z  Build machine configuration: 2 cores, 8 GB
+2026-05-27T02:30:02.367Z  Cloning github.com/malekbenamor02/Andiamo-Events (Branch: main, Commit: a0b6f9c)
+2026-05-27T02:30:03.314Z  Cloning completed: 947.000ms
+2026-05-27T02:30:03.452Z  Found .vercelignore
+2026-05-27T02:30:03.458Z  Removed 8 ignored files defined in .vercelignore
+2026-05-27T02:30:03.458Z    /supabase/.temp/cli-latest
+2026-05-27T02:30:03.458Z    /supabase/.temp/gotrue-version
+2026-05-27T02:30:03.458Z    /supabase/.temp/pooler-url
+2026-05-27T02:30:03.458Z    /supabase/.temp/postgres-version
+2026-05-27T02:30:03.458Z    /supabase/.temp/project-ref
+2026-05-27T02:30:03.458Z    /supabase/.temp/rest-version
+2026-05-27T02:30:03.459Z    /supabase/.temp/storage-migration
+2026-05-27T02:30:03.459Z    /supabase/.temp/storage-version
+2026-05-27T02:30:04.487Z  Restored build cache from previous deployment (GG9xxr6SrYD2sWMxf8cuafTpDSPK)
+2026-05-27T02:30:04.711Z  Running "vercel build"
+2026-05-27T02:30:04.817Z  Vercel CLI 54.4.1
+2026-05-27T02:30:05.933Z  Installing dependencies...
+2026-05-27T02:30:08.643Z  
+2026-05-27T02:30:08.643Z  up to date in 2s
+2026-05-27T02:30:08.644Z  
+2026-05-27T02:30:08.644Z  132 packages are looking for funding
+2026-05-27T02:30:08.644Z    run `npm fund` for details
+2026-05-27T02:30:08.679Z  Running "npm run build"
+2026-05-27T02:30:08.795Z  
+2026-05-27T02:30:08.795Z  > vite_react_shadcn_ts@0.0.0 build
+2026-05-27T02:30:08.796Z  > vite build
+2026-05-27T02:30:08.796Z  
+2026-05-27T02:30:09.337Z  [36mvite v5.4.10 [32mbuilding for production...[36m[39m
+2026-05-27T02:30:09.418Z  transforming...
+2026-05-27T02:30:09.766Z  Browserslist: browsers data (caniuse-lite) is 19 months old. Please run:
+2026-05-27T02:30:09.767Z    npx update-browserslist-db@latest
+2026-05-27T02:30:09.768Z    Why you should do it regularly: https://github.com/browserslist/update-db#readme
+2026-05-27T02:30:11.593Z  
+2026-05-27T02:30:11.594Z  [1m[33mwarn[39m[22m - The class `max-md:ease-[cubic-bezier(0.22,1,0.36,1)]` is ambiguous 
+and matches multiple utilities.
+2026-05-27T02:30:11.595Z  [1m[33mwarn[39m[22m - If this is content and not a class, replace it with 
+`max-md:ease-&lsqb;cubic-bezier(0.22,1,0.36,1)&rsqb;` to silence this warning.
+2026-05-27T02:30:30.338Z  [32mÔ£ô[39m 3998 modules transformed.
+2026-05-27T02:30:31.678Z  rendering chunks...
+2026-05-27T02:30:32.861Z  [2mdist/[22m[2massets/[22m[32mworker-BAOIWoxA.js  [39m[1m[2m     2.53 
+kB[22m[1m[22m
+2026-05-27T02:30:32.862Z  [2mdist/[22m[32mindex.html                 [39m[1m[2m     5.41 kB[22m[1m[22m
+2026-05-27T02:30:32.862Z  [2mdist/[22m[2massets/[22m[32mD7VZX-aa.js         [39m[1m[2m   114.49 
+kB[22m[1m[22m
+2026-05-27T02:30:32.862Z  [2mdist/[22m[2massets/[22m[32mCbz6om2n.wasm       [39m[1m[2m32,129.11 
+kB[22m[1m[22m
+2026-05-27T02:30:32.863Z  [2mdist/[22m[2massets/[22m[35mO0c7x58X.css        [39m[1m[2m   193.17 
+kB[22m[1m[22m
+2026-05-27T02:30:32.863Z  [2mdist/[22m[2massets/[22m[36mCOaQmmwN.js         [39m[1m[2m     0.02 
+kB[22m[1m[22m
+2026-05-27T02:30:32.863Z  [2mdist/[22m[2massets/[22m[36mCrTOrHFO.js         [39m[1m[2m     0.08 
+kB[22m[1m[22m
+2026-05-27T02:30:32.863Z  [2mdist/[22m[2massets/[22m[36mDGQgfKgl.js         [39m[1m[2m     0.20 
+kB[22m[1m[22m
+2026-05-27T02:30:32.863Z  [2mdist/[22m[2massets/[22m[36mDc4SRotz.js         [39m[1m[2m     0.25 
+kB[22m[1m[22m
+2026-05-27T02:30:32.864Z  [2mdist/[22m[2massets/[22m[36mD3DcLe2H.js         [39m[1m[2m     0.37 
+kB[22m[1m[22m
+2026-05-27T02:30:32.864Z  [2mdist/[22m[2massets/[22m[36mC8Y2zp_f.js         [39m[1m[2m     0.39 
+kB[22m[1m[22m
+2026-05-27T02:30:32.864Z  [2mdist/[22m[2massets/[22m[36mD4hz9r6Q.js         [39m[1m[2m     0.41 
+kB[22m[1m[22m
+2026-05-27T02:30:32.864Z  [2mdist/[22m[2massets/[22m[36mBwhs3JPo.js         [39m[1m[2m     0.45 
+kB[22m[1m[22m
+2026-05-27T02:30:32.864Z  [2mdist/[22m[2massets/[22m[36mKq5EIbnG.js         [39m[1m[2m     0.46 
+kB[22m[1m[22m
+2026-05-27T02:30:32.864Z  [2mdist/[22m[2massets/[22m[36mDYfw80Cq.js         [39m[1m[2m     0.49 
+kB[22m[1m[22m
+2026-05-27T02:30:32.865Z  [2mdist/[22m[2massets/[22m[36mDgiEdtFl.js         [39m[1m[2m     0.57 
+kB[22m[1m[22m
+2026-05-27T02:30:32.866Z  [2mdist/[22m[2massets/[22m[36mBsiJNZ2Y.js         [39m[1m[2m     0.73 
+kB[22m[1m[22m
+2026-05-27T02:30:32.866Z  [2mdist/[22m[2massets/[22m[36m9iyMy5HK.js         [39m[1m[2m     0.73 
+kB[22m[1m[22m
+2026-05-27T02:30:32.866Z  [2mdist/[22m[2massets/[22m[36mBXRdnBMY.js         [39m[1m[2m     0.85 
+kB[22m[1m[22m
+2026-05-27T02:30:32.866Z  [2mdist/[22m[2massets/[22m[36mB4e9mhN5.js         [39m[1m[2m     0.95 
+kB[22m[1m[22m
+2026-05-27T02:30:32.866Z  [2mdist/[22m[2massets/[22m[36m4HE7xt2d.js         [39m[1m[2m     0.99 
+kB[22m[1m[22m
+2026-05-27T02:30:32.866Z  [2mdist/[22m[2massets/[22m[36mZOG6frbZ.js         [39m[1m[2m     1.07 
+kB[22m[1m[22m
+2026-05-27T02:30:32.866Z  [2mdist/[22m[2massets/[22m[36mC3phF92t.js         [39m[1m[2m     1.08 
+kB[22m[1m[22m
+2026-05-27T02:30:32.866Z  [2mdist/[22m[2massets/[22m[36mCTUJrKBJ.js         [39m[1m[2m     1.35 
+kB[22m[1m[22m
+2026-05-27T02:30:32.867Z  [2mdist/[22m[2massets/[22m[36mCbF1Fdwi.js         [39m[1m[2m     1.41 
+kB[22m[1m[22m
+2026-05-27T02:30:32.867Z  [2mdist/[22m[2massets/[22m[36mWEcgz29D.js         [39m[1m[2m     1.65 
+kB[22m[1m[22m
+2026-05-27T02:30:32.876Z  [2mdist/[22m[2massets/[22m[36mYa5YDRQn.js         [39m[1m[2m     1.90 
+kB[22m[1m[22m
+2026-05-27T02:30:32.876Z  [2mdist/[22m[2massets/[22m[36mIkneLvhx.js         [39m[1m[2m     1.92 
+kB[22m[1m[22m
+2026-05-27T02:30:32.876Z  [2mdist/[22m[2massets/[22m[36mDLwU6RXm.js         [39m[1m[2m     1.99 
+kB[22m[1m[22m
+2026-05-27T02:30:32.876Z  [2mdist/[22m[2massets/[22m[36mN9YehFwv.js         [39m[1m[2m     2.45 
+kB[22m[1m[22m
+2026-05-27T02:30:32.876Z  [2mdist/[22m[2massets/[22m[36mBhcm-xfV.js         [39m[1m[2m     3.19 
+kB[22m[1m[22m
+2026-05-27T02:30:32.876Z  [2mdist/[22m[2massets/[22m[36mBZ1rdjt3.js         [39m[1m[2m     3.31 
+kB[22m[1m[22m
+2026-05-27T02:30:32.876Z  [2mdist/[22m[2massets/[22m[36mCq4wgc9A.js         [39m[1m[2m     3.42 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36mdSZ9rTZK.js         [39m[1m[2m     3.76 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36mBaWP-L3J.js         [39m[1m[2m     3.90 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36mD8-iqwWN.js         [39m[1m[2m     4.11 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36mDuMOMFyu.js         [39m[1m[2m     4.60 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36mHoecbsDR.js         [39m[1m[2m     5.06 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36mD767Gp1w.js         [39m[1m[2m     5.11 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36mBLfZpTNF.js         [39m[1m[2m     5.19 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36mBh5E1hPn.js         [39m[1m[2m     5.87 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36mDoL_ehH7.js         [39m[1m[2m     5.88 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36mCXzwIaVL.js         [39m[1m[2m     6.06 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36m6_-p_fB-.js         [39m[1m[2m     7.16 
+kB[22m[1m[22m
+2026-05-27T02:30:32.877Z  [2mdist/[22m[2massets/[22m[36m7Ncf9Rhe.js         [39m[1m[2m     7.24 
+kB[22m[1m[22m
+2026-05-27T02:30:32.878Z  [2mdist/[22m[2massets/[22m[36m6LSljWKf.js         [39m[1m[2m     8.32 
+kB[22m[1m[22m
+2026-05-27T02:30:32.878Z  [2mdist/[22m[2massets/[22m[36mD3iOVFFD.js         [39m[1m[2m     8.43 
+kB[22m[1m[22m
+2026-05-27T02:30:32.878Z  [2mdist/[22m[2massets/[22m[36mC84FOg71.js         [39m[1m[2m     8.90 
+kB[22m[1m[22m
+2026-05-27T02:30:32.878Z  [2mdist/[22m[2massets/[22m[36mDKFGt9g-.js         [39m[1m[2m     9.08 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mDMgIQ7C0.js         [39m[1m[2m     9.17 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36me2eo370y.js         [39m[1m[2m     9.37 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mTi2Niddu.js         [39m[1m[2m    10.56 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mCarM_5RU.js         [39m[1m[2m    10.90 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36m81EVVzmh.js         [39m[1m[2m    11.02 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mCoirZXsi.js         [39m[1m[2m    12.80 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mEGBCV0h3.js         [39m[1m[2m    14.58 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mDcri4QRr.js         [39m[1m[2m    14.72 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mBGjkbHWN.js         [39m[1m[2m    16.56 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mBmytmtNH.js         [39m[1m[2m    17.04 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mn4p4_TQg.js         [39m[1m[2m    17.87 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mCX-7X3Nb.js         [39m[1m[2m    17.95 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mDoWYfHJB.js         [39m[1m[2m    18.96 
+kB[22m[1m[22m
+2026-05-27T02:30:32.879Z  [2mdist/[22m[2massets/[22m[36mCBKoUzlL.js         [39m[1m[2m    20.15 
+kB[22m[1m[22m
+2026-05-27T02:30:32.880Z  [2mdist/[22m[2massets/[22m[36mCaameBKe.js         [39m[1m[2m    20.40 
+kB[22m[1m[22m
+2026-05-27T02:30:32.880Z  [2mdist/[22m[2massets/[22m[36mDA6iCxQ7.js         [39m[1m[2m    22.63 
+kB[22m[1m[22m
+2026-05-27T02:30:32.880Z  [2mdist/[22m[2massets/[22m[36mDThhiaGb.js         [39m[1m[2m    23.30 
+kB[22m[1m[22m
+2026-05-27T02:30:32.880Z  [2mdist/[22m[2massets/[22m[36mCeuoTxZ6.js         [39m[1m[2m    23.74 
+kB[22m[1m[22m
+2026-05-27T02:30:32.880Z  [2mdist/[22m[2massets/[22m[36mD0J4QMr2.js         [39m[1m[2m    23.87 
+kB[22m[1m[22m
+2026-05-27T02:30:32.880Z  [2mdist/[22m[2massets/[22m[36mDvoeA7pE.js         [39m[1m[2m    26.82 
+kB[22m[1m[22m
+2026-05-27T02:30:32.880Z  [2mdist/[22m[2massets/[22m[36mBktCk2zN.js         [39m[1m[2m    28.14 
+kB[22m[1m[22m
+2026-05-27T02:30:32.880Z  [2mdist/[22m[2massets/[22m[36mCNfJ8YAW.js         [39m[1m[2m    28.63 
+kB[22m[1m[22m
+2026-05-27T02:30:32.888Z  [2mdist/[22m[2massets/[22m[36modgYu7JT.js         [39m[1m[2m    35.05 
+kB[22m[1m[22m
+2026-05-27T02:30:32.888Z  [2mdist/[22m[2massets/[22m[36mC1wQtcXR.js         [39m[1m[2m    35.36 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mC5zcxpj6.js         [39m[1m[2m    37.83 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mBYQJ7H7C.js         [39m[1m[2m    42.25 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mBId1boHv.js         [39m[1m[2m    43.67 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mf1JrlhDL.js         [39m[1m[2m    43.90 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mDsW5X58x.js         [39m[1m[2m    46.65 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36m_sK_4Rjp.js         [39m[1m[2m    51.15 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mrWOKTXwk.js         [39m[1m[2m    52.79 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mBKbL4VpC.js         [39m[1m[2m    62.01 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mD2snN76m.js         [39m[1m[2m    63.18 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mCXTRoSCh.js         [39m[1m[2m    66.30 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mB8RG8yn9.js         [39m[1m[2m    90.09 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mOyDB-TK2.js         [39m[1m[2m    91.25 
+kB[22m[1m[22m
+2026-05-27T02:30:32.889Z  [2mdist/[22m[2massets/[22m[36mBKbdN4--.js         [39m[1m[2m    98.58 
+kB[22m[1m[22m
+2026-05-27T02:30:32.890Z  [2mdist/[22m[2massets/[22m[36mCuKivU2w.js         [39m[1m[2m   131.68 
+kB[22m[1m[22m
+2026-05-27T02:30:32.890Z  [2mdist/[22m[2massets/[22m[36mayvbYMjG.js         [39m[1m[2m   162.95 
+kB[22m[1m[22m
+2026-05-27T02:30:32.890Z  [2mdist/[22m[2massets/[22m[36mBQlBh7sq.js         [39m[1m[2m   262.69 
+kB[22m[1m[22m
+2026-05-27T02:30:32.890Z  [2mdist/[22m[2massets/[22m[36m1kQZzHJU.js         [39m[1m[2m   287.15 
+kB[22m[1m[22m
+2026-05-27T02:30:32.890Z  [2mdist/[22m[2massets/[22m[36mCBlT0ato.js         [39m[1m[2m   327.16 
+kB[22m[1m[22m
+2026-05-27T02:30:32.890Z  [2mdist/[22m[2massets/[22m[36mCanIQlQ6.js         [39m[1m[2m   386.67 
+kB[22m[1m[22m
+2026-05-27T02:30:32.891Z  [2mdist/[22m[2massets/[22m[36mDXoVVhY5.js         [39m[1m[2m   420.46 
+kB[22m[1m[22m
+2026-05-27T02:30:32.891Z  [2mdist/[22m[2massets/[22m[36mtAb2TiGw.js         [39m[1m[33m   937.14 kB[39m[22m
+2026-05-27T02:30:32.891Z  [32mÔ£ô built in 23.50s[39m
+2026-05-27T02:30:32.897Z  [33m
+2026-05-27T02:30:32.898Z  (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-05-27T02:30:32.898Z  - Using dynamic import() to code-split the application
+2026-05-27T02:30:32.898Z  - Use build.rollupOptions.output.manualChunks to improve chunking: 
+https://rollupjs.org/configuration-options/#output-manualchunks
+2026-05-27T02:30:32.898Z  - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+2026-05-27T02:31:13.499Z  Build Completed in /vercel/output [1m]
+2026-05-27T02:31:14.707Z  Deploying outputs...
+2026-05-27T02:31:29.959Z  Warning: Provided `memory` setting in `vercel.json` is ignored on Active CPU billing. You 
+can safely remove this setting from your configuration. Learn more: https://vercel.com/docs/fluid-compute/pricing
+status	ÔùÅ Error
